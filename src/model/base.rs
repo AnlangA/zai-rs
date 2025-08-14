@@ -1,7 +1,7 @@
 use serde::ser::{Error, SerializeStruct};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
@@ -10,7 +10,7 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessages {
     pub messages: Vec<ChatMessage>,
 }
@@ -30,7 +30,7 @@ impl ChatMessages {
 }
 
 /// Represents a chat message in the system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ChatMessage {
     pub user_message: Option<UserMessage>,
     pub assistant_message: Option<AssistantMessage>,
@@ -113,7 +113,7 @@ impl ChatMessage {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserMessage {
     role: Role,
     content: String,
@@ -138,7 +138,7 @@ impl UserMessage {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantMessage {
     role: Role,
     content: String,
@@ -153,7 +153,7 @@ impl AssistantMessage {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemMessage {
     role: Role,
     content: String,
@@ -168,7 +168,7 @@ impl SystemMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ToolMessage {
     role: Role,
     content: Option<String>,
@@ -252,7 +252,7 @@ impl ToolMessage {
         self
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ToolCall {
     id: String,
     type_: ToolType,
@@ -316,7 +316,7 @@ impl ToolCall {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolType {
     Function,
@@ -324,7 +324,7 @@ pub enum ToolType {
     Retrieval,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCall {
     name: String,
     arguments: String,
@@ -339,7 +339,29 @@ impl FunctionCall {
     }
 }
 
-// Builders to avoid Vec in API inputs while keeping serialization unchanged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Meta {
+    user_info: String,
+    bot_info: String,
+    bot_name: String,
+    user_name: String,
+}
+
+impl Meta {
+    pub fn new(
+        user_info: impl Into<String>,
+        bot_info: impl Into<String>,
+        bot_name: impl Into<String>,
+        user_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            user_info: user_info.into(),
+            bot_info: bot_info.into(),
+            bot_name: bot_name.into(),
+            user_name: user_name.into(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
