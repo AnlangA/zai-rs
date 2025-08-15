@@ -5,7 +5,7 @@
 
 use super::model_validate::validate_json_schema;
 use super::traits::*;
-use serde::ser::{Error, SerializeStruct};
+use serde::ser::Error;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt::Debug;
 use validator::*;
@@ -110,6 +110,71 @@ where
     /// Can be either text or JSON object format.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
+}
+
+impl<N, M> ChatBody<N, M>
+where
+    N: ModelName,
+    (N, M): Bounded,
+{
+    pub fn new(model: N, messages: M) -> Self {
+        Self {
+            model,
+            messages: vec![messages],
+            request_id: None,
+            thinking: None,
+            do_sample: None,
+            stream: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            tools: None,
+            user_id: None,
+            stop: None,
+            response_format: None,
+        }
+    }
+
+    pub fn add_messages(mut self, messages: M) -> Self {
+        self.messages.push(messages);
+        self
+    }
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+    pub fn with_do_sample(mut self, do_sample: bool) -> Self {
+        self.do_sample = Some(do_sample);
+        self
+    }
+    pub fn with_stream(mut self, stream: bool) -> Self {
+        self.stream = Some(stream);
+        self
+    }
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+    pub fn with_top_p(mut self, top_p: f32) -> Self {
+        self.top_p = Some(top_p);
+        self
+    }
+    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+    pub fn with_tools(mut self, tools: Tools) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+    pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.user_id = Some(user_id.into());
+        self
+    }
+    pub fn with_stop(mut self, stop: String) -> Self {
+        self.stop.get_or_insert_with(Vec::new).push(stop);
+        self
+    }
 }
 
 impl<N, M> ChatBody<N, M>
@@ -452,7 +517,7 @@ impl Serialize for ToolCall {
 
         // Validation: function field is required when type_ is Function
         if matches!(self.type_, ToolCallType::Function) && self.function.is_none() {
-            return Err(S::Error::custom(
+            return Err(Error::custom(
                 "function field is required when type is 'function'",
             ));
         }
@@ -686,6 +751,31 @@ pub enum ResponseFormat {
     /// Structured JSON object response format.
     JsonObject,
 }
+
+
+#[derive(Debug, Clone)]
+pub struct GLM4_5 {}
+
+impl Into<String> for GLM4_5 {
+    fn into(self) -> String {
+        "glm-4.5".to_string()
+    }
+}
+
+impl Serialize for GLM4_5 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let model_name: String = self.clone().into();
+        serializer.serialize_str(&model_name)
+    }
+}
+
+impl ModelName for GLM4_5 {}
+impl ThinkEnable for GLM4_5 {}
+
+impl Bounded for (GLM4_5, TextMessage) {}
 
 #[cfg(test)]
 mod tests {
