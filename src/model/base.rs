@@ -127,71 +127,73 @@ impl Debug for TextMessages {
 
 /// Represents a chat message in the system.
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "role")]
 #[serde(rename_all = "lowercase")]
-#[serde(untagged)]
 pub enum TextMessage {
-    User(TextUserMessage),
-    Assistant(TextAssistantMessage),
-    System(TextSystemMessage),
-    Tool(TextToolMessage),
+    User {
+        content: String,
+    },
+    Assistant {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<String>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        tool_calls: Vec<ToolCall>,
+    },
+    System {
+        content: String,
+    },
+    Tool {
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_call_id: Option<String>,
+    },
 }
 
 impl TextMessage {
-    pub fn user(user: TextUserMessage) -> Self {
-        TextMessage::User(user)
+    pub fn user(content: impl Into<String>) -> Self {
+        TextMessage::User {
+            content: content.into()
+        }
     }
 
-    pub fn assistant(assistant: TextAssistantMessage) -> Self {
-        TextMessage::Assistant(assistant)
+    pub fn assistant(content: impl Into<String>) -> Self {
+        TextMessage::Assistant {
+            content: Some(content.into()),
+            tool_calls: Vec::new(),
+        }
     }
 
-    pub fn system(system: TextSystemMessage) -> Self {
-        TextMessage::System(system)
+    pub fn assistant_with_tools(content: Option<String>, tool_calls: Vec<ToolCall>) -> Self {
+        TextMessage::Assistant {
+            content,
+            tool_calls,
+        }
     }
 
-    pub fn tool(tool: TextToolMessage) -> Self {
-        TextMessage::Tool(tool)
+    pub fn system(content: impl Into<String>) -> Self {
+        TextMessage::System {
+            content: content.into()
+        }
     }
-}
 
-#[derive(Debug, Clone, Serialize)]
-pub struct TextUserMessage {
-    role: Role,
-    content: String,
-}
-
-impl TextUserMessage {
-    pub fn new(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::User,
+    pub fn tool(content: impl Into<String>) -> Self {
+        TextMessage::Tool {
             content: content.into(),
+            tool_call_id: None,
+        }
+    }
+
+    pub fn tool_with_id(content: impl Into<String>, tool_call_id: impl Into<String>) -> Self {
+        TextMessage::Tool {
+            content: content.into(),
+            tool_call_id: Some(tool_call_id.into()),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct TextSystemMessage {
-    role: Role,
-    content: String,
-}
 
-impl TextSystemMessage {
-    pub fn new(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::System,
-            content: content.into(),
-        }
-    }
-}
 
-#[derive(Debug, Clone, Serialize)]
-pub struct TextAssistantMessage {
-    role: Role,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    content: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tool_calls: Vec<ToolCall>,
-}
+
 
 #[derive(Debug, Clone)]
 pub struct ToolCall {
@@ -285,37 +287,7 @@ impl FunctionParams {
     }
 }
 
-impl TextAssistantMessage {
-    pub fn new(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Assistant,
-            content: Some(content.into()),
-            tool_calls: Vec::new(),
-        }
-    }
-}
 
-#[derive(Debug, Clone, Serialize)]
-pub struct TextToolMessage {
-    role: Role,
-    content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_call_id: Option<String>,
-}
-
-impl TextToolMessage {
-    pub fn new(content: impl Into<String>) -> Self {
-        Self {
-            role: Role::Tool,
-            content: content.into(),
-            tool_call_id: None,
-        }
-    }
-    pub fn with_tool_call_id(mut self, tool_call_id: impl Into<String>) -> Self {
-        self.tool_call_id = Some(tool_call_id.into());
-        self
-    }
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -329,19 +301,15 @@ pub enum ThinkingType{
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum Tools {
-    #[serde(rename = "function_call")]
     FunctionCall {
         function_call: Vec<FunctionCall>
     },
-    #[serde(rename = "retrieval")]
     Retrieval {
         retrieval: Vec<Retrieval>
     },
-    #[serde(rename = "web_search")]
     WebSearch {
         web_search: Vec<WebSearch>
     },
-    #[serde(rename = "mcp")]
     MCP {
         mcp: Vec<MCP>
     },
