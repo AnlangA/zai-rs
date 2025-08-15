@@ -5,8 +5,6 @@ use validator::*;
 use super::traits::*;
 use super::model_validate::validate_json_schema;
 
-
-
 #[derive(Debug, Clone, Validate, Serialize)]
 pub struct ChatBody<N, M>
 where
@@ -70,37 +68,10 @@ where
     }
 }
 
-
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    User,
-    Assistant,
-    System,
-    Tool,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Serialize, Validate)]
 pub struct TextMessages {
+    #[validate(length(min = 1, max = 1000))]
     pub messages: Vec<TextMessage>,
-}
-
-impl Serialize for TextMessages {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        if self.messages.is_empty() {
-            return Err(S::Error::custom(
-                "TextMessages must have at least one message",
-            ));
-        }
-
-        let mut st = serializer.serialize_struct("TextMessages", 1)?;
-        st.serialize_field("messages", &self.messages)?;
-        st.end()
-    }
 }
 
 impl TextMessages {
@@ -117,15 +88,6 @@ impl TextMessages {
     }
 }
 
-impl Debug for TextMessages {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TextMessages")
-            .field("messages", &self.messages)
-            .finish()
-    }
-}
-
-/// Represents a chat message in the system.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "role")]
 #[serde(rename_all = "lowercase")]
@@ -358,4 +320,206 @@ pub struct MCP{
 pub enum ResponseFormat{
     Text,
     JsonObject,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    // 定义测试用的模型类型
+    #[derive(Debug, Clone, serde::Serialize)]
+    struct TestModel {
+        name: String,
+    }
+
+    impl TestModel {
+        fn new(name: impl Into<String>) -> Self {
+            Self {
+                name: name.into(),
+            }
+        }
+    }
+
+    impl Into<String> for TestModel {
+        fn into(self) -> String {
+            self.name
+        }
+    }
+
+    impl ModelName for TestModel {}
+    impl ThinkEnable for TestModel {}
+
+    // 实现 Bounded trait
+    impl Bounded for (TestModel, TextMessage) {}
+
+    #[test]
+    fn test_chatbody_basic_serialization() {
+        let model = TestModel::new("gpt-4");
+        let messages = vec![
+            TextMessage::system("You are a helpful assistant."),
+            TextMessage::user("Hello, how are you?"),
+            TextMessage::assistant("I'm doing well, thank you! How can I help you today?"),
+        ];
+
+        let basic_body = ChatBody {
+            model: model.clone(),
+            messages: messages.clone(),
+            request_id: None,
+            thinking: None,
+            do_sample: None,
+            stream: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            tools: None,
+            user_id: None,
+            stop: None,
+            response_format: None,
+        };
+
+        let json = serde_json::to_string_pretty(&basic_body).unwrap();
+        println!("基本 ChatBody 序列化结果:");
+        println!("{}\n", json);
+
+        // 验证 JSON 包含必要字段
+        assert!(json.contains("\"model\""));
+        assert!(json.contains("\"messages\""));
+        assert!(json.contains("\"role\": \"system\""));
+        assert!(json.contains("\"role\": \"user\""));
+        assert!(json.contains("\"role\": \"assistant\""));
+    }
+
+    #[test]
+    fn test_chatbody_full_serialization() {
+        let model = TestModel::new("gpt-4");
+        let messages = vec![
+            TextMessage::system("You are a helpful assistant."),
+            TextMessage::user("Hello!"),
+        ];
+
+        let function_call = FunctionCall::new(
+            "get_weather",
+            "Get current weather information",
+            r#"{"type": "object", "properties": {"location": {"type": "string"}}}"#
+        );
+
+        let tools = Tools::FunctionCall {
+            function_call: vec![function_call]
+        };
+
+        let full_body = ChatBody {
+            model: model.clone(),
+            messages: messages.clone(),
+            request_id: Some("req_123456".to_string()),
+            thinking: Some("Let me think about this...".to_string()),
+            do_sample: Some(true),
+            stream: Some(false),
+            temperature: Some(0.7),
+            top_p: Some(0.9),
+            max_tokens: Some(1000),
+            tools: Some(tools),
+            user_id: Some("user_789".to_string()),
+            stop: Some(vec!["END".to_string()]),
+            response_format: Some(ResponseFormat::JsonObject),
+        };
+
+        let json = serde_json::to_string_pretty(&full_body).unwrap();
+        println!("完整 ChatBody 序列化结果:");
+        println!("{}\n", json);
+
+        // 验证所有字段都存在
+        assert!(json.contains("\"request_id\": \"req_123456\""));
+        assert!(json.contains("\"thinking\": \"Let me think about this...\""));
+        assert!(json.contains("\"do_sample\": true"));
+        assert!(json.contains("\"stream\": false"));
+        assert!(json.contains("\"temperature\": 0.7"));
+        assert!(json.contains("\"top_p\": 0.9"));
+        assert!(json.contains("\"max_tokens\": 1000"));
+        assert!(json.contains("\"tools\""));
+        assert!(json.contains("\"user_id\": \"user_789\""));
+        assert!(json.contains("\"stop\""));
+        assert!(json.contains("\"response_format\""));
+    }
+
+    #[test]
+    fn test_chatbody_with_tool_calls() {
+        let model = TestModel::new("gpt-4");
+
+        let tool_call = ToolCall::new_function("call_123", FunctionParams::new("get_weather", r#"{"location": "Beijing"}"#));
+        let messages_with_tools = vec![
+            TextMessage::system("You are a helpful assistant with access to weather information."),
+            TextMessage::user("What's the weather like in Beijing?"),
+            TextMessage::assistant_with_tools(
+                Some("I'll check the weather in Beijing for you.".to_string()),
+                vec![tool_call]
+            ),
+            TextMessage::tool_with_id("The weather in Beijing is sunny, 25°C", "call_123"),
+            TextMessage::assistant("Based on the weather data, it's currently sunny in Beijing with a temperature of 25°C. It's a beautiful day!")
+        ];
+
+        let tools_body = ChatBody {
+            model: model.clone(),
+            messages: messages_with_tools,
+            request_id: Some("req_tools_123".to_string()),
+            thinking: None,
+            do_sample: Some(false),
+            stream: Some(true),
+            temperature: Some(0.3),
+            top_p: Some(0.8),
+            max_tokens: Some(2000),
+            tools: Some(Tools::FunctionCall {
+                function_call: vec![
+                    FunctionCall::new(
+                        "get_weather",
+                        "Get current weather information for a location",
+                        r#"{"type": "object", "properties": {"location": {"type": "string", "description": "The city name"}}}"#
+                    )
+                ]
+            }),
+            user_id: Some("user_weather".to_string()),
+            stop: None,
+            response_format: Some(ResponseFormat::Text),
+        };
+
+        let json = serde_json::to_string_pretty(&tools_body).unwrap();
+        println!("ChatBody 带工具调用消息序列化结果:");
+        println!("{}\n", json);
+
+        // 验证工具调用相关字段
+        assert!(json.contains("\"tool_calls\""));
+        assert!(json.contains("\"tool_call_id\""));
+        assert!(json.contains("\"role\": \"tool\""));
+    }
+
+    #[test]
+    fn test_chatbody_with_thinking() {
+        let model = TestModel::new("gpt-4");
+
+        let thinking_body = ChatBody {
+            model: model.clone(),
+            messages: vec![
+                TextMessage::user("Solve this complex math problem: 2x + 5 = 15")
+            ],
+            request_id: Some("req_thinking".to_string()),
+            thinking: None,
+            do_sample: None,
+            stream: None,
+            temperature: Some(0.1),
+            top_p: None,
+            max_tokens: Some(500),
+            tools: None,
+            user_id: Some("user_math".to_string()),
+            stop: None,
+            response_format: None,
+        }.with_thinking("I need to solve for x: 2x + 5 = 15, so 2x = 10, therefore x = 5");
+
+        let json = serde_json::to_string_pretty(&thinking_body).unwrap();
+        println!("ChatBody 带 thinking 序列化结果:");
+        println!("{}\n", json);
+
+        // 验证 thinking 字段
+        assert!(json.contains("\"thinking\""));
+        assert!(json.contains("I need to solve for x"));
+    }
 }
