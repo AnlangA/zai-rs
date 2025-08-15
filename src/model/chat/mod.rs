@@ -1,8 +1,7 @@
 pub mod builder;
 pub mod data;
-pub mod traits;
 
 pub use builder::*;
 pub use data::*;
-pub use traits::ChatText;
-pub use traits::*;
+pub use crate::model::traits::ChatText;
+pub use crate::model::traits::*;
