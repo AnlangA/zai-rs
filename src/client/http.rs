@@ -1,27 +1,36 @@
 
-pub struct HttpClient {
-    api_key: String,
-    api_url: String,
-    body: String
-}
+pub trait HttpClient {
+    // Associated types
+    type Body: serde::Serialize;
+    type ApiUrl: AsRef<str>;
+    type ApiKey: AsRef<str>;
 
-impl HttpClient {
-    pub fn new(api_key: impl Into<String>, api_url: impl Into<String>, body: impl Into<String>) -> Self {
-        Self {
-            api_key: api_key.into(),
-            api_url: api_url.into(),
-            body: body.into(),
+    // Accessors
+    fn api_url(&self) -> &Self::ApiUrl;
+    fn api_key(&self) -> &Self::ApiKey;
+    fn body(&self) -> &Self::Body;
+
+    // POST using anyhow for error handling; serialize body here
+    fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+        // Prepare owned values so the future can be Send
+        let body_compact = serde_json::to_string(self.body());
+        let body_pretty = serde_json::to_string_pretty(self.body());
+        let url = self.api_url().as_ref().to_owned();
+        let key = self.api_key().as_ref().to_owned();
+        async move {
+            let body = body_compact?;
+            let pretty = body_pretty.unwrap_or_else(|_| body.clone());
+            // Print the outgoing request data (URL + JSON body)
+            println!("HTTP POST {}\nRequest Body:\n{}", url, pretty);
+
+            let resp = reqwest::Client::new()
+                .post(url)
+                .header("Authorization", format!("Bearer {}", key))
+                .header("Content-Type", "application/json")
+                .body(body)
+                .send()
+                .await?;
+            Ok(resp)
         }
-    }
-    pub async fn post<'a>(&self) -> Result<reqwest::Response, reqwest::Error> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(self.api_url.as_str())
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .body(self.body.clone())
-            .send()
-            .await;
-        response
     }
 }

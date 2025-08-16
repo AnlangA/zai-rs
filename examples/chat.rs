@@ -6,14 +6,31 @@ use zai_rs::client::http::*;
 async fn main() {
     let model = GLM4_5_flash {};
 
-    let (url, mut body) = ChatCompletion::new(model, TextMessage::user("你好"));
-    body = body.with_thinking(ThinkingType::Disabled);
-    let json = serde_json::to_string_pretty(&body).unwrap();
-    let key = get_key();
-    let client = HttpClient::new(key, url, json);
-    let response = client.post().await.unwrap();
-    let text = response.text().await.unwrap();
-    println!("Response: {}", text);
+    // 模拟添加一个 function call 工具：get_weather(city: string)
+    let weather_func = Function::new(
+        "get_weather",
+        "Get current weather for a city",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"}
+            },
+            "required": ["city"],
+            "additionalProperties": false
+        }),
+    );
+    let tools = Tools::Function { function: weather_func };
+
+    let client = ChatCompletion::new(model, TextMessage::user("你是谁，帮为查找深圳今天的天气"), get_key())
+        .with_thinking(ThinkingType::Disabled)
+        .with_temperature(0.7)
+        .with_top_p(0.9)
+        .with_max_tokens(512)
+        .with_tools(vec![tools]);
+
+    let resp = client.post().await.unwrap();
+    let v: serde_json::Value = resp.json().await.unwrap();
+    println!("{}", serde_json::to_string_pretty(&v).unwrap());
 }
 
 fn get_key() -> String {

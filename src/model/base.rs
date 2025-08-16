@@ -3,7 +3,7 @@
 //! This module provides the core data structures used for chat API requests and responses,
 //! including message types, tool calls, and configuration options.
 
-use super::model_validate::validate_json_schema;
+use super::model_validate::{validate_json_schema, validate_json_schema_value};
 use super::traits::*;
 use serde::ser::Error;
 use serde::{Deserialize, Serialize, Serializer};
@@ -91,8 +91,9 @@ where
 
     /// A list of tools the model may call. Currently supports function calling,
     /// web search, and retrieval tools.
+    /// Note: server expects an array; we model this as a vector of tool items.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Tools>,
+    pub tools: Option<Vec<Tools>>,
 
     // tool_choice: enum<string>, but we don't need it for now
     /// A unique identifier representing your end-user, which can help monitor and
@@ -163,8 +164,8 @@ where
         self.max_tokens = Some(max_tokens);
         self
     }
-    pub fn with_tools(mut self, tools: Tools) -> Self {
-        self.tools = Some(tools);
+    pub fn with_tools(mut self, tools: impl Into<Vec<Tools>>) -> Self {
+        self.tools = Some(tools.into());
         self
     }
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
@@ -636,7 +637,7 @@ pub enum ThinkingType {
 ///
 /// # Variants
 ///
-/// * `FunctionCall` - Custom functions that can be called with parameters
+/// * `Function` - Custom functions that can be called with parameters
 /// * `Retrieval` - Access to retrieval/knowledge systems
 /// * `WebSearch` - Web search capabilities
 /// * `MCP` - Model Context Protocol tools
@@ -644,8 +645,8 @@ pub enum ThinkingType {
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum Tools {
-    /// Function calling tools with custom parameters.
-    FunctionCall { function_call: Vec<FunctionCall> },
+    /// Function calling tool with parameters.
+    Function { function: Function },
     /// Retrieval system access tools.
     Retrieval { retrieval: Vec<Retrieval> },
     /// Web search tools.
@@ -664,7 +665,7 @@ pub enum Tools {
 /// * `name` - Must be between 1 and 64 characters
 /// * `parameters` - Must be a valid JSON schema
 #[derive(Debug, Clone, Serialize, Validate)]
-pub struct FunctionCall {
+pub struct Function {
     /// The name of the function. Must be between 1 and 64 characters.
     #[validate(length(min = 1, max = 64))]
     pub name: String,
@@ -673,11 +674,13 @@ pub struct FunctionCall {
     pub description: String,
 
     /// JSON schema describing the function's parameters.
-    #[validate(custom(function = "validate_json_schema"))]
-    pub parameters: String,
+    /// Server expects an object; keep as Value to avoid double-encoding strings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(custom(function = "validate_json_schema_value"))]
+    pub parameters: Option<serde_json::Value>,
 }
 
-impl FunctionCall {
+impl Function {
     /// Creates a new function call definition.
     ///
     /// # Arguments
@@ -688,12 +691,12 @@ impl FunctionCall {
     ///
     /// # Returns
     ///
-    /// A new `FunctionCall` instance.
+    /// A new `Function` instance.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let func = FunctionCall::new(
+    /// let func = Function::new(
     ///     "get_weather",
     ///     "Get current weather for a location",
     ///     r#"{"type": "object", "properties": {"location": {"type": "string"}}}"#
@@ -702,12 +705,12 @@ impl FunctionCall {
     pub fn new(
         name: impl Into<String>,
         description: impl Into<String>,
-        parameters: impl Into<String>,
+        parameters: serde_json::Value,
     ) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
-            parameters: parameters.into(),
+            parameters: Some(parameters),
         }
     }
 }
