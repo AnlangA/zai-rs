@@ -5,8 +5,8 @@ edition = "2021"
 
 
 [[example]]
-name = "chat"
-path = "examples/chat.rs"
+name = "function_call"
+path = "examples/function_call.rs"
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
