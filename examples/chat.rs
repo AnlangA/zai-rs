@@ -2,8 +2,12 @@ use tokio;
 use zai_rs::model::base::*;
 use zai_rs::model::chat::data::ChatCompletion;
 use zai_rs::client::http::*;
+use log::info;
 #[tokio::main]
 async fn main() {
+
+    env_logger::init();
+
     let model = GLM4_5_flash {};
 
     // 模拟添加一个 function call 工具：get_weather(city: string)
@@ -27,10 +31,9 @@ async fn main() {
         .with_top_p(0.9)
         .with_max_tokens(512)
         .with_tools(vec![tools]);
-
     let resp = client.post().await.unwrap();
     let v: serde_json::Value = resp.json().await.unwrap();
-    println!("{}", serde_json::to_string_pretty(&v).unwrap());
+    info!("{}", serde_json::to_string_pretty(&v).unwrap());
 }
 
 fn get_key() -> String {

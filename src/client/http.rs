@@ -1,3 +1,4 @@
+use log::info;
 
 pub trait HttpClient {
     // Associated types
@@ -12,7 +13,6 @@ pub trait HttpClient {
 
     // POST using anyhow for error handling; serialize body here
     fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
-        // Prepare owned values so the future can be Send
         let body_compact = serde_json::to_string(self.body());
         let body_pretty = serde_json::to_string_pretty(self.body());
         let url = self.api_url().as_ref().to_owned();
@@ -20,9 +20,7 @@ pub trait HttpClient {
         async move {
             let body = body_compact?;
             let pretty = body_pretty.unwrap_or_else(|_| body.clone());
-            // Print the outgoing request data (URL + JSON body)
-            println!("HTTP POST {}\nRequest Body:\n{}", url, pretty);
-
+            info!("Request body: {}", pretty);
             let resp = reqwest::Client::new()
                 .post(url)
                 .header("Authorization", format!("Bearer {}", key))
