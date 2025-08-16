@@ -3,6 +3,8 @@
 //! This module provides the core data structures used for chat API requests and responses,
 //! including message types, tool calls, and configuration options.
 
+use crate::impl_model_serialize;
+
 use super::model_validate::validate_json_schema_value;
 use super::traits::*;
 use serde::ser::Error;
@@ -811,28 +813,60 @@ impl WebSearch {
     }
 
     /// Enable or disable web search.
-    pub fn with_enable(mut self, enable: bool) -> Self { self.enable = Some(enable); self }
+    pub fn with_enable(mut self, enable: bool) -> Self {
+        self.enable = Some(enable);
+        self
+    }
     /// Set a forced search query.
-    pub fn with_search_query(mut self, query: impl Into<String>) -> Self { self.search_query = Some(query.into()); self }
+    pub fn with_search_query(mut self, query: impl Into<String>) -> Self {
+        self.search_query = Some(query.into());
+        self
+    }
     /// Set search intent detection behavior.
-    pub fn with_search_intent(mut self, search_intent: bool) -> Self { self.search_intent = Some(search_intent); self }
+    pub fn with_search_intent(mut self, search_intent: bool) -> Self {
+        self.search_intent = Some(search_intent);
+        self
+    }
     /// Set results count (1-50).
-    pub fn with_count(mut self, count: u32) -> Self { self.count = Some(count); self }
+    pub fn with_count(mut self, count: u32) -> Self {
+        self.count = Some(count);
+        self
+    }
     /// Restrict to a whitelist domain.
-    pub fn with_search_domain_filter(mut self, domain: impl Into<String>) -> Self { self.search_domain_filter = Some(domain.into()); self }
+    pub fn with_search_domain_filter(mut self, domain: impl Into<String>) -> Self {
+        self.search_domain_filter = Some(domain.into());
+        self
+    }
     /// Set time range filter.
-    pub fn with_search_recency_filter(mut self, filter: SearchRecencyFilter) -> Self { self.search_recency_filter = Some(filter); self }
+    pub fn with_search_recency_filter(mut self, filter: SearchRecencyFilter) -> Self {
+        self.search_recency_filter = Some(filter);
+        self
+    }
     /// Set content size.
-    pub fn with_content_size(mut self, size: ContentSize) -> Self { self.content_size = Some(size); self }
+    pub fn with_content_size(mut self, size: ContentSize) -> Self {
+        self.content_size = Some(size);
+        self
+    }
     /// Set result sequence.
-    pub fn with_result_sequence(mut self, seq: ResultSequence) -> Self { self.result_sequence = Some(seq); self }
+    pub fn with_result_sequence(mut self, seq: ResultSequence) -> Self {
+        self.result_sequence = Some(seq);
+        self
+    }
     /// Toggle returning detailed search source info.
-    pub fn with_search_result(mut self, enable: bool) -> Self { self.search_result = Some(enable); self }
+    pub fn with_search_result(mut self, enable: bool) -> Self {
+        self.search_result = Some(enable);
+        self
+    }
     /// Require search results for answering.
-    pub fn with_require_search(mut self, require: bool) -> Self { self.require_search = Some(require); self }
+    pub fn with_require_search(mut self, require: bool) -> Self {
+        self.require_search = Some(require);
+        self
+    }
     /// Set a custom prompt to post-process search results.
-    pub fn with_search_prompt(mut self, prompt: impl Into<String>) -> Self { self.search_prompt = Some(prompt.into()); self }
-
+    pub fn with_search_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.search_prompt = Some(prompt.into());
+        self
+    }
 }
 
 /// Supported search engines.
@@ -848,11 +882,16 @@ pub enum SearchEngine {
 /// Search time range filter.
 #[derive(Debug, Clone, Serialize)]
 pub enum SearchRecencyFilter {
-    #[serde(rename = "oneDay")] OneDay,
-    #[serde(rename = "oneWeek")] OneWeek,
-    #[serde(rename = "oneMonth")] OneMonth,
-    #[serde(rename = "oneYear")] OneYear,
-    #[serde(rename = "noLimit")] NoLimit,
+    #[serde(rename = "oneDay")]
+    OneDay,
+    #[serde(rename = "oneWeek")]
+    OneWeek,
+    #[serde(rename = "oneMonth")]
+    OneMonth,
+    #[serde(rename = "oneYear")]
+    OneYear,
+    #[serde(rename = "noLimit")]
+    NoLimit,
 }
 
 /// Search snippet size.
@@ -912,15 +951,30 @@ impl MCP {
     }
 
     /// Set the MCP server URL.
-    pub fn with_server_url(mut self, url: impl Into<String>) -> Self { self.server_url = Some(url.into()); self }
+    pub fn with_server_url(mut self, url: impl Into<String>) -> Self {
+        self.server_url = Some(url.into());
+        self
+    }
     /// Set the MCP transport type.
-    pub fn with_transport_type(mut self, transport: MCPTransportType) -> Self { self.transport_type = Some(transport); self }
+    pub fn with_transport_type(mut self, transport: MCPTransportType) -> Self {
+        self.transport_type = Some(transport);
+        self
+    }
     /// Replace the allowed tool list.
-    pub fn with_allowed_tools(mut self, tools: impl Into<Vec<String>>) -> Self { self.allowed_tools = tools.into(); self }
+    pub fn with_allowed_tools(mut self, tools: impl Into<Vec<String>>) -> Self {
+        self.allowed_tools = tools.into();
+        self
+    }
     /// Add a single allowed tool.
-    pub fn add_allowed_tool(mut self, tool: impl Into<String>) -> Self { self.allowed_tools.push(tool.into()); self }
+    pub fn add_allowed_tool(mut self, tool: impl Into<String>) -> Self {
+        self.allowed_tools.push(tool.into());
+        self
+    }
     /// Set authentication headers map.
-    pub fn with_headers(mut self, headers: std::collections::HashMap<String, String>) -> Self { self.headers = Some(headers); self }
+    pub fn with_headers(mut self, headers: std::collections::HashMap<String, String>) -> Self {
+        self.headers = Some(headers);
+        self
+    }
     /// Add or update a single header entry.
     pub fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         let mut map = self.headers.unwrap_or_default();
@@ -966,18 +1020,13 @@ impl Into<String> for GLM4_5 {
         "glm-4.5".to_string()
     }
 }
-impl Serialize for GLM4_5 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let model_name: String = self.clone().into();
-        serializer.serialize_str(&model_name)
-    }
-}
+
+impl_model_serialize!(GLM4_5);
+
 impl ModelName for GLM4_5 {}
 impl ThinkEnable for GLM4_5 {}
 impl Bounded for (GLM4_5, TextMessage) {}
+
 #[derive(Debug, Clone)]
 #[allow(non_camel_case_types)]
 pub struct GLM4_5_flash {}
@@ -986,15 +1035,7 @@ impl Into<String> for GLM4_5_flash {
         "glm-4.5-flash".to_string()
     }
 }
-impl Serialize for GLM4_5_flash {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let model_name: String = self.clone().into();
-        serializer.serialize_str(&model_name)
-    }
-}
+impl_model_serialize!(GLM4_5_flash);
 impl ModelName for GLM4_5_flash {}
 impl Bounded for (GLM4_5_flash, TextMessage) {}
 impl ThinkEnable for GLM4_5_flash {}

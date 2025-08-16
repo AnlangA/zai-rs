@@ -1,11 +1,10 @@
+use log::info;
 use tokio;
+use zai_rs::client::http::*;
 use zai_rs::model::base::*;
 use zai_rs::model::chat::data::ChatCompletion;
-use zai_rs::client::http::*;
-use log::info;
 #[tokio::main]
 async fn main() {
-
     env_logger::init();
 
     let model = GLM4_5_flash {};
@@ -23,7 +22,9 @@ async fn main() {
             "additionalProperties": false
         }),
     );
-    let tools = Tools::Function { function: weather_func };
+    let tools = Tools::Function {
+        function: weather_func,
+    };
 
     // 读取 API Key，并保留以便后续继续对话
     let key = get_key();
@@ -31,16 +32,12 @@ async fn main() {
     // 会话的第一条用户消息
     let user_text = "你是谁，帮为查找深圳今天的天气";
 
-    let mut client = ChatCompletion::new(
-        model,
-        TextMessage::user(user_text),
-        key.clone(),
-    )
-    .with_thinking(ThinkingType::Disabled)
-    .with_temperature(0.7)
-    .with_top_p(0.9)
-    .with_max_tokens(512)
-    .with_tools(vec![tools.clone()]);
+    let mut client = ChatCompletion::new(model, TextMessage::user(user_text), key.clone())
+        .with_thinking(ThinkingType::Disabled)
+        .with_temperature(0.7)
+        .with_top_p(0.9)
+        .with_max_tokens(512)
+        .with_tools(vec![tools.clone()]);
     let resp = client.post().await.unwrap();
     let v: serde_json::Value = resp.json().await.unwrap();
     info!("{}", serde_json::to_string_pretty(&v).unwrap());
@@ -66,7 +63,10 @@ async fn main() {
 
         let resp2 = client.post().await.unwrap();
         let v2: serde_json::Value = resp2.json().await.unwrap();
-        info!("继续对话返回: {}", serde_json::to_string_pretty(&v2).unwrap());
+        info!(
+            "继续对话返回: {}",
+            serde_json::to_string_pretty(&v2).unwrap()
+        );
     } else {
         info!("未发现 tool_calls");
     }
@@ -141,4 +141,3 @@ fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
         }
     }
 }
-

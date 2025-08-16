@@ -12,19 +12,15 @@ where
     body: ChatBody<N, M>,
 }
 
-
 impl<N, M> ChatCompletion<N, M>
 where
     N: ModelName,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
-    pub fn new(model: N, messages: M, key: String) -> Self{
+    pub fn new(model: N, messages: M, key: String) -> Self {
         let body = ChatBody::new(model, messages);
-        Self {
-            body,
-            key,
-        }
+        Self { body, key }
     }
 
     pub fn body_mut(&mut self) -> &mut ChatBody<N, M> {
@@ -82,8 +78,6 @@ where
         self
     }
 }
-
-
 
 impl<N, M> HttpClient for ChatCompletion<N, M>
 where
