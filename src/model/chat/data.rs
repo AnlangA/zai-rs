@@ -1,4 +1,4 @@
-use super::super::base::*;
+use super::super::base_requst::*;
 use super::super::traits::*;
 use crate::client::http::HttpClient;
 use serde::Serialize;

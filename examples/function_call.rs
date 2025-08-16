@@ -1,7 +1,7 @@
 use log::info;
 use tokio;
 use zai_rs::client::http::*;
-use zai_rs::model::base::*;
+use zai_rs::model::base_requst::*;
 use zai_rs::model::chat::data::ChatCompletion;
 #[tokio::main]
 async fn main() {
