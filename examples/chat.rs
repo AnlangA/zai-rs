@@ -6,7 +6,7 @@ use zai_rs::client::http::*;
 use tokio;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5_flash {};
+    let model = GLM4_5_airx {};
     let key = std::env::var("ZHIPU_API_KEY").unwrap();
     let user_text = "你好";
     let client = ChatCompletion::new(model, TextMessage::user(user_text), key)

@@ -56,7 +56,7 @@ where
         self.body = self.body.with_max_tokens(max_tokens);
         self
     }
-    pub fn with_tools(mut self, tools: impl Into<Vec<Tools>>) -> Self {
+    pub fn with_tools(mut self, tools: Tools) -> Self {
         self.body = self.body.with_tools(tools);
         self
     }

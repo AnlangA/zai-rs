@@ -3,7 +3,7 @@
 //! This module provides the core data structures used for chat API requests and responses,
 //! including message types, tool calls, and configuration options.
 
-use crate::impl_model_serialize;
+use crate::define_model_type;
 
 use super::model_validate::validate_json_schema_value;
 use super::traits::*;
@@ -166,8 +166,16 @@ where
         self.max_tokens = Some(max_tokens);
         self
     }
-    pub fn with_tools(mut self, tools: impl Into<Vec<Tools>>) -> Self {
-        self.tools = Some(tools.into());
+    pub fn with_tools(mut self, tools: Tools) -> Self {
+        self.tools.get_or_insert(Vec::new()).push(tools);
+        self
+    }
+    pub fn add_tools(mut self, tools: Tools) -> Self {
+        self.tools.get_or_insert(Vec::new()).push(tools);
+        self
+    }
+    pub fn extend_tools(mut self, tools: Vec<Tools>) -> Self {
+        self.tools.get_or_insert(Vec::new()).extend(tools);
         self
     }
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
@@ -1012,30 +1020,12 @@ pub enum ResponseFormat {
     JsonObject,
 }
 
-#[derive(Debug, Clone)]
-pub struct GLM4_5 {}
+define_model_type!(GLM4_5, "glm-4.5");
 
-impl Into<String> for GLM4_5 {
-    fn into(self) -> String {
-        "glm-4.5".to_string()
-    }
-}
+define_model_type!(#[allow(non_camel_case_types)] GLM4_5_flash, "glm-4.5-flash");
 
-impl_model_serialize!(GLM4_5);
+define_model_type!(#[allow(non_camel_case_types)] GLM4_5_air, "glm-4.5-air");
 
-impl ModelName for GLM4_5 {}
-impl ThinkEnable for GLM4_5 {}
-impl Bounded for (GLM4_5, TextMessage) {}
+define_model_type!(#[allow(non_camel_case_types)] GLM4_5_x, "glm-4.5-X");
 
-#[derive(Debug, Clone)]
-#[allow(non_camel_case_types)]
-pub struct GLM4_5_flash {}
-impl Into<String> for GLM4_5_flash {
-    fn into(self) -> String {
-        "glm-4.5-flash".to_string()
-    }
-}
-impl_model_serialize!(GLM4_5_flash);
-impl ModelName for GLM4_5_flash {}
-impl Bounded for (GLM4_5_flash, TextMessage) {}
-impl ThinkEnable for GLM4_5_flash {}
+define_model_type!(#[allow(non_camel_case_types)] GLM4_5_airx, "glm-4.5-airx");

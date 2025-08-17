@@ -32,12 +32,12 @@ async fn main() {
     // 会话的第一条用户消息
     let user_text = "你是谁，帮为查找深圳今天的天气";
 
-    let mut client = ChatCompletion::new(model, TextMessage::user(user_text), key.clone())
+    let mut client = ChatCompletion::new(model, TextMessage::user(user_text), key)
         .with_thinking(ThinkingType::Disabled)
         .with_temperature(0.7)
         .with_top_p(0.9)
         .with_max_tokens(512)
-        .with_tools(vec![tools.clone()]);
+        .with_tools(tools);
     let resp = client.post().await.unwrap();
     let v: serde_json::Value = resp.json().await.unwrap();
     info!("{}", serde_json::to_string_pretty(&v).unwrap());
@@ -56,10 +56,7 @@ async fn main() {
 
         // 3) 回传工具结果并继续一轮对话（复用同一个 client）
         let tool_msg = TextMessage::tool_with_id(serde_json::to_string(&result).unwrap(), id);
-        client = client
-            .add_messages(tool_msg)
-            .with_tools(vec![tools.clone()])
-            .with_max_tokens(512);
+        client = client.add_messages(tool_msg).with_max_tokens(512);
 
         let resp2 = client.post().await.unwrap();
         let v2: serde_json::Value = resp2.json().await.unwrap();
