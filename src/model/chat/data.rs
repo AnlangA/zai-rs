@@ -1,4 +1,5 @@
-use super::super::base_requst::*;
+use super::super::chat_base_requst::*;
+use super::super::tools::*;
 use super::super::traits::*;
 use crate::client::http::HttpClient;
 use serde::Serialize;

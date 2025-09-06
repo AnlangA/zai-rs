@@ -1,9 +1,8 @@
+use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
-use zai_rs::model::base_requst::*;
-use zai_rs::model::base_response::ChatCompletionResponse;
 
-use zai_rs::client::http::*;
 use tokio;
+use zai_rs::client::http::*;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_airx {};

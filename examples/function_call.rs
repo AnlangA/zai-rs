@@ -1,8 +1,8 @@
 use log::info;
 use tokio;
 use zai_rs::client::http::*;
-use zai_rs::model::base_requst::*;
 use zai_rs::model::chat::data::ChatCompletion;
+use zai_rs::model::*;
 #[tokio::main]
 async fn main() {
     env_logger::init();

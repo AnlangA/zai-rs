@@ -12,7 +12,7 @@ pub trait ChatRole {}
 
 pub trait ThinkEnable {}
 
-/// Define a model type with common impls (Into<String>, Serialize, ModelName, ThinkEnable, Bounded).
+/// Define a basic model type with core implementations (Into<String>, Serialize, ModelName).
 /// Usage examples:
 ///   define_model_type!(GLM4_5, "glm-4.5");
 ///   define_model_type!(#[allow(non_camel_case_types)] GLM4_5_flash, "glm-4.5-flash");
@@ -36,8 +36,24 @@ macro_rules! define_model_type {
         }
 
         impl $crate::model::traits::ModelName for $name {}
+    };
+}
+
+/// Implement thinking capability for a model type.
+/// Usage: impl_think_enable!(GLM4_5);
+#[macro_export]
+macro_rules! impl_think_enable {
+    ($name:ident) => {
         impl $crate::model::traits::ThinkEnable for $name {}
-        impl $crate::model::traits::Bounded for ($name, $crate::model::base_requst::TextMessage) {}
+    };
+}
+
+/// Implement message type binding for a model type.
+/// Usage: impl_message_binding!(GLM4_5, TextMessage);
+#[macro_export]
+macro_rules! impl_message_binding {
+    ($name:ident, $message_type:ty) => {
+        impl $crate::model::traits::Bounded for ($name, $message_type) {}
     };
 }
 
