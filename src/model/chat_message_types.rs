@@ -400,11 +400,38 @@ impl TextMessage {
 #[serde(rename_all = "lowercase")]
 pub enum VisionMessage {
     /// A message from the user/human containing rich multimedia content.
-    User { rich_content: VisionRichContent },
+    User { content: Vec<VisionRichContent> },
     /// A system message that provides instructions or context to the assistant.
     System { content: String },
     /// A response from the AI assistant.
     Assistant { content: Option<String> },
+}
+
+/// Represents video URL information.
+///
+/// This structure contains the URL information for video content.
+#[derive(Debug, Clone, Serialize)]
+pub struct VideoUrlInfo {
+    /// The URL of the video file.
+    pub url: String,
+}
+
+/// Represents image URL information.
+///
+/// This structure contains the URL information for image content.
+#[derive(Debug, Clone, Serialize)]
+pub struct ImageUrlInfo {
+    /// The URL of the image file.
+    pub url: String,
+}
+
+/// Represents file URL information.
+///
+/// This structure contains the URL information for file content.
+#[derive(Debug, Clone, Serialize)]
+pub struct FileUrlInfo {
+    /// The URL of the file.
+    pub url: String,
 }
 
 /// Represents different types of rich multimedia content in vision messages.
@@ -419,7 +446,7 @@ pub enum VisionMessage {
 /// the content type ("text", "image_url", "video_url", or "file_url").
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum VisionRichContent {
     Text {
         text: String,
@@ -434,7 +461,7 @@ pub enum VisionRichContent {
     /// - GLM-4V-Plus-0111: maximum 5 images
     /// - GLM-4V-Flash: maximum 1 image (Base64 encoding not supported)
     ImageUrl {
-        url: String,
+        image_url: ImageUrlInfo,
     },
     /// Video URL for video content.
     ///
@@ -445,7 +472,7 @@ pub enum VisionRichContent {
     ///
     /// Supported format: mp4
     VideoUrl {
-        url: String,
+        video_url: VideoUrlInfo,
     },
     /// File URL for document content.
     ///
@@ -453,7 +480,7 @@ pub enum VisionRichContent {
     /// Supported formats: PDF, Word, and other document formats.
     /// Maximum 50 files supported.
     FileUrl {
-        url: String,
+        file_url: FileUrlInfo,
     },
 }
 
@@ -494,7 +521,9 @@ impl VisionRichContent {
     /// let base64_image = VisionRichContent::image("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...");
     /// ```
     pub fn image(url: impl Into<String>) -> Self {
-        VisionRichContent::ImageUrl { url: url.into() }
+        VisionRichContent::ImageUrl {
+            image_url: ImageUrlInfo { url: url.into() },
+        }
     }
 
     /// Creates a new video content item.
@@ -513,7 +542,9 @@ impl VisionRichContent {
     /// let video = VisionRichContent::video("https://example.com/video.mp4");
     /// ```
     pub fn video(url: impl Into<String>) -> Self {
-        VisionRichContent::VideoUrl { url: url.into() }
+        VisionRichContent::VideoUrl {
+            video_url: VideoUrlInfo { url: url.into() },
+        }
     }
 
     /// Creates a new file content item.
@@ -532,29 +563,58 @@ impl VisionRichContent {
     /// let file = VisionRichContent::file("https://example.com/document.pdf");
     /// ```
     pub fn file(url: impl Into<String>) -> Self {
-        VisionRichContent::FileUrl { url: url.into() }
+        VisionRichContent::FileUrl {
+            file_url: FileUrlInfo { url: url.into() },
+        }
     }
 }
 
 impl VisionMessage {
-    /// Creates a new user message with rich content.
-    ///
-    /// # Arguments
-    ///
-    /// * `rich_content` - The rich multimedia content for the user's message
+    /// Creates a new empty user message.
     ///
     /// # Returns
     ///
-    /// A new `VisionMessage::User` variant.
+    /// A new `VisionMessage::User` variant with empty content.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let image = RichContent::ImageUrl { url: "https://example.com/image.jpg".to_string() };
-    /// let msg = VisionMessage::user(image);
+    /// let msg = VisionMessage::new_user();
     /// ```
-    pub fn user(rich_content: VisionRichContent) -> Self {
-        VisionMessage::User { rich_content }
+    pub fn new_user() -> Self {
+        VisionMessage::User {
+            content: Vec::new(),
+        }
+    }
+
+    /// Adds rich content to a user message.
+    ///
+    /// # Arguments
+    ///
+    /// * `rich_content` - The rich multimedia content to add
+    ///
+    /// # Returns
+    ///
+    /// The updated `VisionMessage::User` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let image = VisionRichContent::image("https://example.com/image.jpg");
+    /// let text = VisionRichContent::text("describe this image");
+    /// let msg = VisionMessage.add_content(image)
+    ///     .add_content(text);
+    /// ```
+    pub fn add_user(self, rich_content: VisionRichContent) -> Self {
+        match self {
+            VisionMessage::User { mut content } => {
+                content.push(rich_content);
+                VisionMessage::User { content }
+            }
+            _ => VisionMessage::User {
+                content: vec![rich_content],
+            },
+        }
     }
 
     /// Creates a new system message.
@@ -664,7 +724,7 @@ pub enum VoiceMessage {
     /// A message from the user/human containing voice or text content.
     User {
         /// The content of the user's message, which can be text or audio.
-        content: VoiceRichContent,
+        content: Vec<VoiceRichContent>,
     },
     /// A system message that provides instructions or context to the assistant.
     System {
@@ -721,8 +781,8 @@ pub enum VoiceMessage {
 /// let audio_content = VoiceRichContent::input_audio(audio_data, VoiceFormat::WAV);
 /// ```
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "role")]
-#[serde(rename_all = "lowercase")]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub enum VoiceRichContent {
     /// Text content for voice conversations.
     ///
@@ -736,19 +796,25 @@ pub enum VoiceRichContent {
     ///
     /// # Field Description
     ///
-    /// ## data
+    /// ## input_audio
+    /// Contains the audio data and format information
+    InputAudio {
+        /// Audio data and format information
+        input_audio: InputAudioData,
+    },
+}
+
+/// Represents audio input data structure.
+///
+/// This structure contains the base64 encoded audio data and format information
+/// for voice input in chat messages.
+#[derive(Debug, Clone, Serialize)]
+pub struct InputAudioData {
     /// Base64 encoded audio file data. Maximum audio duration is 10 minutes.
     /// 1 second of audio = 12.5 tokens, rounded up.
-    ///
-    /// ## format
+    pub data: String,
     /// Audio file format, supports WAV and MP3
-    InputAudio {
-        /// Base64 encoded audio file data. Maximum audio duration is 10 minutes.
-        /// 1 second of audio = 12.5 tokens, rounded up.
-        data: String,
-        /// Audio file format, supports WAV and MP3
-        format: VoiceFormat,
-    },
+    pub format: VoiceFormat,
 }
 
 impl VoiceRichContent {
@@ -791,8 +857,10 @@ impl VoiceRichContent {
     pub fn input_audio(data: impl AsRef<[u8]>, format: VoiceFormat) -> Self {
         let base64_string = BASE64_STANDARD.encode(data);
         VoiceRichContent::InputAudio {
-            data: base64_string,
-            format,
+            input_audio: InputAudioData {
+                data: base64_string,
+                format,
+            },
         }
     }
 }
@@ -1022,24 +1090,52 @@ impl Audio {
 }
 
 impl VoiceMessage {
-    /// Creates a new user message with voice content.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The voice rich content for the user's message
+    /// Creates a new empty user message.
     ///
     /// # Returns
     ///
-    /// A new `VoiceMessage::User` variant.
+    /// A new `VoiceMessage::User` variant with empty content.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let msg = VoiceMessage::new_user();
+    /// ```
+    pub fn new_user() -> Self {
+        VoiceMessage::User {
+            content: Vec::new(),
+        }
+    }
+
+    /// Adds rich content to a user message.
+    ///
+    /// # Arguments
+    ///
+    /// * `rich_content` - The rich content to add
+    ///
+    /// # Returns
+    ///
+    /// The updated `VoiceMessage::User` variant.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
     /// let audio = VoiceRichContent::text("Hello");
-    /// let msg = VoiceMessage::user(audio);
+    /// let text = VoiceRichContent::text("describe this audio");
+    /// let msg = VoiceMessage::new_user()
+    ///     .add_user(audio)
+    ///     .add_user(text);
     /// ```
-    pub fn user(content: VoiceRichContent) -> Self {
-        VoiceMessage::User { content }
+    pub fn add_user(self, rich_content: VoiceRichContent) -> Self {
+        match self {
+            VoiceMessage::User { mut content } => {
+                content.push(rich_content);
+                VoiceMessage::User { content }
+            }
+            _ => VoiceMessage::User {
+                content: vec![rich_content],
+            },
+        }
     }
 
     /// Creates a new system message.

@@ -21,6 +21,7 @@ pub trait HttpClient {
             let body = body_compact?;
             let pretty = body_pretty.unwrap_or_else(|_| body.clone());
             info!("Request body: {}", pretty);
+            println!("{}", pretty);
             let resp = reqwest::Client::new()
                 .post(url)
                 .header("Authorization", format!("Bearer {}", key))

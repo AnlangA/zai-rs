@@ -53,6 +53,6 @@ impl_message_binding!(GLM4_5v, VisionMessage);
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_voice,
-    "glm-4-Voice"
+    "glm-4-voice"
 );
 impl_message_binding!(GLM4_voice, VoiceMessage);

@@ -6,7 +6,6 @@
 use serde::Deserialize;
 use validator::Validate;
 
-
 /// Successful business response (HTTP 200, application/json).
 #[derive(Debug, Clone, Deserialize, Validate)]
 pub struct ChatCompletionResponse {
@@ -46,7 +45,6 @@ pub struct ChatCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_filter: Option<Vec<ContentFilterInfo>>,
 }
-
 
 /// One choice item in the response.
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -185,7 +183,6 @@ pub enum MCPInputType {
     Object,
 }
 
-
 /// Audio content returned for voice models.
 #[derive(Debug, Clone, Deserialize, Validate)]
 pub struct AudioContent {
@@ -199,8 +196,6 @@ pub struct AudioContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<String>,
 }
-
-
 
 /// Token usage statistics.
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -276,105 +271,219 @@ pub struct ContentFilterInfo {
     pub level: Option<i32>,
 }
 
-
-
 // Getter implementations
 impl ChatCompletionResponse {
-    pub fn id(&self) -> Option<&str> { self.id.as_deref() }
-    pub fn request_id(&self) -> Option<&str> { self.request_id.as_deref() }
-    pub fn created(&self) -> Option<u64> { self.created }
-    pub fn model(&self) -> Option<&str> { self.model.as_deref() }
-    pub fn choices(&self) -> Option<&[Choice]> { self.choices.as_deref() }
-    pub fn usage(&self) -> Option<&Usage> { self.usage.as_ref() }
-    pub fn video_result(&self) -> Option<&[VideoResultItem]> { self.video_result.as_deref() }
-    pub fn web_search(&self) -> Option<&[WebSearchInfo]> { self.web_search.as_deref() }
-    pub fn content_filter(&self) -> Option<&[ContentFilterInfo]> { self.content_filter.as_deref() }
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+    pub fn request_id(&self) -> Option<&str> {
+        self.request_id.as_deref()
+    }
+    pub fn created(&self) -> Option<u64> {
+        self.created
+    }
+    pub fn model(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
+    pub fn choices(&self) -> Option<&[Choice]> {
+        self.choices.as_deref()
+    }
+    pub fn usage(&self) -> Option<&Usage> {
+        self.usage.as_ref()
+    }
+    pub fn video_result(&self) -> Option<&[VideoResultItem]> {
+        self.video_result.as_deref()
+    }
+    pub fn web_search(&self) -> Option<&[WebSearchInfo]> {
+        self.web_search.as_deref()
+    }
+    pub fn content_filter(&self) -> Option<&[ContentFilterInfo]> {
+        self.content_filter.as_deref()
+    }
 }
 
 impl Choice {
-    pub fn index(&self) -> i32 { self.index }
-    pub fn message(&self) -> &Message { &self.message }
-    pub fn finish_reason(&self) -> Option<&str> { self.finish_reason.as_deref() }
+    pub fn index(&self) -> i32 {
+        self.index
+    }
+    pub fn message(&self) -> &Message {
+        &self.message
+    }
+    pub fn finish_reason(&self) -> Option<&str> {
+        self.finish_reason.as_deref()
+    }
 }
 
 impl Message {
-    pub fn role(&self) -> Option<&str> { self.role.as_deref() }
-    pub fn content(&self) -> Option<&serde_json::Value> { self.content.as_ref() }
-    pub fn reasoning_content(&self) -> Option<&str> { self.reasoning_content.as_deref() }
-    pub fn audio(&self) -> Option<&AudioContent> { self.audio.as_ref() }
-    pub fn tool_calls(&self) -> Option<&[ToolCallMessage]> { self.tool_calls.as_deref() }
+    pub fn role(&self) -> Option<&str> {
+        self.role.as_deref()
+    }
+    pub fn content(&self) -> Option<&serde_json::Value> {
+        self.content.as_ref()
+    }
+    pub fn reasoning_content(&self) -> Option<&str> {
+        self.reasoning_content.as_deref()
+    }
+    pub fn audio(&self) -> Option<&AudioContent> {
+        self.audio.as_ref()
+    }
+    pub fn tool_calls(&self) -> Option<&[ToolCallMessage]> {
+        self.tool_calls.as_deref()
+    }
 }
 
 impl ToolCallMessage {
-    pub fn id(&self) -> Option<&str> { self.id.as_deref() }
-    pub fn type_(&self) -> Option<&str> { self.type_.as_deref() }
-    pub fn function(&self) -> Option<&ToolFunction> { self.function.as_ref() }
-    pub fn mcp(&self) -> Option<&MCPMessage> { self.mcp.as_ref() }
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+    pub fn type_(&self) -> Option<&str> {
+        self.type_.as_deref()
+    }
+    pub fn function(&self) -> Option<&ToolFunction> {
+        self.function.as_ref()
+    }
+    pub fn mcp(&self) -> Option<&MCPMessage> {
+        self.mcp.as_ref()
+    }
 }
 
 impl ToolFunction {
-    pub fn name(&self) -> Option<&str> { self.name.as_deref() }
-    pub fn arguments(&self) -> Option<&str> { self.arguments.as_deref() }
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+    pub fn arguments(&self) -> Option<&str> {
+        self.arguments.as_deref()
+    }
 }
 
 impl MCPMessage {
-    pub fn id(&self) -> Option<&str> { self.id.as_deref() }
-    pub fn type_(&self) -> Option<&MCPCallType> { self.type_.as_ref() }
-    pub fn server_label(&self) -> Option<&str> { self.server_label.as_deref() }
-    pub fn error(&self) -> Option<&str> { self.error.as_deref() }
-    pub fn tools(&self) -> Option<&[MCPTool]> { self.tools.as_deref() }
-    pub fn arguments(&self) -> Option<&str> { self.arguments.as_deref() }
-    pub fn name(&self) -> Option<&str> { self.name.as_deref() }
-    pub fn output(&self) -> Option<&serde_json::Value> { self.output.as_ref() }
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+    pub fn type_(&self) -> Option<&MCPCallType> {
+        self.type_.as_ref()
+    }
+    pub fn server_label(&self) -> Option<&str> {
+        self.server_label.as_deref()
+    }
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+    pub fn tools(&self) -> Option<&[MCPTool]> {
+        self.tools.as_deref()
+    }
+    pub fn arguments(&self) -> Option<&str> {
+        self.arguments.as_deref()
+    }
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+    pub fn output(&self) -> Option<&serde_json::Value> {
+        self.output.as_ref()
+    }
 }
 
 impl MCPTool {
-    pub fn name(&self) -> Option<&str> { self.name.as_deref() }
-    pub fn description(&self) -> Option<&str> { self.description.as_deref() }
-    pub fn annotations(&self) -> Option<&serde_json::Value> { self.annotations.as_ref() }
-    pub fn input_schema(&self) -> Option<&MCPInputSchema> { self.input_schema.as_ref() }
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+    pub fn annotations(&self) -> Option<&serde_json::Value> {
+        self.annotations.as_ref()
+    }
+    pub fn input_schema(&self) -> Option<&MCPInputSchema> {
+        self.input_schema.as_ref()
+    }
 }
 
 impl MCPInputSchema {
-    pub fn type_(&self) -> Option<&MCPInputType> { self.type_.as_ref() }
-    pub fn properties(&self) -> Option<&serde_json::Value> { self.properties.as_ref() }
-    pub fn required(&self) -> Option<&[String]> { self.required.as_deref() }
-    pub fn additional_properties(&self) -> Option<bool> { self.additional_properties }
+    pub fn type_(&self) -> Option<&MCPInputType> {
+        self.type_.as_ref()
+    }
+    pub fn properties(&self) -> Option<&serde_json::Value> {
+        self.properties.as_ref()
+    }
+    pub fn required(&self) -> Option<&[String]> {
+        self.required.as_deref()
+    }
+    pub fn additional_properties(&self) -> Option<bool> {
+        self.additional_properties
+    }
 }
 
 impl AudioContent {
-    pub fn id(&self) -> Option<&str> { self.id.as_deref() }
-    pub fn data(&self) -> Option<&str> { self.data.as_deref() }
-    pub fn expires_at(&self) -> Option<&str> { self.expires_at.as_deref() }
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+    pub fn data(&self) -> Option<&str> {
+        self.data.as_deref()
+    }
+    pub fn expires_at(&self) -> Option<&str> {
+        self.expires_at.as_deref()
+    }
 }
 
 impl Usage {
-    pub fn prompt_tokens(&self) -> Option<u32> { self.prompt_tokens }
-    pub fn completion_tokens(&self) -> Option<u32> { self.completion_tokens }
-    pub fn total_tokens(&self) -> Option<u32> { self.total_tokens }
-    pub fn prompt_tokens_details(&self) -> Option<&PromptTokensDetails> { self.prompt_tokens_details.as_ref() }
+    pub fn prompt_tokens(&self) -> Option<u32> {
+        self.prompt_tokens
+    }
+    pub fn completion_tokens(&self) -> Option<u32> {
+        self.completion_tokens
+    }
+    pub fn total_tokens(&self) -> Option<u32> {
+        self.total_tokens
+    }
+    pub fn prompt_tokens_details(&self) -> Option<&PromptTokensDetails> {
+        self.prompt_tokens_details.as_ref()
+    }
 }
 
 impl PromptTokensDetails {
-    pub fn cached_tokens(&self) -> Option<u32> { self.cached_tokens }
+    pub fn cached_tokens(&self) -> Option<u32> {
+        self.cached_tokens
+    }
 }
 
 impl WebSearchInfo {
-    pub fn icon(&self) -> Option<&str> { self.icon.as_deref() }
-    pub fn title(&self) -> Option<&str> { self.title.as_deref() }
-    pub fn link(&self) -> Option<&str> { self.link.as_deref() }
-    pub fn media(&self) -> Option<&str> { self.media.as_deref() }
-    pub fn publish_date(&self) -> Option<&str> { self.publish_date.as_deref() }
-    pub fn content(&self) -> Option<&str> { self.content.as_deref() }
-    pub fn refer(&self) -> Option<&str> { self.refer.as_deref() }
+    pub fn icon(&self) -> Option<&str> {
+        self.icon.as_deref()
+    }
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+    pub fn link(&self) -> Option<&str> {
+        self.link.as_deref()
+    }
+    pub fn media(&self) -> Option<&str> {
+        self.media.as_deref()
+    }
+    pub fn publish_date(&self) -> Option<&str> {
+        self.publish_date.as_deref()
+    }
+    pub fn content(&self) -> Option<&str> {
+        self.content.as_deref()
+    }
+    pub fn refer(&self) -> Option<&str> {
+        self.refer.as_deref()
+    }
 }
 
 impl VideoResultItem {
-    pub fn url(&self) -> Option<&str> { self.url.as_deref() }
-    pub fn cover_image_url(&self) -> Option<&str> { self.cover_image_url.as_deref() }
+    pub fn url(&self) -> Option<&str> {
+        self.url.as_deref()
+    }
+    pub fn cover_image_url(&self) -> Option<&str> {
+        self.cover_image_url.as_deref()
+    }
 }
 
 impl ContentFilterInfo {
-    pub fn role(&self) -> Option<&str> { self.role.as_deref() }
-    pub fn level(&self) -> Option<i32> { self.level }
+    pub fn role(&self) -> Option<&str> {
+        self.role.as_deref()
+    }
+    pub fn level(&self) -> Option<i32> {
+        self.level
+    }
 }

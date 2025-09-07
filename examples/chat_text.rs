@@ -5,6 +5,7 @@ use tokio;
 use zai_rs::client::http::*;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     let model = GLM4_5_airx {};
     let key = std::env::var("ZHIPU_API_KEY").unwrap();
     let user_text = "你好";
