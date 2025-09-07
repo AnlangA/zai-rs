@@ -274,6 +274,78 @@ impl TextMessage {
     }
 }
 
+/// Represents messages in vision-enabled chat conversations.
+///
+/// This enum defines message types for conversations that can include
+/// multimedia content like images, videos, and files alongside text.
+/// Each variant is serialized with a "role" field to distinguish message types.
+///
+/// # Serialization
+///
+/// Messages are serialized as JSON objects with a "role" field that indicates
+/// the message type ("user", "system", or "assistant").
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "role")]
+#[serde(rename_all = "lowercase")]
+pub enum VisionMessage {
+    /// A message from the user/human containing rich multimedia content.
+    User { rich_content: RichContent },
+    /// A system message that provides instructions or context to the assistant.
+    System { content: String },
+    /// A response from the AI assistant.
+    Assistant { content: Option<String> },
+}
+
+/// Represents different types of rich multimedia content in vision messages.
+///
+/// This enum defines the various types of content that can be included in
+/// vision-enabled messages, including text, images, videos, and files.
+/// Each variant is serialized with a "type" field to distinguish content types.
+///
+/// # Serialization
+///
+/// Content is serialized as JSON objects with a "type" field that indicates
+/// the content type ("text", "image_url", "video_url", or "file_url").
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "lowercase")]
+pub enum RichContent {
+    Text {
+        text: String,
+    },
+    /// Image URL or Base64 encoded image data.
+    ///
+    /// Upload constraints: Each image must be under 5MB with maximum resolution of 6000*6000 pixels.
+    /// Supported formats: jpg, png, jpeg.
+    ///
+    /// Model-specific limits:
+    /// - GLM4.5V: maximum 50 images
+    /// - GLM-4V-Plus-0111: maximum 5 images
+    /// - GLM-4V-Flash: maximum 1 image (Base64 encoding not supported)
+    ImageUrl {
+        url: String,
+    },
+    /// Video URL for video content.
+    ///
+    /// Video size limits:
+    /// - GLM-4.5V: maximum 200MB
+    /// - GLM-4V-Plus: maximum 20MB, video duration not exceeding 30 seconds
+    /// - Other multimodal models: maximum 200MB
+    ///
+    /// Supported format: mp4
+    VideoUrl {
+        url: String,
+    },
+    /// File URL for document content.
+    ///
+    /// File URL address, Base64 encoding is not supported.
+    /// Supported formats: PDF, Word, and other document formats.
+    /// Maximum 50 files supported.
+    FileUrl {
+        url: String,
+    },
+}
+
 /// Represents a tool call made by the assistant.
 ///
 /// Tool calls allow the assistant to invoke external functions, perform web searches,
