@@ -2192,6 +2192,7 @@ name = "zai-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "env_logger",
  "jsonschema",
  "log",

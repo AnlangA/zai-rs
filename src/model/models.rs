@@ -3,7 +3,7 @@
 //! This module defines the various model types that can be used with the API,
 //! along with their associated traits and implementations.
 
-use crate::model::chat_message_types::{TextMessage, VisionMessage};
+use crate::model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage};
 use crate::{define_model_type, impl_message_binding, impl_think_enable};
 
 // Define basic model types
@@ -49,3 +49,10 @@ define_model_type!(
     "glm-4.5v"
 );
 impl_message_binding!(GLM4_5v, VisionMessage);
+
+define_model_type!(
+    #[allow(non_camel_case_types)]
+    GLM4_voice,
+    "glm-4-Voice"
+);
+impl_message_binding!(GLM4_voice, VoiceMessage);
