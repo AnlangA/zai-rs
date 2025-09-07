@@ -49,11 +49,21 @@ macro_rules! impl_think_enable {
 }
 
 /// Implement message type binding for a model type.
-/// Usage: impl_message_binding!(GLM4_5, TextMessage);
+///
+/// Supports single or multiple message types:
+/// - Single: impl_message_binding!(GLM4_5, TextMessage);
+/// - Multiple: impl_message_binding!(GLM4_5, TextMessage, VisionMessage);
 #[macro_export]
 macro_rules! impl_message_binding {
+    // Single message type
     ($name:ident, $message_type:ty) => {
         impl $crate::model::traits::Bounded for ($name, $message_type) {}
     };
+    // Multiple message types
+    ($name:ident, $message_type:ty, $($message_types:ty),+) => {
+        impl $crate::model::traits::Bounded for ($name, $message_type) {}
+        $(
+            impl $crate::model::traits::Bounded for ($name, $message_types) {}
+        )+
+    };
 }
-

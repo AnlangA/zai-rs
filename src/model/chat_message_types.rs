@@ -289,7 +289,7 @@ impl TextMessage {
 #[serde(rename_all = "lowercase")]
 pub enum VisionMessage {
     /// A message from the user/human containing rich multimedia content.
-    User { rich_content: RichContent },
+    User { rich_content: VisionRichContent },
     /// A system message that provides instructions or context to the assistant.
     System { content: String },
     /// A response from the AI assistant.
@@ -309,7 +309,7 @@ pub enum VisionMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "lowercase")]
-pub enum RichContent {
+pub enum VisionRichContent {
     Text {
         text: String,
     },
@@ -344,6 +344,172 @@ pub enum RichContent {
     FileUrl {
         url: String,
     },
+}
+
+impl VisionRichContent {
+    /// Creates a new text content item.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text content
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionRichContent::Text` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let text = VisionRichContent::text("Hello, world!");
+    /// ```
+    pub fn text(text: impl Into<String>) -> Self {
+        VisionRichContent::Text { text: text.into() }
+    }
+
+    /// Creates a new image content item.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL or Base64 encoded image data
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionRichContent::ImageUrl` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let image = VisionRichContent::image("https://example.com/image.jpg");
+    /// let base64_image = VisionRichContent::image("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...");
+    /// ```
+    pub fn image(url: impl Into<String>) -> Self {
+        VisionRichContent::ImageUrl { url: url.into() }
+    }
+
+    /// Creates a new video content item.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL of the video file
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionRichContent::VideoUrl` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let video = VisionRichContent::video("https://example.com/video.mp4");
+    /// ```
+    pub fn video(url: impl Into<String>) -> Self {
+        VisionRichContent::VideoUrl { url: url.into() }
+    }
+
+    /// Creates a new file content item.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The URL of the file (PDF, Word, etc.)
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionRichContent::FileUrl` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let file = VisionRichContent::file("https://example.com/document.pdf");
+    /// ```
+    pub fn file(url: impl Into<String>) -> Self {
+        VisionRichContent::FileUrl { url: url.into() }
+    }
+}
+
+impl VisionMessage {
+    /// Creates a new user message with rich content.
+    ///
+    /// # Arguments
+    ///
+    /// * `rich_content` - The rich multimedia content for the user's message
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionMessage::User` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let image = RichContent::ImageUrl { url: "https://example.com/image.jpg".to_string() };
+    /// let msg = VisionMessage::user(image);
+    /// ```
+    pub fn user(rich_content: VisionRichContent) -> Self {
+        VisionMessage::User { rich_content }
+    }
+
+    /// Creates a new system message.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The content of the system message
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionMessage::System` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let msg = VisionMessage::system("You are a helpful vision assistant.");
+    /// ```
+    pub fn system(content: impl Into<String>) -> Self {
+        VisionMessage::System {
+            content: content.into(),
+        }
+    }
+
+    /// Creates a new assistant message.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The content of the assistant's response
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionMessage::Assistant` variant.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let msg = VisionMessage::assistant("I can see the image contains a cat.");
+    /// ```
+    pub fn assistant(content: impl Into<String>) -> Self {
+        VisionMessage::Assistant {
+            content: Some(content.into()),
+        }
+    }
+
+    /// Creates a new assistant message with optional content.
+    ///
+    /// This method is useful when the assistant response might be empty
+    /// or when you want to explicitly handle optional content.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - Optional content for the assistant's response
+    ///
+    /// # Returns
+    ///
+    /// A new `VisionMessage::Assistant` variant with the specified content.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let msg = VisionMessage::assistant_with_content(None);
+    /// let msg_with_content = VisionMessage::assistant_with_content(Some("I analyzed the image.".to_string()));
+    /// ```
+    pub fn assistant_with_content(content: Option<String>) -> Self {
+        VisionMessage::Assistant { content }
+    }
 }
 
 /// Represents a tool call made by the assistant.
