@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "zai-tools"]
+
 [package]
 name = "zai-rs"
 version = "0.1.0"
@@ -28,6 +31,38 @@ path = "examples/chat_loop.rs"
 name = "async_chat_text"
 path = "examples/async_chat_text.rs"
 
+[[example]]
+name = "function_call_new"
+path = "examples/function_call_new.rs"
+
+[[example]]
+name = "tools_demo"
+path = "examples/tools_demo.rs"
+
+[[example]]
+name = "v2_api_demo"
+path = "examples/v2_api_demo.rs"
+
+[[example]]
+name = "complete_demo"
+path = "examples/complete_demo.rs"
+
+[[example]]
+name = "comprehensive_demo"
+path = "examples/comprehensive_demo.rs"
+
+[[example]]
+name = "macro_demo"
+path = "examples/macro_demo.rs"
+
+[[example]]
+name = "function_call_with_zai_tools"
+path = "examples/function_call_with_zai_tools.rs"
+
+[[example]]
+name = "function_call_demo"
+path = "examples/function_call_demo.rs"
+
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1"
@@ -41,3 +76,4 @@ reqwest = { version = "0.12.23", features = ["json", "stream"] }
 anyhow = "1"
 base64 = "0.22.1"
 chrono = "0.4"
+zai-tools = { path = "zai-tools", features = ["builtin-tools"] }

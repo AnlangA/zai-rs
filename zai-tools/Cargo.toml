@@ -1,0 +1,102 @@
+[package]
+name = "zai-tools"
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.70"
+description = "A powerful and flexible tool system for AI function calling with enhanced type safety"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AnlangA/zai-rs"
+homepage = "https://github.com/AnlangA/zai-rs"
+documentation = "https://docs.rs/zai-tools"
+readme = "README.md"
+keywords = ["ai", "tools", "function-calling", "llm", "async"]
+categories = ["api-bindings", "development-tools", "asynchronous"]
+authors = ["ZAI Team"]
+exclude = ["target/", "tests/fixtures/", "benches/"]
+
+
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0.190", features = ["derive"] }
+serde_json = "1.0.108"
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1.74"
+thiserror = "1.0.50"
+futures = "0.3.29"
+anyhow = "1.0.75"
+
+# Schema and validation
+jsonschema = { version = "0.17", optional = true }
+validator = { version = "0.16", features = ["derive"], optional = true }
+
+# Time handling
+chrono = { version = "0.4.31", features = ["serde"], optional = true }
+
+# HTTP client
+reqwest = { version = "0.11.22", features = ["json", "stream"], optional = true }
+
+# File operations
+tempfile = { version = "3.8", optional = true }
+
+# Logging and monitoring
+log = { version = "0.4.20", optional = true }
+tracing = { version = "0.1.40", optional = true }
+
+# Configuration
+config = { version = "0.13", optional = true }
+
+# Plugin system
+libloading = { version = "0.8", optional = true }
+
+# Performance
+dashmap = { version = "5.5", optional = true }
+
+
+
+
+
+[dev-dependencies]
+tokio-test = "0.4.4"
+tempfile = "3.8"
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+env_logger = "0.10"
+
+[features]
+default = ["builtin-tools", "schema-validation"]
+
+# Core features
+builtin-tools = []
+macros = []
+schema-validation = ["jsonschema", "validator"]
+
+# Tool categories
+http-tools = ["reqwest", "chrono"]
+file-tools = ["tempfile"]
+time-tools = ["chrono"]
+
+# Observability
+logging = ["log"]
+tracing = ["dep:tracing"]
+monitoring = ["tracing", "logging"]
+
+# Configuration and plugins
+config-management = ["config"]
+plugin-system = ["libloading"]
+
+# Performance
+high-performance = ["dashmap"]
+
+# Convenience feature sets
+all-tools = ["http-tools", "file-tools", "time-tools"]
+enterprise = ["monitoring", "config-management", "plugin-system", "high-performance"]
+full = ["all-tools", "enterprise", "macros", "schema-validation"]
+
+[[bench]]
+name = "tool_execution"
+harness = false
+
+[[bench]]
+name = "registry_performance"
+harness = false
