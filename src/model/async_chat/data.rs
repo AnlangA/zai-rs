@@ -3,9 +3,9 @@ use super::super::tools::*;
 use super::super::traits::*;
 use crate::client::http::HttpClient;
 use serde::Serialize;
-pub struct ChatCompletion<N, M>
+pub struct AsyncChatCompletion<N, M>
 where
-    N: ModelName + Chat,
+    N: ModelName,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
@@ -13,9 +13,9 @@ where
     body: ChatBody<N, M>,
 }
 
-impl<N, M> ChatCompletion<N, M>
+impl<N, M> AsyncChatCompletion<N, M>
 where
-    N: ModelName + Chat,
+    N: ModelName,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
@@ -80,9 +80,9 @@ where
     }
 }
 
-impl<N, M> HttpClient for ChatCompletion<N, M>
+impl<N, M> HttpClient for AsyncChatCompletion<N, M>
 where
-    N: ModelName + Serialize + Chat,
+    N: ModelName + Serialize,
     M: Serialize,
     (N, M): Bounded,
 {
@@ -91,7 +91,7 @@ where
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        &"https://open.bigmodel.cn/api/paas/v4/async/chat/completions"
     }
 
     fn api_key(&self) -> &Self::ApiKey {

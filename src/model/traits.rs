@@ -2,13 +2,10 @@ pub trait ModelName: Into<String> {}
 
 pub trait Bounded {}
 
-pub trait ChatText {}
+pub trait Chat {}
 
-pub trait ChatView {}
+pub trait AsyncChat {}
 
-pub trait ChatVoice {}
-
-pub trait ChatRole {}
 
 pub trait ThinkEnable {}
 
@@ -65,5 +62,22 @@ macro_rules! impl_message_binding {
         $(
             impl $crate::model::traits::Bounded for ($name, $message_types) {}
         )+
+    };
+}
+
+
+/// Implement one or more marker traits for a model type in a single call.
+/// Examples:
+///   impl_model_markers!(GLM4_5_flash: AsyncChat, Chat);
+///   impl_model_markers!([GLM4_5, GLM4_5_air]: Chat);
+#[macro_export]
+macro_rules! impl_model_markers {
+    // Single model, multiple markers
+    ($model:ident : $($marker:path),+ $(,)?) => {
+        $( impl $marker for $model {} )+
+    };
+    // Multiple models, multiple markers
+    ([$($model:ident),+ ] : $($marker:path),+ $(,)?) => {
+        $( $( impl $marker for $model {} )+ )+
     };
 }

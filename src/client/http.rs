@@ -1,5 +1,6 @@
 use log::{info, debug};
 use serde::Deserialize;
+use std::sync::OnceLock;
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorEnvelope {
@@ -29,6 +30,11 @@ impl std::fmt::Display for ErrorCode {
 }
 
 
+// A single shared HTTP client for connection pooling and TLS reuse
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| reqwest::Client::builder().build().expect("Failed to build reqwest Client"))
+}
 
 pub trait HttpClient {
     // Associated types
@@ -57,7 +63,7 @@ pub trait HttpClient {
             if let Some(pretty) = body_pretty_opt {
                 info!("Request body: {}", pretty);
             }
-            let resp = reqwest::Client::new()
+            let resp = http_client()
                 .post(url)
                 .bearer_auth(key)
                 .header("Content-Type", "application/json")
@@ -77,6 +83,51 @@ pub trait HttpClient {
                 resp.headers()
             );
 
+
+            // Non-success HTTP status: parse error JSON and return Err
+            let text = resp.text().await.unwrap_or_default();
+            if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&text) {
+                let code_str = parsed.error.code.to_string();
+                return Err(anyhow::anyhow!(
+                    "HTTP {} {} | code={} | message={}",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or(""),
+                    code_str,
+                    parsed.error.message
+                ));
+            } else {
+                return Err(anyhow::anyhow!(
+                    "HTTP {} {} | body={}",
+                    status.as_u16(),
+                    status.canonical_reason().unwrap_or(""),
+                    text
+                ));
+            }
+        }
+    }
+
+    // GET helper (no request body)
+    fn get(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+        let url = self.api_url().as_ref().to_owned();
+        let key = self.api_key().as_ref().to_owned();
+        async move {
+            let resp = http_client()
+                .get(url)
+                .bearer_auth(key)
+                .send()
+                .await?;
+
+            let status = resp.status();
+            if status.is_success() {
+                return Ok(resp);
+            }
+            // Debug headers for troubleshooting on non-2xx
+            debug!(
+                "HTTP {} {} headers: {:?}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or(""),
+                resp.headers()
+            );
 
             // Non-success HTTP status: parse error JSON and return Err
             let text = resp.text().await.unwrap_or_default();

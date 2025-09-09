@@ -24,6 +24,10 @@ path = "examples/chat_voice.rs"
 name = "chat_loop"
 path = "examples/chat_loop.rs"
 
+[[example]]
+name = "async_chat_text"
+path = "examples/async_chat_text.rs"
+
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1"

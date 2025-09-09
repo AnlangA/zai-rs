@@ -78,7 +78,40 @@ pub struct ChatCompletionResponse {
     /// Content safety related information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_filter: Option<Vec<ContentFilterInfo>>,
+    /// Processing status of the task. One of: PROCESSING (处理中), SUCCESS (成功), FAIL (失败).
+    /// Note: When PROCESSING, the final result needs to be retrieved via a subsequent query.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_status: Option<TaskStatus>,
+
 }
+/// Task processing status.
+/// Values correspond to upstream payload strings.
+#[derive(Debug, Clone, Deserialize)]
+pub enum TaskStatus {
+    #[serde(rename = "PROCESSING", alias = "processing")]
+    Processing,
+    #[serde(rename = "SUCCESS", alias = "success")]
+    Success,
+    #[serde(rename = "FAIL", alias = "fail")]
+    Fail,
+}
+impl TaskStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TaskStatus::Processing => "PROCESSING",
+            TaskStatus::Success => "SUCCESS",
+            TaskStatus::Fail => "FAIL",
+        }
+    }
+}
+
+impl std::fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+
 
 /// One choice item in the response.
 #[derive(Debug, Clone, Deserialize, Validate)]
@@ -372,6 +405,10 @@ impl ChatCompletionResponse {
     pub fn content_filter(&self) -> Option<&[ContentFilterInfo]> {
         self.content_filter.as_deref()
     }
+    pub fn task_status(&self) -> Option<&TaskStatus> {
+        self.task_status.as_ref()
+    }
+
 }
 
 impl Choice {

@@ -35,9 +35,7 @@ fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    // 选择一个纯文本模型
     let model = GLM4_5_airx {};
-    // 从环境变量读取 API Key（与其它示例保持一致）
     let key = std::env::var("ZHIPU_API_KEY").expect("请先在环境变量中设置 ZHIPU_API_KEY");
 
     println!("可持续对话示例 (输入 exit 或 quit 退出)\n");
