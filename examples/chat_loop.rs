@@ -6,29 +6,8 @@ use tokio;
 use zai_rs::client::http::*;
 
 fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
-    // Try the common patterns: string, array of {type: "text", text: ...}, or object with text
-    if let Some(s) = v.as_str() {
-        return Some(s.to_string());
-    }
-    if let Some(arr) = v.as_array() {
-        let mut buf = String::new();
-        for item in arr {
-            if let Some(s) = item.get("text").and_then(|t| t.as_str()) {
-                buf.push_str(s);
-            } else if let Some(s) = item.as_str() {
-                buf.push_str(s);
-            }
-        }
-        if !buf.is_empty() {
-            return Some(buf);
-        }
-    }
-    if let Some(obj) = v.as_object() {
-        if let Some(s) = obj.get("text").and_then(|t| t.as_str()) {
-            return Some(s.to_string());
-        }
-    }
-    None
+    // 简化版：假设服务端总是返回纯字符串内容
+    v.as_str().map(|s| s.to_string())
 }
 
 #[tokio::main]
