@@ -9,6 +9,8 @@ pub trait AsyncChat {}
 
 pub trait ThinkEnable {}
 
+pub trait VideoGen {}
+
 /// Define a basic model type with core implementations (Into<String>, Serialize, ModelName).
 /// Usage examples:
 ///   define_model_type!(GLM4_5, "glm-4.5");
