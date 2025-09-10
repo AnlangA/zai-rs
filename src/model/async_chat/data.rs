@@ -57,9 +57,17 @@ where
         self.body = self.body.with_max_tokens(max_tokens);
         self
     }
-    pub fn with_tools(mut self, tools: Tools) -> Self {
-        self.body = self.body.with_tools(tools);
+    pub fn add_tool(mut self, tool: Tools) -> Self {
+        self.body = self.body.add_tools(tool);
         self
+    }
+    pub fn add_tools(mut self, tools: Vec<Tools>) -> Self {
+        self.body = self.body.extend_tools(tools);
+        self
+    }
+    #[deprecated(note = "with_tools is deprecated; use add_tool/add_tools instead")]
+    pub fn with_tools(self, tools: Tools) -> Self {
+        self.add_tool(tools)
     }
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);

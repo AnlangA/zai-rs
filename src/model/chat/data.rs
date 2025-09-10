@@ -57,8 +57,13 @@ where
         self.body = self.body.with_max_tokens(max_tokens);
         self
     }
-    pub fn with_tools(mut self, tools: Tools) -> Self {
-        self.body = self.body.with_tools(tools);
+    pub fn add_tool(mut self, tool: Tools) -> Self {
+        self.body = self.body.add_tools(tool);
+        self
+    }
+
+    pub fn add_tools(mut self, tools: Vec<Tools>) -> Self {
+        self.body = self.body.extend_tools(tools);
         self
     }
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {

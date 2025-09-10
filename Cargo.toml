@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "zai-tools"]
+members = ["."]
 
 [package]
 name = "zai-rs"
@@ -76,4 +76,14 @@ reqwest = { version = "0.12.23", features = ["json", "stream"] }
 anyhow = "1"
 base64 = "0.22.1"
 chrono = "0.4"
-zai-tools = { path = "zai-tools", features = ["builtin-tools"] }
+async-trait = "0.1"
+thiserror = "1"
+futures = "0.3"
+
+
+[features]
+# Optional tool-related feature flags (currently no extra deps)
+# Define them to silence unexpected cfg warnings and enable future expansion
+builtin-tools = []
+monitoring = []
+config-management = []

@@ -17,8 +17,8 @@ macro_rules! simple_tool {
         execute: $execute_fn:expr
     ) => {
         {
-            use $crate::core::*;
-            use $crate::error::*;
+            use $crate::tools::core::*;
+            use $crate::tools::error::*;
             
             #[derive(Clone)]
             struct SimpleTool {
@@ -33,7 +33,7 @@ macro_rules! simple_tool {
                 }
             }
             
-            #[$crate::prelude::async_trait]
+            #[$crate::tools::prelude::async_trait]
             impl Tool<$input_type, $output_type> for SimpleTool {
                 fn metadata(&self) -> &ToolMetadata {
                     &self.metadata
@@ -61,8 +61,8 @@ macro_rules! async_tool {
         execute: $execute_fn:expr
     ) => {
         {
-            use $crate::core::*;
-            use $crate::error::*;
+            use $crate::tools::core::*;
+            use $crate::tools::error::*;
             
             #[derive(Clone)]
             struct AsyncTool {
@@ -77,7 +77,7 @@ macro_rules! async_tool {
                 }
             }
             
-            #[$crate::prelude::async_trait]
+            #[$crate::tools::prelude::async_trait]
             impl Tool<$input_type, $output_type> for AsyncTool {
                 fn metadata(&self) -> &ToolMetadata {
                     &self.metadata
@@ -106,8 +106,8 @@ macro_rules! validated_tool {
         execute: $execute_fn:expr
     ) => {
         {
-            use $crate::core::*;
-            use $crate::error::*;
+            use $crate::tools::core::*;
+            use $crate::tools::error::*;
             
             #[derive(Clone)]
             struct ValidatedTool {
@@ -122,7 +122,7 @@ macro_rules! validated_tool {
                 }
             }
             
-            #[$crate::prelude::async_trait]
+            #[$crate::tools::prelude::async_trait]
             impl Tool<$input_type, $output_type> for ValidatedTool {
                 fn metadata(&self) -> &ToolMetadata {
                     &self.metadata
@@ -144,15 +144,10 @@ macro_rules! validated_tool {
     };
 }
 
-/// Helper function to create a tool registry with fluent API
-pub fn registry() -> crate::registry::RegistryBuilder {
-    crate::registry::RegistryBuilder::new()
-}
-
 #[cfg(test)]
 mod tests {
 
-    use crate::prelude::*;
+    use crate::tools::prelude::*;
     use serde::{Deserialize, Serialize};
     
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,3 +180,4 @@ mod tests {
         assert_eq!(output.result, 10);
     }
 }
+

@@ -15,7 +15,7 @@
 
 
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use validator::Validate;
 
 // Helper: accept string or number and always deserialize into Option<String>
@@ -41,7 +41,7 @@ where
 /// - `id`/`request_id` are normalized to `String` even if the server returns numbers.
 /// - `usage` is typically present only after completion (not during streaming).
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Clone, Serialize, Deserialize, Validate)]
 pub struct ChatCompletionResponse {
     /// Task ID
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
@@ -84,9 +84,18 @@ pub struct ChatCompletionResponse {
     pub task_status: Option<TaskStatus>,
 
 }
+
+impl std::fmt::Debug for ChatCompletionResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match serde_json::to_string_pretty(self) {
+            Ok(s) => f.write_str(&s),
+            Err(_) => f.debug_struct("ChatCompletionResponse").finish(),
+        }
+    }
+}
 /// Task processing status.
 /// Values correspond to upstream payload strings.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskStatus {
     #[serde(rename = "PROCESSING", alias = "processing")]
     Processing,
@@ -114,7 +123,7 @@ impl std::fmt::Display for TaskStatus {
 
 
 /// One choice item in the response.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Choice {
     /// Index of this result
     pub index: i32,
@@ -133,7 +142,7 @@ pub struct Choice {
 /// - Prefer `content` for final text; `reasoning_content` may contain internal traces (when available).
 
 /// Assistant message payload
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Message {
 
     /// Role of the message, defaults to "assistant"
@@ -164,7 +173,7 @@ pub struct Message {
 /// - When `function` is present, `type` is typically "function"; `mcp` is used for MCP calls.
 /// - `id` is normalized to `String` (server may return numbers).
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ToolCallMessage {
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
 
@@ -178,7 +187,7 @@ pub struct ToolCallMessage {
     pub mcp: Option<MCPMessage>,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ToolFunction {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -187,7 +196,7 @@ pub struct ToolFunction {
 }
 
 /// MCP tool call payload
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MCPMessage {
     /// Unique id of this MCP tool call
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
@@ -217,14 +226,14 @@ pub struct MCPMessage {
     pub output: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MCPCallType {
     McpListTools,
     McpCall,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MCPTool {
     /// Tool name
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -239,7 +248,7 @@ pub struct MCPTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_schema: Option<MCPInputSchema>,
 }
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MCPInputSchema {
     /// Fixed value 'object'
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -255,7 +264,7 @@ pub struct MCPInputSchema {
     pub additional_properties: Option<bool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Input schema type for MCP tools.
 /// Currently only `object` is observed; kept as an enum for forward compatibility.
 
@@ -269,7 +278,7 @@ pub enum MCPInputType {
 /// - `data` is base64-encoded audio bytes (e.g., WAV/MP3) — decode before saving/playing.
 /// - `id` and `expires_at` are normalized to `String` and may be numeric on the wire.
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct AudioContent {
     /// Audio content id, can be used for multi-turn inputs
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
@@ -288,7 +297,7 @@ pub struct AudioContent {
 /// - Some providers omit `usage` in streaming chunks; expect it mainly in the final response.
 /// - `prompt_tokens_details.cached_tokens` often indicates KV-cache hits or reused tokens.
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Usage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens: Option<u32>,
@@ -301,7 +310,7 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 /// Details for how prompt tokens were accounted.
 /// Fields here are provider-specific and may expand in the future.
 
@@ -316,7 +325,7 @@ pub struct PromptTokensDetails {
 /// - `link` and media URLs may be temporary; consider downloading or caching if needed.
 /// - Fields are optional and may vary by search provider/source.
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct WebSearchInfo {
     /// Source website icon
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -347,7 +356,7 @@ pub struct WebSearchInfo {
 /// - URLs may be temporary; fetch/save promptly if you need persistence.
 /// - Some providers deliver video asynchronously; this URL may point to a job/result resource.
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct VideoResultItem {
     /// Video link
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -364,7 +373,7 @@ pub struct VideoResultItem {
 /// - Use `role` + `level` to decide block/warn/allow strategies.
 /// - Providers may add categories or additional fields in the future.
 
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ContentFilterInfo {
     /// Stage where the safety check applies: assistant (model inference), user (user input), history (context)
     #[serde(skip_serializing_if = "Option::is_none")]

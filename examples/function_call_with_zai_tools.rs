@@ -2,127 +2,106 @@
 //!
 //! This example shows how to integrate zai-tools with LLM function calling.
 
-use serde::{Deserialize, Serialize};
 use zai_rs::client::http::*;
-use zai_rs::model::chat::data::ChatCompletion;
+use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
-use zai_tools::prelude::*;
+use zai_rs::tools::prelude::*;
+use serde_json::json;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct WeatherInput {
-    city: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct WeatherOutput {
-    city: String,
-    temperature: i32,
-    condition: String,
-}
-
-impl ToolInput for WeatherInput {
-    fn validate(&self) -> ToolResult<()> {
-        if self.city.trim().is_empty() {
-            return Err(error_context()
-                .with_tool("get_weather")
-                .invalid_parameters("City name cannot be empty"));
-        }
-        Ok(())
-    }
-
-    fn schema() -> serde_json::Value {
-        serde_json::json!({
+fn make_weather_tool() -> FunctionTool {
+    FunctionTool::builder("get_weather", "Get weather for a city")
+        .schema(json!({
             "type": "object",
-            "properties": {
-                "city": {
-                    "type": "string",
-                    "description": "City name"
-                }
-            },
-            "required": ["city"]
+            "properties": { "city": { "type": "string", "description": "City name" } },
+            "required": ["city"],
+            "additionalProperties": false
+        }))
+        .handler(|args| async move {
+            let city = args.get("city").and_then(|v| v.as_str()).unwrap_or("");
+            if city.trim().is_empty() {
+                return Err(error_context()
+                    .with_tool("get_weather")
+                    .invalid_parameters("City name cannot be empty"));
+            }
+            Ok(json!({
+                "city": city,
+                "temperature": 25,
+                "condition": "Sunny"
+            }))
         })
-    }
+        .build()
+        .expect("weather tool")
 }
 
-impl ToolOutput for WeatherOutput {}
-
-#[derive(Clone)]
-struct WeatherTool {
-    metadata: ToolMetadata,
-}
-
-impl WeatherTool {
-    fn new() -> Self {
-        Self {
-            metadata: ToolMetadata::new::<WeatherInput, WeatherOutput>(
-                "get_weather",
-                "Get weather for a city"
-            ),
-        }
-    }
-}
-
-#[async_trait]
-impl Tool<WeatherInput, WeatherOutput> for WeatherTool {
-    fn metadata(&self) -> &ToolMetadata {
-        &self.metadata
-    }
-
-    async fn execute(&self, input: WeatherInput) -> ToolResult<WeatherOutput> {
-        Ok(WeatherOutput {
-            city: input.city,
-            temperature: 25,
-            condition: "Sunny".to_string(),
+fn make_calc_tool() -> FunctionTool {
+    FunctionTool::builder("calc", "Simple arithmetic calculation: add/sub/mul/div")
+        .property("op", json!({ "type": "string", "enum": ["add", "sub", "mul", "div"], "description": "Operation" }))
+        .property("a", json!({ "type": "number", "description": "Left operand" }))
+        .property("b", json!({ "type": "number", "description": "Right operand" }))
+        .required("op").required("a").required("b")
+        .handler(|args| async move {
+            let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("");
+            let a = args.get("a").and_then(|v| v.as_f64()).ok_or_else(|| error_context().with_tool("calc").invalid_parameters("Missing number 'a'"))?;
+            let b = args.get("b").and_then(|v| v.as_f64()).ok_or_else(|| error_context().with_tool("calc").invalid_parameters("Missing number 'b'"))?;
+            let result = match op {
+                "add" => a + b,
+                "sub" => a - b,
+                "mul" => a * b,
+                "div" => {
+                    if b == 0.0 { return Err(error_context().with_tool("calc").invalid_parameters("Division by zero")); }
+                    a / b
+                },
+                _ => return Err(error_context().with_tool("calc").invalid_parameters("Unsupported op, expected one of add/sub/mul/div")),
+            };
+            Ok(json!({ "op": op, "a": a, "b": b, "result": result }))
         })
-    }
+        .build()
+        .expect("calc tool")
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 Function Call with LLM Demo");
+    env_logger::init();
 
-    // Setup tools
-    let registry = ToolRegistry::builder()
-        .add_tool(WeatherTool::new())
-        .build();
+    // Setup tools (executor owns its registry)
+    let executor = ToolExecutor::new();
+    executor.add_dyn_tool(Box::new(make_weather_tool()))
+    .add_dyn_tool(Box::new(make_calc_tool()));
 
-    let executor = ToolExecutor::builder(registry.clone()).build();
-
-    // Create LLM function definition
-    let weather_schema = registry.input_schema("get_weather")
-        .expect("Weather tool should be registered");
-
-    let weather_func = Function::new("get_weather", "Get weather for a city", weather_schema);
-    let tools = Tools::Function { function: weather_func };
+    // Create LLM function definitions (both tools)
+    let tool_defs = executor.export_all_tools_as_functions();
 
     // Setup LLM client
     let key = get_key();
-    let user_text = "帮我查找深圳今天的天气";
+    let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
 
     let mut client = ChatCompletion::new(model(), TextMessage::user(user_text), key)
-        .with_max_tokens(512)
-        .with_tools(tools);
+        .with_thinking(ThinkingType::Disabled)
+        .add_tools(tool_defs)
+        .with_max_tokens(512);
 
-    let resp = client.post().await?;
-    let v: serde_json::Value = resp.json().await?;
-    println!("📨 LLM Response: {}", serde_json::to_string_pretty(&v)?);
+    // First round
+    let resp = client.post().await.unwrap();
+    let last_resp: ChatCompletionResponse = resp.json().await.unwrap();
+    println!("📨 LLM Response: {:#?}", last_resp);
 
-    // Handle tool call
-    if let Some((id, name, arguments)) = parse_first_tool_call(&v) {
-        println!("🔧 Tool call: {} with args: {}", name, arguments);
+    if let Some(calls) = last_resp
+        .choices()
+        .and_then(|v| v.get(0))
+        .and_then(|c| c.message().tool_calls())
+    {
+        let tool_msgs = executor.execute_tool_calls_parallel(calls).await;
+        for msg in tool_msgs {
+            client = client.add_messages(msg);
+        }
+        // Remove tools to avoid repeated calls, and nudge model to answer
+        client.body_mut().tools = None;
+        let sys = TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
+        client = client.add_messages(sys);
 
-        let result = execute_tool(&executor, &name, &arguments).await;
-        println!("✅ Tool result: {}", serde_json::to_string_pretty(&result)?);
-
-        // Continue conversation
-        let tool_msg = TextMessage::tool_with_id(serde_json::to_string(&result)?, id);
-        client = client.add_messages(tool_msg);
-
-        let resp2 = client.post().await?;
-        let v2: serde_json::Value = resp2.json().await?;
-        println!("🔄 Final response: {}", serde_json::to_string_pretty(&v2)?);
-    } else {
-        println!("❌ No tool calls found");
+        let resp_next = client.post().await.unwrap();
+        let next_body: ChatCompletionResponse = resp_next.json().await.unwrap();
+        println!("Model after tool: {:#?}", next_body);
     }
 
     Ok(())
@@ -141,29 +120,4 @@ fn get_key() -> String {
     })
 }
 
-fn parse_first_tool_call(v: &serde_json::Value) -> Option<(String, String, String)> {
-    let tool_calls = v.pointer("/choices/0/message/tool_calls")?.as_array()?;
-    let tc0 = tool_calls.get(0)?;
-    let id = tc0.get("id")?.as_str()?.to_string();
-    let func = tc0.get("function")?;
-    let name = func.get("name")?.as_str()?.to_string();
-    let arguments = func.get("arguments")?.as_str()?.to_string();
-    Some((id, name, arguments))
-}
 
-async fn execute_tool(
-    executor: &ToolExecutor,
-    name: &str,
-    arguments: &str,
-) -> serde_json::Value {
-    let args_json: serde_json::Value = match serde_json::from_str(arguments) {
-        Ok(v) => v,
-        Err(_) => return serde_json::json!({"error": "invalid_arguments"}),
-    };
-
-    match executor.execute(name, args_json).await {
-        Ok(result) if result.success => result.result,
-        Ok(result) => serde_json::json!({"error": result.error.unwrap_or_default()}),
-        Err(err) => serde_json::json!({"error": err.to_string()}),
-    }
-}

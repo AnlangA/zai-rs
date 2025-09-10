@@ -162,6 +162,9 @@ where
         self.max_tokens = Some(max_tokens);
         self
     }
+    /// Deprecated: use `add_tools` (single) or `extend_tools` (Vec) on ChatBody,
+    /// or prefer ChatCompletion::add_tool / add_tools at the client layer.
+    #[deprecated(note = "with_tools is deprecated; use add_tool/add_tools instead")]
     pub fn with_tools(mut self, tools: impl Into<Vec<Tools>>) -> Self {
         self.tools = Some(tools.into());
         self
