@@ -6,17 +6,6 @@ pub mod executor;
 pub mod llm;
 pub mod macros;
 
-// Built-in tools (optional)
-#[cfg(feature = "builtin-tools")]
-pub mod builtin;
-
-// Enterprise features (optional)
-#[cfg(feature = "config-management")]
-pub mod config;
-
-#[cfg(feature = "monitoring")]
-pub mod monitoring;
-
 /// Prelude module for convenient imports
 pub mod prelude {
     // Core traits and types
@@ -31,10 +20,6 @@ pub mod prelude {
 
     // Error handling
     pub use crate::toolkits::error::{error_context, ToolError, ToolResult};
-
-    // Built-in tools
-    #[cfg(feature = "builtin-tools")]
-    pub use crate::toolkits::builtin::*;
 
     // External re-exports for convenience
     pub use async_trait::async_trait;

@@ -2,11 +2,11 @@
 //!
 //! This example shows how to integrate zai-tools with LLM function calling.
 
+use serde_json::json;
 use zai_rs::client::http::*;
 use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 use zai_rs::toolkits::prelude::*;
-use serde_json::json;
 
 fn make_weather_tool() -> FunctionTool {
     FunctionTool::builder("get_weather", "Get weather for a city")
@@ -65,8 +65,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Setup tools (executor owns its registry)
     let executor = ToolExecutor::new();
-    executor.add_dyn_tool(Box::new(make_weather_tool()))
-    .add_dyn_tool(Box::new(make_calc_tool()));
+    executor
+        .add_dyn_tool(Box::new(make_weather_tool()))
+        .add_dyn_tool(Box::new(make_calc_tool()));
 
     // Create LLM function definitions (both tools)
     let tool_defs = executor.export_all_tools_as_functions();
@@ -96,7 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // Remove tools to avoid repeated calls, and nudge model to answer
         client.body_mut().tools = None;
-        let sys = TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
+        let sys =
+            TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
         client = client.add_messages(sys);
 
         let resp_next = client.post().await.unwrap();
@@ -119,5 +121,3 @@ fn get_key() -> String {
         key.trim().to_string()
     })
 }
-
-

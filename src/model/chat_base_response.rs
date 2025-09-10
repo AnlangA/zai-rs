@@ -12,9 +12,6 @@
 /// Why: Some upstream fields (e.g., various `id`/`request_id`) may occasionally be
 /// returned as numbers. This keeps the public structs strongly typed while
 /// maximizing compatibility with heterogeneous payloads.
-
-
-
 use serde::{Deserialize, Deserializer, Serialize};
 use validator::Validate;
 
@@ -44,11 +41,17 @@ where
 #[derive(Clone, Serialize, Deserialize, Validate)]
 pub struct ChatCompletionResponse {
     /// Task ID
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_string_from_number_or_string"
+    )]
     pub id: Option<String>,
 
     /// Request ID
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_string_from_number_or_string"
+    )]
     pub request_id: Option<String>,
 
     /// Request created time, Unix timestamp (seconds)
@@ -82,7 +85,6 @@ pub struct ChatCompletionResponse {
     /// Note: When PROCESSING, the final result needs to be retrieved via a subsequent query.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_status: Option<TaskStatus>,
-
 }
 
 impl std::fmt::Debug for ChatCompletionResponse {
@@ -120,8 +122,6 @@ impl std::fmt::Display for TaskStatus {
     }
 }
 
-
-
 /// One choice item in the response.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Choice {
@@ -144,7 +144,6 @@ pub struct Choice {
 /// Assistant message payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Message {
-
     /// Role of the message, defaults to "assistant"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
@@ -175,8 +174,10 @@ pub struct Message {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ToolCallMessage {
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
-
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_string_from_number_or_string"
+    )]
     pub id: Option<String>,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
@@ -199,7 +200,10 @@ pub struct ToolFunction {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MCPMessage {
     /// Unique id of this MCP tool call
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_string_from_number_or_string"
+    )]
     pub id: Option<String>,
     /// Tool call type: mcp_list_tools, mcp_call
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -281,13 +285,19 @@ pub enum MCPInputType {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct AudioContent {
     /// Audio content id, can be used for multi-turn inputs
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_string_from_number_or_string"
+    )]
     pub id: Option<String>,
     /// Base64 encoded audio data
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
     /// Expiration time for the audio content
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_string_from_number_or_string")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_string_from_number_or_string"
+    )]
     pub expires_at: Option<String>,
 }
 
@@ -417,7 +427,6 @@ impl ChatCompletionResponse {
     pub fn task_status(&self) -> Option<&TaskStatus> {
         self.task_status.as_ref()
     }
-
 }
 
 impl Choice {

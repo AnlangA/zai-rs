@@ -1,4 +1,4 @@
-use log::{info, debug};
+use log::{debug, info};
 use serde::Deserialize;
 use std::sync::OnceLock;
 
@@ -29,11 +29,14 @@ impl std::fmt::Display for ErrorCode {
     }
 }
 
-
 // A single shared HTTP client for connection pooling and TLS reuse
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 fn http_client() -> &'static reqwest::Client {
-    HTTP_CLIENT.get_or_init(|| reqwest::Client::builder().build().expect("Failed to build reqwest Client"))
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .build()
+            .expect("Failed to build reqwest Client")
+    })
 }
 
 pub trait HttpClient {
@@ -83,7 +86,6 @@ pub trait HttpClient {
                 resp.headers()
             );
 
-
             // Non-success HTTP status: parse error JSON and return Err
             let text = resp.text().await.unwrap_or_default();
             if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&text) {
@@ -111,11 +113,7 @@ pub trait HttpClient {
         let url = self.api_url().as_ref().to_owned();
         let key = self.api_key().as_ref().to_owned();
         async move {
-            let resp = http_client()
-                .get(url)
-                .bearer_auth(key)
-                .send()
-                .await?;
+            let resp = http_client().get(url).bearer_auth(key).send().await?;
 
             let status = resp.status();
             if status.is_success() {

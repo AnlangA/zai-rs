@@ -30,9 +30,19 @@ pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall> {
     };
 
     for tc in calls {
-        let Some(id) = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()) else { continue };
-        let Some(func) = tc.get("function").and_then(|v| v.as_object()) else { continue };
-        let Some(name) = func.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()) else { continue };
+        let Some(id) = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()) else {
+            continue;
+        };
+        let Some(func) = tc.get("function").and_then(|v| v.as_object()) else {
+            continue;
+        };
+        let Some(name) = func
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+        else {
+            continue;
+        };
 
         let (arguments_raw, arguments) = match func.get("arguments") {
             Some(Value::String(s)) => {
@@ -42,9 +52,7 @@ pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall> {
                     Err(_) => (Some(s.clone()), Value::String(s.clone())),
                 }
             }
-            Some(v @ Value::Object(_)) | Some(v @ Value::Array(_)) => {
-                (None, v.clone())
-            }
+            Some(v @ Value::Object(_)) | Some(v @ Value::Array(_)) => (None, v.clone()),
             Some(v) => {
                 // Unexpected primitive; keep as-is for robustness.
                 (None, v.clone())
@@ -52,7 +60,12 @@ pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall> {
             None => (None, Value::Null),
         };
 
-        out.push(LlmToolCall { id, name, arguments_raw, arguments });
+        out.push(LlmToolCall {
+            id,
+            name,
+            arguments_raw,
+            arguments,
+        });
     }
 
     out
@@ -76,4 +89,3 @@ pub fn parse_tool_calls(response: &Value) -> Vec<LlmToolCall> {
 pub fn parse_first_tool_call(response: &Value) -> Option<LlmToolCall> {
     parse_tool_calls(response).into_iter().next()
 }
-

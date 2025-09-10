@@ -18,8 +18,16 @@ where
     N: ModelName + AsyncChat,
 {
     pub fn new(_model: N, task_id: String, key: String) -> Self {
-        let url = format!("https://open.bigmodel.cn/api/paas/v4/async-result/{}", task_id);
-        Self { key, url, _body: (), _marker: PhantomData }
+        let url = format!(
+            "https://open.bigmodel.cn/api/paas/v4/async-result/{}",
+            task_id
+        );
+        Self {
+            key,
+            url,
+            _body: (),
+            _marker: PhantomData,
+        }
     }
 }
 

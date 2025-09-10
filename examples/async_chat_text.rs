@@ -50,38 +50,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("问题: {}", message);
 
         // 轮询直到完成
-        let mut request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key.clone());
+        let request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key.clone());
         loop {
             let result = async {
                 let resp = request.get().await.map_err(|e| anyhow::anyhow!(e))?;
-                resp.json::<ChatCompletionResponse>().await.map_err(|e| anyhow::anyhow!(e))
-            }.await;
-            
+                resp.json::<ChatCompletionResponse>()
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e))
+            }
+            .await;
+
             match result {
-                Ok(body) => {
-                    match body.task_status() {
-                        Some(TaskStatus::Success) => {
-                            println!("状态: 完成");
-                            body.choices()
-                                .and_then(|choices| choices.first())
-                                .and_then(|choice| choice.message.content())
-                                .map(|content| println!("回复: {}", content));
-                            break;
-                        }
-                        Some(TaskStatus::Fail) => {
-                            println!("状态: 失败");
-                            break;
-                        }
-                        Some(TaskStatus::Processing) => {
-                            println!("状态: 处理中...");
-                            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                        }
-                        None => {
-                            println!("状态: 未知");
-                            break;
-                        }
+                Ok(body) => match body.task_status() {
+                    Some(TaskStatus::Success) => {
+                        println!("状态: 完成");
+                        body.choices()
+                            .and_then(|choices| choices.first())
+                            .and_then(|choice| choice.message.content())
+                            .map(|content| println!("回复: {}", content));
+                        break;
                     }
-                }
+                    Some(TaskStatus::Fail) => {
+                        println!("状态: 失败");
+                        break;
+                    }
+                    Some(TaskStatus::Processing) => {
+                        println!("状态: 处理中...");
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    }
+                    None => {
+                        println!("状态: 未知");
+                        break;
+                    }
+                },
                 Err(e) => {
                     println!("获取结果失败: {}", e);
                     break;

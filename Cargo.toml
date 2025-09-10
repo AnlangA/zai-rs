@@ -1,6 +1,3 @@
-[workspace]
-members = ["."]
-
 [package]
 name = "zai-rs"
 version = "0.1.0"
@@ -32,38 +29,12 @@ name = "async_chat_text"
 path = "examples/async_chat_text.rs"
 
 [[example]]
-name = "function_call_new"
-path = "examples/function_call_new.rs"
-
-[[example]]
-name = "tools_demo"
-path = "examples/tools_demo.rs"
-
-[[example]]
-name = "v2_api_demo"
-path = "examples/v2_api_demo.rs"
-
-[[example]]
-name = "complete_demo"
-path = "examples/complete_demo.rs"
-
-[[example]]
-name = "comprehensive_demo"
-path = "examples/comprehensive_demo.rs"
-
-[[example]]
-name = "macro_demo"
-path = "examples/macro_demo.rs"
-
-[[example]]
 name = "function_call_with_zai_tools"
 path = "examples/function_call_with_zai_tools.rs"
 
 [[example]]
 name = "gen_video"
 path = "examples/gen_video.rs"
-
-
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
@@ -81,11 +52,3 @@ chrono = "0.4"
 async-trait = "0.1"
 thiserror = "1"
 futures = "0.3"
-
-
-[features]
-# Optional tool-related feature flags (currently no extra deps)
-# Define them to silence unexpected cfg warnings and enable future expansion
-builtin-tools = []
-monitoring = []
-config-management = []

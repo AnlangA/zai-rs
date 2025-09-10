@@ -1,18 +1,18 @@
 //! Enhanced tool executor with type-safe builder pattern
 
-use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use serde::{Deserialize, Serialize};
-use tokio::time::timeout;
+use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
+use tokio::time::timeout;
 
-use crate::toolkits::core::{DynTool, Tool, ToolInput, ToolOutput, IntoDynTool};
-use crate::toolkits::error::{ToolResult, error_context};
+use crate::toolkits::core::{DynTool, IntoDynTool, Tool, ToolInput, ToolOutput};
+use crate::toolkits::error::{error_context, ToolResult};
 
-use crate::model::tools::{Function, Tools};
 use crate::model::chat_base_response::ToolCallMessage;
 use crate::model::chat_message_types::TextMessage;
+use crate::model::tools::{Function, Tools};
 
 /// Execution configuration with type-safe builder
 #[derive(Debug, Clone)]
@@ -35,7 +35,6 @@ impl Default for ExecutionConfig {
         }
     }
 }
-
 
 /// Execution result with enhanced metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,12 +68,7 @@ impl ExecutionResult {
         }
     }
 
-    pub fn failure(
-        tool_name: String,
-        error: String,
-        duration: Duration,
-        retries: u32,
-    ) -> Self {
+    pub fn failure(tool_name: String, error: String, duration: Duration, retries: u32) -> Self {
         Self {
             tool_name,
             result: serde_json::Value::Null,
@@ -110,12 +104,18 @@ impl std::fmt::Debug for ToolExecutor {
     }
 }
 
-
 /// Type alias for a dynamic function tool handler used when registering from external specs
 pub type DynFunctionHandler = std::sync::Arc<
-    dyn Fn(serde_json::Value) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = crate::toolkits::error::ToolResult<serde_json::Value>> + Send>
-        > + Send + Sync
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
 >;
 
 impl ToolExecutor {
@@ -131,8 +131,6 @@ impl ToolExecutor {
     pub fn builder() -> ExecutorBuilder {
         ExecutorBuilder::new()
     }
-
-
 
     /// Chain-friendly: add a dynamic tool (panics on error)
     pub fn add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
@@ -158,7 +156,9 @@ impl ToolExecutor {
         let name = tool.metadata().name.clone();
         let mut insert = true;
         if let Ok(guard) = self.tools.read() {
-            if guard.contains_key(&name) { insert = false; }
+            if guard.contains_key(&name) {
+                insert = false;
+            }
         }
         if insert {
             if let Ok(mut guard) = self.tools.write() {
@@ -173,7 +173,9 @@ impl ToolExecutor {
         let name = tool.name().to_string();
         let mut insert = true;
         if let Ok(guard) = self.tools.read() {
-            if guard.contains_key(&name) { insert = false; }
+            if guard.contains_key(&name) {
+                insert = false;
+            }
         }
         if insert {
             if let Ok(mut guard) = self.tools.write() {
@@ -216,7 +218,11 @@ impl ToolExecutor {
     }
 
     /// Execute a tool with detailed result
-    pub async fn execute(&self, tool_name: &str, input: serde_json::Value) -> ToolResult<ExecutionResult> {
+    pub async fn execute(
+        &self,
+        tool_name: &str,
+        input: serde_json::Value,
+    ) -> ToolResult<ExecutionResult> {
         let start_time = Instant::now();
         let mut retries = 0;
 
@@ -255,7 +261,11 @@ impl ToolExecutor {
     }
 
     /// Execute a tool and return only the result
-    pub async fn execute_simple(&self, tool_name: &str, input: serde_json::Value) -> ToolResult<serde_json::Value> {
+    pub async fn execute_simple(
+        &self,
+        tool_name: &str,
+        input: serde_json::Value,
+    ) -> ToolResult<serde_json::Value> {
         let result = self.execute(tool_name, input).await?;
         if result.success {
             Ok(result.result)
@@ -265,7 +275,6 @@ impl ToolExecutor {
                 .execution_failed(result.error.unwrap_or_else(|| "Unknown error".to_string())))
         }
     }
-
 
     /// Bulk load function specs from a directory of .json files and register them with handlers.
     ///
@@ -282,31 +291,95 @@ impl ToolExecutor {
         handlers: &std::collections::HashMap<String, DynFunctionHandler>,
         strict: bool,
     ) -> ToolResult<Vec<String>> {
-        use std::fs;
         use serde_json::Value;
+        use std::fs;
         let dir = dir.as_ref();
         let mut added = Vec::new();
-        let read_dir = fs::read_dir(dir).map_err(|e| error_context().invalid_parameters(format!("Failed to read dir {}: {}", dir.display(), e)))?;
+        let read_dir = fs::read_dir(dir).map_err(|e| {
+            error_context().invalid_parameters(format!(
+                "Failed to read dir {}: {}",
+                dir.display(),
+                e
+            ))
+        })?;
         for entry in read_dir {
-            let entry = match entry { Ok(e) => e, Err(e) => return Err(error_context().invalid_parameters(format!("Dir entry error: {}", e))) };
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    return Err(
+                        error_context().invalid_parameters(format!("Dir entry error: {}", e))
+                    )
+                }
+            };
             let path = entry.path();
-            if !path.is_file() { continue; }
-            if path.extension().and_then(|s| s.to_str()) != Some("json") { continue; }
-            let content = fs::read_to_string(&path).map_err(|e| error_context().invalid_parameters(format!("Failed to read {}: {}", path.display(), e)))?;
-            let spec: Value = serde_json::from_str(&content).map_err(|e| error_context().invalid_parameters(format!("Invalid JSON in {}: {}", path.display(), e)))?;
+            if !path.is_file() {
+                continue;
+            }
+            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let content = fs::read_to_string(&path).map_err(|e| {
+                error_context().invalid_parameters(format!(
+                    "Failed to read {}: {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+            let spec: Value = serde_json::from_str(&content).map_err(|e| {
+                error_context().invalid_parameters(format!(
+                    "Invalid JSON in {}: {}",
+                    path.display(),
+                    e
+                ))
+            })?;
 
             // Extract name/description/parameters from spec
             let (name, description, parameters) = {
-                let obj = spec.as_object().ok_or_else(|| error_context().invalid_parameters(format!("Spec must be object: {}", path.display())))?;
+                let obj = spec.as_object().ok_or_else(|| {
+                    error_context()
+                        .invalid_parameters(format!("Spec must be object: {}", path.display()))
+                })?;
                 if obj.get("type").and_then(|v| v.as_str()) == Some("function") {
-                    let f = obj.get("function").and_then(|v| v.as_object()).ok_or_else(|| error_context().invalid_parameters(format!("Missing 'function' object in {}", path.display())))?;
-                    let name = f.get("name").and_then(|v| v.as_str()).ok_or_else(|| error_context().invalid_parameters(format!("Missing function.name in {}", path.display())))?.to_string();
-                    let desc = f.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let f = obj
+                        .get("function")
+                        .and_then(|v| v.as_object())
+                        .ok_or_else(|| {
+                            error_context().invalid_parameters(format!(
+                                "Missing 'function' object in {}",
+                                path.display()
+                            ))
+                        })?;
+                    let name = f
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            error_context().invalid_parameters(format!(
+                                "Missing function.name in {}",
+                                path.display()
+                            ))
+                        })?
+                        .to_string();
+                    let desc = f
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let params = f.get("parameters").cloned();
                     (name, desc, params)
                 } else {
-                    let name = obj.get("name").and_then(|v| v.as_str()).ok_or_else(|| error_context().invalid_parameters(format!("Missing name in {}", path.display())))?.to_string();
-                    let desc = obj.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let name = obj
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            error_context()
+                                .invalid_parameters(format!("Missing name in {}", path.display()))
+                        })?
+                        .to_string();
+                    let desc = obj
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let params = obj.get("parameters").cloned();
                     (name, desc, params)
                 }
@@ -316,7 +389,11 @@ impl ToolExecutor {
                 Some(h) => h.clone(),
                 None => {
                     if strict {
-                        return Err(error_context().invalid_parameters(format!("No handler registered for function '{}' (file {})", name, path.display())));
+                        return Err(error_context().invalid_parameters(format!(
+                            "No handler registered for function '{}' (file {})",
+                            name,
+                            path.display()
+                        )));
                     } else {
                         // skip silently
                         continue;
@@ -325,19 +402,23 @@ impl ToolExecutor {
             };
 
             // Build FunctionTool via existing builder path (will auto-complete schema defaults)
-            let mut builder = crate::toolkits::core::FunctionTool::builder(name.clone(), description);
-            if let Some(p) = parameters { builder = builder.schema(p); }
-            let tool = builder.handler(move |args| {
-                let h = handler.clone();
-                h(args)
-            }).build()?;
+            let mut builder =
+                crate::toolkits::core::FunctionTool::builder(name.clone(), description);
+            if let Some(p) = parameters {
+                builder = builder.schema(p);
+            }
+            let tool = builder
+                .handler(move |args| {
+                    let h = handler.clone();
+                    h(args)
+                })
+                .build()?;
 
             self.add_dyn_tool(Box::new(tool));
             added.push(name);
         }
         Ok(added)
     }
-
 
     /// Execute LLM tool_calls in parallel and return `TextMessage::tool` messages.
     ///
@@ -378,12 +459,12 @@ impl ToolExecutor {
         }
         let mut messages = Vec::with_capacity(calls.len());
         while let Some(res) = set.join_next().await {
-            if let Ok(msg) = res { messages.push(msg); }
+            if let Ok(msg) = res {
+                messages.push(msg);
+            }
         }
         messages
     }
-
-
 
     /// Export a single registered tool as Tools::Function (for LLM function calling)
     pub fn export_tool_as_function(&self, name: &str) -> Option<Tools> {
@@ -397,7 +478,10 @@ impl ToolExecutor {
 
     /// Export all registered tools as a Vec<Tools::Function>
     pub fn export_all_tools_as_functions(&self) -> Vec<Tools> {
-        let tools = match self.tools.read() { Ok(t) => t, Err(_) => return Vec::new() };
+        let tools = match self.tools.read() {
+            Ok(t) => t,
+            Err(_) => return Vec::new(),
+        };
         tools
             .values()
             .map(|tool| {
@@ -413,7 +497,10 @@ impl ToolExecutor {
     where
         F: FnMut(&crate::toolkits::core::ToolMetadata) -> bool,
     {
-        let tools = match self.tools.read() { Ok(t) => t, Err(_) => return Vec::new() };
+        let tools = match self.tools.read() {
+            Ok(t) => t,
+            Err(_) => return Vec::new(),
+        };
         tools
             .values()
             .filter(|tool| filter(tool.metadata()))
@@ -426,24 +513,23 @@ impl ToolExecutor {
             .collect()
     }
 
-
-
-
-    async fn execute_once(&self, tool_name: &str, input: &serde_json::Value) -> ToolResult<serde_json::Value> {
+    async fn execute_once(
+        &self,
+        tool_name: &str,
+        input: &serde_json::Value,
+    ) -> ToolResult<serde_json::Value> {
         let tool = self
             .get_tool(tool_name)
             .ok_or_else(|| error_context().with_tool(tool_name).tool_not_found())?;
         let execution_future = tool.execute_json(input.clone());
 
         match self.config.timeout {
-            Some(timeout_duration) => {
-                match timeout(timeout_duration, execution_future).await {
-                    Ok(result) => result,
-                    Err(_) => Err(error_context()
-                        .with_tool(tool_name)
-                        .timeout_error(timeout_duration)),
-                }
-            }
+            Some(timeout_duration) => match timeout(timeout_duration, execution_future).await {
+                Ok(result) => result,
+                Err(_) => Err(error_context()
+                    .with_tool(tool_name)
+                    .timeout_error(timeout_duration)),
+            },
             None => execution_future.await,
         }
     }
@@ -493,4 +579,3 @@ impl ExecutorBuilder {
         }
     }
 }
-
