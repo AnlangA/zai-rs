@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use tokio::time::timeout;
 use tokio::task::JoinSet;
 
-use crate::tools::core::{DynTool, Tool, ToolInput, ToolOutput, IntoDynTool};
-use crate::tools::error::{ToolResult, error_context};
+use crate::toolkits::core::{DynTool, Tool, ToolInput, ToolOutput, IntoDynTool};
+use crate::toolkits::error::{ToolResult, error_context};
 
 use crate::model::tools::{Function, Tools};
 use crate::model::chat_base_response::ToolCallMessage;
@@ -114,7 +114,7 @@ impl std::fmt::Debug for ToolExecutor {
 /// Type alias for a dynamic function tool handler used when registering from external specs
 pub type DynFunctionHandler = std::sync::Arc<
     dyn Fn(serde_json::Value) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = crate::tools::error::ToolResult<serde_json::Value>> + Send>
+            Box<dyn std::future::Future<Output = crate::toolkits::error::ToolResult<serde_json::Value>> + Send>
         > + Send + Sync
 >;
 
@@ -325,7 +325,7 @@ impl ToolExecutor {
             };
 
             // Build FunctionTool via existing builder path (will auto-complete schema defaults)
-            let mut builder = crate::tools::core::FunctionTool::builder(name.clone(), description);
+            let mut builder = crate::toolkits::core::FunctionTool::builder(name.clone(), description);
             if let Some(p) = parameters { builder = builder.schema(p); }
             let tool = builder.handler(move |args| {
                 let h = handler.clone();
@@ -411,7 +411,7 @@ impl ToolExecutor {
     /// Export all registered tools with a metadata filter as Tools::Function
     pub fn export_tools_filtered<F>(&self, mut filter: F) -> Vec<Tools>
     where
-        F: FnMut(&crate::tools::core::ToolMetadata) -> bool,
+        F: FnMut(&crate::toolkits::core::ToolMetadata) -> bool,
     {
         let tools = match self.tools.read() { Ok(t) => t, Err(_) => return Vec::new() };
         tools

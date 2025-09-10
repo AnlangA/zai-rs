@@ -17,8 +17,8 @@ macro_rules! simple_tool {
         execute: $execute_fn:expr
     ) => {
         {
-            use $crate::tools::core::*;
-            use $crate::tools::error::*;
+            use $crate::toolkits::core::*;
+            use $crate::toolkits::error::*;
             
             #[derive(Clone)]
             struct SimpleTool {
@@ -33,7 +33,7 @@ macro_rules! simple_tool {
                 }
             }
             
-            #[$crate::tools::prelude::async_trait]
+            #[$crate::toolkits::prelude::async_trait]
             impl Tool<$input_type, $output_type> for SimpleTool {
                 fn metadata(&self) -> &ToolMetadata {
                     &self.metadata
@@ -61,8 +61,8 @@ macro_rules! async_tool {
         execute: $execute_fn:expr
     ) => {
         {
-            use $crate::tools::core::*;
-            use $crate::tools::error::*;
+            use $crate::toolkits::core::*;
+            use $crate::toolkits::error::*;
             
             #[derive(Clone)]
             struct AsyncTool {
@@ -77,7 +77,7 @@ macro_rules! async_tool {
                 }
             }
             
-            #[$crate::tools::prelude::async_trait]
+            #[$crate::toolkits::prelude::async_trait]
             impl Tool<$input_type, $output_type> for AsyncTool {
                 fn metadata(&self) -> &ToolMetadata {
                     &self.metadata
@@ -106,8 +106,8 @@ macro_rules! validated_tool {
         execute: $execute_fn:expr
     ) => {
         {
-            use $crate::tools::core::*;
-            use $crate::tools::error::*;
+            use $crate::toolkits::core::*;
+            use $crate::toolkits::error::*;
             
             #[derive(Clone)]
             struct ValidatedTool {
@@ -122,7 +122,7 @@ macro_rules! validated_tool {
                 }
             }
             
-            #[$crate::tools::prelude::async_trait]
+            #[$crate::toolkits::prelude::async_trait]
             impl Tool<$input_type, $output_type> for ValidatedTool {
                 fn metadata(&self) -> &ToolMetadata {
                     &self.metadata
@@ -147,7 +147,7 @@ macro_rules! validated_tool {
 #[cfg(test)]
 mod tests {
 
-    use crate::tools::prelude::*;
+    use crate::toolkits::prelude::*;
     use serde::{Deserialize, Serialize};
     
     #[derive(Debug, Clone, Serialize, Deserialize)]

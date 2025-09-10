@@ -3,4 +3,4 @@ use super::super::traits::*;
 
 
 define_model_type!(CogVideoX3, "cogvideox-3");
-impl_model_markers!(CogVideoX3: VideoGen);
+impl_model_markers!(CogVideoX3: VideoGen, AsyncChat);

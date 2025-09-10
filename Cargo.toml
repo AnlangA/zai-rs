@@ -60,8 +60,10 @@ name = "function_call_with_zai_tools"
 path = "examples/function_call_with_zai_tools.rs"
 
 [[example]]
-name = "function_call_demo"
-path = "examples/function_call_demo.rs"
+name = "gen_video"
+path = "examples/gen_video.rs"
+
+
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }

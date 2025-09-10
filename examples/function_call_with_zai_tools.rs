@@ -5,7 +5,7 @@
 use zai_rs::client::http::*;
 use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
-use zai_rs::tools::prelude::*;
+use zai_rs::toolkits::prelude::*;
 use serde_json::json;
 
 fn make_weather_tool() -> FunctionTool {

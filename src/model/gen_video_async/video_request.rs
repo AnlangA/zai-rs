@@ -10,6 +10,12 @@ where
 {
     /// Model identifier for video generation API
     pub model: N,
+    /// Image URL(s) for video generation base
+    /// Supports single URL string or array of URLs (1-2 URLs)
+    /// Supported formats: .png, .jpeg, .jpg, max 5MB
+    /// Either prompt or image_url must be provided (or both)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_url: Option<ImageUrl>,
     /// Text description for video generation, max 1500 characters
     /// Either prompt or image_url must be provided (or both)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -28,12 +34,6 @@ where
     /// false: disable watermarks, only for authorized customers
     #[serde(skip_serializing_if = "Option::is_none")]
     pub watermark_enabled: Option<bool>,
-    /// Image URL(s) for video generation base
-    /// Supports single URL string or array of URLs (1-2 URLs)
-    /// Supported formats: .png, .jpeg, .jpg, max 5MB
-    /// Either prompt or image_url must be provided (or both)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image_url: Option<ImageUrl>,
     /// Video resolution size
     /// If not specified, short side defaults to 1080, long side determined by aspect ratio
     /// Supports up to 4K resolution
@@ -139,27 +139,26 @@ where
 
     /// Create a video request with prompt only (Format 1)
     pub fn prompt_only(model: N, prompt: impl Into<String>) -> Self {
-        Self::new(model)
-            .with_prompt(prompt)
-            .with_quality(VideoQuality::Quality)
-            .with_audio(true)
-            .with_size(VideoSize::Size1920x1080)
-            .with_fps(Fps::Fps30)
+        Self::new(model).with_prompt(prompt)
     }
 
     /// Create a video request with single image URL and prompt (Format 2)
-    pub fn with_single_image(model: N, image_url: impl Into<String>, prompt: impl Into<String>) -> Self {
+    pub fn with_single_image(
+        model: N,
+        image_url: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> Self {
         Self::new(model)
             .with_image_url(ImageUrl::from_url(image_url))
             .with_prompt(prompt)
-            .with_quality(VideoQuality::Quality)
-            .with_audio(true)
-            .with_size(VideoSize::Size1920x1080)
-            .with_fps(Fps::Fps30)
     }
 
     /// Create a video request with multiple image URLs and prompt (Format 3)
-    pub fn with_multiple_images(model: N, mut image_urls: Vec<impl Into<String>>, prompt: impl Into<String>) -> Self {
+    pub fn with_multiple_images(
+        model: N,
+        mut image_urls: Vec<impl Into<String>>,
+        prompt: impl Into<String>,
+    ) -> Self {
         let image_url = if image_urls.len() == 1 {
             ImageUrl::from_url(image_urls.remove(0))
         } else if image_urls.len() == 2 {
@@ -167,22 +166,16 @@ where
         } else {
             panic!("with_multiple_images requires 1 or 2 URLs");
         };
-        
+
         Self::new(model)
             .with_image_url(image_url)
             .with_prompt(prompt)
-            .with_quality(VideoQuality::Quality)
-            .with_audio(true)
-            .with_size(VideoSize::Size1920x1080)
-            .with_fps(Fps::Fps30)
     }
 }
 
-
-
 // Struct-level validation: require at least one of prompt or image_url.
 #[allow(dead_code)]
-fn validate_prompt_or_image<N: ModelName>(body: &VideoBody<N>) -> Result<(), validator::ValidationError> 
+fn validate_prompt_or_image<N>(body: &VideoBody<N>) -> Result<(), validator::ValidationError>
 where
     N: ModelName + Serialize,
 {
@@ -210,7 +203,7 @@ pub enum ImageUrl {
     /// Base64 encoded image data
     Base64(String),
     /// Single URL or array of URLs (1-2 URLs)
-    VecUrl(Vec<String>)
+    VecUrl(Vec<String>),
 }
 
 impl ImageUrl {
@@ -231,21 +224,27 @@ impl ImageUrl {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "lowercase")]
 pub enum VideoSize {
     /// 1280x720 resolution (HD)
+    #[serde(rename = "1280x720")]
     Size1280x720,
     /// 720x1280 resolution (vertical HD)
+    #[serde(rename = "720x1280")]
     Size720x1280,
     /// 1024x1024 resolution (square)
+    #[serde(rename = "1024x1024")]
     Size1024x1024,
     /// 1920x1080 resolution (Full HD)
+    #[serde(rename = "1920x1080")]
     Size1920x1080,
     /// 1080x1920 resolution (vertical Full HD)
+    #[serde(rename = "1080x1920")]
     Size1080x1920,
     /// 2048x1080 resolution (2K)
+    #[serde(rename = "2048x1080")]
     Size2048x1080,
     /// 3840x2160 resolution (4K)
+    #[serde(rename = "3840x2160")]
     Size3840x2160,
 }
 

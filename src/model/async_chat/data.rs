@@ -5,7 +5,7 @@ use crate::client::http::HttpClient;
 use serde::Serialize;
 pub struct AsyncChatCompletion<N, M>
 where
-    N: ModelName,
+    N: ModelName + AsyncChat,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
@@ -15,7 +15,7 @@ where
 
 impl<N, M> AsyncChatCompletion<N, M>
 where
-    N: ModelName,
+    N: ModelName + AsyncChat,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
@@ -90,7 +90,7 @@ where
 
 impl<N, M> HttpClient for AsyncChatCompletion<N, M>
 where
-    N: ModelName + Serialize,
+    N: ModelName + Serialize + AsyncChat,
     M: Serialize,
     (N, M): Bounded,
 {

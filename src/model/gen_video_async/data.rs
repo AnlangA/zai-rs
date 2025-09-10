@@ -1,5 +1,5 @@
 use super::super::traits::*;
-use super::video_request::VideoBody;
+use super::video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize};
 use crate::client::http::HttpClient;
 use serde::Serialize;
 
@@ -28,6 +28,66 @@ where
     pub fn new(model: N, key: String) -> Self {
         let body = VideoBody::new(model);
         Self { key, body }
+    }
+
+    /// Set the prompt for video generation
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.body = self.body.with_prompt(prompt);
+        self
+    }
+
+    /// Set the quality mode (speed or quality)
+    pub fn with_quality(mut self, quality: VideoQuality) -> Self {
+        self.body = self.body.with_quality(quality);
+        self
+    }
+
+    /// Enable/disable audio generation
+    pub fn with_audio(mut self, with_audio: bool) -> Self {
+        self.body = self.body.with_audio(with_audio);
+        self
+    }
+
+    /// Enable/disable watermark
+    pub fn with_watermark_enabled(mut self, watermark_enabled: bool) -> Self {
+        self.body = self.body.with_watermark_enabled(watermark_enabled);
+        self
+    }
+
+    /// Set image URL(s) for video generation
+    pub fn with_image_url(mut self, image_url: ImageUrl) -> Self {
+        self.body = self.body.with_image_url(image_url);
+        self
+    }
+
+    /// Set video resolution size
+    pub fn with_size(mut self, size: VideoSize) -> Self {
+        self.body = self.body.with_size(size);
+        self
+    }
+
+    /// Set video frame rate (30 or 60 FPS)
+    pub fn with_fps(mut self, fps: Fps) -> Self {
+        self.body = self.body.with_fps(fps);
+        self
+    }
+
+    /// Set video duration (5 or 10 seconds)
+    pub fn with_duration(mut self, duration: VideoDuration) -> Self {
+        self.body = self.body.with_duration(duration);
+        self
+    }
+
+    /// Set custom request ID
+    pub fn with_request_id(mut self, request_id: String) -> Self {
+        self.body = self.body.with_request_id(request_id);
+        self
+    }
+
+    /// Set user ID for policy enforcement
+    pub fn with_user_id(mut self, user_id: String) -> Self {
+        self.body = self.body.with_user_id(user_id);
+        self
     }
 }
 

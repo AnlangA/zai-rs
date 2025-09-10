@@ -6,7 +6,6 @@ pub trait Chat {}
 
 pub trait AsyncChat {}
 
-
 pub trait ThinkEnable {}
 
 pub trait VideoGen {}
@@ -66,7 +65,6 @@ macro_rules! impl_message_binding {
         )+
     };
 }
-
 
 /// Implement one or more marker traits for a model type in a single call.
 /// Examples:
