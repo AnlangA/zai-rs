@@ -7,6 +7,7 @@ pub mod chat_base_response;
 pub mod chat_message_types;
 pub mod chat_models;
 pub mod gen_video_async;
+pub mod gen_image;
 pub mod model_validate;
 pub mod tools;
 pub mod traits;
