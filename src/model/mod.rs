@@ -8,6 +8,7 @@ pub mod chat_message_types;
 pub mod chat_models;
 pub mod gen_video_async;
 pub mod gen_image;
+pub mod audio_to_speech;
 pub mod model_validate;
 pub mod tools;
 pub mod traits;
