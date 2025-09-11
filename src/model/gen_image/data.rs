@@ -2,6 +2,8 @@ use super::super::traits::*;
 use super::image_request::{ImageGenBody, ImageQuality, ImageSize};
 use crate::client::http::HttpClient;
 use serde::Serialize;
+use validator::Validate;
+
 
 /// Image generation request structure
 /// Provides a typed builder around the image generation API body
@@ -65,6 +67,31 @@ where
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body.user_id = Some(user_id.into());
         self
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        // Body-level field validations
+        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+        // Require prompt
+        if self.body.prompt.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+            return Err(anyhow::anyhow!("prompt is required"));
+        }
+        // Validate custom size when present
+        if let Some(size) = &self.body.size {
+            if let super::image_request::ImageSize::Custom { .. } = size {
+                if !size.is_valid() {
+                    return Err(anyhow::anyhow!("invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn send(&self) -> anyhow::Result<super::image_response::ImageResponse> {
+        self.validate()?;
+        let resp = self.post().await?;
+        let parsed = resp.json::<super::image_response::ImageResponse>().await?;
+        Ok(parsed)
     }
 }
 

@@ -3,7 +3,6 @@
 //! This example shows how to integrate zai-tools with LLM function calling.
 
 use serde_json::json;
-use zai_rs::client::http::*;
 use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 use zai_rs::toolkits::prelude::*;
@@ -82,8 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_tokens(512);
 
     // First round
-    let resp = client.post().await.unwrap();
-    let last_resp: ChatCompletionResponse = resp.json().await.unwrap();
+    let last_resp: ChatCompletionResponse = client.send().await.unwrap();
     println!("📨 LLM Response: {:#?}", last_resp);
 
     if let Some(calls) = last_resp
@@ -101,8 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
         client = client.add_messages(sys);
 
-        let resp_next = client.post().await.unwrap();
-        let next_body: ChatCompletionResponse = resp_next.json().await.unwrap();
+        let next_body: ChatCompletionResponse = client.send().await.unwrap();
         println!("Model after tool: {:#?}", next_body);
     }
 

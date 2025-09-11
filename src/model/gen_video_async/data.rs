@@ -2,6 +2,8 @@ use super::super::traits::*;
 use super::video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize};
 use crate::client::http::HttpClient;
 use serde::Serialize;
+use validator::Validate;
+
 
 /// Video generation request structure
 /// Handles HTTP requests for video generation API
@@ -90,6 +92,18 @@ where
         self
     }
 }
+
+impl<N> VideoGenRequest<N>
+where
+    N: ModelName + VideoGen + Serialize,
+{
+    /// Validate request parameters for video generation
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+        Ok(())
+    }
+}
+
 
 impl<N> HttpClient for VideoGenRequest<N>
 where

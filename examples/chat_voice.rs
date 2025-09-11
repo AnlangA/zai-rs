@@ -1,4 +1,3 @@
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 
 use base64::Engine;
@@ -6,7 +5,6 @@ use chrono;
 use std::fs::File;
 use std::io::Write;
 use tokio;
-use zai_rs::client::http::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,10 +23,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = ChatCompletion::new(model, voice_message, key);
 
-    match tokio::time::timeout(tokio::time::Duration::from_secs(30), client.post()).await {
-        Ok(Ok(resp)) => {
-            // Success responses are JSON; parse with struct
-            let body: ChatCompletionResponse = resp.json().await?;
+    match tokio::time::timeout(tokio::time::Duration::from_secs(30), client.send()).await {
+        Ok(Ok(body)) => {
+            // Success responses are JSON; parsed as struct
 
             let audio_b64 = body
                 .choices()

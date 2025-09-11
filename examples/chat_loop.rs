@@ -3,7 +3,6 @@ use zai_rs::model::*;
 
 use std::io::{self, Write};
 use tokio;
-use zai_rs::client::http::*;
 
 fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
     // 简化版：假设服务端总是返回纯字符串内容
@@ -37,9 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_thinking(ThinkingType::Disabled);
 
     loop {
-        // 发送当前累计的所有消息，并获取 AI 回复
-        let resp = client.post().await?;
-        let body: ChatCompletionResponse = resp.json().await?;
+        // 发送当前累计的所有消息，并获取 AI 回复（非流式）
+        let body: ChatCompletionResponse = client.send().await?;
 
         // 获取第一条 choice 的文本内容
         let ai_text = body

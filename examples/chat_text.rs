@@ -28,7 +28,6 @@ use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 
 use tokio;
-use zai_rs::client::http::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,11 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_top_p(0.9) // Control diversity (0.0-1.0)
         .with_thinking(ThinkingType::Disabled); // Disable thinking for faster response
 
-    // Send the request and await response
-    let resp = client.post().await?;
-
-    // Parse and display the response
-    let body: ChatCompletionResponse = resp.json().await?;
+    // Send the request and await response (non-stream)
+    let body: ChatCompletionResponse = client.send().await?;
     println!("{:#?}", body);
 
     Ok(())

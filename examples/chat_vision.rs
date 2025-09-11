@@ -2,7 +2,6 @@ use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 
 use tokio;
-use zai_rs::client::http::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,9 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_user(text_content);
     let client = ChatCompletion::new(model, vision_message, key);
 
-    let resp = client.post().await.unwrap();
-    println!("{:?}", resp);
-    let body: ChatCompletionResponse = resp.json().await.unwrap();
+    let body: ChatCompletionResponse = client.send().await.unwrap();
     println!("{:#?}", body);
     Ok(())
 }

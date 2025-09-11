@@ -3,6 +3,8 @@ use super::request::AudioTranscriptionBody;
 use serde::Serialize;
 use std::path::Path;
 
+use validator::Validate;
+
 use crate::client::http::HttpClient;
 
 /// Audio transcription request (multipart/form-data)
@@ -50,6 +52,32 @@ where
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
         self
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        // Check body constraints
+        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+        // Ensure file path exists
+        let p = self
+            .file_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("file_path is required"))?;
+        if !Path::new(p).exists() {
+            return Err(anyhow::anyhow!(format!("file_path not found: {}", p)));
+        }
+        Ok(())
+    }
+
+    pub async fn send(&self) -> anyhow::Result<super::response::AudioTranscriptionResponse>
+    where
+        N: Clone + Send + Sync + 'static,
+    {
+        self.validate()?;
+        let resp = self.post().await?;
+        let parsed = resp
+            .json::<super::response::AudioTranscriptionResponse>()
+            .await?;
+        Ok(parsed)
     }
 }
 

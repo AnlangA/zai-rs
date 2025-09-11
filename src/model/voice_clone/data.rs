@@ -2,6 +2,8 @@ use super::super::traits::*;
 use super::request::VoiceCloneBody;
 use crate::client::http::HttpClient;
 use serde::Serialize;
+use validator::Validate;
+
 
 /// Voice clone request wrapper using JSON
 pub struct VoiceCloneRequest<N>
@@ -42,6 +44,20 @@ where
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.body = self.body.with_request_id(request_id);
         self
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+        Ok(())
+    }
+
+    pub async fn send(&self) -> anyhow::Result<super::response::VoiceCloneResponse> {
+        self.validate()?;
+        let resp = self.post().await?;
+        let parsed = resp
+            .json::<super::response::VoiceCloneResponse>()
+            .await?;
+        Ok(parsed)
     }
 }
 

@@ -22,6 +22,8 @@ use super::super::traits::*;
 use crate::client::http::HttpClient;
 use serde::Serialize;
 use std::marker::PhantomData;
+use validator::Validate;
+
 
 // Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
 
@@ -192,6 +194,32 @@ where
             _stream: PhantomData,
         }
     }
+    /// Validate request parameters for non-stream chat (StreamOff)
+    pub fn validate(&self) -> anyhow::Result<()> {
+        // Field-level validation from ChatBody (temperature/top_p/max_tokens/user_id/stop...)
+        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+        // Ensure not accidentally enabling stream in StreamOff state
+        if matches!(self.body.stream, Some(true)) {
+            return Err(anyhow::anyhow!("stream=true detected; use enable_stream() and streaming APIs instead"));
+        }
+        Ok(())
+    }
+
+    /// Send the request and parse typed response.
+    /// Automatically runs `validate()` before sending.
+    pub async fn send(&self) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse>
+    where
+        N: serde::Serialize,
+        M: serde::Serialize,
+    {
+        self.validate()?;
+        let resp: reqwest::Response = self.post().await?;
+        let parsed = resp
+            .json::<crate::model::chat_base_response::ChatCompletionResponse>()
+            .await?;
+        Ok(parsed)
+    }
+
 }
 
 impl<N, M, S> HttpClient for ChatCompletion<N, M, S>
@@ -240,3 +268,4 @@ where
     (N, M): Bounded,
 {
 }
+

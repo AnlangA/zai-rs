@@ -1,4 +1,3 @@
-use zai_rs::client::http::*;
 use zai_rs::model::voice_list::*;
 
 #[tokio::main]
@@ -15,15 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = VoiceListRequest::new(key).with_query(query);
 
-    let resp = client.get().await?;
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
-        return Ok(());
-    }
-
-    let body: VoiceListResponse = resp.json().await?;
+    let body: VoiceListResponse = client.send().await?;
     if let Some(list) = body.voice_list.as_ref() {
         println!("voices: {}", list.len());
         for (i, item) in list.iter().enumerate() {

@@ -1,7 +1,7 @@
 use log::info;
 use tokio;
-use zai_rs::client::http::*;
 use zai_rs::model::chat::data::ChatCompletion;
+use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 #[tokio::main]
 async fn main() {
@@ -38,8 +38,8 @@ async fn main() {
         .with_top_p(0.9)
         .with_max_tokens(512)
         .add_tool(tools);
-    let resp = client.post().await.unwrap();
-    let v: serde_json::Value = resp.json().await.unwrap();
+    let body: ChatCompletionResponse = client.send().await.unwrap();
+    let v = serde_json::to_value(&body).unwrap();
     info!("{}", serde_json::to_string_pretty(&v).unwrap());
 
     // 1) 解析第一条 tool_call（更简洁）
@@ -58,8 +58,8 @@ async fn main() {
         let tool_msg = TextMessage::tool_with_id(serde_json::to_string(&result).unwrap(), id);
         client = client.add_messages(tool_msg).with_max_tokens(512);
 
-        let resp2 = client.post().await.unwrap();
-        let v2: serde_json::Value = resp2.json().await.unwrap();
+        let body2: ChatCompletionResponse = client.send().await.unwrap();
+        let v2 = serde_json::to_value(&body2).unwrap();
         info!(
             "继续对话返回: {}",
             serde_json::to_string_pretty(&v2).unwrap()

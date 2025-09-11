@@ -24,7 +24,6 @@
 //! cargo run --example gen_image
 //! ```
 
-use zai_rs::client::http::*;
 use zai_rs::model::gen_image::*;
 
 #[tokio::main]
@@ -47,8 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_size(size);
 
     // Send the request and await the generated image
-    let resp = client.post().await?;
-    let body: ImageResponse = resp.json().await?;
+    let body: ImageResponse = client.send().await?;
 
     // Display the response containing image information
     println!("{:#?}", body);

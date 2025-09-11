@@ -29,9 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_temperature(0.7)
             .with_top_p(0.9);
 
-        match client.post().await {
-            Ok(resp) => {
-                let body: ChatCompletionResponse = resp.json().await?;
+        match client.send().await {
+            Ok(body) => {
                 if let Some(task_id) = body.id() {
                     println!("问题: {}", message);
                     println!("任务ID: {}", task_id);

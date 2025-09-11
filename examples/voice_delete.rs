@@ -1,4 +1,3 @@
-use zai_rs::client::http::*;
 use zai_rs::model::voice_delete::*;
 
 #[tokio::main]
@@ -12,15 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = VoiceDeleteRequest::new(key, voice).with_request_id("voice_delete_req_001");
 
-    let resp = client.post().await?;
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
-        return Ok(());
-    }
-
-    let body: VoiceDeleteResponse = resp.json().await?;
+    let body: VoiceDeleteResponse = client.send().await?;
     println!("{:#?}", body);
 
     Ok(())

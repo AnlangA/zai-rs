@@ -29,6 +29,23 @@ where
             _marker: PhantomData,
         }
     }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.url.trim().is_empty() {
+            return Err(anyhow::anyhow!("empty URL"));
+        }
+        Ok(())
+    }
+
+    pub async fn send(&self) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse> {
+        self.validate()?;
+        let resp = self.get().await?;
+        let parsed = resp
+            .json::<crate::model::chat_base_response::ChatCompletionResponse>()
+            .await?;
+        Ok(parsed)
+    }
+
 }
 
 impl<N> HttpClient for AsyncChatGetRequest<N>

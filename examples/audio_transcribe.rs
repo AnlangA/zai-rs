@@ -1,4 +1,3 @@
-use zai_rs::client::http::*;
 use zai_rs::model::audio_to_text::audio_asr_model::GlmAsr;
 use zai_rs::model::audio_to_text::response::AudioTranscriptionResponse;
 use zai_rs::model::audio_to_text::*;
@@ -20,16 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_temperature(0.95)
         .with_stream(false);
 
-    let resp = client.post().await?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
-        return Ok(());
-    }
-
-    let body: AudioTranscriptionResponse = resp.json().await?;
+    let body: AudioTranscriptionResponse = client.send().await?;
     println!("{:#?}", body);
 
     Ok(())

@@ -1,4 +1,3 @@
-use zai_rs::client::http::*;
 use zai_rs::model::voice_clone::model::CogTtsClone;
 use zai_rs::model::voice_clone::response::VoiceCloneResponse;
 use zai_rs::model::voice_clone::*;
@@ -22,15 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_request_id("voice_clone_req_001")
         .with_text(text);
 
-    let resp = client.post().await?;
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
-        return Ok(());
-    }
-
-    let body: VoiceCloneResponse = resp.json().await?;
+    let body: VoiceCloneResponse = client.send().await?;
     println!("{:#?}", body);
 
     Ok(())

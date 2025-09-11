@@ -34,6 +34,19 @@ impl VoiceListRequest {
         self.url = url.to_string();
     }
 
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        // No required params; URL already built. Optionally, validate query formats here.
+        Ok(())
+    }
+
+    pub async fn send(&self) -> anyhow::Result<super::response::VoiceListResponse> {
+        self.validate()?;
+        let resp = self.get().await?;
+        let parsed = resp.json::<super::response::VoiceListResponse>().await?;
+        Ok(parsed)
+    }
+
     pub fn with_query(mut self, q: VoiceListQuery) -> Self {
         self.rebuild_url(&q);
         self
