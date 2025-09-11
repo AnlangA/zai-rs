@@ -8,8 +8,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Build query (all optional to match typical cURL)
+    // Many backends require purpose to filter results; set to FileExtract to match recent uploads
     let query = FileListQuery::new()
-        // .with_purpose(FilePurpose::Agent)
+        .with_purpose(FilePurpose::FileExtract)
         // .with_order(FileOrder::CreatedAt)
         // .with_limit(20)
         ;

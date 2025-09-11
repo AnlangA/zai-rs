@@ -3,19 +3,19 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct FileListQuery {
-    /// 分页游标
+    /// Pagination cursor
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
 
-    /// 按用途过滤文件（可选，为兼容 cURL 示例中未提供）
+    /// Filter by file purpose (optional; matches cURL examples which may omit)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub purpose: Option<FilePurpose>,
 
-    /// 排序方式（目前仅 created_at）
+    /// Sort order (currently only `created_at`)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<FileOrder>,
 
-    /// 每页数量 1..=100（默认 20）
+    /// Page size 1..=100 (default 20)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 1, max = 100))]
     pub limit: Option<u32>,

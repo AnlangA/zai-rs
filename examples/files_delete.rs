@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // file id to delete, pass as arg or hardcode for testing
-    let file_id = std::env::args().nth(1).unwrap_or_else(|| "1757560796_96cfc41fde21465a84ec796047020d81".to_string());
+    let file_id = std::env::args().nth(1).unwrap_or_else(|| "1757561531_ec561569199641b3a5c556503a72cb79".to_string());
 
     let req = FileDeleteRequest::new(key, file_id);
     let resp = req.delete().await?;
