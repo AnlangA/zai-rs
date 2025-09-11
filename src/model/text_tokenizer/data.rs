@@ -17,11 +17,27 @@ impl TokenizerRequest {
     pub fn with_request_id(mut self, v: impl Into<String>) -> Self { self.body = self.body.with_request_id(v); self }
     pub fn with_user_id(mut self, v: impl Into<String>) -> Self { self.body = self.body.with_user_id(v); self }
 
-    /// Execute the request and parse typed response
-    pub async fn execute(&self) -> anyhow::Result<TokenizerResponse> {
+    /// Optional: validate constraints before sending
+    pub fn validate(&self) -> anyhow::Result<()> {
+        if self.body.messages.is_empty() {
+            anyhow::bail!("messages must not be empty");
+        }
+        Ok(())
+    }
+
+    /// Send the request and parse typed response.
+    /// Automatically runs `validate()` before sending.
+    pub async fn send(&self) -> anyhow::Result<TokenizerResponse> {
+        self.validate()?;
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<TokenizerResponse>().await?;
         Ok(parsed)
+    }
+
+    #[deprecated(note = "Use send() instead")]
+    /// Deprecated: use `send()`.
+    pub async fn execute(&self) -> anyhow::Result<TokenizerResponse> {
+        self.send().await
     }
 }
 

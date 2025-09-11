@@ -24,11 +24,21 @@ impl EmbeddingRequest {
         self.body.validate_model_constraints()
     }
 
-    /// Convenience method to execute request and parse typed response
-    pub async fn execute(&self) -> anyhow::Result<EmbeddingResponse> {
+    /// Send the request and parse typed response.
+    /// Automatically runs `validate()` before sending.
+    pub async fn send(&self) -> anyhow::Result<EmbeddingResponse> {
+        if let Err(e) = self.validate() {
+            return Err(anyhow::anyhow!("validation failed: {}", e));
+        }
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<EmbeddingResponse>().await?;
         Ok(parsed)
+    }
+
+    #[deprecated(note = "Use send() instead")]
+    /// Deprecated: use `send()`.
+    pub async fn execute(&self) -> anyhow::Result<EmbeddingResponse> {
+        self.send().await
     }
 }
 

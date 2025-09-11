@@ -14,13 +14,13 @@ async fn main() -> anyhow::Result<()> {
     let req = EmbeddingRequest::new(key, model, input)
         .with_dimensions(EmbeddingDimensions::D256); // embedding-3 supports 256/512/1024/2048
 
-    // Optional: validate cross-field constraints
+    // Optional: explicit validation (send() will validate automatically)
     if let Err(e) = req.validate() {
         eprintln!("Validation warning: {:?}", e);
     }
 
-    // Execute and print summary
-    let resp = req.execute().await?;
+    // Send and print summary
+    let resp = req.send().await?;
 
     println!("model: {}", resp.model);
     println!("object: {:?}", resp.object);

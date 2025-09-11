@@ -23,11 +23,19 @@ impl RerankRequest {
     /// Optional: validate constraints before sending
     pub fn validate(&self) -> anyhow::Result<()> { self.body.validate_constraints().map_err(Into::into) }
 
-    /// Execute the request and parse typed response
-    pub async fn execute(&self) -> anyhow::Result<RerankResponse> {
+    /// Send the request and parse typed response.
+    /// Automatically runs `validate()` before sending.
+    pub async fn send(&self) -> anyhow::Result<RerankResponse> {
+        self.validate()?;
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<RerankResponse>().await?;
         Ok(parsed)
+    }
+
+    #[deprecated(note = "Use send() instead")]
+    /// Deprecated: use `send()`.
+    pub async fn execute(&self) -> anyhow::Result<RerankResponse> {
+        self.send().await
     }
 }
 

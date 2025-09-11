@@ -15,9 +15,9 @@ async fn main() -> anyhow::Result<()> {
     // Choose a tokenizer-capable model (default is glm-4-plus)
     let model = TokenizerModel::Glm4Plus;
 
-    // Build request and execute
+    // Build request and send
     let req = TokenizerRequest::new(key, model, messages);
-    let resp = req.execute().await?;
+    let resp = req.send().await?;
 
     println!("id: {}", resp.id);
     println!("prompt_tokens: {}", resp.usage.prompt_tokens);

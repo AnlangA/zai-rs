@@ -20,13 +20,13 @@ async fn main() -> anyhow::Result<()> {
         .with_return_documents(true)
         .with_return_raw_scores(true);
 
-    // Optional runtime validation
+    // Optional runtime validation (send() will validate automatically)
     if let Err(e) = req.validate() {
         eprintln!("Validation warning: {e}");
     }
 
-    // Execute
-    let resp = req.execute().await?;
+    // Send
+    let resp = req.send().await?;
 
     println!("created: {}", resp.created);
     println!("id: {}", resp.id);
