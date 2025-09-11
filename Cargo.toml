@@ -57,6 +57,26 @@ path = "examples/voice_list.rs"
 name = "voice_delete"
 path = "examples/voice_delete.rs"
 
+[[example]]
+name = "files_list"
+path = "examples/files_list.rs"
+
+
+
+[[example]]
+name = "files_upload"
+path = "examples/files_upload.rs"
+
+
+
+[[example]]
+name = "files_delete"
+path = "examples/files_delete.rs"
+
+[[example]]
+name = "files_content"
+path = "examples/files_content.rs"
+
 
 
 
