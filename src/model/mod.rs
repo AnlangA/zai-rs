@@ -73,6 +73,12 @@ pub mod traits;
 pub mod voice_clone;
 pub mod voice_delete;
 pub mod voice_list;
+pub mod text_embedded;
+pub mod text_rerank;
+pub mod text_tokenizer;
+
+
+
 
 // Avoid wildcard re-exports to prevent name collisions (e.g., `data`)
 
