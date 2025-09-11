@@ -1,5 +1,5 @@
-use super::request::{TtsAudioFormat, TtsRequestBody, TtsVoice};
 use super::super::traits::*;
+use super::request::{TtsAudioFormat, TtsRequestBody, TtsVoice};
 use crate::client::http::HttpClient;
 use serde::Serialize;
 
@@ -21,7 +21,9 @@ where
         Self { key, body }
     }
 
-    pub fn body_mut(&mut self) -> &mut TtsRequestBody<N> { &mut self.body }
+    pub fn body_mut(&mut self) -> &mut TtsRequestBody<N> {
+        &mut self.body
+    }
 
     pub fn with_input(mut self, input: impl Into<String>) -> Self {
         self.body = self.body.with_input(input);
@@ -60,7 +62,10 @@ where
     fn api_url(&self) -> &Self::ApiUrl {
         &"https://open.bigmodel.cn/api/paas/v4/audio/speech"
     }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
-

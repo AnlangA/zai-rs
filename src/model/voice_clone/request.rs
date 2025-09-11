@@ -35,7 +35,12 @@ impl<N> VoiceCloneBody<N>
 where
     N: ModelName + VoiceClone + Serialize,
 {
-    pub fn new(model: N, voice_name: impl Into<String>, input: impl Into<String>, file_id: impl Into<String>) -> Self {
+    pub fn new(
+        model: N,
+        voice_name: impl Into<String>,
+        input: impl Into<String>,
+        file_id: impl Into<String>,
+    ) -> Self {
         Self {
             model,
             voice_name: voice_name.into(),
@@ -56,4 +61,3 @@ where
         self
     }
 }
-

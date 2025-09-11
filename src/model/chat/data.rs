@@ -3,25 +3,35 @@ use super::super::tools::*;
 use super::super::traits::*;
 use crate::client::http::HttpClient;
 use serde::Serialize;
-pub struct ChatCompletion<N, M>
+use std::marker::PhantomData;
+
+// Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
+
+pub struct ChatCompletion<N, M, S = StreamOff>
 where
     N: ModelName + Chat,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
+    S: StreamState,
 {
     pub key: String,
     body: ChatBody<N, M>,
+    _stream: PhantomData<S>,
 }
 
-impl<N, M> ChatCompletion<N, M>
+impl<N, M> ChatCompletion<N, M, StreamOff>
 where
     N: ModelName + Chat,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
-    pub fn new(model: N, messages: M, key: String) -> Self {
+    pub fn new(model: N, messages: M, key: String) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
-        Self { body, key }
+        ChatCompletion {
+            body,
+            key,
+            _stream: PhantomData,
+        }
     }
 
     pub fn body_mut(&mut self) -> &mut ChatBody<N, M> {
@@ -41,6 +51,7 @@ where
         self.body = self.body.with_do_sample(do_sample);
         self
     }
+    #[deprecated(note = "Use enable_stream()/disable_stream() for compile-time guarantees")]
     pub fn with_stream(mut self, stream: bool) -> Self {
         self.body = self.body.with_stream(stream);
         self
@@ -61,7 +72,6 @@ where
         self.body = self.body.add_tools(tool);
         self
     }
-
     pub fn add_tools(mut self, tools: Vec<Tools>) -> Self {
         self.body = self.body.extend_tools(tools);
         self
@@ -83,13 +93,32 @@ where
         self.body = self.body.with_thinking(thinking);
         self
     }
+
+    // Type-state toggles
+    pub fn enable_stream(mut self) -> ChatCompletion<N, M, StreamOn> {
+        self.body.stream = Some(true);
+        ChatCompletion {
+            key: self.key,
+            body: self.body,
+            _stream: PhantomData,
+        }
+    }
+    pub fn disable_stream(mut self) -> ChatCompletion<N, M, StreamOff> {
+        self.body.stream = Some(false);
+        ChatCompletion {
+            key: self.key,
+            body: self.body,
+            _stream: PhantomData,
+        }
+    }
 }
 
-impl<N, M> HttpClient for ChatCompletion<N, M>
+impl<N, M, S> HttpClient for ChatCompletion<N, M, S>
 where
     N: ModelName + Serialize + Chat,
     M: Serialize,
     (N, M): Bounded,
+    S: StreamState,
 {
     type Body = ChatBody<N, M>;
     type ApiUrl = &'static str;
@@ -98,12 +127,27 @@ where
     fn api_url(&self) -> &Self::ApiUrl {
         &"https://open.bigmodel.cn/api/paas/v4/chat/completions"
     }
-
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
-
     fn body(&self) -> &Self::Body {
         &self.body
     }
+}
+
+impl<N, M> crate::model::traits::SseStreamable for ChatCompletion<N, M, StreamOn>
+where
+    N: ModelName + Serialize + Chat,
+    M: Serialize,
+    (N, M): Bounded,
+{
+}
+
+// Enable typed streaming extension methods for ChatCompletion<..., StreamOn>
+impl<N, M> crate::model::stream_ext::StreamChatLikeExt for ChatCompletion<N, M, StreamOn>
+where
+    N: ModelName + Serialize + Chat,
+    M: Serialize,
+    (N, M): Bounded,
+{
 }

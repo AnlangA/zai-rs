@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::client::http::HttpClient;
 use super::request::FilePurpose;
+use crate::client::http::HttpClient;
 
 /// File upload request (multipart/form-data)
 ///
@@ -43,9 +43,15 @@ impl HttpClient for FileUploadRequest {
     type ApiUrl = &'static str;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &"https://open.bigmodel.cn/api/paas/v4/files" }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &() }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &"https://open.bigmodel.cn/api/paas/v4/files"
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &()
+    }
 
     // Override POST to send multipart/form-data
     fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
@@ -56,15 +62,22 @@ impl HttpClient for FileUploadRequest {
         let file_name = self.file_name.clone();
         let content_type = self.content_type.clone();
         async move {
-            let mut form = reqwest::multipart::Form::new().text("purpose", purpose.as_str().to_string());
+            let mut form =
+                reqwest::multipart::Form::new().text("purpose", purpose.as_str().to_string());
 
             let fname = file_name
-                .or_else(|| path.file_name().and_then(|s| s.to_str()).map(|s| s.to_string()))
+                .or_else(|| {
+                    path.file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_else(|| "upload.bin".to_string());
 
             let mut part = reqwest::multipart::Part::bytes(std::fs::read(&path)?).file_name(fname);
             if let Some(ct) = content_type {
-                part = part.mime_str(&ct).map_err(|e| anyhow::anyhow!("invalid content-type: {}", e))?;
+                part = part
+                    .mime_str(&ct)
+                    .map_err(|e| anyhow::anyhow!("invalid content-type: {}", e))?;
             }
             form = form.part("file", part);
 
@@ -83,9 +96,14 @@ impl HttpClient for FileUploadRequest {
             // Parse standard error envelope {"error": { code, message }}
             let text = resp.text().await.unwrap_or_default();
             #[derive(serde::Deserialize)]
-            struct ErrEnv { error: ErrObj }
+            struct ErrEnv {
+                error: ErrObj,
+            }
             #[derive(serde::Deserialize)]
-            struct ErrObj { code: serde_json::Value, message: String }
+            struct ErrObj {
+                code: serde_json::Value,
+                message: String,
+            }
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
                 return Err(anyhow::anyhow!(
                     "HTTP {} {} | code={} | message={}",
@@ -105,4 +123,3 @@ impl HttpClient for FileUploadRequest {
         }
     }
 }
-

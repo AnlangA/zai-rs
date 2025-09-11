@@ -1,5 +1,5 @@
-use super::request::VoiceCloneBody;
 use super::super::traits::*;
+use super::request::VoiceCloneBody;
 use crate::client::http::HttpClient;
 use serde::Serialize;
 
@@ -28,7 +28,9 @@ where
         Self { key, body }
     }
 
-    pub fn body_mut(&mut self) -> &mut VoiceCloneBody<N> { &mut self.body }
+    pub fn body_mut(&mut self) -> &mut VoiceCloneBody<N> {
+        &mut self.body
+    }
 
     /// Optional: reference text of the example audio
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
@@ -54,7 +56,10 @@ where
     fn api_url(&self) -> &Self::ApiUrl {
         &"https://open.bigmodel.cn/api/paas/v4/voice/clone"
     }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
-

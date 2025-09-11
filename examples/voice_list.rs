@@ -1,5 +1,5 @@
-use zai_rs::model::voice_list::*;
 use zai_rs::client::http::*;
+use zai_rs::model::voice_list::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,4 +35,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

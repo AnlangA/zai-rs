@@ -1,5 +1,5 @@
-use zai_rs::model::voice_delete::*;
 use zai_rs::client::http::*;
+use zai_rs::model::voice_delete::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,8 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example voice id to delete
     let voice = "voice_clone_20240315_143052_001";
 
-    let client = VoiceDeleteRequest::new(key, voice)
-        .with_request_id("voice_delete_req_001");
+    let client = VoiceDeleteRequest::new(key, voice).with_request_id("voice_delete_req_001");
 
     let resp = client.post().await?;
     let status = resp.status();
@@ -26,4 +25,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

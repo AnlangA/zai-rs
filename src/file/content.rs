@@ -13,7 +13,11 @@ impl FileContentRequest {
             "https://open.bigmodel.cn/api/paas/v4/files/{}/content",
             file_id.into()
         );
-        Self { key, url, _body: () }
+        Self {
+            key,
+            url,
+            _body: (),
+        }
     }
 }
 
@@ -22,8 +26,13 @@ impl HttpClient for FileContentRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self._body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self._body
+    }
 }
-

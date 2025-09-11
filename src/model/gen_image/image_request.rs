@@ -22,14 +22,14 @@ where
     pub quality: Option<ImageQuality>,
     /// Image size
     /// Recommended values: 1024x1024 (default), 768x1344, 864x1152, 1344x768, 1152x864, 1440x720, 720x1440
-    /// Custom dimensions: width and height must be between 512-2048px, divisible by 16, 
+    /// Custom dimensions: width and height must be between 512-2048px, divisible by 16,
     /// and total pixels must not exceed 2^21 (2,097,152)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<ImageSize>,
     /// Whether to add watermark to AI generated images
     #[serde(skip_serializing_if = "Option::is_none")]
     pub watermark_enabled: Option<bool>,
-    /// Unique ID of the end user to help platform intervene against violations, 
+    /// Unique ID of the end user to help platform intervene against violations,
     /// illegal content generation, or other abusive behaviors
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 6, max = 128))]
@@ -48,7 +48,7 @@ pub enum ImageQuality {
 }
 
 /// Image size options
-/// 
+///
 /// Recommended sizes:
 /// - 1024x1024 (default)
 /// - 768x1344
@@ -57,7 +57,7 @@ pub enum ImageQuality {
 /// - 1152x864
 /// - 1440x720
 /// - 720x1440
-/// 
+///
 /// Custom sizes must satisfy:
 /// - Width and height between 512-2048px
 /// - Both dimensions divisible by 16
@@ -103,7 +103,7 @@ impl serde::Serialize for ImageSize {
 
 impl ImageSize {
     /// Validate image size constraints
-    /// 
+    ///
     /// Returns true if the size meets all requirements:
     /// - Dimensions between 512-2048px
     /// - Both dimensions divisible by 16
@@ -115,12 +115,12 @@ impl ImageSize {
                 if *width < 512 || *width > 2048 || *height < 512 || *height > 2048 {
                     return false;
                 }
-                
+
                 // Check divisibility by 16
                 if width % 16 != 0 || height % 16 != 0 {
                     return false;
                 }
-                
+
                 // Check total pixels limit (2^21 = 2,097,152)
                 let total_pixels = (*width as u64) * (*height as u64);
                 total_pixels <= 2_097_152
@@ -128,7 +128,7 @@ impl ImageSize {
             _ => true, // Predefined sizes are already valid
         }
     }
-    
+
     /// Get the dimensions as (width, height)
     pub fn dimensions(&self) -> (u32, u32) {
         match self {
@@ -143,4 +143,3 @@ impl ImageSize {
         }
     }
 }
-

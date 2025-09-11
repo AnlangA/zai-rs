@@ -23,21 +23,43 @@ pub struct FileListQuery {
 
 impl FileListQuery {
     pub fn new() -> Self {
-        Self { after: None, purpose: None, order: None, limit: None }
+        Self {
+            after: None,
+            purpose: None,
+            order: None,
+            limit: None,
+        }
     }
-    pub fn with_after(mut self, after: impl Into<String>) -> Self { self.after = Some(after.into()); self }
-    pub fn with_purpose(mut self, p: FilePurpose) -> Self { self.purpose = Some(p); self }
-    pub fn with_order(mut self, o: FileOrder) -> Self { self.order = Some(o); self }
-    pub fn with_limit(mut self, limit: u32) -> Self { self.limit = Some(limit); self }
+    pub fn with_after(mut self, after: impl Into<String>) -> Self {
+        self.after = Some(after.into());
+        self
+    }
+    pub fn with_purpose(mut self, p: FilePurpose) -> Self {
+        self.purpose = Some(p);
+        self
+    }
+    pub fn with_order(mut self, o: FileOrder) -> Self {
+        self.order = Some(o);
+        self
+    }
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FilePurpose {
-    #[serde(rename = "batch")] Batch,
-    #[serde(rename = "file-extract")] FileExtract,
-    #[serde(rename = "code-interpreter")] CodeInterpreter,
-    #[serde(rename = "agent")] Agent,
-    #[serde(rename = "voice-clone-input")] VoiceCloneInput,
+    #[serde(rename = "batch")]
+    Batch,
+    #[serde(rename = "file-extract")]
+    FileExtract,
+    #[serde(rename = "code-interpreter")]
+    CodeInterpreter,
+    #[serde(rename = "agent")]
+    Agent,
+    #[serde(rename = "voice-clone-input")]
+    VoiceCloneInput,
 }
 
 impl FilePurpose {
@@ -54,7 +76,8 @@ impl FilePurpose {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FileOrder {
-    #[serde(rename = "created_at")] CreatedAt,
+    #[serde(rename = "created_at")]
+    CreatedAt,
 }
 
 impl FileOrder {
@@ -64,4 +87,3 @@ impl FileOrder {
         }
     }
 }
-

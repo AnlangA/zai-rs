@@ -1,7 +1,7 @@
-use zai_rs::model::audio_to_text::*;
+use zai_rs::client::http::*;
 use zai_rs::model::audio_to_text::audio_asr_model::GlmAsr;
 use zai_rs::model::audio_to_text::response::AudioTranscriptionResponse;
-use zai_rs::client::http::*;
+use zai_rs::model::audio_to_text::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,4 +34,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

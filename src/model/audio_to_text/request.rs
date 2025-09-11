@@ -35,7 +35,13 @@ where
     N: ModelName + AudioToText + Serialize,
 {
     pub fn new(model: N) -> Self {
-        Self { model, temperature: None, stream: None, request_id: None, user_id: None }
+        Self {
+            model,
+            temperature: None,
+            stream: None,
+            request_id: None,
+            user_id: None,
+        }
     }
 
     pub fn with_temperature(mut self, temperature: f32) -> Self {
@@ -58,4 +64,3 @@ where
         self
     }
 }
-

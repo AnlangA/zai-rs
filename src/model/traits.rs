@@ -19,6 +19,70 @@ pub trait TextToSpeech {}
 pub trait VoiceClone {}
 
 /// Define a basic model type with core implementations (Into<String>, Serialize, ModelName).
+
+// Shared type-state for compile-time streaming capability gating
+pub trait StreamState {}
+pub struct StreamOn;
+pub struct StreamOff;
+impl StreamState for StreamOn {}
+impl StreamState for StreamOff {}
+
+use crate::client::http::HttpClient;
+use futures::StreamExt;
+use log::info;
+
+/// Optional capability trait for types that support Server-Sent Events (SSE) streaming.
+/// Default implementation relies on `HttpClient::post()` returning an SSE response.
+/// It parses `data: ` lines, logs each payload, invokes the provided sync callback,
+/// and stops on `[DONE]`.
+pub trait SseStreamable: HttpClient {
+    fn stream_sse_for_each<'a, F>(
+        &'a mut self,
+        mut on_data: F,
+    ) -> impl core::future::Future<Output = anyhow::Result<()>> + 'a
+    where
+        F: FnMut(&[u8]) + 'a,
+    {
+        async move {
+            let resp = self.post().await?;
+            let mut stream = resp.bytes_stream();
+            let mut buf: Vec<u8> = Vec::new();
+
+            while let Some(next) = stream.next().await {
+                match next {
+                    Ok(bytes) => {
+                        buf.extend_from_slice(&bytes);
+                        while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+                            let line_vec: Vec<u8> = buf.drain(..=pos).collect();
+                            let mut line = &line_vec[..];
+                            if line.ends_with(b"\n") {
+                                line = &line[..line.len() - 1];
+                            }
+                            if line.ends_with(b"\r") {
+                                line = &line[..line.len() - 1];
+                            }
+                            if line.is_empty() {
+                                continue;
+                            }
+                            const PREFIX: &[u8] = b"data: ";
+                            if line.starts_with(PREFIX) {
+                                let rest = &line[PREFIX.len()..];
+                                info!("SSE data: {}", String::from_utf8_lossy(rest));
+                                if rest == b"[DONE]" {
+                                    return Ok(());
+                                }
+                                on_data(rest);
+                            }
+                        }
+                    }
+                    Err(e) => return Err(anyhow::anyhow!("Stream error: {}", e)),
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
 /// Usage examples:
 ///   define_model_type!(GLM4_5, "glm-4.5");
 ///   define_model_type!(#[allow(non_camel_case_types)] GLM4_5_flash, "glm-4.5-flash");

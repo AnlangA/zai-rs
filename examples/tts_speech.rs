@@ -1,6 +1,6 @@
-use zai_rs::model::audio_to_speech::*;
-use zai_rs::model::audio_to_speech::tts_model::CogTts;
 use zai_rs::client::http::*;
+use zai_rs::model::audio_to_speech::tts_model::CogTts;
+use zai_rs::model::audio_to_speech::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,4 +35,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

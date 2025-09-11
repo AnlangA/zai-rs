@@ -1,5 +1,5 @@
-use crate::client::http::HttpClient;
 use super::request::VoiceDeleteBody;
+use crate::client::http::HttpClient;
 
 /// Voice delete request using JSON body
 pub struct VoiceDeleteRequest {
@@ -27,7 +27,10 @@ impl HttpClient for VoiceDeleteRequest {
     fn api_url(&self) -> &Self::ApiUrl {
         &"https://open.bigmodel.cn/api/paas/v4/voice/delete"
     }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
-

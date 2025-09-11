@@ -1,6 +1,6 @@
+use super::request::VoiceType;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
-use super::request::VoiceType;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct VoiceListResponse {
@@ -21,4 +21,3 @@ pub struct VoiceItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub create_time: Option<String>,
 }
-

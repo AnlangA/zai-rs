@@ -13,7 +13,11 @@ pub struct VoiceListRequest {
 impl VoiceListRequest {
     pub fn new(key: String) -> Self {
         let url = "https://open.bigmodel.cn/api/paas/v4/voice/list".to_string();
-        Self { key, url, _body: () }
+        Self {
+            key,
+            url,
+            _body: (),
+        }
     }
 
     fn rebuild_url(&mut self, q: &VoiceListQuery) {
@@ -41,8 +45,13 @@ impl HttpClient for VoiceListRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self._body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self._body
+    }
 }
-

@@ -1,5 +1,5 @@
-use zai_rs::model::gen_image::*;
 use zai_rs::client::http::*;
+use zai_rs::model::gen_image::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,4 +25,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

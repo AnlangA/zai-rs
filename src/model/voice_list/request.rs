@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Validate)]
@@ -12,7 +12,12 @@ pub struct VoiceListQuery {
 }
 
 impl VoiceListQuery {
-    pub fn new() -> Self { Self { voice_name: None, voice_type: None } }
+    pub fn new() -> Self {
+        Self {
+            voice_name: None,
+            voice_type: None,
+        }
+    }
     pub fn with_voice_name(mut self, name: impl Into<String>) -> Self {
         self.voice_name = Some(name.into());
         self
@@ -38,4 +43,3 @@ impl VoiceType {
         }
     }
 }
-

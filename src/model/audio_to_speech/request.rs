@@ -130,4 +130,3 @@ impl serde::Serialize for TtsAudioFormat {
         serializer.serialize_str(s)
     }
 }
-

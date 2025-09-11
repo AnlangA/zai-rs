@@ -51,4 +51,3 @@ pub struct FileDeleteResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted: Option<bool>,
 }
-

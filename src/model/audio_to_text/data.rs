@@ -1,5 +1,5 @@
-use super::request::AudioTranscriptionBody;
 use super::super::traits::*;
+use super::request::AudioTranscriptionBody;
 use serde::Serialize;
 use std::path::Path;
 
@@ -20,7 +20,11 @@ where
     N: ModelName + AudioToText + Serialize + Clone,
 {
     pub fn new(model: N, key: String) -> Self {
-        Self { key, body: AudioTranscriptionBody::new(model), file_path: None }
+        Self {
+            key,
+            body: AudioTranscriptionBody::new(model),
+            file_path: None,
+        }
     }
 
     pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
@@ -77,7 +81,8 @@ where
         let file_path_opt = self.file_path.clone();
 
         async move {
-            let file_path = file_path_opt.ok_or_else(|| anyhow::anyhow!("file_path is required"))?;
+            let file_path =
+                file_path_opt.ok_or_else(|| anyhow::anyhow!("file_path is required"))?;
 
             let mut form = reqwest::multipart::Form::new();
 
@@ -129,4 +134,3 @@ where
         }
     }
 }
-

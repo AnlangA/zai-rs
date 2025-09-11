@@ -24,6 +24,11 @@ path = "examples/chat_voice.rs"
 name = "chat_loop"
 path = "examples/chat_loop.rs"
 
+
+[[example]]
+name = "chat_stream"
+path = "examples/chat_stream.rs"
+
 [[example]]
 name = "async_chat_text"
 path = "examples/async_chat_text.rs"

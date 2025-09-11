@@ -1,5 +1,5 @@
-use zai_rs::file::*;
 use zai_rs::client::http::*;
+use zai_rs::file::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,11 +31,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(data) = &body.data {
         println!("files: {}", data.len());
         for (i, f) in data.iter().enumerate() {
-            println!("#{}: id={:?} filename={:?} bytes={:?} purpose={:?}",
-                i + 1, f.id, f.filename, f.bytes, f.purpose);
+            println!(
+                "#{}: id={:?} filename={:?} bytes={:?} purpose={:?}",
+                i + 1,
+                f.id,
+                f.filename,
+                f.bytes,
+                f.purpose
+            );
         }
     }
 
     Ok(())
 }
-
