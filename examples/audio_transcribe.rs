@@ -1,0 +1,37 @@
+use zai_rs::model::audio_to_text::*;
+use zai_rs::model::audio_to_text::audio_asr_model::GlmAsr;
+use zai_rs::model::audio_to_text::response::AudioTranscriptionResponse;
+use zai_rs::client::http::*;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+
+    // Set your API key in env: ZHIPU_API_KEY
+    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+
+    // Use local wav file as input
+    let file_path = "data/你好.wav";
+
+    // Build and send request
+    let model = GlmAsr {};
+    let client = AudioTranscriptionRequest::new(model, key)
+        .with_file_path(file_path)
+        .with_temperature(0.95)
+        .with_stream(false);
+
+    let resp = client.post().await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let txt = resp.text().await.unwrap_or_default();
+        eprintln!("Request failed: {}\n{}", status, txt);
+        return Ok(());
+    }
+
+    let body: AudioTranscriptionResponse = resp.json().await?;
+    println!("{:#?}", body);
+
+    Ok(())
+}
+
