@@ -8,42 +8,110 @@ use serde::Serialize;
 use std::collections::HashMap;
 use validator::*;
 
-/// Configuration for thinking capabilities in models.
+/// Controls thinking/reasoning capabilities in AI models.
 ///
-/// This enum controls whether a model should use thinking/reasoning capabilities
-/// when processing requests.
+/// This enum determines whether a model should engage in step-by-step reasoning
+/// when processing requests. Thinking mode can improve accuracy for complex tasks
+/// but may increase response time and token usage.
+///
+/// ## Variants
+///
+/// - `Enabled` - Model performs explicit reasoning steps before responding
+/// - `Disabled` - Model responds directly without showing reasoning process
+///
+/// ## Usage
+///
+/// ```rust,ignore
+/// let client = ChatCompletion::new(model, messages, api_key)
+///     .with_thinking(ThinkingType::Enabled);
+/// ```
+///
+/// ## Model Compatibility
+///
+/// Thinking capabilities are available only on models that implement the
+/// `ThinkEnable` trait, such as GLM-4.5 series models.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "type")]
 pub enum ThinkingType {
-    /// Enable thinking capabilities.
+    /// Enable thinking capabilities for enhanced reasoning.
+    ///
+    /// When enabled, the model will show its reasoning process step-by-step,
+    /// which can improve accuracy for complex logical or analytical tasks.
     Enabled,
-    /// Disable thinking capabilities.
+
+    /// Disable thinking capabilities for direct responses.
+    ///
+    /// When disabled, the model responds directly without showing intermediate
+    /// reasoning steps, resulting in faster responses and lower token usage.
     Disabled,
 }
 
-/// Defines the available tools that can be used by the assistant.
+/// Available tools that AI assistants can invoke during conversations.
 ///
-/// This enum specifies different categories of tools that the assistant can invoke
-/// during a conversation. Each variant contains a vector of specific tool configurations.
+/// This enum defines the different categories of external tools and capabilities
+/// that can be made available to AI models. Each tool type serves specific purposes
+/// and has its own configuration requirements.
 ///
-/// # Variants
+/// ## Tool Categories
 ///
-/// * `Function` - Custom functions that can be called with parameters
-/// * `Retrieval` - Access to retrieval/knowledge systems
-/// * `WebSearch` - Web search capabilities
-/// * `MCP` - Model Context Protocol tools
+/// ### Function Tools
+/// Custom user-defined functions that the AI can call with structured parameters.
+/// Useful for integrating external APIs, databases, or business logic.
+///
+/// ### Retrieval Tools
+/// Access to knowledge bases, document collections, or information retrieval systems.
+/// Enables the AI to query structured knowledge sources.
+///
+/// ### Web Search Tools
+/// Internet search capabilities for accessing current information.
+/// Allows the AI to perform web searches and retrieve up-to-date information.
+///
+/// ### MCP Tools
+/// Model Context Protocol tools for standardized tool integration.
+/// Provides a standardized interface for tool communication.
+///
+/// ## Usage
+///
+/// ```rust,ignore
+/// // Function tool
+/// let function_tool = Tools::Function {
+///     function: Function::new("get_weather", "Get weather data", parameters)
+/// };
+///
+/// // Web search tool
+/// let search_tool = Tools::WebSearch {
+///     web_search: WebSearch::new(SearchEngine::SearchPro)
+///         .with_enable(true)
+///         .with_count(10)
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum Tools {
-    /// Function calling tool with parameters.
+    /// Custom function calling tool with parameters.
+    ///
+    /// Allows the AI to invoke user-defined functions with structured arguments.
+    /// Functions must be pre-defined with JSON schemas for parameter validation.
     Function { function: Function },
-    /// Retrieval system access tools.
+
+    /// Knowledge retrieval system access tools.
+    ///
+    /// Provides access to knowledge bases, document collections, or other
+    /// structured information sources that the AI can query.
     Retrieval { retrieval: Retrieval },
-    /// Web search tools.
+
+    /// Web search capabilities for internet access.
+    ///
+    /// Enables the AI to perform web searches and access current information
+    /// from the internet. Supports various search engines and configurations.
     WebSearch { web_search: WebSearch },
-    /// Model Context Protocol tools.
+
+    /// Model Context Protocol (MCP) tools.
+    ///
+    /// Standardized tools that follow the Model Context Protocol specification,
+    /// providing a consistent interface for tool integration and communication.
     MCP { mcp: MCP },
 }
 

@@ -1,17 +1,60 @@
-//! Model type definitions for the API.
+//! # AI Model Type Definitions
 //!
-//! This module defines the various model types that can be used with the API,
-//! along with their associated traits and implementations.
+//! This module defines all available AI model types for the Zhipu AI API,
+//! along with their capabilities, message type bindings, and trait implementations.
+//!
+//! ## Model Categories
+//!
+//! ### Text Models
+//! - **GLM-4.5** - Advanced reasoning model with thinking capabilities
+//! - **GLM-4.5-Flash** - Optimized for speed and efficiency
+//! - **GLM-4.5-Air** - Lightweight model for cost-effective applications
+//! - **GLM-4.5-X** - Extended capabilities model
+//! - **GLM-4.5-AirX** - Ultra-lightweight variant
+//!
+//! ### Multimodal Models
+//! - **GLM-4.5V** - Vision-enabled model supporting images and videos
+//! - **GLM-4-Voice** - Voice-enabled model for audio interactions
+//!
+//! ## Model Capabilities
+//!
+//! | Model | Text | Vision | Voice | Thinking | Async |
+//! |-------|------|--------|--------|----------|--------|
+//! | GLM-4.5 | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.5-Flash | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.5-Air | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.5-X | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.5-AirX | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.5V | ✓ | ✓ | ✗ | ✗ | ✓ |
+//! | GLM-4-Voice | ✓ | ✗ | ✓ | ✗ | ✓ |
+//!
+//! ## Usage
+//!
+//! Models are used by creating instances and passing them to chat completion requests:
+//!
+//! ```rust,ignore
+//! use zai_rs::model::chat_models::*;
+//! use zai_rs::model::chat_message_types::*;
+//! use zai_rs::model::chat::data::ChatCompletion;
+//!
+//! let model = GLM4_5_flash {};
+//! let messages = TextMessage::user("Hello, how can you help me?");
+//! let client = ChatCompletion::new(model, messages, api_key);
+//! ```
 
 use super::traits::*;
 use crate::model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage};
 use crate::{define_model_type, impl_message_binding, impl_model_markers, impl_think_enable};
-// Define basic model types
+
+/// GLM-4.5: Advanced reasoning model with thinking capabilities.
+/// Supports text-based conversations and complex reasoning tasks.
 define_model_type!(GLM4_5, "glm-4.5");
 impl_think_enable!(GLM4_5);
 impl_message_binding!(GLM4_5, TextMessage);
 impl_model_markers!(GLM4_5: Chat, AsyncChat);
 
+/// GLM-4.5-Flash: Optimized for speed and efficiency.
+/// Provides fast responses while maintaining good quality.
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_flash,
@@ -21,6 +64,8 @@ impl_think_enable!(GLM4_5_flash);
 impl_message_binding!(GLM4_5_flash, TextMessage);
 impl_model_markers!(GLM4_5_flash: Chat, AsyncChat);
 
+/// GLM-4.5-Air: Lightweight model for cost-effective applications.
+/// Balances performance and resource usage for production deployments.
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_air,
@@ -30,6 +75,8 @@ impl_think_enable!(GLM4_5_air);
 impl_message_binding!(GLM4_5_air, TextMessage);
 impl_model_markers!(GLM4_5_air: Chat, AsyncChat);
 
+/// GLM-4.5-X: Extended capabilities model.
+/// Enhanced version with additional features and improved performance.
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_x,
@@ -39,6 +86,8 @@ impl_think_enable!(GLM4_5_x);
 impl_message_binding!(GLM4_5_x, TextMessage);
 impl_model_markers!(GLM4_5_x: Chat, AsyncChat);
 
+/// GLM-4.5-AirX: Ultra-lightweight variant.
+/// Minimal resource usage for edge computing and mobile applications.
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_airx,
@@ -48,6 +97,8 @@ impl_think_enable!(GLM4_5_airx);
 impl_message_binding!(GLM4_5_airx, TextMessage);
 impl_model_markers!(GLM4_5_airx: Chat, AsyncChat);
 
+/// GLM-4.5V: Vision-enabled model supporting images and videos.
+/// Multimodal model that can process visual content alongside text.
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5v,
@@ -56,6 +107,8 @@ define_model_type!(
 impl_message_binding!(GLM4_5v, VisionMessage);
 impl_model_markers!(GLM4_5v: Chat, AsyncChat);
 
+/// GLM-4-Voice: Voice-enabled model for audio interactions.
+/// Supports both text and audio input/output for voice-based applications.
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_voice,

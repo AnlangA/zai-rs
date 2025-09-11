@@ -1,3 +1,36 @@
+//! # Streaming Extensions for Chat-like Endpoints
+//!
+//! This module provides typed streaming capabilities for chat completion APIs
+//! that return Server-Sent Events (SSE) with `ChatStreamResponse` chunks.
+//!
+//! ## Features
+//!
+//! - **Callback-based API** - Simple async closure interface for processing chunks
+//! - **Stream-based API** - Composable, testable, and reusable stream interface
+//! - **Type-safe parsing** - Automatic deserialization of SSE data chunks
+//! - **Error handling** - Comprehensive error propagation and handling
+//!
+//! ## Usage Patterns
+//!
+//! ### Callback-based Processing
+//! ```rust,ignore
+//! client.stream_for_each(|chunk| async move {
+//!     println!("Received: {:?}", chunk);
+//!     Ok(())
+//! }).await?;
+//! ```
+//!
+//! ### Stream-based Processing
+//! ```rust,ignore
+//! let mut stream = client.to_stream().await?;
+//! while let Some(result) = stream.next().await {
+//!     match result {
+//!         Ok(chunk) => println!("Chunk: {:?}", chunk),
+//!         Err(e) => eprintln!("Error: {}", e),
+//!     }
+//! }
+//! ```
+
 use crate::client::http::HttpClient;
 use crate::model::chat_stream_response::ChatStreamResponse;
 use crate::model::traits::SseStreamable;
@@ -5,9 +38,37 @@ use futures::{stream, Stream, StreamExt};
 use log::info;
 use std::pin::Pin;
 
-// A shared, typed streaming extension for "chat-like" endpoints that stream ChatStreamResponse
+/// Streaming extension trait for chat-like endpoints.
+///
+/// This trait provides two complementary APIs for processing streaming responses:
+/// 1. **Callback-based** - Simple async closure interface
+/// 2. **Stream-based** - Composable stream interface for advanced usage
+///
+/// Both APIs handle SSE protocol parsing, JSON deserialization, and error propagation.
 pub trait StreamChatLikeExt: SseStreamable + HttpClient {
-    // 1) Async-closure callback API (simple and friendly)
+    /// Processes streaming responses using an async callback function.
+    ///
+    /// This method provides a simple interface for handling streaming chat responses.
+    /// Each successfully parsed chunk is passed to the provided callback function.
+    ///
+    /// ## Arguments
+    ///
+    /// * `on_chunk` - Async callback function that processes each `ChatStreamResponse` chunk
+    ///
+    /// ## Returns
+    ///
+    /// Result indicating success or failure of the streaming operation
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// client.stream_for_each(|chunk| async move {
+    ///     if let Some(content) = &chunk.choices[0].delta.content {
+    ///         print!("{}", content);
+    ///     }
+    ///     Ok(())
+    /// }).await?;
+    /// ```
     fn stream_for_each<'a, F, Fut>(
         &'a mut self,
         mut on_chunk: F,
@@ -56,7 +117,25 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
         }
     }
 
-    // 2) Stream API（可组合/测试/复用友好）
+    /// Converts the streaming response into a composable Stream.
+    ///
+    /// This method returns a `Stream` that yields `ChatStreamResponse` chunks,
+    /// enabling advanced stream processing operations like filtering, mapping,
+    /// and combination with other streams.
+    ///
+    /// ## Returns
+    ///
+    /// A future that resolves to a `Stream` of `Result<ChatStreamResponse>` items
+    ///
+    /// ## Example
+    ///
+    /// ```rust,ignore
+    /// let stream = client.to_stream().await?;
+    /// let collected: Vec<_> = stream
+    ///     .filter_map(|result| result.ok())
+    ///     .collect()
+    ///     .await;
+    /// ```
     fn to_stream<'a>(
         &'a mut self,
     ) -> impl core::future::Future<

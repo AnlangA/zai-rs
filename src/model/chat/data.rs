@@ -1,3 +1,21 @@
+//! # Chat Completion Data Models
+//!
+//! This module defines the core data structures for chat completion requests,
+//! implementing type-safe chat interactions with the Zhipu AI API.
+//!
+//! ## Type-State Pattern
+//!
+//! The implementation uses Rust's type system to enforce compile-time guarantees
+//! about streaming capabilities through phantom types (`StreamOn`/`StreamOff`).
+//!
+//! ## Features
+//!
+//! - **Type-safe model binding** - Compile-time verification of model-message compatibility
+//! - **Builder pattern** - Fluent API for request construction
+//! - **Streaming support** - Type-state based streaming capability enforcement
+//! - **Tool integration** - Support for function calling and tool usage
+//! - **Parameter control** - Temperature, top-p, max tokens, and other generation parameters
+
 use super::super::chat_base_request::*;
 use super::super::tools::*;
 use super::super::traits::*;
@@ -7,6 +25,24 @@ use std::marker::PhantomData;
 
 // Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
 
+/// Type-safe chat completion request structure.
+///
+/// This struct represents a chat completion request with compile-time guarantees
+/// for model compatibility and streaming capabilities.
+///
+/// ## Type Parameters
+///
+/// - `N` - The AI model type (must implement `ModelName + Chat`)
+/// - `M` - The message type (must form a valid bound with the model)
+/// - `S` - Stream state (`StreamOn` or `StreamOff`, defaults to `StreamOff`)
+///
+/// ## Examples
+///
+/// ```rust,ignore
+/// let model = GLM4_5_flash {};
+/// let messages = TextMessage::user("Hello, how are you?");
+/// let request = ChatCompletion::new(model, messages, api_key);
+/// ```
 pub struct ChatCompletion<N, M, S = StreamOff>
 where
     N: ModelName + Chat,
@@ -14,8 +50,13 @@ where
     ChatBody<N, M>: Serialize,
     S: StreamState,
 {
+    /// API key for authentication with the Zhipu AI service.
     pub key: String,
+
+    /// The request body containing model, messages, and parameters.
     body: ChatBody<N, M>,
+
+    /// Phantom data to track streaming capability at compile time.
     _stream: PhantomData<S>,
 }
 
@@ -25,6 +66,17 @@ where
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
+    /// Creates a new non-streaming chat completion request.
+    ///
+    /// ## Arguments
+    ///
+    /// * `model` - The AI model to use for completion
+    /// * `messages` - The conversation messages
+    /// * `key` - API key for authentication
+    ///
+    /// ## Returns
+    ///
+    /// A new `ChatCompletion` instance configured for non-streaming requests.
     pub fn new(model: N, messages: M, key: String) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
         ChatCompletion {
@@ -34,11 +86,24 @@ where
         }
     }
 
+    /// Gets mutable access to the request body for further customization.
+    ///
+    /// This method allows modification of request parameters after initial creation.
     pub fn body_mut(&mut self) -> &mut ChatBody<N, M> {
         &mut self.body
     }
 
-    // Fluent, builder-style forwarding methods to mutate inner ChatBody and return Self
+    /// Adds additional messages to the conversation.
+    ///
+    /// This method provides a fluent interface for building conversation context.
+    ///
+    /// ## Arguments
+    ///
+    /// * `messages` - Additional messages to append to the conversation
+    ///
+    /// ## Returns
+    ///
+    /// Self with the updated message collection, enabling method chaining.
     pub fn add_messages(mut self, messages: M) -> Self {
         self.body = self.body.add_messages(messages);
         self
@@ -94,7 +159,14 @@ where
         self
     }
 
-    // Type-state toggles
+    /// Enables streaming for this chat completion request.
+    ///
+    /// This method transitions the request to streaming mode, allowing
+    /// real-time response processing through Server-Sent Events (SSE).
+    ///
+    /// ## Returns
+    ///
+    /// A new `ChatCompletion` instance with streaming enabled (`StreamOn`).
     pub fn enable_stream(mut self) -> ChatCompletion<N, M, StreamOn> {
         self.body.stream = Some(true);
         ChatCompletion {
@@ -103,6 +175,15 @@ where
             _stream: PhantomData,
         }
     }
+
+    /// Disables streaming for this chat completion request.
+    ///
+    /// This method ensures the request will receive a complete response
+    /// rather than streaming chunks.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ChatCompletion` instance with streaming disabled (`StreamOff`).
     pub fn disable_stream(mut self) -> ChatCompletion<N, M, StreamOff> {
         self.body.stream = Some(false);
         ChatCompletion {
@@ -124,6 +205,7 @@ where
     type ApiUrl = &'static str;
     type ApiKey = String;
 
+    /// Returns the Zhipu AI chat completions API endpoint URL.
     fn api_url(&self) -> &Self::ApiUrl {
         &"https://open.bigmodel.cn/api/paas/v4/chat/completions"
     }
@@ -135,6 +217,10 @@ where
     }
 }
 
+/// Enables Server-Sent Events (SSE) streaming for streaming-enabled chat completions.
+///
+/// This implementation allows streaming chat completions to be processed
+/// incrementally as responses arrive from the API.
 impl<N, M> crate::model::traits::SseStreamable for ChatCompletion<N, M, StreamOn>
 where
     N: ModelName + Serialize + Chat,
@@ -143,7 +229,10 @@ where
 {
 }
 
-// Enable typed streaming extension methods for ChatCompletion<..., StreamOn>
+/// Provides streaming extension methods for streaming-enabled chat completions.
+///
+/// This implementation enables the use of streaming-specific methods
+/// for processing chat responses in real-time.
 impl<N, M> crate::model::stream_ext::StreamChatLikeExt for ChatCompletion<N, M, StreamOn>
 where
     N: ModelName + Serialize + Chat,
