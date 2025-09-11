@@ -103,7 +103,13 @@ path = "examples/rerank.rs"
 name = "tokenizer"
 path = "examples/tokenizer.rs"
 
+[[example]]
+name = "simple_moderation"
+path = "examples/simple_moderation.rs"
 
+[[example]]
+name = "file_parser_demo"
+path = "examples/file_parser_demo.rs"
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
@@ -121,3 +127,4 @@ chrono = "0.4"
 async-trait = "0.1"
 thiserror = "1"
 futures = "0.3"
+toml = "0.8"

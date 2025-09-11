@@ -21,6 +21,9 @@
 //! - [`gen_image`] - Image generation
 //! - [`gen_video_async`] - Video generation (async)
 //!
+//! ### Content Safety
+//! - [`moderation`] - Content moderation and safety analysis
+//!
 //! ### Voice & Audio
 //! - [`voice_clone`] - Voice cloning capabilities
 //! - [`voice_list`] - Voice management and listing
@@ -41,6 +44,7 @@
 //! - **Model Validation** - Built-in data validation
 //! - **Streaming Support** - Real-time response processing
 //! - **Multimodal Support** - Text, vision, voice, and audio capabilities
+//! - **Content Safety** - Automated content moderation and risk detection
 //! - **Tool Integration** - Function calling and external tool support
 //!
 //! ## Usage Example
@@ -67,6 +71,7 @@ pub mod chat_stream_response;
 pub mod gen_image;
 pub mod gen_video_async;
 pub mod model_validate;
+pub mod moderation;
 pub mod stream_ext;
 pub mod text_embedded;
 pub mod text_rerank;
@@ -83,6 +88,7 @@ pub mod voice_list;
 pub use async_chat::data::AsyncChatCompletion;
 pub use async_chat_get::data::AsyncChatGetRequest;
 pub use chat::data::ChatCompletion;
+pub use moderation::data::Moderation;
 pub use stream_ext::StreamChatLikeExt;
 
 pub use chat_message_types::*;
