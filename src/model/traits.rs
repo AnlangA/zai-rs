@@ -16,6 +16,8 @@ pub trait AudioToText {}
 
 pub trait TextToSpeech {}
 
+pub trait VoiceClone {}
+
 /// Define a basic model type with core implementations (Into<String>, Serialize, ModelName).
 /// Usage examples:
 ///   define_model_type!(GLM4_5, "glm-4.5");

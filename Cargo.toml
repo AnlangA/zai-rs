@@ -45,6 +45,16 @@ path = "examples/gen_image.rs"
 name = "tts_speech"
 path = "examples/tts_speech.rs"
 
+[[example]]
+name = "voice_clone"
+path = "examples/voice_clone.rs"
+
+[[example]]
+name = "voice_list"
+path = "examples/voice_list.rs"
+
+
+
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1"
