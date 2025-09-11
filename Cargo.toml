@@ -83,6 +83,26 @@ name = "files_content"
 path = "examples/files_content.rs"
 
 
+[[example]]
+name = "web_search"
+path = "examples/web_search.rs"
+
+[[example]]
+name = "audio_transcribe"
+path = "examples/audio_transcribe.rs"
+
+[[example]]
+name = "embedding"
+path = "examples/embedding.rs"
+
+[[example]]
+name = "rerank"
+path = "examples/rerank.rs"
+
+[[example]]
+name = "tokenizer"
+path = "examples/tokenizer.rs"
+
 
 
 [dependencies]

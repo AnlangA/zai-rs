@@ -68,17 +68,14 @@ pub mod gen_image;
 pub mod gen_video_async;
 pub mod model_validate;
 pub mod stream_ext;
+pub mod text_embedded;
+pub mod text_rerank;
+pub mod text_tokenizer;
 pub mod tools;
 pub mod traits;
 pub mod voice_clone;
 pub mod voice_delete;
 pub mod voice_list;
-pub mod text_embedded;
-pub mod text_rerank;
-pub mod text_tokenizer;
-
-
-
 
 // Avoid wildcard re-exports to prevent name collisions (e.g., `data`)
 

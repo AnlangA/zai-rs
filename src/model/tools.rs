@@ -4,6 +4,7 @@
 //! including function calling, retrieval systems, web search, and MCP tools.
 
 use super::model_validate::validate_json_schema_value;
+use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyFilter};
 use serde::Serialize;
 use std::collections::HashMap;
 use validator::*;
@@ -198,6 +199,14 @@ impl Retrieval {
 
 /// Configuration for web search tool capabilities.
 ///
+/// The order in which search results are returned.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultSequence {
+    Before,
+    After,
+}
+
 /// This structure represents a web search tool that can perform internet searches.
 /// Fields mirror the external web_search schema.
 #[derive(Debug, Clone, Serialize, Validate)]
@@ -326,49 +335,6 @@ impl WebSearch {
         self
     }
 }
-
-/// Supported search engines.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SearchEngine {
-    SearchStd,
-    SearchPro,
-    SearchProSogou,
-    SearchProQuark,
-}
-
-/// Search time range filter.
-#[derive(Debug, Clone, Serialize)]
-pub enum SearchRecencyFilter {
-    #[serde(rename = "oneDay")]
-    OneDay,
-    #[serde(rename = "oneWeek")]
-    OneWeek,
-    #[serde(rename = "oneMonth")]
-    OneMonth,
-    #[serde(rename = "oneYear")]
-    OneYear,
-    #[serde(rename = "noLimit")]
-    NoLimit,
-}
-
-/// Search snippet size.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContentSize {
-    Medium,
-    High,
-}
-
-/// The order in which search results are returned.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResultSequence {
-    Before,
-    After,
-}
-
-/// Configuration for Model Context Protocol (MCP) tools.
 ///
 /// Represents the MCP connection configuration. When connecting to Zhipu's MCP server
 /// using an MCP code, fill `server_label` with that code and leave `server_url` empty.
