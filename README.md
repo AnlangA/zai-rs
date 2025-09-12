@@ -1,0 +1,50 @@
+- 模型API
+    - [x] POST 对话补全
+    - [x] POST 对话补全(异步)
+    - [x] POST 生成视频(异步)
+    - [x] 查询异步结果 GET
+    - [x] POST 图像生成
+    - [x] POST 语音转文本
+    - [x] POST 文本转语音
+    - [x] POST 音色复刻
+    - [x] GET 音色列表
+    - [x] POST 删除音色
+    - [x] POST 文本嵌入
+    - [x] POST 文本重排序
+    - [x] POST 文本分词器
+- 工具 API
+    - [x] POST 网络搜索
+    - [x] POST 内容安全
+    - [x] POST 文件解析
+    - [x] GET 解析结果
+- Agent API
+    - [ ] POST 智能体对话
+    - [ ] POST 异步结果
+    - [ ] POST 对话历史
+- 文件 API
+    - [x] GET 文件列表
+    - [x] POST 上传文件
+    - [x] DEL 删除文件
+    - [x] GET 文件内容
+
+- 批处理API
+    - [x] GET 列出批处理任务
+    - [x] POST 创建批处理任务
+    - [x] GET 检索批处理任务
+    - [x] POST 取消批处理任务
+- 知识库API
+    - [x] GET 知识库列表
+    - [x] POST 创建知识库
+    - [x] GET 知识库详情
+    - [x] PUT 编辑知识库
+    - [x] DEL 删除知识库
+    - [x] GET 知识库使用量
+    - [x] GET 文档列表
+    - [x] POST 上传文件文档
+    - [x] POST 上传URL文档
+    - [x] POST 解析文档图片
+    - [x] GET 文档详情
+    - [x] DEL 删除文档
+    - [x] POST 重新向量化
+- 实时API
+    - [ ] 音视频通话
