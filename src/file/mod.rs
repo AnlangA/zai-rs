@@ -27,29 +27,7 @@
 //!
 //! ## Usage Examples
 //!
-//! ### Uploading a File
-//! ```rust,ignore
-//! use zai_rs::file::upload::FileUpload;
 //!
-//! let upload = FileUpload::new(file_path, api_key);
-//! let response = upload.upload().await?;
-//! ```
-//!
-//! ### Listing Files
-//! ```rust,ignore
-//! use zai_rs::file::list::FileList;
-//!
-//! let list = FileList::new(api_key);
-//! let files = list.list().await?;
-//! ```
-//!
-//! ### Retrieving File Content
-//! ```rust,ignore
-//! use zai_rs::file::content::FileContent;
-//!
-//! let content = FileContent::new(file_id, api_key);
-//! let data = content.get().await?;
-//! ```
 
 pub mod request;
 pub mod response;

@@ -11,17 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "1757561531_ec561569199641b3a5c556503a72cb79".to_string());
 
-    let req = FileDeleteRequest::new(key, file_id);
-    let resp = req.delete().await?;
-
-    let status = resp.status();
-    let text = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
-        eprintln!("Request failed: {}\n{}", status, text);
-        return Ok(());
-    }
-
-    let body: FileDeleteResponse = serde_json::from_str(&text)?;
+    let body: FileDeleteResponse = FileDeleteRequest::new(key, file_id).send().await?;
     println!("{:#?}", body);
 
     Ok(())
