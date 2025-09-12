@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     let mut attempt = 0u32;
     let max_attempts = 60u32;
     let final_batch = loop {
-        let req = BatchesRetrieveRequest::new(key.clone(), batch_id.clone());
+        let req = BatchesRetrieveRequest::new(key.clone(), batch_id);
         let batch: BatchesRetrieveResponse = req.send().await?;
         let status = batch.status.clone().unwrap_or_else(|| "unknown".to_string());
         println!("poll[{}]: status={}", attempt, status);

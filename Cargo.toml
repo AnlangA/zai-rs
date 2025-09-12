@@ -125,6 +125,21 @@ path = "examples/batches_cancel.rs"
 
 
 
+[[example]]
+name = "knowledge_list"
+path = "examples/knowledge_list.rs"
+
+
+
+[[example]]
+name = "knowledge_create"
+path = "examples/knowledge_create.rs"
+
+
+
+[[example]]
+name = "knowledge_retrieve"
+path = "examples/knowledge_retrieve.rs"
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }

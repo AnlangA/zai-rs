@@ -50,6 +50,7 @@
 pub mod client;
 pub mod file;
 pub mod batches;
+pub mod knowledge;
 
 pub mod model;
 pub mod tool;
