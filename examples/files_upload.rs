@@ -1,4 +1,3 @@
-use zai_rs::client::http::*;
 use zai_rs::file::*;
 
 #[tokio::main]
@@ -20,15 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // .with_content_type("application/pdf")
         ;
 
-    let resp = client.post().await?;
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
-        return Ok(());
-    }
-
-    let body: FileObject = resp.json().await?;
+    let body: FileObject = client.send().await?;
     println!(
         "Uploaded file: id={:?} filename={:?} bytes={:?} purpose={:?}",
         body.id, body.filename, body.bytes, body.purpose

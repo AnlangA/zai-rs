@@ -111,6 +111,21 @@ path = "examples/simple_moderation.rs"
 name = "file_parser_demo"
 path = "examples/file_parser_demo.rs"
 
+[[example]]
+name = "batches_create"
+path = "examples/batches_create.rs"
+
+[[example]]
+name = "batches_retrieve"
+path = "examples/batches_retrieve.rs"
+
+[[example]]
+name = "batches_cancel"
+path = "examples/batches_cancel.rs"
+
+
+
+
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1"

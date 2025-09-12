@@ -1,4 +1,3 @@
-use zai_rs::client::http::*;
 use zai_rs::file::*;
 
 #[tokio::main]
@@ -10,21 +9,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "1757561531_ec561569199641b3a5c556503a72cb79".to_string());
 
-    let req = FileContentRequest::new(key, file_id.clone());
-    let resp = req.get().await?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
-        return Ok(());
-    }
-
-    let bytes = resp.bytes().await?;
-    std::fs::create_dir_all("out").ok();
+    // New: directly save to a file via send_to()
     let out_path = format!("out/{}_content.bin", file_id);
-    std::fs::write(&out_path, &bytes)?;
-    println!("Saved {} bytes to {}", bytes.len(), out_path);
+    let written = FileContentRequest::new(key, file_id.clone()).send_to(&out_path).await?;
 
+    println!("Saved {} bytes to {}", written, out_path);
     Ok(())
 }

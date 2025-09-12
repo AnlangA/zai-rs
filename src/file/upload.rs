@@ -38,6 +38,16 @@ impl FileUploadRequest {
     }
 }
 
+impl FileUploadRequest {
+    /// Send the upload request and parse typed response (`FileObject`).
+    pub async fn send(&self) -> anyhow::Result<super::response::FileObject> {
+        let resp: reqwest::Response = self.post().await?;
+        let parsed = resp.json::<super::response::FileObject>().await?;
+        Ok(parsed)
+    }
+}
+
+
 impl HttpClient for FileUploadRequest {
     type Body = (); // unused
     type ApiUrl = &'static str;
