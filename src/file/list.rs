@@ -46,6 +46,24 @@ impl FileListRequest {
         self.rebuild_url(&q);
         self
     }
+    /// Send request and parse typed response.
+    pub async fn send(&self) -> anyhow::Result<super::response::FileListResponse> {
+        let resp = self.get().await?;
+        let parsed = resp.json::<super::response::FileListResponse>().await?;
+        Ok(parsed)
+    }
+
+    /// Validate query, rebuild URL and send in one call.
+    pub async fn send_with_query(
+        mut self,
+        q: &super::request::FileListQuery,
+    ) -> anyhow::Result<super::response::FileListResponse> {
+        use validator::Validate;
+        q.validate()?;
+        self.rebuild_url(q);
+        self.send().await
+    }
+
 }
 
 impl HttpClient for FileListRequest {

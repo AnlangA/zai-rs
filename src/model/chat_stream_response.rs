@@ -79,7 +79,7 @@ where
 pub struct ChatStreamResponse {
     /// Unique identifier for the streaming session.
     ///
-    /// May be a string or number in the wire format, converted to Option<String>.
+    /// May be a string or number in the wire format, converted to `Option<String>`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         deserialize_with = "de_opt_string_from_number_or_string"

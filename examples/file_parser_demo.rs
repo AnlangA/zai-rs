@@ -39,7 +39,7 @@ The parser should extract and return the text content.
     println!("Waiting for parsing result...");
 
     match result_request
-        .wait_for_result(FormatType::Text, 100, 3)
+        .wait_for_result(FormatType::Text, 1000, 3)
         .await
     {
         Ok(result_response) => {

@@ -1,10 +1,49 @@
+//! # Chat Streaming Example
+//!
+//! This example demonstrates how to use the ZAI-RS SDK for streaming chat completions
+//! using Server-Sent Events (SSE) with the Zhipu AI API.
+//!
+//! ## Features Demonstrated
+//!
+//! - Streaming chat completions with real-time responses
+//! - Server-Sent Events (SSE) processing
+//! - Asynchronous response handling
+//! - Token-by-token output printing
+//! - Finish reason tracking
+//!
+//! ## Prerequisites
+//!
+//! Set the `ZHIPU_API_KEY` environment variable with your API key:
+//! ```bash
+//! export ZHIPU_API_KEY="your-api-key-here"
+//! ```
+//!
+//! ## Running the Example
+//!
+//! ```bash
+//! cargo run --example chat_stream
+//! ```
+//!
+//! ## How It Works
+//!
+//! 1. Creates a streaming chat request with the GLM-4.5 model
+//! 2. Enables streaming mode to receive responses as they are generated
+//! 3. Processes each SSE chunk as it arrives from the server
+//! 4. Prints response content token-by-token for real-time feedback
+//! 5. Tracks and displays the finish reason when the response completes
+//!
+//! ## Output
+//!
+//! The example will print the AI's response character by character as it's generated,
+//! followed by the finish reason (e.g., "stop", "length", etc.).
+
 use std::io::Write;
 use std::sync::Arc;
 use tokio;
 use tokio::sync::Mutex;
 use zai_rs::model::*; // includes ChatStreamResponse re-export
 
-// Stream chat completions as server-sent events (SSE) and print each data chunk as it arrives.
+/// Stream chat completions as server-sent events (SSE) and print each data chunk as it arrives.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1) Read API key from environment

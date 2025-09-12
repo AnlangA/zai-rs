@@ -2,7 +2,7 @@
 //!
 //! These utilities help extract tool call requests from LLM responses that follow
 //! OpenAI/Zhipu-style schemas where tool calls are returned under
-//! choices[*].message.tool_calls.
+//! `choices[*].message.tool_calls`.
 
 use serde_json::Value;
 
