@@ -43,13 +43,13 @@ pub trait Bounded {}
 
 /// Indicates that a model supports synchronous chat completion.
 ///
-/// Models implementing this trait can be used with the [`ChatCompletion`]
+/// Models implementing this trait can be used with the chat completion API
 /// API for real-time conversational interactions.
 pub trait Chat {}
 
 /// Indicates that a model supports asynchronous chat completion.
 ///
-/// Models implementing this trait can be used with the [`AsyncChatCompletion`]
+/// Models implementing this trait can be used with the async chat completion API
 /// API for queued, background processing of conversational requests.
 pub trait AsyncChat {}
 

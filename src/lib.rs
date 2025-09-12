@@ -19,7 +19,7 @@
 //!
 //! - [`client`] — HTTP client and networking
 //! - [`model`] — Data models, API request/response types
-//! - [`file`] — File management features
+//! - [`mod@file`] — File management features
 //! - [`batches`] — Batch processing endpoints (list batches)
 //! - [`toolkits`] — Tool calling and execution framework
 //!

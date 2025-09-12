@@ -150,7 +150,7 @@ pub struct Message {
 
     /// Current dialog content.
     /// If function/tool calling is used, this may be null; otherwise contains the inference result.
-    /// For some models, content may include thinking traces within <think> tags, with final output outside.
+    /// For some models, content may include thinking traces within `<think>` tags, with final output outside.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<serde_json::Value>,
 

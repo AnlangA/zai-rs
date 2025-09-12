@@ -429,7 +429,7 @@ impl ToolExecutor {
     /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when present
     ///
     /// Returns:
-    /// - Vec<TextMessage> ready to be appended to ChatCompletion as tool messages.
+    /// - `Vec<TextMessage>` ready to be appended to ChatCompletion as tool messages.
     pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         let mut set = JoinSet::new();
         for tc in calls {
