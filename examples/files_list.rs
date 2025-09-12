@@ -7,8 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Build query (all optional)
-    let query = FileListQuery::new()
-        .with_purpose(FilePurpose::FileExtract);
+    let query = FileListQuery::new().with_purpose(FilePurpose::FileExtract);
 
     let list = FileListRequest::new(key.clone()).with_query(query);
     let body: FileListResponse = list.send().await?;

@@ -37,7 +37,9 @@ where
         Ok(())
     }
 
-    pub async fn send(&self) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse> {
+    pub async fn send(
+        &self,
+    ) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse> {
         self.validate()?;
         let resp = self.get().await?;
         let parsed = resp
@@ -45,7 +47,6 @@ where
             .await?;
         Ok(parsed)
     }
-
 }
 
 impl<N> HttpClient for AsyncChatGetRequest<N>

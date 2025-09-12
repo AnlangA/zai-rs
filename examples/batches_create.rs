@@ -5,8 +5,6 @@ use serde_json::json;
 use zai_rs::batches::*;
 use zai_rs::file::*;
 
-
-
 fn make_jsonl_line(custom_id: &str, user_content: &str) -> String {
     // Build a single request line for /v4/chat/completions
     let v = json!({
@@ -35,11 +33,16 @@ async fn main() -> anyhow::Result<()> {
     let mut f = File::create(path)?;
     let lines = vec![
         make_jsonl_line("request-1", "订单处理速度太慢，等了很久才发货。"),
-        make_jsonl_line("request-2", "商品有点小瑕疵，不过客服处理得很快，总体满意。"),
+        make_jsonl_line(
+            "request-2",
+            "商品有点小瑕疵，不过客服处理得很快，总体满意。",
+        ),
         make_jsonl_line("request-3", "这款产品性价比很高，非常满意。"),
         make_jsonl_line("request-4", "说明书写得不清楚，看了半天也不知道怎么用。"),
     ];
-    for line in lines { writeln!(f, "{}", line)?; }
+    for line in lines {
+        writeln!(f, "{}", line)?;
+    }
 
     // Step 2: Upload the .jsonl file with purpose=batch
     let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
@@ -63,4 +66,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

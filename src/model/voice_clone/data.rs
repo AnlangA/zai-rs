@@ -4,7 +4,6 @@ use crate::client::http::HttpClient;
 use serde::Serialize;
 use validator::Validate;
 
-
 /// Voice clone request wrapper using JSON
 pub struct VoiceCloneRequest<N>
 where
@@ -54,9 +53,7 @@ where
     pub async fn send(&self) -> anyhow::Result<super::response::VoiceCloneResponse> {
         self.validate()?;
         let resp = self.post().await?;
-        let parsed = resp
-            .json::<super::response::VoiceCloneResponse>()
-            .await?;
+        let parsed = resp.json::<super::response::VoiceCloneResponse>().await?;
         Ok(parsed)
     }
 }

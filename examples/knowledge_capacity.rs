@@ -7,7 +7,10 @@ async fn main() -> anyhow::Result<()> {
 
     let resp: KnowledgeCapacityResponse = KnowledgeCapacityRequest::new(key).send().await?;
 
-    println!("code={:?} message={:?} timestamp={:?}", resp.code, resp.message, resp.timestamp);
+    println!(
+        "code={:?} message={:?} timestamp={:?}",
+        resp.code, resp.message, resp.timestamp
+    );
     if let Some(data) = &resp.data {
         if let Some(used) = &data.used {
             println!("used: words={:?} bytes={:?}", used.word_num, used.length);
@@ -18,4 +21,3 @@ async fn main() -> anyhow::Result<()> {
     }
     Ok(())
 }
-

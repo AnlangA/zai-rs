@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::client::http::HttpClient;
 use super::create::{BackgroundColor, EmbeddingId, KnowledgeIcon};
+use crate::client::http::HttpClient;
 
 /// Update body for editing a knowledge base
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
@@ -61,22 +61,49 @@ impl KnowledgeUpdateRequest {
             "https://open.bigmodel.cn/api/llm-application/open/knowledge/{}",
             id.as_ref()
         );
-        Self { key, url, body: UpdateKnowledgeBody::default() }
+        Self {
+            key,
+            url,
+            body: UpdateKnowledgeBody::default(),
+        }
     }
 
     /// Setters to update individual fields
-    pub fn with_embedding_id(mut self, id: EmbeddingId) -> Self { self.body.embedding_id = Some(id); self }
-    pub fn with_name(mut self, name: impl Into<String>) -> Self { self.body.name = Some(name.into()); self }
-    pub fn with_description(mut self, desc: impl Into<String>) -> Self { self.body.description = Some(desc.into()); self }
-    pub fn with_background(mut self, bg: BackgroundColor) -> Self { self.body.background = Some(bg); self }
-    pub fn with_icon(mut self, icon: KnowledgeIcon) -> Self { self.body.icon = Some(icon); self }
-    pub fn with_callback_url(mut self, url: impl Into<String>) -> Self { self.body.callback_url = Some(url.into()); self }
-    pub fn with_callback_header(mut self, headers: HashMap<String, String>) -> Self { self.body.callback_header = Some(headers); self }
+    pub fn with_embedding_id(mut self, id: EmbeddingId) -> Self {
+        self.body.embedding_id = Some(id);
+        self
+    }
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.body.name = Some(name.into());
+        self
+    }
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.body.description = Some(desc.into());
+        self
+    }
+    pub fn with_background(mut self, bg: BackgroundColor) -> Self {
+        self.body.background = Some(bg);
+        self
+    }
+    pub fn with_icon(mut self, icon: KnowledgeIcon) -> Self {
+        self.body.icon = Some(icon);
+        self
+    }
+    pub fn with_callback_url(mut self, url: impl Into<String>) -> Self {
+        self.body.callback_url = Some(url.into());
+        self
+    }
+    pub fn with_callback_header(mut self, headers: HashMap<String, String>) -> Self {
+        self.body.callback_header = Some(headers);
+        self
+    }
 
     /// Validate and send the update request. Requires at least one field set.
     pub async fn send(&self) -> anyhow::Result<KnowledgeUpdateResponse> {
         if self.body.is_empty() {
-            return Err(anyhow::anyhow!("update body is empty; set at least one field"));
+            return Err(anyhow::anyhow!(
+                "update body is empty; set at least one field"
+            ));
         }
         self.body.validate()?;
         let resp = self.put().await?;
@@ -85,7 +112,9 @@ impl KnowledgeUpdateRequest {
     }
 
     /// Perform HTTP PUT with JSON body and error handling similar to other clients
-    pub fn put(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+    pub fn put(
+        &self,
+    ) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
         let url = self.url.clone();
         let key = self.key.clone();
         let body = self.body.clone();
@@ -105,9 +134,14 @@ impl KnowledgeUpdateRequest {
             // Non-success: try parse standard error envelope {"error": {code, message}}
             let text = resp.text().await.unwrap_or_default();
             #[derive(serde::Deserialize)]
-            struct ErrEnv { error: ErrObj }
+            struct ErrEnv {
+                error: ErrObj,
+            }
             #[derive(serde::Deserialize)]
-            struct ErrObj { code: serde_json::Value, message: String }
+            struct ErrObj {
+                code: serde_json::Value,
+                message: String,
+            }
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
                 return Err(anyhow::anyhow!(
                     "HTTP {} {} | code={} | message={}",
@@ -132,16 +166,24 @@ impl HttpClient for KnowledgeUpdateRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
 
 /// Update response envelope without data
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct KnowledgeUpdateResponse {
-    #[serde(skip_serializing_if = "Option::is_none")] pub code: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub timestamp: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
 }
-

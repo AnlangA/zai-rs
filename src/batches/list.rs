@@ -22,7 +22,10 @@ pub struct BatchesListQuery {
 impl BatchesListQuery {
     /// Create an empty query (no filters)
     pub fn new() -> Self {
-        Self { after: None, limit: None }
+        Self {
+            after: None,
+            limit: None,
+        }
     }
 
     /// Set the pagination cursor
@@ -52,7 +55,11 @@ impl BatchesListRequest {
     /// Create a request targeting the batches list endpoint
     pub fn new(key: String) -> Self {
         let url = "https://open.bigmodel.cn/api/paas/v4/batches".to_string();
-        Self { key, url, _body: () }
+        Self {
+            key,
+            url,
+            _body: (),
+        }
     }
 
     /// Rebuild URL with query parameters
@@ -89,9 +96,15 @@ impl HttpClient for BatchesListRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self._body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self._body
+    }
 }
 
 /// Response for listing batch processing tasks
@@ -125,4 +138,3 @@ pub enum ListObject {
     /// List marker
     List,
 }
-

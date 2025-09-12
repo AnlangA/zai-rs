@@ -11,7 +11,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // New: directly save to a file via send_to()
     let out_path = format!("out/{}_content.bin", file_id);
-    let written = FileContentRequest::new(key, file_id.clone()).send_to(&out_path).await?;
+    let written = FileContentRequest::new(key, file_id.clone())
+        .send_to(&out_path)
+        .await?;
 
     println!("Saved {} bytes to {}", written, out_path);
     Ok(())

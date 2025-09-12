@@ -34,7 +34,7 @@
 use crate::client::http::HttpClient;
 use crate::model::chat_stream_response::ChatStreamResponse;
 use crate::model::traits::SseStreamable;
-use futures::{stream, Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use log::info;
 use std::pin::Pin;
 
@@ -182,7 +182,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                     match s.next().await {
                         Some(Ok(bytes)) => buf.extend_from_slice(&bytes),
                         Some(Err(e)) => {
-                            return Some((Err(anyhow::anyhow!("Stream error: {}", e)), (s, buf)))
+                            return Some((Err(anyhow::anyhow!("Stream error: {}", e)), (s, buf)));
                         }
                         None => return None,
                     }

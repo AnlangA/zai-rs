@@ -13,4 +13,3 @@ pub struct TokenizerResponse {
 pub struct TokenizerUsage {
     pub prompt_tokens: u64,
 }
-

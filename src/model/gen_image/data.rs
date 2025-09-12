@@ -4,7 +4,6 @@ use crate::client::http::HttpClient;
 use serde::Serialize;
 use validator::Validate;
 
-
 /// Image generation request structure
 /// Provides a typed builder around the image generation API body
 pub struct ImageGenRequest<N>
@@ -73,14 +72,22 @@ where
         // Body-level field validations
         self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
         // Require prompt
-        if self.body.prompt.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        if self
+            .body
+            .prompt
+            .as_deref()
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true)
+        {
             return Err(anyhow::anyhow!("prompt is required"));
         }
         // Validate custom size when present
         if let Some(size) = &self.body.size {
             if let super::image_request::ImageSize::Custom { .. } = size {
                 if !size.is_valid() {
-                    return Err(anyhow::anyhow!("invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels"));
+                    return Err(anyhow::anyhow!(
+                        "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels"
+                    ));
                 }
             }
         }

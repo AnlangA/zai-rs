@@ -1,4 +1,3 @@
-
 use std::time::Duration;
 
 use zai_rs::batches::*;
@@ -19,7 +18,10 @@ async fn main() -> anyhow::Result<()> {
     let final_batch = loop {
         let req = BatchesRetrieveRequest::new(key.clone(), batch_id);
         let batch: BatchesRetrieveResponse = req.send().await?;
-        let status = batch.status.clone().unwrap_or_else(|| "unknown".to_string());
+        let status = batch
+            .status
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
         println!("poll[{}]: status={}", attempt, status);
         if status == "completed" || status == "failed" || attempt >= max_attempts {
             break batch;
@@ -28,14 +30,22 @@ async fn main() -> anyhow::Result<()> {
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
 
-    println!("batch id={:?} status={:?} endpoint={:?}", final_batch.id, final_batch.status, final_batch.endpoint);
-    println!("output_file_id={:?} error_file_id={:?}", final_batch.output_file_id, final_batch.error_file_id);
+    println!(
+        "batch id={:?} status={:?} endpoint={:?}",
+        final_batch.id, final_batch.status, final_batch.endpoint
+    );
+    println!(
+        "output_file_id={:?} error_file_id={:?}",
+        final_batch.output_file_id, final_batch.error_file_id
+    );
 
     std::fs::create_dir_all("data")?;
 
     // Download output_file_id if present
     if let Some(out_id) = final_batch.output_file_id.clone() {
-        FileContentRequest::new(key.clone(), out_id).send_to("data/batch_output.jsonl").await?;
+        FileContentRequest::new(key.clone(), out_id)
+            .send_to("data/batch_output.jsonl")
+            .await?;
         println!("saved: data/batch_output.jsonl");
     } else {
         println!("no output_file_id yet");
@@ -43,7 +53,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Download error_file_id if present
     if let Some(err_id) = final_batch.error_file_id.clone() {
-        FileContentRequest::new(key.clone(), err_id).send_to("data/batch_errors.jsonl").await?;
+        FileContentRequest::new(key.clone(), err_id)
+            .send_to("data/batch_errors.jsonl")
+            .await?;
         println!("saved: data/batch_errors.jsonl");
     } else {
         println!("no error_file_id");
@@ -51,4 +63,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

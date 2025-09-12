@@ -1,5 +1,5 @@
-use crate::client::http::HttpClient;
 use super::types::DocumentImageListResponse;
+use crate::client::http::HttpClient;
 
 /// Retrieve parsed image index-url mapping for a document (POST, no body)
 pub struct DocumentImageListRequest {
@@ -31,9 +31,15 @@ impl HttpClient for DocumentImageListRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &() }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &()
+    }
 
     // Override POST: send no body, only auth header
     fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
@@ -47,14 +53,21 @@ impl HttpClient for DocumentImageListRequest {
                 .await?;
 
             let status = resp.status();
-            if status.is_success() { return Ok(resp); }
+            if status.is_success() {
+                return Ok(resp);
+            }
 
             // Standard error envelope {"error": { code, message }}
             let text = resp.text().await.unwrap_or_default();
             #[derive(serde::Deserialize)]
-            struct ErrEnv { error: ErrObj }
+            struct ErrEnv {
+                error: ErrObj,
+            }
             #[derive(serde::Deserialize)]
-            struct ErrObj { code: serde_json::Value, message: String }
+            struct ErrObj {
+                code: serde_json::Value,
+                message: String,
+            }
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
                 return Err(anyhow::anyhow!(
                     "HTTP {} {} | code={} | message={}",
@@ -73,4 +86,3 @@ impl HttpClient for DocumentImageListRequest {
         }
     }
 }
-

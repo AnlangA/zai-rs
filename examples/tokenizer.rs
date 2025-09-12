@@ -9,7 +9,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Build messages (minimum 1). Here we send a single user message.
     let messages = vec![TokenizerMessage::User {
-        content: "What opportunities and challenges will the Chinese large model industry face in 2025?".into(),
+        content:
+            "What opportunities and challenges will the Chinese large model industry face in 2025?"
+                .into(),
     }];
 
     // Choose a tokenizer-capable model (default is glm-4-plus)
@@ -22,8 +24,9 @@ async fn main() -> anyhow::Result<()> {
     println!("id: {}", resp.id);
     println!("prompt_tokens: {}", resp.usage.prompt_tokens);
     println!("created: {}", resp.created);
-    if let Some(rid) = resp.request_id { println!("request_id: {}", rid); }
+    if let Some(rid) = resp.request_id {
+        println!("request_id: {}", rid);
+    }
 
     Ok(())
 }
-

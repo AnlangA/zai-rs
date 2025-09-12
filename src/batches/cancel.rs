@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::client::http::HttpClient;
 use super::types::BatchItem;
+use crate::client::http::HttpClient;
 
 /// Empty body for cancel API (serializes to `{}`)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -24,7 +24,11 @@ impl CancelBatchRequest {
             "https://open.bigmodel.cn/api/paas/v4/batches/{}/cancel",
             batch_id.as_ref()
         );
-        Self { key, url, body: CancelBatchBody::default() }
+        Self {
+            key,
+            url,
+            body: CancelBatchBody::default(),
+        }
     }
 
     /// Send the request and parse typed response
@@ -40,11 +44,16 @@ impl HttpClient for CancelBatchRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
 
 /// Response type: a single Batch object
 pub type CancelBatchResponse = BatchItem;
-

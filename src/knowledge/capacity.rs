@@ -1,5 +1,5 @@
-use crate::client::http::HttpClient;
 use super::types::KnowledgeCapacityResponse;
+use crate::client::http::HttpClient;
 
 /// Knowledge capacity request (GET /llm-application/open/knowledge/capacity)
 pub struct KnowledgeCapacityRequest {
@@ -12,8 +12,13 @@ pub struct KnowledgeCapacityRequest {
 impl KnowledgeCapacityRequest {
     /// Build a capacity request
     pub fn new(key: String) -> Self {
-        let url = "https://open.bigmodel.cn/api/llm-application/open/knowledge/capacity".to_string();
-        Self { key, url, _body: () }
+        let url =
+            "https://open.bigmodel.cn/api/llm-application/open/knowledge/capacity".to_string();
+        Self {
+            key,
+            url,
+            _body: (),
+        }
     }
 
     /// Send and parse typed response
@@ -29,8 +34,13 @@ impl HttpClient for KnowledgeCapacityRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self._body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self._body
+    }
 }
-

@@ -31,7 +31,11 @@ impl DocumentReembeddingRequest {
             "https://open.bigmodel.cn/api/llm-application/open/document/embedding/{}",
             document_id.as_ref()
         );
-        Self { key, url, body: DocumentReembeddingBody::default() }
+        Self {
+            key,
+            url,
+            body: DocumentReembeddingBody::default(),
+        }
     }
 
     /// Set callback URL
@@ -61,16 +65,24 @@ impl HttpClient for DocumentReembeddingRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
 
 /// Simple response envelope: { code, message, timestamp }
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct DocumentReembeddingResponse {
-    #[serde(skip_serializing_if = "Option::is_none")] pub code: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] pub timestamp: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
 }
-

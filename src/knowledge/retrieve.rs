@@ -1,5 +1,5 @@
-use crate::client::http::HttpClient;
 use super::types::KnowledgeDetailResponse;
+use crate::client::http::HttpClient;
 
 /// Knowledge detail request (GET /llm-application/open/knowledge/{id})
 pub struct KnowledgeRetrieveRequest {
@@ -16,7 +16,11 @@ impl KnowledgeRetrieveRequest {
             "https://open.bigmodel.cn/api/llm-application/open/knowledge/{}",
             id.as_ref()
         );
-        Self { key, url, _body: () }
+        Self {
+            key,
+            url,
+            _body: (),
+        }
     }
 
     /// Send and parse typed response
@@ -32,11 +36,16 @@ impl HttpClient for KnowledgeRetrieveRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self._body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self._body
+    }
 }
 
 /// Alias for symmetry with other modules
 pub type KnowledgeRetrieveResponse = KnowledgeDetailResponse;
-

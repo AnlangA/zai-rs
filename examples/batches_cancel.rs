@@ -35,27 +35,29 @@ async fn main() -> anyhow::Result<()> {
     let file_id = file.id.ok_or_else(|| anyhow::anyhow!("missing file id"))?;
 
     // 3) Create a batch task using the uploaded file
-    let created: CreateBatchResponse = CreateBatchRequest::new(
-        key.clone(),
-        file_id,
-        BatchEndpoint::ChatCompletions,
-    )
-    .with_auto_delete_input_file(true)
-    .send()
-    .await?;
+    let created: CreateBatchResponse =
+        CreateBatchRequest::new(key.clone(), file_id, BatchEndpoint::ChatCompletions)
+            .with_auto_delete_input_file(true)
+            .send()
+            .await?;
 
     let batch_id = created
         .id
         .clone()
         .ok_or_else(|| anyhow::anyhow!("create returned no batch id"))?;
-    println!("created batch: id={:?} status={:?}", created.id, created.status);
+    println!(
+        "created batch: id={:?} status={:?}",
+        created.id, created.status
+    );
 
     // 4) Immediately cancel the batch
     let cancelled: CancelBatchResponse = CancelBatchRequest::new(key.clone(), batch_id)
         .send()
         .await?;
 
-    println!("cancelled? id={:?} status={:?}", cancelled.id, cancelled.status);
+    println!(
+        "cancelled? id={:?} status={:?}",
+        cancelled.id, cancelled.status
+    );
     Ok(())
 }
-

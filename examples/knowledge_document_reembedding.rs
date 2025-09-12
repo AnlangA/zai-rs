@@ -7,7 +7,9 @@ async fn main() -> anyhow::Result<()> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Args: <document_id> [callback_url]
-    let doc_id = std::env::args().nth(1).expect("Usage: knowledge_document_reembedding <document_id> [callback_url]");
+    let doc_id = std::env::args()
+        .nth(1)
+        .expect("Usage: knowledge_document_reembedding <document_id> [callback_url]");
     let cb = std::env::args().nth(2);
 
     let mut req = DocumentReembeddingRequest::new(key, doc_id);
@@ -19,8 +21,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let resp: DocumentReembeddingResponse = req.send().await?;
-    println!("code={:?} message={:?} timestamp={:?}", resp.code, resp.message, resp.timestamp);
+    println!(
+        "code={:?} message={:?} timestamp={:?}",
+        resp.code, resp.message, resp.timestamp
+    );
 
     Ok(())
 }
-

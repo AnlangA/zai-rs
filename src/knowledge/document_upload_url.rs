@@ -31,13 +31,38 @@ pub struct UploadUrlDetail {
 
 impl UploadUrlDetail {
     pub fn new(url: impl Into<String>) -> Self {
-        Self { url: url.into(), knowledge_type: None, custom_separator: None, sentence_size: None, callback_url: None, callback_header: None }
+        Self {
+            url: url.into(),
+            knowledge_type: None,
+            custom_separator: None,
+            sentence_size: None,
+            callback_url: None,
+            callback_header: None,
+        }
     }
-    pub fn with_knowledge_type(mut self, t: i64) -> Self { self.knowledge_type = Some(t); self }
-    pub fn with_custom_separator(mut self, seps: Vec<String>) -> Self { self.custom_separator = Some(seps); self }
-    pub fn with_sentence_size(mut self, size: u32) -> Self { self.sentence_size = Some(size); self }
-    pub fn with_callback_url(mut self, url: impl Into<String>) -> Self { self.callback_url = Some(url.into()); self }
-    pub fn with_callback_header(mut self, headers: std::collections::BTreeMap<String, String>) -> Self { self.callback_header = Some(headers); self }
+    pub fn with_knowledge_type(mut self, t: i64) -> Self {
+        self.knowledge_type = Some(t);
+        self
+    }
+    pub fn with_custom_separator(mut self, seps: Vec<String>) -> Self {
+        self.custom_separator = Some(seps);
+        self
+    }
+    pub fn with_sentence_size(mut self, size: u32) -> Self {
+        self.sentence_size = Some(size);
+        self
+    }
+    pub fn with_callback_url(mut self, url: impl Into<String>) -> Self {
+        self.callback_url = Some(url.into());
+        self
+    }
+    pub fn with_callback_header(
+        mut self,
+        headers: std::collections::BTreeMap<String, String>,
+    ) -> Self {
+        self.callback_header = Some(headers);
+        self
+    }
 }
 
 /// Upload URL request body
@@ -52,9 +77,20 @@ pub struct UploadUrlBody {
 }
 
 impl UploadUrlBody {
-    pub fn new(knowledge_id: impl Into<String>) -> Self { Self { upload_detail: Vec::new(), knowledge_id: knowledge_id.into() } }
-    pub fn add_detail(mut self, detail: UploadUrlDetail) -> Self { self.upload_detail.push(detail); self }
-    pub fn add_url(mut self, url: impl Into<String>) -> Self { self.upload_detail.push(UploadUrlDetail::new(url)); self }
+    pub fn new(knowledge_id: impl Into<String>) -> Self {
+        Self {
+            upload_detail: Vec::new(),
+            knowledge_id: knowledge_id.into(),
+        }
+    }
+    pub fn add_detail(mut self, detail: UploadUrlDetail) -> Self {
+        self.upload_detail.push(detail);
+        self
+    }
+    pub fn add_url(mut self, url: impl Into<String>) -> Self {
+        self.upload_detail.push(UploadUrlDetail::new(url));
+        self
+    }
 }
 
 /// Upload URL request (POST /llm-application/open/document/upload_url)
@@ -67,11 +103,14 @@ pub struct DocumentUploadUrlRequest {
 
 impl DocumentUploadUrlRequest {
     pub fn new(key: String, body: UploadUrlBody) -> Self {
-        let url = "https://open.bigmodel.cn/api/llm-application/open/document/upload_url".to_string();
+        let url =
+            "https://open.bigmodel.cn/api/llm-application/open/document/upload_url".to_string();
         Self { key, url, body }
     }
 
-    pub fn body_mut(&mut self) -> &mut UploadUrlBody { &mut self.body }
+    pub fn body_mut(&mut self) -> &mut UploadUrlBody {
+        &mut self.body
+    }
 
     /// Validate and send
     pub async fn send(&self) -> anyhow::Result<UploadUrlResponse> {
@@ -87,8 +126,13 @@ impl HttpClient for DocumentUploadUrlRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
-

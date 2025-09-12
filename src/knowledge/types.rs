@@ -61,8 +61,6 @@ pub struct KnowledgeListResponse {
     pub timestamp: Option<u64>,
 }
 
-
-
 /// Knowledge detail response envelope (data is a single item)
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct KnowledgeDetailResponse {
@@ -79,7 +77,6 @@ pub struct KnowledgeDetailResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }
-
 
 /// Capacity usage counters
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -119,7 +116,6 @@ pub struct KnowledgeCapacityResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }
-
 
 /// Document vectorization failure info
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -214,7 +210,6 @@ pub struct DocumentListResponse {
     pub timestamp: Option<u64>,
 }
 
-
 /// Success info for URL upload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct UploadUrlSuccessInfo {
@@ -268,7 +263,6 @@ pub struct UploadUrlResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }
-
 
 /// Success info for file upload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -344,7 +338,6 @@ pub struct DocumentImageListResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }
-
 
 /// Upload file response envelope
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

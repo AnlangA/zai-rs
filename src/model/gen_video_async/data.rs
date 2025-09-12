@@ -4,7 +4,6 @@ use crate::client::http::HttpClient;
 use serde::Serialize;
 use validator::Validate;
 
-
 /// Video generation request structure
 /// Handles HTTP requests for video generation API
 pub struct VideoGenRequest<N>
@@ -103,7 +102,6 @@ where
         Ok(())
     }
 }
-
 
 impl<N> HttpClient for VideoGenRequest<N>
 where

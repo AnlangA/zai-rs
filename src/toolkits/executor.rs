@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 use crate::toolkits::core::DynTool;
-use crate::toolkits::error::{error_context, ToolResult};
+use crate::toolkits::error::{ToolResult, error_context};
 
 use crate::model::chat_base_response::ToolCallMessage;
 use crate::model::chat_message_types::TextMessage;
@@ -281,7 +281,7 @@ impl ToolExecutor {
                 Err(e) => {
                     return Err(
                         error_context().invalid_parameters(format!("Dir entry error: {}", e))
-                    )
+                    );
                 }
             };
             let path = entry.path();

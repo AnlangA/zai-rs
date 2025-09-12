@@ -33,4 +33,3 @@ pub struct EmbeddingUsage {
     pub completion_tokens: u64,
     pub total_tokens: u64,
 }
-

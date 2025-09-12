@@ -121,7 +121,11 @@ impl ErrorContext {
         }
     }
 
-    pub fn validation_error(self, field: impl Into<String>, message: impl Into<String>) -> ToolError {
+    pub fn validation_error(
+        self,
+        field: impl Into<String>,
+        message: impl Into<String>,
+    ) -> ToolError {
         ToolError::ValidationError {
             field: field.into(),
             message: message.into(),

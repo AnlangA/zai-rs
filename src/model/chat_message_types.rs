@@ -113,7 +113,7 @@
 //! - New content formats can be supported through enum variants
 //! - Tool types can be extended for new capabilities
 
-use base64::{prelude::*, Engine};
+use base64::{Engine, prelude::*};
 use serde::{Deserialize, Serialize};
 use validator::*;
 

@@ -58,7 +58,7 @@ pub mod llm;
 /// ```
 pub mod prelude {
     // Core traits and types
-    pub use crate::toolkits::core::{conversions, DynTool, FunctionTool, ToolMetadata};
+    pub use crate::toolkits::core::{DynTool, FunctionTool, ToolMetadata, conversions};
 
     // Execution (executor now owns registration APIs)
     pub use crate::toolkits::executor::{
@@ -66,7 +66,7 @@ pub mod prelude {
     };
 
     // Error handling
-    pub use crate::toolkits::error::{error_context, ToolError, ToolResult};
+    pub use crate::toolkits::error::{ToolError, ToolResult, error_context};
 
     // External re-exports for convenience
     pub use async_trait::async_trait;
@@ -74,7 +74,7 @@ pub mod prelude {
 
     // LLM parsing helpers
     pub use crate::toolkits::llm::{
-        parse_first_tool_call, parse_tool_calls, parse_tool_calls_from_message, LlmToolCall,
+        LlmToolCall, parse_first_tool_call, parse_tool_calls, parse_tool_calls_from_message,
     };
 }
 

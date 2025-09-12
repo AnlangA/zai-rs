@@ -34,7 +34,6 @@ impl VoiceListRequest {
         self.url = url.to_string();
     }
 
-
     pub fn validate(&self) -> anyhow::Result<()> {
         // No required params; URL already built. Optionally, validate query formats here.
         Ok(())

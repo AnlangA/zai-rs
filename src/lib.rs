@@ -47,9 +47,9 @@
 //! - Tool integration for function calling and external tools
 //! - Built-in validation and error handling
 
+pub mod batches;
 pub mod client;
 pub mod file;
-pub mod batches;
 pub mod knowledge;
 
 pub mod model;

@@ -13,7 +13,11 @@ impl FileContentRequest {
             "https://open.bigmodel.cn/api/paas/v4/files/{}/content",
             file_id.into()
         );
-        Self { key, url, _body: () }
+        Self {
+            key,
+            url,
+            _body: (),
+        }
     }
 
     /// Send the request and return raw bytes of the file content.

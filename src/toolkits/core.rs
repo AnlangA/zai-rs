@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::toolkits::error::{error_context, ToolResult};
+use crate::toolkits::error::{ToolResult, error_context};
 
 /// Type-erased tool trait for dynamic dispatch
 #[async_trait]
@@ -97,7 +97,7 @@ impl ToolMetadata {
 
 /// Helper functions for type conversions (avoiding orphan rule issues)
 pub mod conversions {
-    use crate::toolkits::error::{error_context, ToolResult};
+    use crate::toolkits::error::{ToolResult, error_context};
 
     /// Convert a value to JSON
     pub fn to_json<T: serde::Serialize>(value: T) -> ToolResult<serde_json::Value> {

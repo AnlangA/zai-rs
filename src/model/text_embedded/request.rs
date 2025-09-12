@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EmbeddingModel {
-    #[serde(rename = "embedding-3")] 
+    #[serde(rename = "embedding-3")]
     Embedding3,
-    #[serde(rename = "embedding-2")] 
+    #[serde(rename = "embedding-2")]
     Embedding2,
 }
 
@@ -93,4 +93,3 @@ impl EmbeddingBody {
         Ok(())
     }
 }
-

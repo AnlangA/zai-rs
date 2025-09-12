@@ -9,10 +9,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Query and candidate documents
     let query = "要查询的文本";
-    let documents = vec![
-        "要查询的文本".to_string(),
-        "这个文本分数低".to_string(),
-    ];
+    let documents = vec!["要查询的文本".to_string(), "这个文本分数低".to_string()];
 
     // Build request
     let req = RerankRequest::new(key, query, documents)
@@ -30,12 +27,16 @@ async fn main() -> anyhow::Result<()> {
 
     println!("created: {}", resp.created);
     println!("id: {}", resp.id);
-    if let Some(rid) = &resp.request_id { println!("request_id: {}", rid); }
+    if let Some(rid) = &resp.request_id {
+        println!("request_id: {}", rid);
+    }
 
     println!("results: {}", resp.results.len());
     for r in &resp.results {
         println!("- index={} score={:.6}", r.index, r.relevance_score);
-        if let Some(doc) = &r.document { println!("  doc: {}", doc); }
+        if let Some(doc) = &r.document {
+            println!("  doc: {}", doc);
+        }
     }
 
     println!(
@@ -45,4 +46,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

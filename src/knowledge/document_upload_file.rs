@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use crate::client::http::HttpClient;
 use validator::Validate;
@@ -22,7 +22,11 @@ pub enum DocumentSliceType {
     /// 7: Single slice (xls, xlsx, csv)
     Single = 7,
 }
-impl DocumentSliceType { fn as_i64(self) -> i64 { self as i64 } }
+impl DocumentSliceType {
+    fn as_i64(self) -> i64 {
+        self as i64
+    }
+}
 
 /// Optional parameters for file upload
 #[derive(Debug, Clone, Default, Validate)]
@@ -64,7 +68,12 @@ impl DocumentUploadFileRequest {
             "https://open.bigmodel.cn/api/llm-application/open/document/upload_document/{}",
             knowledge_id.as_ref()
         );
-        Self { key, url, files: Vec::new(), options: UploadFileOptions::default() }
+        Self {
+            key,
+            url,
+            files: Vec::new(),
+            options: UploadFileOptions::default(),
+        }
     }
 
     /// Add a local file path to upload
@@ -74,10 +83,15 @@ impl DocumentUploadFileRequest {
     }
 
     /// Set optional parameters
-    pub fn with_options(mut self, opts: UploadFileOptions) -> Self { self.options = opts; self }
+    pub fn with_options(mut self, opts: UploadFileOptions) -> Self {
+        self.options = opts;
+        self
+    }
 
     /// Mutable access to options for incremental configuration
-    pub fn options_mut(&mut self) -> &mut UploadFileOptions { &mut self.options }
+    pub fn options_mut(&mut self) -> &mut UploadFileOptions {
+        &mut self.options
+    }
 
     /// Validate cross-field constraints not expressible via `validator`
     fn validate_cross(&self) -> anyhow::Result<()> {
@@ -118,9 +132,15 @@ impl HttpClient for DocumentUploadFileRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &() }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &()
+    }
 
     // Override POST to send multipart/form-data
     fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
@@ -132,20 +152,32 @@ impl HttpClient for DocumentUploadFileRequest {
             let mut form = reqwest::multipart::Form::new();
 
             // Optional fields
-            if let Some(t) = opts.knowledge_type { form = form.text("knowledge_type", t.as_i64().to_string()); }
+            if let Some(t) = opts.knowledge_type {
+                form = form.text("knowledge_type", t.as_i64().to_string());
+            }
             if let Some(seps) = opts.custom_separator.as_ref() {
                 let s = serde_json::to_string(seps).unwrap_or("[]".to_string());
                 form = form.text("custom_separator", s);
             }
-            if let Some(sz) = opts.sentence_size { form = form.text("sentence_size", sz.to_string()); }
-            if let Some(pi) = opts.parse_image { form = form.text("parse_image", if pi {"true"} else {"false"}.to_string()); }
-            if let Some(u) = opts.callback_url.as_ref() { form = form.text("callback_url", u.clone()); }
+            if let Some(sz) = opts.sentence_size {
+                form = form.text("sentence_size", sz.to_string());
+            }
+            if let Some(pi) = opts.parse_image {
+                form = form.text("parse_image", if pi { "true" } else { "false" }.to_string());
+            }
+            if let Some(u) = opts.callback_url.as_ref() {
+                form = form.text("callback_url", u.clone());
+            }
             if let Some(h) = opts.callback_header.as_ref() {
                 let s = serde_json::to_string(h).unwrap_or("{}".to_string());
                 form = form.text("callback_header", s);
             }
-            if let Some(w) = opts.word_num_limit.as_ref() { form = form.text("word_num_limit", w.clone()); }
-            if let Some(r) = opts.req_id.as_ref() { form = form.text("req_id", r.clone()); }
+            if let Some(w) = opts.word_num_limit.as_ref() {
+                form = form.text("word_num_limit", w.clone());
+            }
+            if let Some(r) = opts.req_id.as_ref() {
+                form = form.text("req_id", r.clone());
+            }
 
             // Files: use field name "files" per API
             for path in files {
@@ -166,14 +198,21 @@ impl HttpClient for DocumentUploadFileRequest {
                 .await?;
 
             let status = resp.status();
-            if status.is_success() { return Ok(resp); }
+            if status.is_success() {
+                return Ok(resp);
+            }
 
             // Standard error envelope {"error": { code, message }}
             let text = resp.text().await.unwrap_or_default();
             #[derive(serde::Deserialize)]
-            struct ErrEnv { error: ErrObj }
+            struct ErrEnv {
+                error: ErrObj,
+            }
             #[derive(serde::Deserialize)]
-            struct ErrObj { code: serde_json::Value, message: String }
+            struct ErrObj {
+                code: serde_json::Value,
+                message: String,
+            }
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
                 return Err(anyhow::anyhow!(
                     "HTTP {} {} | code={} | message={}",
@@ -192,4 +231,3 @@ impl HttpClient for DocumentUploadFileRequest {
         }
     }
 }
-

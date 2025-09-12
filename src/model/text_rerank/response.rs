@@ -25,4 +25,3 @@ pub struct RerankUsage {
     #[serde(default)]
     pub total_tokens: u64,
 }
-

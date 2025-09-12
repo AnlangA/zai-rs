@@ -72,11 +72,7 @@ impl FileDeleteRequest {
         let parsed = resp.json::<super::response::FileDeleteResponse>().await?;
         Ok(parsed)
     }
-
-    }
-
-
-
+}
 
 impl HttpClient for FileDeleteRequest {
     type Body = ();

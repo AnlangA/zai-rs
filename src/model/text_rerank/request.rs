@@ -8,7 +8,9 @@ pub enum RerankModel {
 }
 
 impl Default for RerankModel {
-    fn default() -> Self { RerankModel::Rerank }
+    fn default() -> Self {
+        RerankModel::Rerank
+    }
 }
 
 /// Request body for rerank API
@@ -58,26 +60,48 @@ impl RerankBody {
         }
     }
 
-    pub fn with_top_n(mut self, n: usize) -> Self { self.top_n = Some(n); self }
-    pub fn with_return_documents(mut self, v: bool) -> Self { self.return_documents = Some(v); self }
-    pub fn with_return_raw_scores(mut self, v: bool) -> Self { self.return_raw_scores = Some(v); self }
-    pub fn with_request_id(mut self, v: impl Into<String>) -> Self { self.request_id = Some(v.into()); self }
-    pub fn with_user_id(mut self, v: impl Into<String>) -> Self { self.user_id = Some(v.into()); self }
+    pub fn with_top_n(mut self, n: usize) -> Self {
+        self.top_n = Some(n);
+        self
+    }
+    pub fn with_return_documents(mut self, v: bool) -> Self {
+        self.return_documents = Some(v);
+        self
+    }
+    pub fn with_return_raw_scores(mut self, v: bool) -> Self {
+        self.return_raw_scores = Some(v);
+        self
+    }
+    pub fn with_request_id(mut self, v: impl Into<String>) -> Self {
+        self.request_id = Some(v.into());
+        self
+    }
+    pub fn with_user_id(mut self, v: impl Into<String>) -> Self {
+        self.user_id = Some(v.into());
+        self
+    }
 
     /// Optional runtime validation for constraints expressed in the docs
     pub fn validate_constraints(&self) -> Result<(), anyhow::Error> {
         if self.query.chars().count() > 4096 {
             anyhow::bail!("query length exceeds 4096 characters");
         }
-        if self.documents.is_empty() { anyhow::bail!("documents must not be empty"); }
-        if self.documents.len() > 128 { anyhow::bail!("documents length exceeds 128"); }
+        if self.documents.is_empty() {
+            anyhow::bail!("documents must not be empty");
+        }
+        if self.documents.len() > 128 {
+            anyhow::bail!("documents length exceeds 128");
+        }
         for (i, d) in self.documents.iter().enumerate() {
             if d.chars().count() > 4096 {
                 anyhow::bail!("document at index {} exceeds 4096 characters", i);
             }
         }
-        if let Some(n) = self.top_n { if n > self.documents.len() { anyhow::bail!("top_n cannot exceed documents length"); } }
+        if let Some(n) = self.top_n {
+            if n > self.documents.len() {
+                anyhow::bail!("top_n cannot exceed documents length");
+            }
+        }
         Ok(())
     }
 }
-

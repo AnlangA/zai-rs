@@ -33,7 +33,12 @@ pub struct CreateBatchBody {
 
 impl CreateBatchBody {
     pub fn new(input_file_id: impl Into<String>, endpoint: BatchEndpoint) -> Self {
-        Self { input_file_id: input_file_id.into(), endpoint, auto_delete_input_file: Some(true), metadata: None }
+        Self {
+            input_file_id: input_file_id.into(),
+            endpoint,
+            auto_delete_input_file: Some(true),
+            metadata: None,
+        }
     }
 
     /// Set auto delete flag
@@ -93,11 +98,16 @@ impl HttpClient for CreateBatchRequest {
     type ApiUrl = &'static str;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &"https://open.bigmodel.cn/api/paas/v4/batches" }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &self.body }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &"https://open.bigmodel.cn/api/paas/v4/batches"
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &self.body
+    }
 }
 
 /// Response type for creating a batch task (same as a single item)
 pub type CreateBatchResponse = super::types::BatchItem;
-

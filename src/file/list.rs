@@ -63,7 +63,6 @@ impl FileListRequest {
         self.rebuild_url(q);
         self.send().await
     }
-
 }
 
 impl HttpClient for FileListRequest {

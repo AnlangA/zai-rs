@@ -24,7 +24,6 @@ use serde::Serialize;
 use std::marker::PhantomData;
 use validator::Validate;
 
-
 // Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
 
 /// Type-safe chat completion request structure.
@@ -200,14 +199,18 @@ where
         self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
         // Ensure not accidentally enabling stream in StreamOff state
         if matches!(self.body.stream, Some(true)) {
-            return Err(anyhow::anyhow!("stream=true detected; use enable_stream() and streaming APIs instead"));
+            return Err(anyhow::anyhow!(
+                "stream=true detected; use enable_stream() and streaming APIs instead"
+            ));
         }
         Ok(())
     }
 
     /// Send the request and parse typed response.
     /// Automatically runs `validate()` before sending.
-    pub async fn send(&self) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse>
+    pub async fn send(
+        &self,
+    ) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse>
     where
         N: serde::Serialize,
         M: serde::Serialize,
@@ -219,7 +222,6 @@ where
             .await?;
         Ok(parsed)
     }
-
 }
 
 impl<N, M, S> HttpClient for ChatCompletion<N, M, S>
@@ -268,4 +270,3 @@ where
     (N, M): Bounded,
 {
 }
-

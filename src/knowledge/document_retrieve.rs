@@ -1,5 +1,5 @@
-use crate::client::http::HttpClient;
 use super::types::DocumentDetailResponse;
+use crate::client::http::HttpClient;
 
 /// Retrieve document detail by id
 pub struct DocumentRetrieveRequest {
@@ -31,8 +31,13 @@ impl HttpClient for DocumentRetrieveRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
-    fn api_url(&self) -> &Self::ApiUrl { &self.url }
-    fn api_key(&self) -> &Self::ApiKey { &self.key }
-    fn body(&self) -> &Self::Body { &() }
+    fn api_url(&self) -> &Self::ApiUrl {
+        &self.url
+    }
+    fn api_key(&self) -> &Self::ApiKey {
+        &self.key
+    }
+    fn body(&self) -> &Self::Body {
+        &()
+    }
 }
-

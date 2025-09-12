@@ -6,7 +6,9 @@ async fn main() -> anyhow::Result<()> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Args: name [embedding=2|3new] [background] [icon]
-    let name = std::env::args().nth(1).unwrap_or_else(|| "my-knowledge".to_string());
+    let name = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "my-knowledge".to_string());
 
     // Simple arg mapping for demo purposes
     let emb = match std::env::args().nth(2).as_deref() {
@@ -34,15 +36,20 @@ async fn main() -> anyhow::Result<()> {
         _ => None,
     };
 
-    let mut req = CreateKnowledgeRequest::new(key, emb, name)
-        .with_description("Created by zai-rs example");
-    if let Some(c) = bg { req = req.with_background(c); }
-    if let Some(i) = icon { req = req.with_icon(i); }
+    let mut req =
+        CreateKnowledgeRequest::new(key, emb, name).with_description("Created by zai-rs example");
+    if let Some(c) = bg {
+        req = req.with_background(c);
+    }
+    if let Some(i) = icon {
+        req = req.with_icon(i);
+    }
 
     let resp: CreateKnowledgeResponse = req.send().await?;
     println!("code={:?} message={:?}", resp.code, resp.message);
-    if let Some(data) = resp.data { println!("created id={:?}", data.id); }
+    if let Some(data) = resp.data {
+        println!("created id={:?}", data.id);
+    }
 
     Ok(())
 }
-

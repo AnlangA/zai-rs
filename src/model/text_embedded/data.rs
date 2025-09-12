@@ -57,4 +57,3 @@ impl HttpClient for EmbeddingRequest {
         &self.body
     }
 }
-

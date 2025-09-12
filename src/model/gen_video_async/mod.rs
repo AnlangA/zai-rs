@@ -73,7 +73,7 @@ mod tests {
         let model = TestModel {};
         let image_urls = vec![
             "https://gd-hbimg.huaban.com/ccee58d77afe8f5e17a572246b1994f7e027657fe9e6-qD66In_fw1200webp",
-            "https://gd-hbimg.huaban.com/cc2601d568a72d18d90b2cc7f1065b16b2d693f7fa3f7-hDAwNq_fw1200webp"
+            "https://gd-hbimg.huaban.com/cc2601d568a72d18d90b2cc7f1065b16b2d693f7fa3f7-hDAwNq_fw1200webp",
         ];
         let video_body = VideoBody::with_multiple_images(model, image_urls, "让画面动起来")
             .with_quality(VideoQuality::Quality)

@@ -47,7 +47,6 @@ impl FileUploadRequest {
     }
 }
 
-
 impl HttpClient for FileUploadRequest {
     type Body = (); // unused
     type ApiUrl = &'static str;
