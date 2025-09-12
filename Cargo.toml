@@ -141,7 +141,13 @@ path = "examples/knowledge_create.rs"
 name = "knowledge_retrieve"
 path = "examples/knowledge_retrieve.rs"
 
+[[example]]
+name = "knowledge_update"
+path = "examples/knowledge_update.rs"
+
+
 [dependencies]
+
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1"
 env_logger = "0.11.8"

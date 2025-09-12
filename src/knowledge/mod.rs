@@ -6,8 +6,10 @@ pub mod types;
 pub mod list;
 pub mod create;
 pub mod retrieve;
+pub mod update;
 
 pub use types::{KnowledgeItem, KnowledgeListData, KnowledgeListResponse, KnowledgeDetailResponse};
 pub use list::{KnowledgeListQuery, KnowledgeListRequest};
 pub use create::{EmbeddingId, BackgroundColor, KnowledgeIcon, CreateKnowledgeBody, CreateKnowledgeRequest, CreateKnowledgeResponse};
 pub use retrieve::{KnowledgeRetrieveRequest, KnowledgeRetrieveResponse};
+pub use update::{UpdateKnowledgeBody, KnowledgeUpdateRequest, KnowledgeUpdateResponse};
