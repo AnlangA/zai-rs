@@ -59,8 +59,8 @@ name = "async_chat_text"
 path = "examples/async_chat_text.rs"
 
 [[example]]
-name = "function_call_with_zai_tools"
-path = "examples/function_call_with_zai_tools.rs"
+name = "function_call_with_toolkits"
+path = "examples/function_call_with_toolkits.rs"
 
 [[example]]
 name = "gen_video"

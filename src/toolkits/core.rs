@@ -631,7 +631,7 @@ impl FunctionToolBuilder {
                 let props = obj
                     .entry("properties")
                     .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-                if let serde_json::Value::Object(ref mut props_obj) = props {
+                if let serde_json::Value::Object(props_obj) = props {
                     for (k, v) in staged {
                         props_obj.insert(k, v);
                     }
