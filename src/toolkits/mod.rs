@@ -16,17 +16,10 @@
 //! - [`error`] - Comprehensive error handling and reporting
 //! - [`executor`] - Tool execution engine with registration and management
 //! - [`llm`] - LLM-specific parsing and interaction utilities
-//! - [`macros`] - Procedural macros for tool creation
 //!
 //! ## Key Features
 //!
-//! ### Type Safety
-//! - Compile-time validation of tool inputs and outputs
-//! - Strong typing for tool parameters and return values
-//! - Generic tool definitions with trait bounds
-//!
 //! ### Flexibility
-//! - Support for both sync and async tool execution
 //! - Dynamic tool registration and discovery
 //! - JSON schema generation for tool descriptions
 //!
@@ -35,38 +28,7 @@
 //! - Graceful error recovery and reporting
 //! - Validation errors with detailed messages
 //!
-//! ## Usage Examples
-//!
-//! ### Basic Tool Definition
-//! ```rust,ignore
-//! use zai_rs::toolkits::prelude::*;
-//!
-//! #[derive(ToolInput, Deserialize)]
-//! struct WeatherInput {
-//!     location: String,
-//! }
-//!
-//! #[derive(ToolOutput, Serialize)]
-//! struct WeatherOutput {
-//!     temperature: f32,
-//!     condition: String,
-//! }
-//!
-//! struct WeatherTool;
-//!
-//! #[async_trait]
-//! impl Tool<WeatherInput, WeatherOutput> for WeatherTool {
-//!     async fn execute(&self, input: WeatherInput) -> ToolResult<WeatherOutput> {
-//!         // Tool implementation
-//!         Ok(WeatherOutput {
-//!             temperature: 22.5,
-//!             condition: "Sunny".to_string(),
-//!         })
-//!     }
-//! }
-//! ```
-//!
-//! ### Function Tool Creation
+//! ## Usage Example
 //! ```rust,ignore
 //! let tool = FunctionTool::builder("get_weather", "Get current weather")
 //!     .property("location", json!({"type": "string"}))
@@ -82,7 +44,6 @@ pub mod core;
 pub mod error;
 pub mod executor;
 pub mod llm;
-pub mod macros;
 
 /// Prelude module for convenient imports
 ///
@@ -97,9 +58,7 @@ pub mod macros;
 /// ```
 pub mod prelude {
     // Core traits and types
-    pub use crate::toolkits::core::{
-        conversions, DynTool, FunctionTool, Tool, ToolInput, ToolMetadata, ToolOutput,
-    };
+    pub use crate::toolkits::core::{conversions, DynTool, FunctionTool, ToolMetadata};
 
     // Execution (executor now owns registration APIs)
     pub use crate::toolkits::executor::{
@@ -113,9 +72,6 @@ pub mod prelude {
     pub use async_trait::async_trait;
     pub use serde::{Deserialize, Serialize};
 
-    // Macros (exported at crate root by #[macro_export])
-    pub use crate::{async_tool, simple_tool, validated_tool};
-
     // LLM parsing helpers
     pub use crate::toolkits::llm::{
         parse_first_tool_call, parse_tool_calls, parse_tool_calls_from_message, LlmToolCall,
@@ -123,6 +79,6 @@ pub mod prelude {
 }
 
 // Re-export commonly used types at crate root for convenience via toolkits::
-pub use crate::toolkits::core::{FunctionTool, Tool, ToolInput, ToolMetadata, ToolOutput};
+pub use crate::toolkits::core::{FunctionTool, ToolMetadata};
 pub use crate::toolkits::error::{ToolError, ToolResult};
 pub use crate::toolkits::executor::ToolExecutor;

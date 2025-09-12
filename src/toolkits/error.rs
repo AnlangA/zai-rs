@@ -39,6 +39,12 @@ pub enum ToolError {
     #[error("Retry limit exceeded for tool '{tool}': failed after {attempts} attempts")]
     RetryLimitExceeded { tool: String, attempts: u32 },
 
+    #[error("Validation error for field '{field}': {message}")]
+    ValidationError { field: String, message: String },
+
+    #[error("Concurrent access error: {message}")]
+    ConcurrentAccessError { message: String },
+
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -112,6 +118,19 @@ impl ErrorContext {
         ToolError::RetryLimitExceeded {
             tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
             attempts,
+        }
+    }
+
+    pub fn validation_error(self, field: impl Into<String>, message: impl Into<String>) -> ToolError {
+        ToolError::ValidationError {
+            field: field.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn concurrent_access_error(self, message: impl Into<String>) -> ToolError {
+        ToolError::ConcurrentAccessError {
+            message: message.into(),
         }
     }
 }

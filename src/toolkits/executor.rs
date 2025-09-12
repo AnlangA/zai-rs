@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 
-use crate::toolkits::core::{DynTool, IntoDynTool, Tool, ToolInput, ToolOutput};
+use crate::toolkits::core::DynTool;
 use crate::toolkits::error::{error_context, ToolResult};
 
 use crate::model::chat_base_response::ToolCallMessage;
@@ -146,39 +146,12 @@ impl ToolExecutor {
         self
     }
 
-    /// Chain-friendly: try to add a typed tool (ignores error)
-    pub fn try_add_tool<T, I, O>(&self, tool: T) -> &Self
-    where
-        T: Tool<I, O> + Clone + 'static,
-        I: ToolInput,
-        O: ToolOutput,
-    {
-        let name = tool.metadata().name.clone();
-        let mut insert = true;
-        if let Ok(guard) = self.tools.read() {
-            if guard.contains_key(&name) {
-                insert = false;
-            }
-        }
-        if insert {
-            if let Ok(mut guard) = self.tools.write() {
-                guard.insert(name, tool.into_dyn_tool());
-            }
-        }
-        self
-    }
-
     /// Chain-friendly: try to add a dynamic tool (ignores error)
     pub fn try_add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
         let name = tool.name().to_string();
-        let mut insert = true;
-        if let Ok(guard) = self.tools.read() {
-            if guard.contains_key(&name) {
-                insert = false;
-            }
-        }
-        if insert {
-            if let Ok(mut guard) = self.tools.write() {
+        // Optimize: acquire write lock directly to avoid double lookup
+        if let Ok(mut guard) = self.tools.write() {
+            if !guard.contains_key(&name) {
                 guard.insert(name, tool);
             }
         }
@@ -334,56 +307,14 @@ impl ToolExecutor {
             })?;
 
             // Extract name/description/parameters from spec
-            let (name, description, parameters) = {
-                let obj = spec.as_object().ok_or_else(|| {
-                    error_context()
-                        .invalid_parameters(format!("Spec must be object: {}", path.display()))
+            let (name, description, parameters) =
+                crate::toolkits::core::parse_function_spec_details(&spec).map_err(|e| {
+                    error_context().invalid_parameters(format!(
+                        "Failed to parse spec {}: {}",
+                        path.display(),
+                        e
+                    ))
                 })?;
-                if obj.get("type").and_then(|v| v.as_str()) == Some("function") {
-                    let f = obj
-                        .get("function")
-                        .and_then(|v| v.as_object())
-                        .ok_or_else(|| {
-                            error_context().invalid_parameters(format!(
-                                "Missing 'function' object in {}",
-                                path.display()
-                            ))
-                        })?;
-                    let name = f
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| {
-                            error_context().invalid_parameters(format!(
-                                "Missing function.name in {}",
-                                path.display()
-                            ))
-                        })?
-                        .to_string();
-                    let desc = f
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let params = f.get("parameters").cloned();
-                    (name, desc, params)
-                } else {
-                    let name = obj
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| {
-                            error_context()
-                                .invalid_parameters(format!("Missing name in {}", path.display()))
-                        })?
-                        .to_string();
-                    let desc = obj
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let params = obj.get("parameters").cloned();
-                    (name, desc, params)
-                }
-            };
 
             let handler = match handlers.get(&name) {
                 Some(h) => h.clone(),
@@ -464,6 +395,74 @@ impl ToolExecutor {
             }
         }
         messages
+    }
+
+    /// Execute LLM tool_calls in parallel with result ordering preserved
+    ///
+    /// This method guarantees that results are returned in the same order as the input calls,
+    /// which is important for maintaining conversation context in LLM interactions.
+    ///
+    /// Behavior:
+    /// - Parses each ToolCallMessage's function.arguments (stringified JSON supported)
+    /// - Runs all tools concurrently using this executor
+    /// - Preserves the original order of tool calls in results
+    /// - Captures errors per-call and encodes them as JSON
+    /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when present
+    ///
+    /// Returns:
+    /// - Vec<TextMessage> in the same order as input calls, ready for ChatCompletion
+    pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
+        use futures::future::join_all;
+
+        let futures: Vec<_> = calls
+            .iter()
+            .map(|tc| {
+                let id_opt = tc.id().map(|s| s.to_string());
+                let func_opt = tc.function();
+                let this = self.clone();
+
+                async move {
+                    if let Some(func) = func_opt {
+                        let name = func.name().unwrap_or("").to_string();
+                        let args_str = func.arguments().unwrap_or("{}");
+                        let args_json: serde_json::Value = serde_json::from_str(args_str)
+                            .unwrap_or_else(|_| serde_json::json!({ "_raw": args_str }));
+
+                        let content_json = match this.execute_simple(&name, args_json).await {
+                            Ok(v) => v,
+                            Err(err) => serde_json::json!({
+                                "error": {
+                                    "type": "execution_failed",
+                                    "message": err.to_string()
+                                }
+                            }),
+                        };
+                        let s = serde_json::to_string(&content_json)
+                            .unwrap_or_else(|_| "{}".to_string());
+                        if let Some(id) = id_opt {
+                            TextMessage::tool_with_id(s, id)
+                        } else {
+                            TextMessage::tool(s)
+                        }
+                    } else {
+                        let s = serde_json::json!({
+                            "error": {
+                                "type": "missing_function",
+                                "message": "tool_call.function is missing"
+                            }
+                        })
+                        .to_string();
+                        if let Some(id) = id_opt {
+                            TextMessage::tool_with_id(s, id)
+                        } else {
+                            TextMessage::tool(s)
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        join_all(futures).await
     }
 
     /// Export a single registered tool as Tools::Function (for LLM function calling)

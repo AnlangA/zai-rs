@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```rust
-//! use zai_rs::model::web_search::{WebSearchRequest, SearchEngine};
+//! use zai_rs::tool::web_search::{WebSearchRequest, SearchEngine};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {

@@ -1,10 +1,11 @@
+use jsonschema;
 use validator::ValidationError;
 
 /// 验证 JSON Schema（字符串）的自定义验证函数
 pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
     let schema_json: serde_json::Value =
         serde_json::from_str(parameters).map_err(|_| ValidationError::new("invalid_json"))?;
-    if !jsonschema::meta::is_valid(&schema_json) {
+    if jsonschema::validator_for(&schema_json).is_err() {
         return Err(ValidationError::new("invalid_json_schema"));
     }
     Ok(())
@@ -12,7 +13,7 @@ pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
 
 /// 验证 JSON Schema（已解析的 Value）的自定义验证函数
 pub fn validate_json_schema_value(parameters: &serde_json::Value) -> Result<(), ValidationError> {
-    if !jsonschema::meta::is_valid(parameters) {
+    if jsonschema::validator_for(parameters).is_err() {
         return Err(ValidationError::new("invalid_json_schema"));
     }
     Ok(())
