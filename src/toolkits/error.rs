@@ -73,50 +73,72 @@ impl ErrorContext {
         self
     }
 
+    fn get_tool_name(&self) -> String {
+        self.tool_name
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+
     pub fn tool_not_found(self) -> ToolError {
         ToolError::ToolNotFound {
-            name: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
+            name: self.get_tool_name(),
         }
     }
 
     pub fn invalid_parameters(self, message: impl Into<String>) -> ToolError {
+        let mut msg = message.into();
+        if let Some(ref op) = self.operation {
+            msg = format!("[{}] {}", op, msg);
+        }
         ToolError::InvalidParameters {
-            tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
-            message: message.into(),
+            tool: self.get_tool_name(),
+            message: msg,
         }
     }
 
     pub fn execution_failed(self, message: impl Into<String>) -> ToolError {
+        let mut msg = message.into();
+        if let Some(ref op) = self.operation {
+            msg = format!("[{}] {}", op, msg);
+        }
         ToolError::ExecutionFailed {
-            tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
-            message: message.into(),
+            tool: self.get_tool_name(),
+            message: msg,
         }
     }
 
     pub fn schema_validation(self, message: impl Into<String>) -> ToolError {
+        let mut msg = message.into();
+        if let Some(ref op) = self.operation {
+            msg = format!("[{}] {}", op, msg);
+        }
         ToolError::SchemaValidation {
-            tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
-            message: message.into(),
+            tool: self.get_tool_name(),
+            message: msg,
         }
     }
 
     pub fn serialization_error(self, source: serde_json::Error) -> ToolError {
+        let mut tool_name = self.get_tool_name();
+        if let Some(ref op) = self.operation {
+            tool_name = format!("{} [{}]", tool_name, op);
+        }
         ToolError::SerializationError {
-            tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
+            tool: tool_name,
             source,
         }
     }
 
     pub fn timeout_error(self, timeout: std::time::Duration) -> ToolError {
         ToolError::TimeoutError {
-            tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
+            tool: self.get_tool_name(),
             timeout,
         }
     }
 
     pub fn retry_limit_exceeded(self, attempts: u32) -> ToolError {
         ToolError::RetryLimitExceeded {
-            tool: self.tool_name.unwrap_or_else(|| "unknown".to_string()),
+            tool: self.get_tool_name(),
             attempts,
         }
     }
@@ -150,46 +172,3 @@ pub fn error_context() -> ErrorContext {
     ErrorContext::new()
 }
 
-/// Extension trait for Results to add context
-pub trait ResultExt<T> {
-    fn with_tool_context(self, tool_name: impl Into<String>) -> ToolResult<T>;
-    fn with_operation_context(self, operation: impl Into<String>) -> ToolResult<T>;
-}
-
-impl<T, E> ResultExt<T> for Result<T, E>
-where
-    E: Into<ToolError>,
-{
-    fn with_tool_context(self, tool_name: impl Into<String>) -> ToolResult<T> {
-        self.map_err(|e| {
-            let mut error = e.into();
-            // Add tool context to existing error if possible
-            match &mut error {
-                ToolError::InvalidParameters { tool, .. } if tool == "unknown" => {
-                    *tool = tool_name.into();
-                }
-                ToolError::ExecutionFailed { tool, .. } if tool == "unknown" => {
-                    *tool = tool_name.into();
-                }
-                ToolError::SchemaValidation { tool, .. } if tool == "unknown" => {
-                    *tool = tool_name.into();
-                }
-                ToolError::SerializationError { tool, .. } if tool == "unknown" => {
-                    *tool = tool_name.into();
-                }
-                ToolError::TimeoutError { tool, .. } if tool == "unknown" => {
-                    *tool = tool_name.into();
-                }
-                ToolError::RetryLimitExceeded { tool, .. } if tool == "unknown" => {
-                    *tool = tool_name.into();
-                }
-                _ => {}
-            }
-            error
-        })
-    }
-
-    fn with_operation_context(self, _operation: impl Into<String>) -> ToolResult<T> {
-        self.map_err(Into::into)
-    }
-}

@@ -104,19 +104,6 @@ impl std::fmt::Debug for ToolExecutor {
     }
 }
 
-/// Type alias for a dynamic function tool handler used when registering from external specs
-pub type DynFunctionHandler = std::sync::Arc<
-    dyn Fn(
-            serde_json::Value,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                    > + Send,
-            >,
-        > + Send
-        + Sync,
->;
 
 impl ToolExecutor {
     /// Create a new executor with default config
@@ -261,7 +248,18 @@ impl ToolExecutor {
     pub fn add_functions_from_dir_with_registry(
         &self,
         dir: impl AsRef<std::path::Path>,
-        handlers: &std::collections::HashMap<String, DynFunctionHandler>,
+        handlers: &std::collections::HashMap<String, std::sync::Arc<
+            dyn Fn(
+                    serde_json::Value,
+                ) -> std::pin::Pin<
+                    Box<
+                        dyn std::future::Future<
+                                Output = crate::toolkits::error::ToolResult<serde_json::Value>,
+                            > + Send,
+                    >,
+                > + Send
+                + Sync,
+        >>,
         strict: bool,
     ) -> ToolResult<Vec<String>> {
         use serde_json::Value;
@@ -361,33 +359,59 @@ impl ToolExecutor {
     ///
     /// Returns:
     /// - `Vec<TextMessage>` ready to be appended to ChatCompletion as tool messages.
-    pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
-        let mut set = JoinSet::new();
-        for tc in calls {
-            let id_opt = tc.id().map(|s| s.to_string());
-            let func_opt = tc.function();
-            let this = self.clone();
-            if let Some(func) = func_opt {
-                let name = func.name().unwrap_or("").to_string();
-                let args_str = func.arguments().unwrap_or("{}");
-                let args_json: serde_json::Value = serde_json::from_str(args_str)
-                    .unwrap_or_else(|_| serde_json::json!({ "_raw": args_str }));
-                set.spawn(async move {
-                    let content_json = match this.execute_simple(&name, args_json).await {
-                        Ok(v) => v,
-                        Err(err) => serde_json::json!({ "error": { "type": "execution_failed", "message": err.to_string() } }),
-                    };
-                    let s = serde_json::to_string(&content_json).unwrap_or_else(|_| "{}".to_string());
-                    if let Some(id) = id_opt { TextMessage::tool_with_id(s, id) } else { TextMessage::tool(s) }
-                });
+    async fn execute_single_tool_call(
+        &self,
+        tc: &ToolCallMessage,
+    ) -> TextMessage {
+        let id_opt = tc.id().map(|s| s.to_string());
+        let func_opt = tc.function();
+        
+        if let Some(func) = func_opt {
+            let name = func.name().unwrap_or("").to_string();
+            let args_str = func.arguments().unwrap_or("{}");
+            let args_json: serde_json::Value = serde_json::from_str(args_str)
+                .unwrap_or_else(|_| serde_json::json!({ "_raw": args_str }));
+            
+            let content_json = match self.execute_simple(&name, args_json).await {
+                Ok(v) => v,
+                Err(err) => serde_json::json!({ 
+                    "error": { "type": "execution_failed", "message": err.to_string() } 
+                }),
+            };
+            
+            let s = serde_json::to_string(&content_json)
+                .unwrap_or_else(|_| "{}".to_string());
+            
+            if let Some(id) = id_opt {
+                TextMessage::tool_with_id(s, id)
             } else {
-                let id_copy = id_opt.clone();
-                set.spawn(async move {
-                    let s = serde_json::json!({ "error": { "type": "missing_function", "message": "tool_call.function is missing" } }).to_string();
-                    if let Some(id) = id_copy { TextMessage::tool_with_id(s, id) } else { TextMessage::tool(s) }
-                });
+                TextMessage::tool(s)
+            }
+        } else {
+            let s = serde_json::json!({ 
+                "error": { "type": "missing_function", "message": "tool_call.function is missing" } 
+            }).to_string();
+            
+            if let Some(id) = id_opt {
+                TextMessage::tool_with_id(s, id)
+            } else {
+                TextMessage::tool(s)
             }
         }
+    }
+
+    pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
+        let mut set = JoinSet::new();
+        
+        // Clone the calls to avoid borrowing issues
+        let calls_vec = calls.to_vec();
+        for tc in calls_vec {
+            let this = self.clone();
+            set.spawn(async move {
+                this.execute_single_tool_call(&tc).await
+            });
+        }
+        
         let mut messages = Vec::with_capacity(calls.len());
         while let Some(res) = set.join_next().await {
             if let Ok(msg) = res {
@@ -414,50 +438,13 @@ impl ToolExecutor {
     pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         use futures::future::join_all;
 
-        let futures: Vec<_> = calls
-            .iter()
+        let calls_vec = calls.to_vec();
+        let futures: Vec<_> = calls_vec
+            .into_iter()
             .map(|tc| {
-                let id_opt = tc.id().map(|s| s.to_string());
-                let func_opt = tc.function();
                 let this = self.clone();
-
                 async move {
-                    if let Some(func) = func_opt {
-                        let name = func.name().unwrap_or("").to_string();
-                        let args_str = func.arguments().unwrap_or("{}");
-                        let args_json: serde_json::Value = serde_json::from_str(args_str)
-                            .unwrap_or_else(|_| serde_json::json!({ "_raw": args_str }));
-
-                        let content_json = match this.execute_simple(&name, args_json).await {
-                            Ok(v) => v,
-                            Err(err) => serde_json::json!({
-                                "error": {
-                                    "type": "execution_failed",
-                                    "message": err.to_string()
-                                }
-                            }),
-                        };
-                        let s = serde_json::to_string(&content_json)
-                            .unwrap_or_else(|_| "{}".to_string());
-                        if let Some(id) = id_opt {
-                            TextMessage::tool_with_id(s, id)
-                        } else {
-                            TextMessage::tool(s)
-                        }
-                    } else {
-                        let s = serde_json::json!({
-                            "error": {
-                                "type": "missing_function",
-                                "message": "tool_call.function is missing"
-                            }
-                        })
-                        .to_string();
-                        if let Some(id) = id_opt {
-                            TextMessage::tool_with_id(s, id)
-                        } else {
-                            TextMessage::tool(s)
-                        }
-                    }
+                    this.execute_single_tool_call(&tc).await
                 }
             })
             .collect();

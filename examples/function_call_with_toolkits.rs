@@ -16,17 +16,42 @@ fn make_weather_tool() -> FunctionTool {
             "additionalProperties": false
         }))
         .handler(|args| async move {
+            // 获取参数
             let city = args.get("city").and_then(|v| v.as_str()).unwrap_or("");
+
+            // 参数验证
             if city.trim().is_empty() {
                 return Err(error_context()
                     .with_tool("get_weather")
+                    .with_operation("参数验证")
                     .invalid_parameters("City name cannot be empty"));
             }
-            Ok(json!({
-                "city": city,
-                "temperature": 25,
-                "condition": "Sunny"
-            }))
+
+            // 模拟天气数据
+            let weather = match city.to_lowercase().as_str() {
+                "shenzhen" => json!({
+                    "city": "Shenzhen",
+                    "temperature": 28,
+                    "condition": "Sunny"
+                }),
+                "beijing" => json!({
+                    "city": "Beijing",
+                    "temperature": 15,
+                    "condition": "Cloudy"
+                }),
+                "shanghai" => json!({
+                    "city": "Shanghai",
+                    "temperature": 22,
+                    "condition": "Rainy"
+                }),
+                _ => json!({
+                    "city": city,
+                    "temperature": 20,
+                    "condition": "Unknown"
+                }),
+            };
+
+            Ok(weather)
         })
         .build()
         .expect("weather tool")
@@ -40,17 +65,38 @@ fn make_calc_tool() -> FunctionTool {
         .required("op").required("a").required("b")
         .handler(|args| async move {
             let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("");
-            let a = args.get("a").and_then(|v| v.as_f64()).ok_or_else(|| error_context().with_tool("calc").invalid_parameters("Missing number 'a'"))?;
-            let b = args.get("b").and_then(|v| v.as_f64()).ok_or_else(|| error_context().with_tool("calc").invalid_parameters("Missing number 'b'"))?;
+
+            // 使用 ErrorContext 的 with_operation 来添加上下文信息
+            let a = args.get("a").and_then(|v| v.as_f64())
+                .ok_or_else(|| error_context()
+                    .with_tool("calc")
+                    .with_operation("解析左操作数")
+                    .invalid_parameters("Missing number 'a'"))?;
+
+            let b = args.get("b").and_then(|v| v.as_f64())
+                .ok_or_else(|| error_context()
+                    .with_tool("calc")
+                    .with_operation("解析右操作数")
+                    .invalid_parameters("Missing number 'b'"))?;
+
             let result = match op {
                 "add" => a + b,
                 "sub" => a - b,
                 "mul" => a * b,
                 "div" => {
-                    if b == 0.0 { return Err(error_context().with_tool("calc").invalid_parameters("Division by zero")); }
+                    // 演示 with_operation 的用法 - 除零检查
+                    if b == 0.0 {
+                        return Err(error_context()
+                            .with_tool("calc")
+                            .with_operation("除法运算")
+                            .invalid_parameters("Division by zero"));
+                    }
                     a / b
                 },
-                _ => return Err(error_context().with_tool("calc").invalid_parameters("Unsupported op, expected one of add/sub/mul/div")),
+                _ => return Err(error_context()
+                    .with_tool("calc")
+                    .with_operation("操作符验证")
+                    .invalid_parameters("Unsupported op, expected one of add/sub/mul/div")),
             };
             Ok(json!({ "op": op, "a": a, "b": b, "result": result }))
         })
