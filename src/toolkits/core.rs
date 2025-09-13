@@ -5,6 +5,11 @@ use jsonschema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::borrow::Cow;
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use crate::toolkits::error::{ToolResult, error_context};
 
@@ -29,57 +34,72 @@ pub trait DynTool: Send + Sync {
     fn clone_box(&self) -> Box<dyn DynTool>;
 }
 
-/// Enhanced tool metadata with better type information
+/// Global schema cache for compiled JSON schemas
+static SCHEMA_CACHE: Lazy<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> = 
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// Enhanced tool metadata with better type information and memory optimization
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolMetadata {
     /// Tool name (must be unique)
-    pub name: String,
+    pub name: Cow<'static, str>,
 
     /// Tool description
-    pub description: String,
+    pub description: Cow<'static, str>,
 
     /// Tool version
-    pub version: String,
+    pub version: Cow<'static, str>,
 
     /// Tool author
-    pub author: Option<String>,
+    pub author: Option<Cow<'static, str>>,
 
     /// Tool tags for categorization
-    pub tags: Vec<String>,
+    pub tags: Vec<Cow<'static, str>>,
 
     /// Whether the tool is enabled
     pub enabled: bool,
 
     /// Additional metadata
-    pub metadata: HashMap<String, serde_json::Value>,
+    pub metadata: HashMap<Cow<'static, str>, serde_json::Value>,
 }
 
 impl ToolMetadata {
-    /// Create new metadata
-    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: description.into(),
-            version: "1.0.0".to_string(),
+    /// Create new metadata with validation
+    pub fn new(name: impl Into<String>, description: impl Into<String>) -> ToolResult<Self> {
+        let name = name.into();
+        let description = description.into();
+        
+        // Validate tool name
+        if name.trim().is_empty() {
+            return Err(error_context().invalid_parameters("Tool name cannot be empty"));
+        }
+        if name.contains(|c: char| !c.is_alphanumeric() && c != '_') {
+            return Err(error_context().invalid_parameters("Tool name must be alphanumeric with underscores only"));
+        }
+        
+        Ok(Self {
+            name: Cow::Owned(name),
+            description: Cow::Owned(description),
+            version: Cow::Borrowed("1.0.0"),
             author: None,
             tags: Vec::new(),
             enabled: true,
             metadata: HashMap::new(),
-        }
+        })
     }
 
     /// Builder pattern methods
-    pub fn version(mut self, version: impl Into<String>) -> Self {
+    pub fn version(mut self, version: impl Into<Cow<'static, str>>) -> Self {
         self.version = version.into();
         self
     }
 
-    pub fn author(mut self, author: impl Into<String>) -> Self {
+    pub fn author(mut self, author: impl Into<Cow<'static, str>>) -> Self {
         self.author = Some(author.into());
         self
     }
 
-    pub fn tags<T: Into<String>>(mut self, tags: impl IntoIterator<Item = T>) -> Self {
+    pub fn tags<T: Into<Cow<'static, str>>>(mut self, tags: impl IntoIterator<Item = T>) -> Self {
         self.tags = tags.into_iter().map(Into::into).collect();
         self
     }
@@ -89,7 +109,7 @@ impl ToolMetadata {
         self
     }
 
-    pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+    pub fn with_metadata(mut self, key: impl Into<Cow<'static, str>>, value: serde_json::Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
     }
@@ -239,6 +259,34 @@ impl FunctionTool {
     }
 }
 
+/// Compile JSON schema with caching for better performance
+fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschema::Validator>> {
+    let mut hasher = DefaultHasher::new();
+    schema.to_string().hash(&mut hasher);
+    let hash = hasher.finish();
+    
+    // Check cache first
+    {
+        let cache = SCHEMA_CACHE.read();
+        if let Some(cached) = cache.get(&hash) {
+            return Ok(Arc::clone(cached));
+        }
+    }
+    
+    // Compile and cache
+    let validator = jsonschema::validator_for(schema)
+        .map_err(|e| error_context().schema_validation(format!("Failed to compile schema: {}", e)))?;
+    
+    let validator = Arc::new(validator);
+    
+    {
+        let mut cache = SCHEMA_CACHE.write();
+        cache.insert(hash, Arc::clone(&validator));
+    }
+    
+    Ok(validator)
+}
+
 /// (internal) Parses the name, description, and parameters from a JSON function spec.
 pub(crate) fn parse_function_spec_details(
     spec: &serde_json::Value,
@@ -310,7 +358,17 @@ pub struct FunctionToolBuilder {
 impl FunctionToolBuilder {
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
-            metadata: ToolMetadata::new(name, description),
+            metadata: ToolMetadata::new(name, description).unwrap_or_else(|_| {
+                ToolMetadata {
+                    name: Cow::Borrowed("unknown"),
+                    description: Cow::Borrowed("unknown"),
+                    version: Cow::Borrowed("1.0.0"),
+                    author: None,
+                    tags: Vec::new(),
+                    enabled: true,
+                    metadata: HashMap::new(),
+                }
+            }),
             input_schema: None,
             staged_properties: None,
             staged_required: Vec::new(),
@@ -434,7 +492,7 @@ impl FunctionToolBuilder {
             }
         }
 
-        let compiled_schema = jsonschema::validator_for(&schema).map_err(|e| {
+        let compiled_schema = compile_schema_cached(&schema).map_err(|e| {
             error_context()
                 .with_tool(self.metadata.name.clone())
                 .schema_validation(format!("Failed to compile schema: {}", e))
@@ -443,7 +501,7 @@ impl FunctionToolBuilder {
         Ok(FunctionTool {
             metadata: self.metadata,
             input_schema: schema,
-            compiled_schema: Arc::new(compiled_schema),
+            compiled_schema,
             handler,
         })
     }

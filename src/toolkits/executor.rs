@@ -1,8 +1,8 @@
 //! Enhanced tool executor with type-safe builder pattern
 
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
 use tokio::time::timeout;
@@ -14,12 +14,45 @@ use crate::model::chat_base_response::ToolCallMessage;
 use crate::model::chat_message_types::TextMessage;
 use crate::model::tools::{Function, Tools};
 
+/// Enhanced retry configuration with exponential backoff
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    pub max_retries: u32,
+    pub initial_delay: Duration,
+    pub max_delay: Duration,
+    pub backoff_multiplier: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay: Duration::from_millis(100),
+            max_delay: Duration::from_secs(30),
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+impl RetryConfig {
+    pub fn calculate_delay(&self, attempt: u32) -> Duration {
+        if attempt == 0 {
+            return Duration::ZERO;
+        }
+
+        let delay_ms = self.initial_delay.as_millis() as f64
+            * self.backoff_multiplier.powi((attempt - 1) as i32);
+        let delay_ms = delay_ms.min(self.max_delay.as_millis() as f64) as u64;
+
+        Duration::from_millis(delay_ms)
+    }
+}
+
 /// Execution configuration with type-safe builder
 #[derive(Debug, Clone)]
 pub struct ExecutionConfig {
     pub timeout: Option<Duration>,
-    pub max_retries: u32,
-    pub retry_delay: Duration,
+    pub retry_config: RetryConfig,
     pub validate_parameters: bool,
     pub enable_logging: bool,
 }
@@ -28,8 +61,7 @@ impl Default for ExecutionConfig {
     fn default() -> Self {
         Self {
             timeout: Some(Duration::from_secs(30)),
-            max_retries: 0,
-            retry_delay: Duration::from_millis(100),
+            retry_config: RetryConfig::default(),
             validate_parameters: true,
             enable_logging: false,
         }
@@ -87,29 +119,29 @@ impl ExecutionResult {
     }
 }
 
+
 /// Enhanced tool executor with built-in registry and fluent API
 #[derive(Clone)]
 pub struct ToolExecutor {
-    tools: Arc<RwLock<HashMap<String, Box<dyn DynTool>>>>,
+    tools: Arc<DashMap<String, Box<dyn DynTool>>>,
     config: ExecutionConfig,
 }
 
 impl std::fmt::Debug for ToolExecutor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let tools = self.tools.read().map(|m| m.len()).unwrap_or(0);
+        let tool_count = self.tools.len();
         f.debug_struct("ToolExecutor")
-            .field("tool_count", &tools)
+            .field("tool_count", &tool_count)
             .field("config", &self.config)
             .finish()
     }
 }
 
-
 impl ToolExecutor {
     /// Create a new executor with default config
     pub fn new() -> Self {
         Self {
-            tools: Arc::new(RwLock::new(HashMap::new())),
+            tools: Arc::new(DashMap::new()),
             config: ExecutionConfig::default(),
         }
     }
@@ -122,33 +154,23 @@ impl ToolExecutor {
     /// Chain-friendly: add a dynamic tool (panics on error)
     pub fn add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
         let name = tool.name().to_string();
-        {
-            let tools = self.tools.read().unwrap();
-            if tools.contains_key(&name) {
-                panic!("Tool '{}' is already registered", name);
-            }
+        if self.tools.contains_key(&name) {
+            panic!("Tool '{}' is already registered", name);
         }
-        let mut tools = self.tools.write().unwrap();
-        tools.insert(name, tool);
+        self.tools.insert(name, tool);
         self
     }
 
     /// Chain-friendly: try to add a dynamic tool (ignores error)
     pub fn try_add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
         let name = tool.name().to_string();
-        // Optimize: acquire write lock directly to avoid double lookup
-        if let Ok(mut guard) = self.tools.write() {
-            if !guard.contains_key(&name) {
-                guard.insert(name, tool);
-            }
-        }
+        self.tools.entry(name).or_insert(tool);
         self
     }
 
     /// Unregister a tool
     pub fn unregister(&self, name: &str) -> ToolResult<()> {
-        let mut tools = self.tools.write().unwrap();
-        if tools.remove(name).is_none() {
+        if self.tools.remove(name).is_none() {
             return Err(error_context().tool_not_found());
         }
         Ok(())
@@ -156,28 +178,25 @@ impl ToolExecutor {
 
     /// Get input schema for a tool
     pub fn input_schema(&self, name: &str) -> Option<serde_json::Value> {
-        let tools = self.tools.read().unwrap();
-        tools.get(name).map(|t| t.input_schema())
+        self.tools.get(name).map(|t| t.input_schema())
     }
 
     /// Check if tool exists
     pub fn has_tool(&self, name: &str) -> bool {
-        let tools = self.tools.read().unwrap();
-        tools.contains_key(name)
+        self.tools.contains_key(name)
     }
 
     /// List tool names
     pub fn tool_names(&self) -> Vec<String> {
-        let tools = self.tools.read().unwrap();
-        tools.keys().cloned().collect()
+        self.tools.iter().map(|entry| entry.key().clone()).collect()
     }
+
 
     fn get_tool(&self, name: &str) -> Option<Box<dyn DynTool>> {
-        let tools = self.tools.read().unwrap();
-        tools.get(name).map(|t| t.clone_box())
+        self.tools.get(name).map(|t| t.clone_box())
     }
 
-    /// Execute a tool with detailed result
+    /// Execute a tool with detailed result and exponential backoff
     pub async fn execute(
         &self,
         tool_name: &str,
@@ -185,6 +204,7 @@ impl ToolExecutor {
     ) -> ToolResult<ExecutionResult> {
         let start_time = Instant::now();
         let mut retries = 0;
+        let retry_config = &self.config.retry_config;
 
         loop {
             match self.execute_once(tool_name, &input).await {
@@ -198,7 +218,7 @@ impl ToolExecutor {
                     ));
                 }
                 Err(error) => {
-                    if retries >= self.config.max_retries {
+                    if retries >= retry_config.max_retries {
                         let duration = start_time.elapsed();
                         return Ok(ExecutionResult::failure(
                             tool_name.to_string(),
@@ -214,7 +234,9 @@ impl ToolExecutor {
                         eprintln!("Tool execution failed (attempt {}): {}", retries, error);
                     }
 
-                    tokio::time::sleep(self.config.retry_delay).await;
+                    // Use exponential backoff
+                    let delay = retry_config.calculate_delay(retries);
+                    tokio::time::sleep(delay).await;
                 }
             }
         }
@@ -248,18 +270,21 @@ impl ToolExecutor {
     pub fn add_functions_from_dir_with_registry(
         &self,
         dir: impl AsRef<std::path::Path>,
-        handlers: &std::collections::HashMap<String, std::sync::Arc<
-            dyn Fn(
-                    serde_json::Value,
-                ) -> std::pin::Pin<
-                    Box<
-                        dyn std::future::Future<
-                                Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                            > + Send,
-                    >,
-                > + Send
-                + Sync,
-        >>,
+        handlers: &std::collections::HashMap<
+            String,
+            std::sync::Arc<
+                dyn Fn(
+                        serde_json::Value,
+                    ) -> std::pin::Pin<
+                        Box<
+                            dyn std::future::Future<
+                                    Output = crate::toolkits::error::ToolResult<serde_json::Value>,
+                                > + Send,
+                        >,
+                    > + Send
+                    + Sync,
+            >,
+        >,
         strict: bool,
     ) -> ToolResult<Vec<String>> {
         use serde_json::Value;
@@ -359,39 +384,36 @@ impl ToolExecutor {
     ///
     /// Returns:
     /// - `Vec<TextMessage>` ready to be appended to ChatCompletion as tool messages.
-    async fn execute_single_tool_call(
-        &self,
-        tc: &ToolCallMessage,
-    ) -> TextMessage {
+    async fn execute_single_tool_call(&self, tc: &ToolCallMessage) -> TextMessage {
         let id_opt = tc.id().map(|s| s.to_string());
         let func_opt = tc.function();
-        
+
         if let Some(func) = func_opt {
             let name = func.name().unwrap_or("").to_string();
             let args_str = func.arguments().unwrap_or("{}");
             let args_json: serde_json::Value = serde_json::from_str(args_str)
                 .unwrap_or_else(|_| serde_json::json!({ "_raw": args_str }));
-            
+
             let content_json = match self.execute_simple(&name, args_json).await {
                 Ok(v) => v,
-                Err(err) => serde_json::json!({ 
-                    "error": { "type": "execution_failed", "message": err.to_string() } 
+                Err(err) => serde_json::json!({
+                    "error": { "type": "execution_failed", "message": err.to_string() }
                 }),
             };
-            
-            let s = serde_json::to_string(&content_json)
-                .unwrap_or_else(|_| "{}".to_string());
-            
+
+            let s = serde_json::to_string(&content_json).unwrap_or_else(|_| "{}".to_string());
+
             if let Some(id) = id_opt {
                 TextMessage::tool_with_id(s, id)
             } else {
                 TextMessage::tool(s)
             }
         } else {
-            let s = serde_json::json!({ 
-                "error": { "type": "missing_function", "message": "tool_call.function is missing" } 
-            }).to_string();
-            
+            let s = serde_json::json!({
+                "error": { "type": "missing_function", "message": "tool_call.function is missing" }
+            })
+            .to_string();
+
             if let Some(id) = id_opt {
                 TextMessage::tool_with_id(s, id)
             } else {
@@ -402,16 +424,14 @@ impl ToolExecutor {
 
     pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         let mut set = JoinSet::new();
-        
+
         // Clone the calls to avoid borrowing issues
         let calls_vec = calls.to_vec();
         for tc in calls_vec {
             let this = self.clone();
-            set.spawn(async move {
-                this.execute_single_tool_call(&tc).await
-            });
+            set.spawn(async move { this.execute_single_tool_call(&tc).await });
         }
-        
+
         let mut messages = Vec::with_capacity(calls.len());
         while let Some(res) = set.join_next().await {
             if let Ok(msg) = res {
@@ -443,9 +463,7 @@ impl ToolExecutor {
             .into_iter()
             .map(|tc| {
                 let this = self.clone();
-                async move {
-                    this.execute_single_tool_call(&tc).await
-                }
+                async move { this.execute_single_tool_call(&tc).await }
             })
             .collect();
 
@@ -454,8 +472,7 @@ impl ToolExecutor {
 
     /// Export a single registered tool as Tools::Function (for LLM function calling)
     pub fn export_tool_as_function(&self, name: &str) -> Option<Tools> {
-        let tools = self.tools.read().ok()?;
-        let tool = tools.get(name)?;
+        let tool = self.tools.get(name)?;
         let meta = tool.metadata();
         let schema = tool.input_schema();
         let func = Function::new(meta.name.clone(), meta.description.clone(), schema);
@@ -464,13 +481,10 @@ impl ToolExecutor {
 
     /// Export all registered tools as a Vec<Tools::Function>
     pub fn export_all_tools_as_functions(&self) -> Vec<Tools> {
-        let tools = match self.tools.read() {
-            Ok(t) => t,
-            Err(_) => return Vec::new(),
-        };
-        tools
-            .values()
-            .map(|tool| {
+        self.tools
+            .iter()
+            .map(|entry| {
+                let tool = entry.value();
                 let meta = tool.metadata();
                 let schema = tool.input_schema();
                 let func = Function::new(meta.name.clone(), meta.description.clone(), schema);
@@ -483,14 +497,11 @@ impl ToolExecutor {
     where
         F: FnMut(&crate::toolkits::core::ToolMetadata) -> bool,
     {
-        let tools = match self.tools.read() {
-            Ok(t) => t,
-            Err(_) => return Vec::new(),
-        };
-        tools
-            .values()
-            .filter(|tool| filter(tool.metadata()))
-            .map(|tool| {
+        self.tools
+            .iter()
+            .filter(|entry| filter(entry.value().metadata()))
+            .map(|entry| {
+                let tool = entry.value();
                 let meta = tool.metadata();
                 let schema = tool.input_schema();
                 let func = Function::new(meta.name.clone(), meta.description.clone(), schema);
@@ -547,7 +558,7 @@ impl ExecutorBuilder {
 
     /// Set maximum number of retries
     pub fn retries(mut self, retries: u32) -> Self {
-        self.config.max_retries = retries;
+        self.config.retry_config.max_retries = retries;
         self
     }
 
@@ -560,7 +571,7 @@ impl ExecutorBuilder {
     /// Build the final executor
     pub fn build(self) -> ToolExecutor {
         ToolExecutor {
-            tools: Arc::new(RwLock::new(HashMap::new())),
+            tools: Arc::new(DashMap::new()),
             config: self.config,
         }
     }

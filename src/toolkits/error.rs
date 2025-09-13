@@ -1,52 +1,86 @@
 //! Enhanced error handling with better Rust idioms
 
 use thiserror::Error;
+use std::borrow::Cow;
 
 /// Result type for tool operations
 pub type ToolResult<T> = Result<T, ToolError>;
+
+/// Error severity levels for better error handling strategies
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorSeverity {
+    User,      // User error, no retry needed
+    Normal,    // Normal error, may retry
+    Transient, // Transient error, should retry
+    Critical,  // Critical error, log and alert
+}
 
 /// Enhanced error type with better context and error chaining
 #[derive(Error, Debug)]
 pub enum ToolError {
     #[error("Tool '{name}' not found")]
-    ToolNotFound { name: String },
+    ToolNotFound { name: Cow<'static, str> },
 
     #[error("Invalid parameters for tool '{tool}': {message}")]
-    InvalidParameters { tool: String, message: String },
+    InvalidParameters { tool: Cow<'static, str>, message: Cow<'static, str> },
 
     #[error("Tool '{tool}' execution failed: {message}")]
-    ExecutionFailed { tool: String, message: String },
+    ExecutionFailed { tool: Cow<'static, str>, message: Cow<'static, str> },
 
     #[error("Schema validation failed for tool '{tool}': {message}")]
-    SchemaValidation { tool: String, message: String },
+    SchemaValidation { tool: Cow<'static, str>, message: Cow<'static, str> },
 
     #[error("Tool registration failed: {message}")]
-    RegistrationError { message: String },
+    RegistrationError { message: Cow<'static, str> },
 
     #[error("Serialization error for tool '{tool}': {source}")]
     SerializationError {
-        tool: String,
+        tool: Cow<'static, str>,
         #[source]
         source: serde_json::Error,
     },
 
     #[error("Timeout error for tool '{tool}': execution exceeded {timeout:?}")]
     TimeoutError {
-        tool: String,
+        tool: Cow<'static, str>,
         timeout: std::time::Duration,
     },
 
     #[error("Retry limit exceeded for tool '{tool}': failed after {attempts} attempts")]
-    RetryLimitExceeded { tool: String, attempts: u32 },
+    RetryLimitExceeded { tool: Cow<'static, str>, attempts: u32 },
 
     #[error("Validation error for field '{field}': {message}")]
-    ValidationError { field: String, message: String },
+    ValidationError { field: Cow<'static, str>, message: Cow<'static, str> },
 
     #[error("Concurrent access error: {message}")]
-    ConcurrentAccessError { message: String },
+    ConcurrentAccessError { message: Cow<'static, str> },
 
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
+}
+
+impl ToolError {
+    /// Determine if the error is retryable
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, 
+            ToolError::TimeoutError { .. } | 
+            ToolError::ConcurrentAccessError { .. } |
+            ToolError::ExecutionFailed { .. }
+        )
+    }
+    
+    /// Get the severity level of the error
+    pub fn severity(&self) -> ErrorSeverity {
+        match self {
+            ToolError::ToolNotFound { .. } => ErrorSeverity::User,
+            ToolError::InvalidParameters { .. } => ErrorSeverity::User,
+            ToolError::ValidationError { .. } => ErrorSeverity::User,
+            ToolError::TimeoutError { .. } => ErrorSeverity::Transient,
+            ToolError::ConcurrentAccessError { .. } => ErrorSeverity::Transient,
+            ToolError::Internal(_) => ErrorSeverity::Critical,
+            _ => ErrorSeverity::Normal,
+        }
+    }
 }
 
 /// Error context builder for better error reporting
@@ -81,7 +115,7 @@ impl ErrorContext {
 
     pub fn tool_not_found(self) -> ToolError {
         ToolError::ToolNotFound {
-            name: self.get_tool_name(),
+            name: Cow::Owned(self.get_tool_name()),
         }
     }
 
@@ -91,8 +125,8 @@ impl ErrorContext {
             msg = format!("[{}] {}", op, msg);
         }
         ToolError::InvalidParameters {
-            tool: self.get_tool_name(),
-            message: msg,
+            tool: Cow::Owned(self.get_tool_name()),
+            message: Cow::Owned(msg),
         }
     }
 
@@ -102,8 +136,8 @@ impl ErrorContext {
             msg = format!("[{}] {}", op, msg);
         }
         ToolError::ExecutionFailed {
-            tool: self.get_tool_name(),
-            message: msg,
+            tool: Cow::Owned(self.get_tool_name()),
+            message: Cow::Owned(msg),
         }
     }
 
@@ -113,8 +147,8 @@ impl ErrorContext {
             msg = format!("[{}] {}", op, msg);
         }
         ToolError::SchemaValidation {
-            tool: self.get_tool_name(),
-            message: msg,
+            tool: Cow::Owned(self.get_tool_name()),
+            message: Cow::Owned(msg),
         }
     }
 
@@ -124,21 +158,21 @@ impl ErrorContext {
             tool_name = format!("{} [{}]", tool_name, op);
         }
         ToolError::SerializationError {
-            tool: tool_name,
+            tool: Cow::Owned(tool_name),
             source,
         }
     }
 
     pub fn timeout_error(self, timeout: std::time::Duration) -> ToolError {
         ToolError::TimeoutError {
-            tool: self.get_tool_name(),
+            tool: Cow::Owned(self.get_tool_name()),
             timeout,
         }
     }
 
     pub fn retry_limit_exceeded(self, attempts: u32) -> ToolError {
         ToolError::RetryLimitExceeded {
-            tool: self.get_tool_name(),
+            tool: Cow::Owned(self.get_tool_name()),
             attempts,
         }
     }
@@ -149,14 +183,14 @@ impl ErrorContext {
         message: impl Into<String>,
     ) -> ToolError {
         ToolError::ValidationError {
-            field: field.into(),
-            message: message.into(),
+            field: Cow::Owned(field.into()),
+            message: Cow::Owned(message.into()),
         }
     }
 
     pub fn concurrent_access_error(self, message: impl Into<String>) -> ToolError {
         ToolError::ConcurrentAccessError {
-            message: message.into(),
+            message: Cow::Owned(message.into()),
         }
     }
 }

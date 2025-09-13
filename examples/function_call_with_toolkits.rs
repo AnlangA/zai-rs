@@ -29,7 +29,7 @@ fn make_weather_tool() -> FunctionTool {
 
             // 模拟天气数据
             let weather = match city.to_lowercase().as_str() {
-                "shenzhen" => json!({
+                "深圳" => json!({
                     "city": "Shenzhen",
                     "temperature": 28,
                     "condition": "Sunny"
