@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use rmcp::{
     ServiceExt,
-    model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation},
+    model::{ClientCapabilities, ClientInfo, Implementation},
     service::ServerSink,
     transport::SseClientTransport,
 };
@@ -10,17 +10,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // ZAI (zai-rs) imports
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
-
-/// Convert an RMCP CallToolResult to a compact JSON payload for LLM tool result consumption.
-fn call_tool_result_to_json(res: &CallToolResult) -> Value {
-    if let Some(structured) = &res.structured_content {
-        return structured.clone();
-    }
-    // Fallback: serialize the whole result. Most tools at least include text content.
-    serde_json::to_value(res).unwrap_or_else(|_| serde_json::json!({
-        "error": {"type": "serialization_error", "message": "failed to serialize tool result"}
-    }))
-}
+// rmcp-kits bridge imports
+use zai_rs::toolkits::rmcp_kits::{
+    mcp_tools_to_functions, McpToolCaller, execute_tool_calls_as_messages,
+};
 
 // No toolkits: we'll directly map RMCP tools to ZAI function definitions,
 // and manually execute tool calls by forwarding to the RMCP server.
@@ -58,6 +51,7 @@ async fn main() -> Result<()> {
 
     // Grab a clonable server handle for tool execution
     let server: ServerSink = client.peer().clone();
+    let caller = McpToolCaller::new(server.clone());
 
     // 2) Retrieve available tools from the server
     let tools = server
@@ -66,15 +60,8 @@ async fn main() -> Result<()> {
         .context("failed to list tools from server")?;
     tracing::info!("Available tools: {:#?}", tools.iter().map(|t| &t.name).collect::<Vec<_>>());
 
-    // 3) Convert RMCP tools into ZAI function-call tool definitions (no toolkits)
-    let tool_defs: Vec<Tools> = tools
-        .iter()
-        .map(|t| {
-            let desc = t.description.as_deref().unwrap_or("Remote MCP tool");
-            let schema = t.schema_as_json_value();
-            Tools::Function { function: Function::new(t.name.to_string(), desc.to_string(), schema) }
-        })
-        .collect();
+    // 3) Convert RMCP tools into ZAI function-call tool definitions (via rmcp-kits)
+    let tool_defs: Vec<Tools> = mcp_tools_to_functions(&tools);
 
     // 4) Ask the AI to perform an increment operation using those tools
     let key = std::env::var("ZHIPU_API_KEY").map_err(|_| anyhow!(
@@ -91,51 +78,15 @@ async fn main() -> Result<()> {
     let first_resp: ChatCompletionResponse = chat.send().await.context("LLM request failed")?;
     tracing::info!("AI first response: {:#?}", first_resp);
 
-    // 6) If AI requested tool calls, execute them via RMCP and feed results back
-    if let Some(calls) = first_resp
-        .choices()
-        .and_then(|v| v.get(0))
-        .and_then(|c| c.message().tool_calls())
-    {
-        tracing::info!("AI requested tool calls: {}", calls.len());
-        for tc in calls {
-            // Extract tool call info
-            let id = match tc.id() { Some(id) => id.to_string(), None => {
-                tracing::warn!("Tool call without id, skipping");
-                continue;
-            }};
-            let func = match tc.function() { Some(f) => f, None => {
-                tracing::warn!("Tool call missing function payload, skipping");
-                continue;
-            }};
-            let name = match func.name() { Some(n) => n.to_string(), None => {
-                tracing::warn!("Tool call missing function name, skipping");
-                continue;
-            }};
-            // Parse arguments as JSON object if possible
-            let arguments: Option<serde_json::Map<String, Value>> = match func.arguments() {
-                Some(arg_str) => match serde_json::from_str::<Value>(arg_str) {
-                    Ok(Value::Object(map)) => Some(map),
-                    Ok(_) => {
-                        tracing::warn!("Function arguments are not an object; passing None");
-                        None
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse function arguments JSON: {}", e);
-                        None
-                    }
-                },
-                None => None,
-            };
-            // Call RMCP server
-            let res = server
-                .call_tool(CallToolRequestParam { name: name.into(), arguments })
-                .await
-                .context("RMCP call_tool failed")?;
-            println!("tool result: {:#?}", res);
-            let payload = call_tool_result_to_json(&res);
-            chat = chat.add_messages(TextMessage::tool_with_id(payload.to_string(), id));
-        }
+    // 6) Execute any requested tool calls via rmcp-kits and feed results back
+    let tool_msgs = execute_tool_calls_as_messages(&caller, &first_resp)
+        .await
+        .context("Executing tool calls failed")?;
+
+    if tool_msgs.is_empty() {
+        tracing::warn!("Model did not request any tool calls. Nothing to execute.");
+    } else {
+        for m in tool_msgs { chat = chat.add_messages(m); }
         // Disable tools for the second round to encourage final answer
         chat.body_mut().tools = None;
         chat = chat.add_messages(TextMessage::system(
@@ -166,8 +117,6 @@ async fn main() -> Result<()> {
         } else {
             println!("Final answer (raw): {:#?}", final_resp);
         }
-    } else {
-        tracing::warn!("Model did not request any tool calls. Nothing to execute.");
     }
 
     // Clean shutdown

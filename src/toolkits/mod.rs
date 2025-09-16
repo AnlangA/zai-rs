@@ -45,6 +45,10 @@ pub mod error;
 pub mod executor;
 pub mod llm;
 
+// RMCP bridge (feature-gated)
+#[cfg(feature = "rmcp-kits")]
+pub mod rmcp_kits;
+
 /// Prelude module for convenient imports
 ///
 /// This module re-exports commonly used types and traits from the toolkits
@@ -75,6 +79,13 @@ pub mod prelude {
     // LLM parsing helpers
     pub use crate::toolkits::llm::{
         LlmToolCall, parse_first_tool_call, parse_tool_calls, parse_tool_calls_from_message,
+    };
+
+    // RMCP bridge exports when enabled
+    #[cfg(feature = "rmcp-kits")]
+    pub use crate::toolkits::rmcp_kits::{
+        call_mcp_tool, call_mcp_tools_collect, call_tool_result_to_json, mcp_tool_to_function,
+        mcp_tools_to_functions, McpToolCaller,
     };
 }
 
