@@ -5,14 +5,13 @@ use rmcp::{
     service::ServerSink,
     transport::SseClientTransport,
 };
-use serde_json::Value;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 // ZAI (zai-rs) imports
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 // rmcp-kits bridge imports
 use zai_rs::toolkits::rmcp_kits::{
-    mcp_tools_to_functions, McpToolCaller, execute_tool_calls_as_messages,
+    mcp_tools_to_functions, McpToolCaller, run_mcp_tool_roundtrip, extract_final_text,
 };
 
 // No toolkits: we'll directly map RMCP tools to ZAI function definitions,
@@ -69,54 +68,26 @@ async fn main() -> Result<()> {
     ))?;
 
     let user_text = "Please increment the counter by 2.";
-    let mut chat = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(user_text), key)
+    let chat = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(user_text), key)
         .with_thinking(ThinkingType::Disabled)
         .add_tools(tool_defs)
         .with_max_tokens(256);
 
-    // 5) First LLM round: model selects tool(s)
-    let first_resp: ChatCompletionResponse = chat.send().await.context("LLM request failed")?;
-    tracing::info!("AI first response: {:#?}", first_resp);
+    // 5-7) Full roundtrip (first request -> MCP tools -> second request)
+    let final_resp: ChatCompletionResponse = run_mcp_tool_roundtrip(
+        &caller,
+        chat,
+        Some("Now provide the final result to the user based on the tool outputs."),
+    )
+    .await
+    .context("MCP tool-call roundtrip failed")?;
+    tracing::info!("AI final response: {:#?}", final_resp);
 
-    // 6) Execute any requested tool calls via rmcp-kits and feed results back
-    let tool_msgs = execute_tool_calls_as_messages(&caller, &first_resp)
-        .await
-        .context("Executing tool calls failed")?;
-
-    if tool_msgs.is_empty() {
-        tracing::warn!("Model did not request any tool calls. Nothing to execute.");
+    // Print concise final text if available
+    if let Some(answer) = extract_final_text(&final_resp) {
+        println!("Final answer: {}", answer);
     } else {
-        for m in tool_msgs { chat = chat.add_messages(m); }
-        // Disable tools for the second round to encourage final answer
-        chat.body_mut().tools = None;
-        chat = chat.add_messages(TextMessage::system(
-            "Now provide the final result to the user based on the tool outputs.",
-        ));
-
-        // 7) Second LLM round: final answer
-        let final_resp: ChatCompletionResponse = chat.send().await.context("LLM follow-up failed")?;
-        tracing::info!("AI final response: {:#?}", final_resp);
-
-        // Print a concise final text if available
-        if let Some(msg) = final_resp.choices().and_then(|v| v.get(0)).map(|c| c.message()) {
-            let text_opt = match msg.content() {
-                Some(serde_json::Value::String(s)) => Some(s.clone()),
-                Some(serde_json::Value::Array(arr)) => arr.iter().find_map(|item| {
-                    if let serde_json::Value::Object(obj) = item {
-                        if obj.get("type").and_then(|v| v.as_str()) == Some("text") {
-                            return obj.get("text").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        }
-                    }
-                    None
-                }),
-                Some(other) => Some(other.to_string()),
-                None => None,
-            };
-            if let Some(answer) = text_opt { println!("Final answer: {}", answer); }
-            else { println!("Final answer (raw): {:#?}", final_resp); }
-        } else {
-            println!("Final answer (raw): {:#?}", final_resp);
-        }
+        println!("Final answer (raw): {:#?}", final_resp);
     }
 
     // Clean shutdown

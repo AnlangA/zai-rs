@@ -95,10 +95,11 @@ impl McpCallSpec {
 /// Call a single MCP tool and return (tool name, normalized JSON result).
 pub async fn call_mcp_tool(
     server: &ServerSink,
-    name: &str,
+    name: impl Into<String>,
     args: Option<Value>,
 ) -> anyhow::Result<(String, Value)> {
     // Validate name and normalize args
+    let name: String = name.into();
     if name.trim().is_empty() {
         anyhow::bail!("tool name cannot be empty");
     }
@@ -109,15 +110,15 @@ pub async fn call_mcp_tool(
             let val = serde_json::json!({
                 "error": {"type": "invalid_arguments", "message": "arguments must be a JSON object", "got": other}
             });
-            return Ok((name.to_string(), val));
+            return Ok((name.clone(), val));
         }
         None => None,
     };
 
     let res = server
-        .call_tool(CallToolRequestParam { name: name.into(), arguments })
+        .call_tool(CallToolRequestParam { name: name.clone().into(), arguments })
         .await?;
-    Ok((name.to_string(), call_tool_result_to_json(&res)))
+    Ok((name, call_tool_result_to_json(&res)))
 }
 
 /// Batch-call multiple tools and collect results by tool name.
@@ -132,7 +133,7 @@ where
     use futures::stream::{FuturesUnordered, StreamExt};
     let mut futs = FuturesUnordered::new();
     for (name, args) in calls {
-        futs.push(call_mcp_tool(server, &name, args));
+        futs.push(call_mcp_tool(server, name, args));
     }
     let mut map = HashMap::new();
     while let Some(item) = futs.next().await {
@@ -153,7 +154,7 @@ impl McpToolCaller {
     pub fn new(server: ServerSink) -> Self { Self { server } }
 
     /// Call a tool by name.
-    pub async fn call(&self, name: &str, args: Option<Value>) -> anyhow::Result<(String, Value)> {
+    pub async fn call(&self, name: impl Into<String>, args: Option<Value>) -> anyhow::Result<(String, Value)> {
         call_mcp_tool(&self.server, name, args).await
     }
 
@@ -241,7 +242,7 @@ pub async fn execute_tool_calls_as_messages(
 
         // Call RMCP server via rmcp-kits
         let (_tool, payload) = caller
-            .call(&name, args_value)
+            .call(name, args_value)
             .await
             .map_err(|e| anyhow::anyhow!("RMCP call_tool failed: {}", e))?;
 
@@ -250,4 +251,75 @@ pub async fn execute_tool_calls_as_messages(
     }
 
     Ok(out)
+}
+
+
+/// Perform a complete MCP tool-call roundtrip:
+/// - Send the first chat request
+/// - Execute any requested tool calls via MCP
+/// - Append tool results as tool messages
+/// - Disable tools and add an optional system hint
+/// - Send the second request and return the final response
+///
+/// If no tool calls are requested, returns the first response directly.
+#[cfg(feature = "rmcp-kits")]
+pub async fn run_mcp_tool_roundtrip<N>(
+    caller: &McpToolCaller,
+    mut chat: crate::model::chat::data::ChatCompletion<
+        N,
+        crate::model::chat_message_types::TextMessage,
+        crate::model::traits::StreamOff,
+    >,
+    system_hint_after_tools: Option<&str>,
+) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse>
+where
+    N: crate::model::traits::ModelName + crate::model::traits::Chat + serde::Serialize,
+    (N, crate::model::chat_message_types::TextMessage): crate::model::traits::Bounded,
+{
+    use crate::model::chat_message_types::TextMessage;
+
+    let first_resp = chat.send().await?;
+
+    log::info!("AI response: {:#?}", first_resp);
+
+    let tool_msgs = execute_tool_calls_as_messages(caller, &first_resp).await?;
+
+    if tool_msgs.is_empty() {
+        return Ok(first_resp);
+    }
+
+    for m in tool_msgs {
+        chat = chat.add_messages(m);
+    }
+
+    // Disable tools for the second round to encourage final answer
+    chat.body_mut().tools = None;
+
+    if let Some(hint) = system_hint_after_tools {
+        chat = chat.add_messages(TextMessage::system(hint));
+    }
+
+    let final_resp = chat.send().await?;
+    Ok(final_resp)
+}
+
+/// Extract a concise final text from ChatCompletionResponse when possible.
+/// - If content is a string, return it
+/// - If content is an array, return the first item of type "text"'s `text` field
+/// - Otherwise return None
+#[cfg(feature = "rmcp-kits")]
+pub fn extract_final_text(resp: &crate::model::chat_base_response::ChatCompletionResponse) -> Option<String> {
+    let msg = resp.choices()?.get(0)?.message();
+    match msg.content() {
+        Some(serde_json::Value::String(s)) => Some(s.clone()),
+        Some(serde_json::Value::Array(arr)) => arr.iter().find_map(|item| {
+            if let serde_json::Value::Object(obj) = item {
+                if obj.get("type").and_then(|v| v.as_str()) == Some("text") {
+                    return obj.get("text").and_then(|v| v.as_str()).map(|s| s.to_string());
+                }
+            }
+            None
+        }),
+        _ => None,
+    }
 }
