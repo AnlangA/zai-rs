@@ -181,6 +181,26 @@ where
         self
     }
 
+    /// Sets the URL to the coding plan endpoint.
+    ///
+    /// This method configures the chat completion request to use the coding-specific
+    /// API endpoint "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".
+    ///
+    /// ## Returns
+    ///
+    /// Self with the coding plan URL, enabling method chaining.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust,ignore
+    /// let request = ChatCompletion::new(model, messages, api_key)
+    ///     .with_coding_plan();
+    /// ```
+    pub fn with_coding_plan(mut self) -> Self {
+        self.url = "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".to_string();
+        self
+    }
+
     // Optional: only available when model supports thinking
     pub fn with_thinking(mut self, thinking: ThinkingType) -> Self
     where
