@@ -54,6 +54,11 @@ where
     /// API key for authentication with the Zhipu AI service.
     pub key: String,
 
+    /// API endpoint URL for chat completions.
+    /// Defaults to "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    /// but can be customized using the `with_url()` method.
+    pub url: String,
+
     /// The request body containing model, messages, and parameters.
     body: ChatBody<N, M>,
 
@@ -83,6 +88,7 @@ where
         ChatCompletion {
             body,
             key,
+            url: "https://open.bigmodel.cn/api/paas/v4/chat/completions".to_string(),
             _stream: PhantomData,
         }
     }
@@ -151,6 +157,30 @@ where
         self
     }
 
+    /// Sets a custom API endpoint URL for this chat completion request.
+    ///
+    /// This method allows overriding the default API endpoint with a custom URL,
+    /// enabling support for different deployment environments or proxy configurations.
+    ///
+    /// ## Arguments
+    ///
+    /// * `url` - The custom API endpoint URL
+    ///
+    /// ## Returns
+    ///
+    /// Self with the updated URL, enabling method chaining.
+    ///
+    /// ## Examples
+    ///
+    /// ```rust,ignore
+    /// let request = ChatCompletion::new(model, messages, api_key)
+    ///     .with_url("https://custom-api.example.com/v1/chat/completions");
+    /// ```
+    pub fn with_url(mut self, url: impl Into<String>) -> Self {
+        self.url = url.into();
+        self
+    }
+
     // Optional: only available when model supports thinking
     pub fn with_thinking(mut self, thinking: ThinkingType) -> Self
     where
@@ -172,6 +202,7 @@ where
         self.body.stream = Some(true);
         ChatCompletion {
             key: self.key,
+            url: self.url,
             body: self.body,
             _stream: PhantomData,
         }
@@ -189,6 +220,7 @@ where
         self.body.stream = Some(false);
         ChatCompletion {
             key: self.key,
+            url: self.url,
             body: self.body,
             _stream: PhantomData,
         }
@@ -232,12 +264,12 @@ where
     S: StreamState,
 {
     type Body = ChatBody<N, M>;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
-    /// Returns the Zhipu AI chat completions API endpoint URL.
+    /// Returns the API endpoint URL for chat completions.
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        &self.url
     }
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
