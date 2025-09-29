@@ -84,8 +84,8 @@ pub mod prelude {
     // RMCP bridge exports when enabled
     #[cfg(feature = "rmcp-kits")]
     pub use crate::toolkits::rmcp_kits::{
-        call_mcp_tool, call_mcp_tools_collect, call_tool_result_to_json, mcp_tool_to_function,
-        mcp_tools_to_functions, McpToolCaller,
+        McpToolCaller, call_mcp_tool, call_mcp_tools_collect, call_tool_result_to_json,
+        mcp_tool_to_function, mcp_tools_to_functions,
     };
 }
 

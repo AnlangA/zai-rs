@@ -1,7 +1,7 @@
 //! Enhanced error handling with better Rust idioms
 
-use thiserror::Error;
 use std::borrow::Cow;
+use thiserror::Error;
 
 /// Result type for tool operations
 pub type ToolResult<T> = Result<T, ToolError>;
@@ -22,13 +22,22 @@ pub enum ToolError {
     ToolNotFound { name: Cow<'static, str> },
 
     #[error("Invalid parameters for tool '{tool}': {message}")]
-    InvalidParameters { tool: Cow<'static, str>, message: Cow<'static, str> },
+    InvalidParameters {
+        tool: Cow<'static, str>,
+        message: Cow<'static, str>,
+    },
 
     #[error("Tool '{tool}' execution failed: {message}")]
-    ExecutionFailed { tool: Cow<'static, str>, message: Cow<'static, str> },
+    ExecutionFailed {
+        tool: Cow<'static, str>,
+        message: Cow<'static, str>,
+    },
 
     #[error("Schema validation failed for tool '{tool}': {message}")]
-    SchemaValidation { tool: Cow<'static, str>, message: Cow<'static, str> },
+    SchemaValidation {
+        tool: Cow<'static, str>,
+        message: Cow<'static, str>,
+    },
 
     #[error("Tool registration failed: {message}")]
     RegistrationError { message: Cow<'static, str> },
@@ -47,10 +56,16 @@ pub enum ToolError {
     },
 
     #[error("Retry limit exceeded for tool '{tool}': failed after {attempts} attempts")]
-    RetryLimitExceeded { tool: Cow<'static, str>, attempts: u32 },
+    RetryLimitExceeded {
+        tool: Cow<'static, str>,
+        attempts: u32,
+    },
 
     #[error("Validation error for field '{field}': {message}")]
-    ValidationError { field: Cow<'static, str>, message: Cow<'static, str> },
+    ValidationError {
+        field: Cow<'static, str>,
+        message: Cow<'static, str>,
+    },
 
     #[error("Concurrent access error: {message}")]
     ConcurrentAccessError { message: Cow<'static, str> },
@@ -62,13 +77,14 @@ pub enum ToolError {
 impl ToolError {
     /// Determine if the error is retryable
     pub fn is_retryable(&self) -> bool {
-        matches!(self, 
-            ToolError::TimeoutError { .. } | 
-            ToolError::ConcurrentAccessError { .. } |
-            ToolError::ExecutionFailed { .. }
+        matches!(
+            self,
+            ToolError::TimeoutError { .. }
+                | ToolError::ConcurrentAccessError { .. }
+                | ToolError::ExecutionFailed { .. }
         )
     }
-    
+
     /// Get the severity level of the error
     pub fn severity(&self) -> ErrorSeverity {
         match self {
@@ -205,4 +221,3 @@ impl Default for ErrorContext {
 pub fn error_context() -> ErrorContext {
     ErrorContext::new()
 }
-

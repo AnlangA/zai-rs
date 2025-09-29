@@ -2,14 +2,14 @@
 
 use async_trait::async_trait;
 use jsonschema;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::borrow::Cow;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use crate::toolkits::error::{ToolResult, error_context};
 
@@ -35,7 +35,7 @@ pub trait DynTool: Send + Sync {
 }
 
 /// Global schema cache for compiled JSON schemas
-static SCHEMA_CACHE: Lazy<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> = 
+static SCHEMA_CACHE: Lazy<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 /// Enhanced tool metadata with better type information and memory optimization
@@ -68,15 +68,16 @@ impl ToolMetadata {
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> ToolResult<Self> {
         let name = name.into();
         let description = description.into();
-        
+
         // Validate tool name
         if name.trim().is_empty() {
             return Err(error_context().invalid_parameters("Tool name cannot be empty"));
         }
         if name.contains(|c: char| !c.is_alphanumeric() && c != '_') {
-            return Err(error_context().invalid_parameters("Tool name must be alphanumeric with underscores only"));
+            return Err(error_context()
+                .invalid_parameters("Tool name must be alphanumeric with underscores only"));
         }
-        
+
         Ok(Self {
             name: Cow::Owned(name),
             description: Cow::Owned(description),
@@ -109,7 +110,11 @@ impl ToolMetadata {
         self
     }
 
-    pub fn with_metadata(mut self, key: impl Into<Cow<'static, str>>, value: serde_json::Value) -> Self {
+    pub fn with_metadata(
+        mut self,
+        key: impl Into<Cow<'static, str>>,
+        value: serde_json::Value,
+    ) -> Self {
         self.metadata.insert(key.into(), value);
         self
     }
@@ -264,7 +269,7 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
     let mut hasher = DefaultHasher::new();
     schema.to_string().hash(&mut hasher);
     let hash = hasher.finish();
-    
+
     // Check cache first
     {
         let cache = SCHEMA_CACHE.read();
@@ -272,18 +277,19 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
             return Ok(Arc::clone(cached));
         }
     }
-    
+
     // Compile and cache
-    let validator = jsonschema::validator_for(schema)
-        .map_err(|e| error_context().schema_validation(format!("Failed to compile schema: {}", e)))?;
-    
+    let validator = jsonschema::validator_for(schema).map_err(|e| {
+        error_context().schema_validation(format!("Failed to compile schema: {}", e))
+    })?;
+
     let validator = Arc::new(validator);
-    
+
     {
         let mut cache = SCHEMA_CACHE.write();
         cache.insert(hash, Arc::clone(&validator));
     }
-    
+
     Ok(validator)
 }
 
@@ -358,16 +364,14 @@ pub struct FunctionToolBuilder {
 impl FunctionToolBuilder {
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
-            metadata: ToolMetadata::new(name, description).unwrap_or_else(|_| {
-                ToolMetadata {
-                    name: Cow::Borrowed("unknown"),
-                    description: Cow::Borrowed("unknown"),
-                    version: Cow::Borrowed("1.0.0"),
-                    author: None,
-                    tags: Vec::new(),
-                    enabled: true,
-                    metadata: HashMap::new(),
-                }
+            metadata: ToolMetadata::new(name, description).unwrap_or_else(|_| ToolMetadata {
+                name: Cow::Borrowed("unknown"),
+                description: Cow::Borrowed("unknown"),
+                version: Cow::Borrowed("1.0.0"),
+                author: None,
+                tags: Vec::new(),
+                enabled: true,
+                metadata: HashMap::new(),
             }),
             input_schema: None,
             staged_properties: None,

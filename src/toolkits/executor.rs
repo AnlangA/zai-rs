@@ -119,7 +119,6 @@ impl ExecutionResult {
     }
 }
 
-
 /// Enhanced tool executor with built-in registry and fluent API
 #[derive(Clone)]
 pub struct ToolExecutor {
@@ -190,7 +189,6 @@ impl ToolExecutor {
     pub fn tool_names(&self) -> Vec<String> {
         self.tools.iter().map(|entry| entry.key().clone()).collect()
     }
-
 
     fn get_tool(&self, name: &str) -> Option<Box<dyn DynTool>> {
         self.tools.get(name).map(|t| t.clone_box())

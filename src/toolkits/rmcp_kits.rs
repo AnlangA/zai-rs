@@ -41,7 +41,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use validator::Validate;
 
-use rmcp::{model::{CallToolRequestParam, CallToolResult, Tool}, service::ServerSink};
+use rmcp::{
+    model::{CallToolRequestParam, CallToolResult, Tool},
+    service::ServerSink,
+};
 
 use crate::model::{Function, Tools};
 
@@ -53,7 +56,9 @@ use crate::model::{Function, Tools};
 pub fn mcp_tool_to_function(t: &Tool) -> Tools {
     let desc = t.description.as_deref().unwrap_or("Remote MCP tool");
     let schema = t.schema_as_json_value();
-    Tools::Function { function: Function::new(t.name.to_string(), desc.to_string(), schema) }
+    Tools::Function {
+        function: Function::new(t.name.to_string(), desc.to_string(), schema),
+    }
 }
 
 /// Convert a list of RMCP tools to zai-rs function-call definitions.
@@ -72,9 +77,11 @@ pub fn call_tool_result_to_json(res: &CallToolResult) -> Value {
     if let Some(structured) = &res.structured_content {
         return structured.clone();
     }
-    serde_json::to_value(res).unwrap_or_else(|_| serde_json::json!({
-        "error": {"type": "serialization_error", "message": "failed to serialize tool result"}
-    }))
+    serde_json::to_value(res).unwrap_or_else(|_| {
+        serde_json::json!({
+            "error": {"type": "serialization_error", "message": "failed to serialize tool result"}
+        })
+    })
 }
 
 /// Request payload for calling a single MCP tool.
@@ -89,7 +96,12 @@ pub struct McpCallSpec {
 }
 
 impl McpCallSpec {
-    pub fn new(name: impl Into<String>, arguments: Option<Value>) -> Self { Self { name: name.into(), arguments } }
+    pub fn new(name: impl Into<String>, arguments: Option<Value>) -> Self {
+        Self {
+            name: name.into(),
+            arguments,
+        }
+    }
 }
 
 /// Call a single MCP tool and return (tool name, normalized JSON result).
@@ -116,7 +128,10 @@ pub async fn call_mcp_tool(
     };
 
     let res = server
-        .call_tool(CallToolRequestParam { name: name.clone().into(), arguments })
+        .call_tool(CallToolRequestParam {
+            name: name.clone().into(),
+            arguments,
+        })
         .await?;
     Ok((name, call_tool_result_to_json(&res)))
 }
@@ -151,10 +166,16 @@ pub struct McpToolCaller {
 
 impl McpToolCaller {
     /// Create a new tool caller from a server sink.
-    pub fn new(server: ServerSink) -> Self { Self { server } }
+    pub fn new(server: ServerSink) -> Self {
+        Self { server }
+    }
 
     /// Call a tool by name.
-    pub async fn call(&self, name: impl Into<String>, args: Option<Value>) -> anyhow::Result<(String, Value)> {
+    pub async fn call(
+        &self,
+        name: impl Into<String>,
+        args: Option<Value>,
+    ) -> anyhow::Result<(String, Value)> {
         call_mcp_tool(&self.server, name, args).await
     }
 
@@ -166,8 +187,6 @@ impl McpToolCaller {
         call_mcp_tools_collect(&self.server, calls).await
     }
 }
-
-
 
 /// Execute tool calls requested by the first choice in a ChatCompletionResponse and
 /// build tool messages ready to append to the chat.
@@ -253,7 +272,6 @@ pub async fn execute_tool_calls_as_messages(
     Ok(out)
 }
 
-
 /// Perform a complete MCP tool-call roundtrip:
 /// - Send the first chat request
 /// - Execute any requested tool calls via MCP
@@ -308,14 +326,19 @@ where
 /// - If content is an array, return the first item of type "text"'s `text` field
 /// - Otherwise return None
 #[cfg(feature = "rmcp-kits")]
-pub fn extract_final_text(resp: &crate::model::chat_base_response::ChatCompletionResponse) -> Option<String> {
+pub fn extract_final_text(
+    resp: &crate::model::chat_base_response::ChatCompletionResponse,
+) -> Option<String> {
     let msg = resp.choices()?.get(0)?.message();
     match msg.content() {
         Some(serde_json::Value::String(s)) => Some(s.clone()),
         Some(serde_json::Value::Array(arr)) => arr.iter().find_map(|item| {
             if let serde_json::Value::Object(obj) = item {
                 if obj.get("type").and_then(|v| v.as_str()) == Some("text") {
-                    return obj.get("text").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    return obj
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                 }
             }
             None

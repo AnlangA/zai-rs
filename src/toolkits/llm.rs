@@ -43,7 +43,7 @@ pub fn normalize_arguments(args: &Value) -> Value {
 /// Parse tool calls with better error recovery and zero-copy optimization
 pub fn parse_tool_calls_robust(response: &Value) -> Vec<LlmToolCall<'_>> {
     let mut results = Vec::new();
-    
+
     // Try multiple parsing strategies
     if let Some(calls) = response.get("tool_calls").and_then(|v| v.as_array()) {
         // Direct tool_calls
@@ -63,19 +63,19 @@ pub fn parse_tool_calls_robust(response: &Value) -> Vec<LlmToolCall<'_>> {
             results.push(call);
         }
     }
-    
+
     results
 }
 
 /// Parse legacy function_call format
 fn parse_legacy_function_call(function_call: &Value) -> Option<LlmToolCall<'static>> {
     let name = function_call.get("name")?.as_str()?;
-    
+
     let arguments = function_call
         .get("arguments")
         .cloned()
         .unwrap_or(Value::Null);
-    
+
     let (arguments_raw, parsed_args) = match arguments {
         Value::String(s) => {
             let parsed = match serde_json::from_str::<Value>(&s) {
@@ -86,7 +86,7 @@ fn parse_legacy_function_call(function_call: &Value) -> Option<LlmToolCall<'stat
         }
         other => (None, other),
     };
-    
+
     Some(LlmToolCall {
         id: Cow::Borrowed("legacy"),
         name: Cow::Owned(name.to_string()),
@@ -98,7 +98,7 @@ fn parse_legacy_function_call(function_call: &Value) -> Option<LlmToolCall<'stat
 /// Parse tool calls array with zero-copy optimization
 fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
     let mut out = Vec::new();
-    
+
     for tc in calls {
         let Some(id) = tc.get("id").and_then(|v| v.as_str()) else {
             continue;
@@ -106,10 +106,7 @@ fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
         let Some(func) = tc.get("function").and_then(|v| v.as_object()) else {
             continue;
         };
-        let Some(name) = func
-            .get("name")
-            .and_then(|v| v.as_str())
-        else {
+        let Some(name) = func.get("name").and_then(|v| v.as_str()) else {
             continue;
         };
 
@@ -136,7 +133,7 @@ fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
             arguments,
         });
     }
-    
+
     out
 }
 
@@ -154,10 +151,7 @@ pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall<'_>> {
         let Some(func) = tc.get("function").and_then(|v| v.as_object()) else {
             continue;
         };
-        let Some(name) = func
-            .get("name")
-            .and_then(|v| v.as_str())
-        else {
+        let Some(name) = func.get("name").and_then(|v| v.as_str()) else {
             continue;
         };
 
