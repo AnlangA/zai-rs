@@ -158,6 +158,10 @@ path = "examples/knowledge_document_upload_url.rs"
 name = "chat_coding_plan"
 path = "examples/chat_coding_plan.rs"
 
+[[example]]
+name = "translation_bot"
+path = "examples/translation_bot.rs"
+
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
