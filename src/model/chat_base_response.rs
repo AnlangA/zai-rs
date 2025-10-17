@@ -38,7 +38,8 @@ where
 /// - `id`/`request_id` are normalized to `String` even if the server returns numbers.
 /// - `usage` is typically present only after completion (not during streaming).
 
-#[derive(Clone, Serialize, Deserialize, Validate)]
+#[derive(Clone, Serialize, Deserialize, Validate, Default)]
+#[serde(default)]
 pub struct ChatCompletionResponse {
     /// Task ID
     #[serde(

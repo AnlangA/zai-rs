@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Select the AI model - GLM-4.5-Flash for fast, efficient responses
-    let model = GLM4_5_flash {};
+    let model = GLM4_6 {};
 
     // Get API key from environment variable
     let key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
