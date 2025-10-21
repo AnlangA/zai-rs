@@ -68,6 +68,11 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 
+    /// Whether to enable streaming of tool calls (streaming function call parameters).
+    /// Only supported by GLM-4.6 models. Defaults to false when omitted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_stream: Option<bool>,
+
     /// Controls randomness in the output. Higher values (closer to 1.0) make the output
     /// more random, while lower values (closer to 0.0) make it more deterministic.
     /// Must be between 0.0 and 1.0.
@@ -124,6 +129,7 @@ where
             thinking: None,
             do_sample: None,
             stream: None,
+            tool_stream: None,
             temperature: None,
             top_p: None,
             max_tokens: None,
@@ -213,6 +219,22 @@ where
     /// ```
     pub fn with_thinking(mut self, thinking: ThinkingType) -> Self {
         self.thinking = Some(thinking);
+        self
+    }
+}
+
+// Only available when the model supports streaming tool calls (GLM-4.6)
+impl<N, M> ChatBody<N, M>
+where
+    N: ModelName + ToolStreamEnable,
+    (N, M): Bounded,
+{
+    /// Enables streaming tool calls (GLM-4.6 only). Default is false when omitted.
+    pub fn with_tool_stream(mut self, tool_stream: bool) -> Self {
+        if tool_stream {
+            // Enabling tool_stream implies stream=true
+            self.stream = Some(true);
+        }
         self
     }
 }

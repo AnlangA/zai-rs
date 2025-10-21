@@ -123,11 +123,7 @@ where
         self.body = self.body.with_do_sample(do_sample);
         self
     }
-    #[deprecated(note = "Use enable_stream()/disable_stream() for compile-time guarantees")]
-    pub fn with_stream(mut self, stream: bool) -> Self {
-        self.body = self.body.with_stream(stream);
-        self
-    }
+
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.body = self.body.with_temperature(temperature);
         self
@@ -251,6 +247,7 @@ where
         self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
         // Ensure not accidentally enabling stream in StreamOff state
         if matches!(self.body.stream, Some(true)) {
+
             return Err(anyhow::anyhow!(
                 "stream=true detected; use enable_stream() and streaming APIs instead"
             ));
@@ -273,6 +270,21 @@ where
             .json::<crate::model::chat_base_response::ChatCompletionResponse>()
             .await?;
         Ok(parsed)
+    }
+}
+
+impl<N, M> ChatCompletion<N, M, StreamOn>
+where
+    N: ModelName + Chat,
+    (N, M): Bounded,
+    ChatBody<N, M>: Serialize,
+{
+    pub fn with_tool_stream(mut self, tool_stream: bool) -> Self
+    where
+        N: ToolStreamEnable,
+    {
+        self.body = self.body.with_tool_stream(tool_stream);
+        self
     }
 }
 

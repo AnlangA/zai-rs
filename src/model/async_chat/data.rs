@@ -55,6 +55,14 @@ where
         self.body = self.body.with_stream(stream);
         self
     }
+    pub fn with_tool_stream(mut self, tool_stream: bool) -> Self
+    where
+        N: ToolStreamEnable,
+    {
+        self.body = self.body.with_tool_stream(tool_stream);
+        self
+    }
+
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.body = self.body.with_temperature(temperature);
         self
@@ -74,10 +82,6 @@ where
     pub fn add_tools(mut self, tools: Vec<Tools>) -> Self {
         self.body = self.body.extend_tools(tools);
         self
-    }
-    #[deprecated(note = "with_tools is deprecated; use add_tool/add_tools instead")]
-    pub fn with_tools(self, tools: Tools) -> Self {
-        self.add_tool(tools)
     }
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
@@ -140,6 +144,21 @@ where
             .json::<crate::model::chat_base_response::ChatCompletionResponse>()
             .await?;
         Ok(parsed)
+    }
+}
+
+impl<N, M> AsyncChatCompletion<N, M, StreamOn>
+where
+    N: ModelName + AsyncChat,
+    (N, M): Bounded,
+    ChatBody<N, M>: Serialize,
+{
+    pub fn with_tool_stream(mut self, tool_stream: bool) -> Self
+    where
+        N: ToolStreamEnable,
+    {
+        self.body = self.body.with_tool_stream(tool_stream);
+        self
     }
 }
 
