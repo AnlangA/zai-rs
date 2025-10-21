@@ -110,14 +110,7 @@ where
             _stream: PhantomData,
         }
     }
-    pub fn disable_stream(mut self) -> AsyncChatCompletion<N, M, StreamOff> {
-        self.body.stream = Some(false);
-        AsyncChatCompletion {
-            key: self.key,
-            body: self.body,
-            _stream: PhantomData,
-        }
-    }
+
     /// Validate request parameters for non-stream async chat (StreamOff)
     pub fn validate(&self) -> anyhow::Result<()> {
         self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
@@ -159,6 +152,17 @@ where
     {
         self.body = self.body.with_tool_stream(tool_stream);
         self
+    }
+
+    pub fn disable_stream(mut self) -> AsyncChatCompletion<N, M, StreamOff> {
+        self.body.stream = Some(false);
+        // Reset tool_stream when disabling streaming since tool_stream depends on stream
+        self.body.tool_stream = None;
+        AsyncChatCompletion {
+            key: self.key,
+            body: self.body,
+            _stream: PhantomData,
+        }
     }
 }
 

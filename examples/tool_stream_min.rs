@@ -41,7 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .add_tools(vec![add_tool])
     .with_coding_plan()
-    .enable_stream();
+    .enable_stream()
+    .with_tool_stream(true);
 
     client
         .stream_for_each(move |chunk: ChatStreamResponse| async move {

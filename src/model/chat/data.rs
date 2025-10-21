@@ -224,30 +224,12 @@ where
         }
     }
 
-    /// Disables streaming for this chat completion request.
-    ///
-    /// This method ensures the request will receive a complete response
-    /// rather than streaming chunks.
-    ///
-    /// ## Returns
-    ///
-    /// A new `ChatCompletion` instance with streaming disabled (`StreamOff`).
-    pub fn disable_stream(mut self) -> ChatCompletion<N, M, StreamOff> {
-        self.body.stream = Some(false);
-        ChatCompletion {
-            key: self.key,
-            url: self.url,
-            body: self.body,
-            _stream: PhantomData,
-        }
-    }
     /// Validate request parameters for non-stream chat (StreamOff)
     pub fn validate(&self) -> anyhow::Result<()> {
         // Field-level validation from ChatBody (temperature/top_p/max_tokens/user_id/stop...)
         self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
         // Ensure not accidentally enabling stream in StreamOff state
         if matches!(self.body.stream, Some(true)) {
-
             return Err(anyhow::anyhow!(
                 "stream=true detected; use enable_stream() and streaming APIs instead"
             ));
@@ -285,6 +267,26 @@ where
     {
         self.body = self.body.with_tool_stream(tool_stream);
         self
+    }
+
+    /// Disables streaming for this chat completion request.
+    ///
+    /// This method ensures the request will receive a complete response
+    /// rather than streaming chunks.
+    ///
+    /// ## Returns
+    ///
+    /// A new `ChatCompletion` instance with streaming disabled (`StreamOff`).
+    pub fn disable_stream(mut self) -> ChatCompletion<N, M, StreamOff> {
+        self.body.stream = Some(false);
+        // Reset tool_stream when disabling streaming since tool_stream depends on stream
+        self.body.tool_stream = None;
+        ChatCompletion {
+            key: self.key,
+            url: self.url,
+            body: self.body,
+            _stream: PhantomData,
+        }
     }
 }
 
