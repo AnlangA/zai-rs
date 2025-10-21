@@ -170,4 +170,13 @@ pub struct Delta {
     /// is operating in thinking mode with reasoning enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+
+    /// Streaming tool call payload for tool invocation.
+    ///
+    /// When `tool_stream` is enabled and the model emits tool calling information,
+    /// providers often stream this as an array of objects with partial fields.
+    /// Use a flexible Value here to accept strings/arrays/objects without failing
+    /// deserialization on type mismatch across increments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<crate::model::chat_base_response::ToolCallMessage>>,
 }

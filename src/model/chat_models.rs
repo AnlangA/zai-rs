@@ -44,53 +44,50 @@
 
 use super::traits::*;
 use crate::model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage};
-use crate::{define_model_type, impl_message_binding, impl_model_markers, impl_think_enable};
+use crate::{define_model_type, impl_message_binding, impl_model_markers};
 
 define_model_type!(GLM4_6, "glm-4.6");
-impl_think_enable!(GLM4_6);
 impl_message_binding!(GLM4_6, TextMessage);
-impl_model_markers!(GLM4_6: Chat, AsyncChat);
+impl_model_markers!(GLM4_6: Chat, AsyncChat, ThinkEnable);
+impl ToolStreamEnable for GLM4_6 {}
+
+
 
 define_model_type!(GLM4_5, "glm-4.5");
-impl_think_enable!(GLM4_5);
 impl_message_binding!(GLM4_5, TextMessage);
-impl_model_markers!(GLM4_5: Chat, AsyncChat);
+impl_model_markers!(GLM4_5: Chat, AsyncChat, ThinkEnable);
 
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_flash,
     "glm-4.5-flash"
 );
-impl_think_enable!(GLM4_5_flash);
 impl_message_binding!(GLM4_5_flash, TextMessage);
-impl_model_markers!(GLM4_5_flash: Chat, AsyncChat);
+impl_model_markers!(GLM4_5_flash: Chat, AsyncChat, ThinkEnable);
 
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_air,
     "glm-4.5-air"
 );
-impl_think_enable!(GLM4_5_air);
 impl_message_binding!(GLM4_5_air, TextMessage);
-impl_model_markers!(GLM4_5_air: Chat, AsyncChat);
+impl_model_markers!(GLM4_5_air: Chat, AsyncChat, ThinkEnable);
 
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_x,
     "glm-4.5-X"
 );
-impl_think_enable!(GLM4_5_x);
 impl_message_binding!(GLM4_5_x, TextMessage);
-impl_model_markers!(GLM4_5_x: Chat, AsyncChat);
+impl_model_markers!(GLM4_5_x: Chat, AsyncChat, ThinkEnable);
 
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM4_5_airx,
     "glm-4.5-airx"
 );
-impl_think_enable!(GLM4_5_airx);
 impl_message_binding!(GLM4_5_airx, TextMessage);
-impl_model_markers!(GLM4_5_airx: Chat, AsyncChat);
+impl_model_markers!(GLM4_5_airx: Chat, AsyncChat, ThinkEnable);
 
 define_model_type!(
     #[allow(non_camel_case_types)]

@@ -59,6 +59,10 @@ pub trait AsyncChat {}
 /// that show step-by-step thinking processes for complex problem solving.
 pub trait ThinkEnable {}
 
+/// Indicates that a model supports streaming tool calls (tool_stream parameter).
+/// Only models implementing this marker can enable tool_stream in requests.
+pub trait ToolStreamEnable {}
+
 /// Indicates that a model supports video generation.
 ///
 /// Models implementing this trait can be used to generate videos from
@@ -224,23 +228,6 @@ macro_rules! define_model_type {
         }
 
         impl $crate::model::traits::ModelName for $name {}
-    };
-}
-
-/// Macro for implementing thinking capability on model types.
-///
-/// This macro marks a model type as supporting thinking/reasoning capabilities,
-/// enabling the use of advanced reasoning modes.
-///
-/// ## Usage
-///
-/// ```rust,ignore
-/// impl_think_enable!(GLM4_5);
-/// ```
-#[macro_export]
-macro_rules! impl_think_enable {
-    ($name:ident) => {
-        impl $crate::model::traits::ThinkEnable for $name {}
     };
 }
 
