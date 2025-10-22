@@ -1,250 +1,318 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chat</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-    <div class="chat-container">
-        <header class="chat-header">
-            <h1>🤖 AI Assistant</h1>
-            <div class="status">在线</div>
-        </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI Chat</title>
+        <link rel="stylesheet" href="/static/style.css" />
+    </head>
+    <body>
+        <div class="chat-container">
+            <header class="chat-header">
+                <h1>🤖 AI Assistant</h1>
+                <div class="status">在线</div>
+            </header>
 
-        <div class="chat-messages" id="chatMessages">
-            <div class="message assistant">
-                <div class="avatar">🤖</div>
-                <div class="content">
-                    <div class="text">您好！我是AI助手，有什么可以帮助您的吗？</div>
-                    <div class="time">刚刚</div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant">
+                    <div class="avatar">🤖</div>
+                    <div class="content">
+                        <div class="text">
+                            您好！我是AI助手，有什么可以帮助您的吗？
+                        </div>
+                        <div class="time">刚刚</div>
+                    </div>
                 </div>
+            </div>
+
+            <div class="chat-input">
+                <textarea
+                    id="messageInput"
+                    placeholder="输入您的消息..."
+                    rows="1"
+                ></textarea>
+                <button id="sendButton">发送</button>
             </div>
         </div>
 
-        <div class="chat-input">
-            <textarea id="messageInput" placeholder="输入您的消息..." rows="1"></textarea>
-            <button id="sendButton">发送</button>
-        </div>
-    </div>
+        <script>
+            // 全局变量
+            let currentSessionId = null;
+            let isStreaming = false;
 
-    <script>
-        // 全局变量
-        let currentSessionId = null;
-        let isStreaming = false;
+            // DOM元素
+            const chatMessages = document.getElementById("chatMessages");
+            const messageInput = document.getElementById("messageInput");
+            const sendButton = document.getElementById("sendButton");
 
-        // DOM元素
-        const chatMessages = document.getElementById('chatMessages');
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendButton');
-
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('页面加载完成');
-            setupEventListeners();
-        });
-
-        // 设置事件监听器
-        function setupEventListeners() {
-            console.log('设置事件监听器');
-
-            // 发送按钮点击事件
-            sendButton.addEventListener('click', sendMessage);
-
-            // 输入框键盘事件
-            messageInput.addEventListener('keydown', function(event) {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    sendMessage();
-                }
+            // 页面加载完成后初始化
+            document.addEventListener("DOMContentLoaded", function () {
+                console.log("页面加载完成");
+                setupEventListeners();
             });
 
-            // 输入框事件 - 更新发送按钮状态
-            messageInput.addEventListener('input', updateSendButton);
+            // 设置事件监听器
+            function setupEventListeners() {
+                console.log("设置事件监听器");
 
-            // 初始化按钮状态
-            updateSendButton();
-        }
+                // 发送按钮点击事件
+                sendButton.addEventListener("click", sendMessage);
 
-        // 更新发送按钮状态
-        function updateSendButton() {
-            const hasContent = messageInput.value.trim().length > 0;
-            sendButton.disabled = !hasContent || isStreaming;
-        }
+                // 输入框键盘事件
+                messageInput.addEventListener("keydown", function (event) {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        sendMessage();
+                    }
+                });
 
-        // 发送消息
-        async function sendMessage() {
-            const message = messageInput.value.trim();
+                // 输入框事件 - 更新发送按钮状态
+                messageInput.addEventListener("input", updateSendButton);
 
-            console.log('发送消息:', message);
-
-            if (!message || isStreaming) {
-                console.log('消息为空或正在流式响应，跳过发送');
-                return;
-            }
-
-            // 添加用户消息
-            addMessage(message, 'user');
-
-            // 清空输入框
-            messageInput.value = '';
-            updateSendButton();
-
-            // 设置流式状态
-            isStreaming = true;
-            updateSendButton();
-
-            try {
-                await sendChatRequest(message);
-            } catch (error) {
-                console.error('发送消息失败:', error);
-                addMessage('抱歉，发送消息时出现错误。', 'assistant');
-            } finally {
-                isStreaming = false;
+                // 初始化按钮状态
                 updateSendButton();
             }
-        }
 
-        // 发送聊天请求
-        async function sendChatRequest(message) {
-            const requestData = {
-                message: message,
-                session_id: currentSessionId
-            };
+            // 更新发送按钮状态
+            function updateSendButton() {
+                const hasContent = messageInput.value.trim().length > 0;
+                sendButton.disabled = !hasContent || isStreaming;
+            }
 
-            console.log('发送请求:', requestData);
+            // 发送消息
+            async function sendMessage() {
+                const message = messageInput.value.trim();
 
-            try {
-                // 尝试流式接口
-                const response = await fetch('/api/chat/stream', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'text/event-stream'
-                    },
-                    body: JSON.stringify(requestData)
-                });
+                console.log("发送消息:", message);
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                if (!message || isStreaming) {
+                    console.log("消息为空或正在流式响应，跳过发送");
+                    return;
                 }
 
-                // 处理流式响应
-                await handleStreamResponse(response);
+                // 添加用户消息
+                addMessage(message, "user");
 
-            } catch (error) {
-                console.log('流式接口失败，尝试普通接口:', error);
+                // 清空输入框
+                messageInput.value = "";
+                updateSendButton();
 
-                // 降级到普通接口
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                });
+                // 设置流式状态
+                isStreaming = true;
+                updateSendButton();
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                console.log('收到响应:', data);
-
-                addMessage(data.reply, 'assistant');
-
-                if (data.session_id) {
-                    currentSessionId = data.session_id;
-                    localStorage.setItem('chatSessionId', currentSessionId);
+                try {
+                    await sendChatRequest(message);
+                } catch (error) {
+                    console.error("发送消息失败:", error);
+                    addMessage("抱歉，发送消息时出现错误。", "assistant");
+                } finally {
+                    isStreaming = false;
+                    updateSendButton();
                 }
             }
-        }
 
-        // 处理流式响应
-        async function handleStreamResponse(response) {
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            let assistantMessage = null;
+            // 发送聊天请求
+            async function sendChatRequest(message) {
+                const requestData = {
+                    message: message,
+                    session_id: currentSessionId,
+                };
 
-            console.log('开始处理流式响应');
+                console.log("发送请求:", requestData);
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+                try {
+                    // 尝试流式接口
+                    const response = await fetch("/api/chat/stream", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Accept: "text/event-stream",
+                        },
+                        body: JSON.stringify(requestData),
+                    });
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
 
-                for (const line of lines) {
-                    if (line.trim() === '') continue;
-                    if (line.startsWith('data: ')) {
+                    // 处理流式响应
+                    await handleStreamResponse(response);
+                } catch (error) {
+                    console.log("流式接口失败，尝试普通接口:", error);
+
+                    // 降级到普通接口
+                    const response = await fetch("/api/chat", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(requestData),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+
+                    const data = await response.json();
+                    console.log("收到响应:", data);
+
+                    addMessage(data.reply, "assistant");
+
+                    if (data.session_id) {
+                        currentSessionId = data.session_id;
+                        localStorage.setItem("chatSessionId", currentSessionId);
+                    }
+                }
+            }
+
+            // 处理流式响应
+            async function handleStreamResponse(response) {
+                console.log("🚀 开始处理流式响应");
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let assistantMessage = null;
+                let startTime = Date.now();
+
+                // 立即创建AI消息占位符
+                addMessage("", "assistant");
+                assistantMessage = chatMessages.lastElementChild;
+                const textElement = assistantMessage.querySelector(".text");
+                if (textElement) {
+                    textElement.innerHTML =
+                        '<span class="typing-cursor">▌</span>';
+                }
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        console.log(
+                            "🔚 流式响应完成，总耗时:",
+                            Date.now() - startTime,
+                            "ms",
+                        );
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // 改进的解析逻辑：不等待完整行
+                    let processedAny = false;
+                    while (true) {
+                        const dataIndex = buffer.indexOf("data: ");
+                        if (dataIndex === -1) break;
+
+                        const newlineIndex = buffer.indexOf("\n", dataIndex);
+                        if (newlineIndex === -1) break; // 等待完整的行
+
+                        const line = buffer.substring(dataIndex, newlineIndex);
+                        buffer = buffer.substring(newlineIndex + 1);
+
+                        if (line.trim() === "") continue;
+
                         try {
                             const data = JSON.parse(line.slice(6));
-                            console.log('收到流式数据:', data);
+                            const currentTime = Date.now();
+                            console.log(
+                                "📝 收到流式数据:",
+                                data,
+                                "延迟:",
+                                currentTime - startTime,
+                                "ms",
+                            );
+                            processedAny = true;
 
                             if (data.content) {
-                                if (!assistantMessage) {
-                                    // 创建AI消息
-                                    addMessage(data.content, 'assistant');
-                                    assistantMessage = chatMessages.lastElementChild;
+                                // 替换占位符或追加内容
+                                if (
+                                    textElement.querySelector(".typing-cursor")
+                                ) {
+                                    console.log(
+                                        "✨ 替换占位符，开始显示实际内容",
+                                    );
+                                    textElement.textContent = data.content;
                                 } else {
-                                    // 更新现有消息
-                                    const textElement = assistantMessage.querySelector('.text');
-                                    if (textElement) {
-                                        textElement.textContent += data.content;
-                                    }
+                                    console.log("➕ 追加内容");
+                                    textElement.textContent += data.content;
                                 }
+
+                                // 立即滚动到底部
+                                scrollToBottom();
                             }
 
                             if (data.session_id) {
                                 currentSessionId = data.session_id;
-                                localStorage.setItem('chatSessionId', currentSessionId);
+                                localStorage.setItem(
+                                    "chatSessionId",
+                                    currentSessionId,
+                                );
+                            }
+
+                            if (data.done) {
+                                console.log("🎉 流式响应完成");
+                                // 移除打字光标
+                                if (
+                                    textElement.querySelector(".typing-cursor")
+                                ) {
+                                    textElement.textContent =
+                                        textElement.textContent.replace(
+                                            "▌",
+                                            "",
+                                        );
+                                }
                             }
                         } catch (e) {
-                            console.error('解析流式数据失败:', e);
+                            console.error(
+                                "❌ 解析流式数据失败:",
+                                e,
+                                "原始数据:",
+                                line,
+                            );
                         }
                     }
                 }
             }
-        }
 
-        // 添加消息到聊天界面
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
+            // 添加消息到聊天界面
+            function addMessage(text, sender) {
+                const messageDiv = document.createElement("div");
+                messageDiv.className = `message ${sender}`;
 
-            const avatar = document.createElement('div');
-            avatar.className = 'avatar';
-            avatar.textContent = sender === 'user' ? '👤' : '🤖';
+                const avatar = document.createElement("div");
+                avatar.className = "avatar";
+                avatar.textContent = sender === "user" ? "👤" : "🤖";
 
-            const content = document.createElement('div');
-            content.className = 'content';
+                const content = document.createElement("div");
+                content.className = "content";
 
-            const textDiv = document.createElement('div');
-            textDiv.className = 'text';
-            textDiv.textContent = text;
+                const textDiv = document.createElement("div");
+                textDiv.className = "text";
+                textDiv.textContent = text;
 
-            const timeDiv = document.createElement('div');
-            timeDiv.className = 'time';
-            timeDiv.textContent = new Date().toLocaleTimeString('zh-CN');
+                const timeDiv = document.createElement("div");
+                timeDiv.className = "time";
+                timeDiv.textContent = new Date().toLocaleTimeString("zh-CN");
 
-            content.appendChild(textDiv);
-            content.appendChild(timeDiv);
+                content.appendChild(textDiv);
+                content.appendChild(timeDiv);
 
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(content);
+                messageDiv.appendChild(avatar);
+                messageDiv.appendChild(content);
 
-            chatMessages.appendChild(messageDiv);
-            scrollToBottom();
-        }
+                chatMessages.appendChild(messageDiv);
+                scrollToBottom();
+            }
 
-        // 滚动到底部
-        function scrollToBottom() {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-    </script>
-</body>
+            // 滚动到底部
+            function scrollToBottom() {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        </script>
+    </body>
 </html>

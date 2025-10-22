@@ -5,7 +5,8 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     height: 100vh;
     overflow: hidden;
@@ -177,6 +178,25 @@ body {
 
 .chat-messages::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
+}
+
+/* 打字光标动画 */
+.typing-cursor {
+    display: inline-block;
+    animation: blink 1s infinite;
+    color: #667eea;
+    font-weight: bold;
+}
+
+@keyframes blink {
+    0%,
+    50% {
+        opacity: 1;
+    }
+    51%,
+    100% {
+        opacity: 0;
+    }
 }
 
 /* 响应式设计 */

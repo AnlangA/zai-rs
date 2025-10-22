@@ -157,10 +157,12 @@ async fn chat_stream_handler(
     let client = build_client(&session.messages, &api_key);
     let mut streaming_client = client.enable_stream();
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunk>(100);
+    let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunk>(5);
 
     // Spawn streaming task
     let sessions_clone = sessions.clone();
+    eprintln!("🚀 开始流式响应，会话ID: {}", session_id_clone);
+
     tokio::spawn(async move {
         let accumulated_response = Arc::new(RwLock::new(String::new()));
         let accumulated_clone = accumulated_response.clone();
@@ -178,6 +180,11 @@ async fn chat_stream_handler(
                                 {
                                     let mut acc = acc_ref.write().await;
                                     acc.push_str(content);
+                                    eprintln!(
+                                        "📝 收到流式数据块 ({} chars): {:?}",
+                                        content.len(),
+                                        content
+                                    );
                                 }
 
                                 let stream_chunk = StreamChunk {
@@ -185,7 +192,11 @@ async fn chat_stream_handler(
                                     session_id: session_id,
                                     done: false,
                                 };
-                                let _ = tx.send(stream_chunk).await;
+                                if let Err(_) = tx.send(stream_chunk).await {
+                                    eprintln!("❌ 发送流式数据块失败");
+                                } else {
+                                    eprintln!("✅ 流式数据块已发送");
+                                }
                             }
                         }
                     }
@@ -230,9 +241,13 @@ async fn chat_stream_handler(
         match rx.recv().await {
             Some(chunk) => {
                 let json = serde_json::to_string(&chunk).unwrap_or_default();
+                eprintln!("📤 发送SSE事件: {} chars, done: {}", json.len(), chunk.done);
                 Some((Ok(Event::default().data(json)), rx))
             }
-            None => None,
+            None => {
+                eprintln!("🔚 SSE流结束");
+                None
+            }
         }
     });
 
