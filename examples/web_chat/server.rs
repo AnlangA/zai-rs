@@ -157,7 +157,7 @@ async fn chat_stream_handler(
     let client = build_client(&session.messages, &api_key);
     let mut streaming_client = client.enable_stream();
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunk>(5);
+    let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunk>(1);
 
     // Spawn streaming task
     let sessions_clone = sessions.clone();
@@ -256,7 +256,7 @@ async fn chat_stream_handler(
 
 /// Serve the main HTML page
 async fn index_handler() -> Html<&'static str> {
-    Html(include_str!("index.html"))
+    Html(include_str!("index_debug.html"))
 }
 
 /// Start the web server
