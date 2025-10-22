@@ -256,7 +256,7 @@ async fn chat_stream_handler(
 
 /// Serve the main HTML page
 async fn index_handler() -> Html<&'static str> {
-    Html(include_str!("index_debug.html"))
+    Html(include_str!("index.html"))
 }
 
 /// Start the web server

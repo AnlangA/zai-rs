@@ -1,3 +1,5 @@
+/* AI Chat Web Application Styles */
+
 * {
     margin: 0;
     padding: 0;
@@ -6,41 +8,78 @@
 
 body {
     font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     height: 100vh;
     overflow: hidden;
 }
 
+/* 聊天容器 */
 .chat-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    max-width: 800px;
+    max-width: 1200px;
     margin: 0 auto;
     background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.1);
 }
 
+/* 头部 */
 .chat-header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     padding: 1rem 1.5rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .chat-header h1 {
     font-size: 1.5rem;
     font-weight: 600;
+    margin: 0;
 }
 
-.status {
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-size: 0.9rem;
-    opacity: 0.9;
 }
 
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ccc;
+}
+
+.status-dot.online {
+    background: #4ade80;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+    }
+    50% {
+        box-shadow: 0 0 16px rgba(74, 222, 128, 0.8);
+    }
+}
+
+/* 聊天消息区域 */
 .chat-messages {
     flex: 1;
     overflow-y: auto;
@@ -48,14 +87,47 @@ body {
     scroll-behavior: smooth;
 }
 
+/* 消息样式 */
 .message {
     display: flex;
     margin-bottom: 1.5rem;
     max-width: 100%;
+    opacity: 0;
+    animation: fadeIn 0.3s ease-out forwards;
 }
 
-.message.user {
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.user-message {
     flex-direction: row-reverse;
+}
+
+.user-message .message-content {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-right: 1rem;
+    margin-left: auto;
+}
+
+.assistant-message .message-content {
+    background: #f3f4f6;
+    color: #1f2937;
+    margin-left: 1rem;
+    margin-right: auto;
+}
+
+.message-avatar {
+    flex-shrink: 0;
+    margin: 0 0.5rem;
 }
 
 .avatar {
@@ -66,64 +138,63 @@ body {
     align-items: center;
     justify-content: center;
     font-size: 1.2rem;
-    margin: 0 0.5rem;
-    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.message.user .avatar {
+.user-avatar {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-.message.assistant .avatar {
+.ai-avatar {
     background: white;
     border: 2px solid #e5e7eb;
 }
 
-.content {
+.message-content {
     max-width: 70%;
     padding: 1rem 1.25rem;
     border-radius: 18px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     word-wrap: break-word;
+    will-change: transform;
 }
 
-.message.user .content {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    margin-right: 1rem;
-}
-
-.message.assistant .content {
-    background: #f3f4f6;
-    color: #1f2937;
-    margin-left: 1rem;
-}
-
-.text {
+.message-text {
     font-size: 0.95rem;
     line-height: 1.5;
     margin-bottom: 0.5rem;
+    white-space: pre-wrap;
 }
 
-.time {
+.error-message {
+    color: #ef4444;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.message-time {
     font-size: 0.75rem;
     opacity: 0.7;
     text-align: right;
 }
 
-.message.user .time {
-    text-align: left;
-}
-
-.chat-input {
+/* 输入区域 */
+.chat-input-container {
     background: white;
     border-top: 1px solid #e5e7eb;
     padding: 1rem 1.5rem;
-    display: flex;
-    gap: 0.75rem;
 }
 
-#messageInput {
+.input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    max-width: 100%;
+}
+
+.message-input {
     flex: 1;
     border: 2px solid #e5e7eb;
     border-radius: 12px;
@@ -131,34 +202,143 @@ body {
     font-size: 0.95rem;
     resize: none;
     outline: none;
-    transition: border-color 0.2s;
+    transition:
+        border-color 0.2s,
+        box-shadow 0.2s;
     min-height: 44px;
     max-height: 120px;
+    line-height: 1.4;
+    font-family: inherit;
 }
 
-#messageInput:focus {
+.message-input:focus {
     border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-#sendButton {
-    padding: 0.75rem 1.5rem;
+.send-button {
+    width: 44px;
+    height: 44px;
     border: none;
-    border-radius: 12px;
+    border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    font-weight: 500;
     cursor: pointer;
-    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        transform 0.2s,
+        box-shadow 0.2s;
     flex-shrink: 0;
+    will-change: transform;
 }
 
-#sendButton:hover:not(:disabled) {
-    opacity: 0.9;
+.send-button:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
-#sendButton:disabled {
-    opacity: 0.5;
+.send-button:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.send-button:disabled {
+    background: #9ca3af;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.send-icon {
+    font-size: 1.2rem;
+    display: block;
+}
+
+.input-footer {
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+.input-hint {
+    color: #6b7280;
+    font-size: 0.75rem;
+}
+
+/* 打字指示器 */
+.typing-indicator {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    padding: 1rem 1.5rem;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    color: #6b7280;
+    z-index: 10;
+}
+
+.typing-dots {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #9ca3af;
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes typing {
+    0%,
+    80%,
+    100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* 打字光标动画 */
+.typing-cursor {
+    display: inline-block;
+    animation: blink 1s infinite;
+    color: #667eea;
+    font-weight: bold;
+}
+
+@keyframes blink {
+    0%,
+    50% {
+        opacity: 1;
+    }
+    51%,
+    100% {
+        opacity: 0;
+    }
+}
+
+/* 流式消息的打字效果 */
+.message-text {
+    position: relative;
 }
 
 /* 滚动条样式 */
@@ -206,26 +386,27 @@ body {
         border-radius: 0;
     }
 
-    .chat-header {
-        padding: 1rem;
+    .header-content {
+        padding: 0 1rem;
     }
 
     .chat-messages {
         padding: 1rem;
     }
 
-    .chat-input {
+    .chat-input-container {
         padding: 0.75rem 1rem;
     }
 
-    .content {
+    .message-content {
         max-width: 85%;
     }
 
-    .avatar {
-        width: 32px;
-        height: 32px;
-        font-size: 1rem;
+    .typing-indicator {
+        bottom: 80px;
+        left: 1rem;
+        right: 1rem;
+        transform: none;
     }
 }
 
@@ -234,17 +415,18 @@ body {
         font-size: 1.25rem;
     }
 
-    .status {
+    .status-text {
         display: none;
     }
 
-    .content {
+    .message-content {
         max-width: 90%;
         padding: 0.75rem 1rem;
     }
 
-    #sendButton {
-        padding: 0.75rem 1rem;
-        font-size: 0.9rem;
+    .avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
     }
 }
