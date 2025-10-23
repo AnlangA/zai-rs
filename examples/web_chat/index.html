@@ -13,6 +13,13 @@
         />
         <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+        <script>
+            // Ensure Prism Autoloader fetches languages from CDN reliably
+            if (window.Prism && Prism.plugins && Prism.plugins.autoloader) {
+                Prism.plugins.autoloader.languages_path =
+                    'https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/';
+            }
+        </script>
     </head>
     <body>
         <div class="chat-container">
@@ -128,8 +135,16 @@
                     </svg>
                 </button>`;
 
-                // 使用默认的代码块渲染结果，避免产生嵌套的 <pre><code> 结构
-                const codeHtml = originalCodeRenderer(code, language);
+                // 默认语言，避免无语言时丢失样式（Prism 依赖 language-*）
+                const lang = (typeof language === "string" && language.trim()) ? language.toLowerCase() : "plaintext";
+                let codeHtml = originalCodeRenderer(code, lang);
+
+                // 确保 <pre> 和 <code> 至少有一个 language-* 类，便于最终高亮
+                if (!/language-/.test(codeHtml)) {
+                    codeHtml = codeHtml
+                        .replace(/<pre(?![^>]*class=)/, `<pre class="language-${lang}"`)
+                        .replace(/<code(?![^>]*class=)/, `<code class="language-${lang}"`);
+                }
                 return `<div class="code-block-container">${codeHtml}${copyButton}</div>`;
             };
 
@@ -167,6 +182,69 @@
             // 滚动与高亮控制
             let prismTimeout = null;
             let autoStick = true;
+
+            // Frame-batched streaming renderer with a blinking caret and partial highlight
+            let streamRenderScheduled = false;
+            const enablePartialHighlight = true;
+
+            function ensureStreamContainers(rootEl) {
+                if (!rootEl) return { stable: null, tail: null };
+                let stable = rootEl.querySelector('.stable');
+                let tail = rootEl.querySelector('.tail');
+                if (!stable || !tail) {
+                    rootEl.innerHTML = '<div class="stable"></div><div class="tail"><span class="typing-cursor">▌</span></div>';
+                    stable = rootEl.querySelector('.stable');
+                    tail = rootEl.querySelector('.tail');
+                }
+                return { stable, tail };
+            }
+
+            function computeStableEnd(markdown) {
+                // Find last balanced code fence ```
+                const fenceRe = /```/g;
+                let m, count = 0, lastPos = -1;
+                while ((m = fenceRe.exec(markdown)) !== null) {
+                    count++;
+                    lastPos = m.index;
+                }
+                if (count % 2 === 0) return markdown.length;
+                return lastPos >= 0 ? lastPos : 0;
+            }
+
+            function scheduleStreamRender() {
+                if (streamRenderScheduled) return;
+                streamRenderScheduled = true;
+                requestAnimationFrame(() => {
+                    streamRenderScheduled = false;
+                    if (!currentStreamingElement || !currentStreamingElement.messageTextEl) return;
+                    const el = currentStreamingElement.messageTextEl;
+                    const { stable, tail } = ensureStreamContainers(el);
+                    const raw = el.getAttribute('data-raw-text') || '';
+
+                    if (!enablePartialHighlight) {
+                        el.innerHTML = DOMPurify.sanitize(marked.parse(raw)) + '<span class="typing-cursor">▌</span>';
+                        scrollToBottom();
+                        return;
+                    }
+
+                    const prevStableLen = parseInt(el.getAttribute('data-stable-len') || '0', 10);
+                    const stableEnd = computeStableEnd(raw);
+
+                    if (stableEnd !== prevStableLen && stable) {
+                        const stableMd = raw.slice(0, stableEnd);
+                        stable.innerHTML = DOMPurify.sanitize(marked.parse(stableMd));
+                        try { Prism.highlightAllUnder(stable); } catch (_) {}
+                        el.setAttribute('data-stable-len', String(stableEnd));
+                    }
+
+                    if (tail) {
+                        const tailMd = raw.slice(stableEnd);
+                        tail.innerHTML = DOMPurify.sanitize(marked.parse(tailMd)) + '<span class="typing-cursor">▌</span>';
+                    }
+
+                    scrollToBottom();
+                });
+            }
 
             // DOM 元素缓存
             const elements = {
@@ -315,8 +393,10 @@
                     currentStreamingElement.timeEl =
                         currentStreamingElement.querySelector(".message-time");
                     if (currentStreamingElement.messageTextEl) {
+                        currentStreamingElement.messageTextEl.setAttribute("data-raw-text", "");
+                        currentStreamingElement.messageTextEl.setAttribute("data-stable-len", "0");
                         currentStreamingElement.messageTextEl.innerHTML =
-                            '<span class="typing-cursor">▌</span>';
+                            '<div class="stable"></div><div class="tail"><span class="typing-cursor">▌</span></div>';
                     }
                 }
 
@@ -390,48 +470,11 @@
                                         currentStreamingElement.messageTextEl
                                     ) {
                                         // 替换占位符或追加内容
-                                        if (
-                                            currentStreamingElement.messageTextEl.querySelector(
-                                                ".typing-cursor",
-                                            )
-                                        ) {
-                                            currentStreamingElement.messageTextEl.innerHTML =
-                                                DOMPurify.sanitize(
-                                                    marked.parse(data.content),
-                                                );
-
-                                            // 重新高亮代码块（防抖）
-                                            clearTimeout(prismTimeout);
-                                            prismTimeout = setTimeout(() => {
-                                                Prism.highlightAllUnder(
-                                                    currentStreamingElement.messageTextEl
-                                                );
-                                            }, 120);
-                                        } else {
-                                            // 对于流式响应，累积内容然后渲染
-                                            const currentContent =
-                                                currentStreamingElement.messageTextEl.getAttribute(
-                                                    "data-raw-text",
-                                                ) || "";
-                                            const newContent =
-                                                currentContent + data.content;
-                                            currentStreamingElement.messageTextEl.setAttribute(
-                                                "data-raw-text",
-                                                newContent,
-                                            );
-                                            currentStreamingElement.messageTextEl.innerHTML =
-                                                DOMPurify.sanitize(
-                                                    marked.parse(newContent),
-                                                );
-
-                                            // 重新高亮代码块（防抖）
-                                            clearTimeout(prismTimeout);
-                                            prismTimeout = setTimeout(() => {
-                                                Prism.highlightAllUnder(
-                                                    currentStreamingElement.messageTextEl
-                                                );
-                                            }, 120);
-                                        }
+                                        // 累积原始文本，渲染由 requestAnimationFrame 批处理
+                                        const prevRaw = currentStreamingElement.messageTextEl.getAttribute("data-raw-text") || "";
+                                        const nextRaw = prevRaw + data.content;
+                                        currentStreamingElement.messageTextEl.setAttribute("data-raw-text", nextRaw);
+                                        scheduleStreamRender();
 
                                         scrollToBottom();
                                     }
@@ -451,7 +494,15 @@
                                                     "zh-CN",
                                                 );
                                         }
-                                        scrollToBottom(true);
+                                        // 流结束：去除光标，渲染最终内容并一次性高亮
+                                        try {
+                                            const raw = currentStreamingElement.messageTextEl?.getAttribute('data-raw-text') || '';
+                                            currentStreamingElement.messageTextEl.innerHTML = DOMPurify.sanitize(marked.parse(raw));
+                                            Prism.highlightAllUnder(currentStreamingElement.messageTextEl);
+                                        } catch (e) {
+                                            console.warn("Prism final highlight failed:", e);
+                                        }
+                                        scrollToBottom();
                                     }
                                 } catch (e) {
                                     // 静默处理JSON解析错误

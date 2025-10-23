@@ -1110,3 +1110,22 @@ body {
   .think-toggle { height: 40px; padding: 0 0.75rem; }
   .think-toggle .label { display: none; } /* 移动端仅保留图标，节省空间 */
 }
+
+
+/* --- Fix: Ensure error messages are readable across themes --- */
+.message-text.error-message {
+  color: #b91c1c !important;              /* strong red text */
+  background: #fee2e2 !important;         /* light red background */
+  border: 1px solid #fecaca !important;   /* subtle red border */
+  padding: 0.75rem !important;
+  border-radius: 8px !important;
+}
+
+/* Dark theme tweak */
+@media (prefers-color-scheme: dark) {
+  .message-text.error-message {
+    background: rgba(239, 68, 68, 0.16) !important; /* translucent red */
+    color: #fecaca !important;                       /* light red text */
+    border-color: rgba(239, 68, 68, 0.45) !important;
+  }
+}

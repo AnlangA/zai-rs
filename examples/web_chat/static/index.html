@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - Modern AI Assistant</title>
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/static/css/main.css" as="style">
+    <link rel="preload" href="/static/js/app.js" as="script">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/static/icons/ai-assistant.svg">
+    
+    <!-- Meta tags -->
+    <meta name="description" content="Modern AI chat interface with streaming responses and perfect markdown rendering">
+    <meta name="theme-color" content="#3b82f6">
+    
+    <!-- Critical CSS inline -->
+    <style>
+        /* Critical rendering path optimization */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.3s ease;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Prevent FOUC */
+        .app-container {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .app-container.loaded {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Main application container -->
+    <div class="app-container" id="appContainer">
+        <!-- Header -->
+        <header class="app-header" role="banner">
+            <div class="header-content">
+                <div class="header-left">
+                    <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu" aria-expanded="false">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="3" y1="12" x2="21" y2="12"></line>
+                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                            <line x1="3" y1="18" x2="21" y2="18"></line>
+                        </svg>
+                    </button>
+                    <h1 class="app-title">
+                        <span class="app-icon">🤖</span>
+                        <span class="app-name">AI Assistant</span>
+                    </h1>
+                </div>
+                
+                <div class="header-center">
+                    <div class="connection-status" id="connectionStatus">
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        <span class="status-text" id="statusText">Connecting...</span>
+                    </div>
+                </div>
+                
+                <div class="header-right">
+                    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme" title="Toggle dark/light theme">
+                        <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </button>
+                    <button class="settings-toggle" id="settingsToggle" aria-label="Settings" title="Settings">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content area -->
+        <main class="app-main">
+            <!-- Sidebar -->
+            <aside class="sidebar" id="sidebar" role="complementary">
+                <div class="sidebar-header">
+                    <h2>Conversations</h2>
+                    <button class="new-chat-btn" id="newChatBtn" title="Start new chat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        New Chat
+                    </button>
+                </div>
+                
+                <div class="sidebar-content">
+                    <div class="conversation-list" id="conversationList">
+                        <!-- Conversations will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="sidebar-footer">
+                    <button class="export-btn" id="exportBtn" title="Export conversation">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Export
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Chat area -->
+            <section class="chat-area" role="main">
+                <!-- Messages container -->
+                <div class="messages-container" id="messagesContainer" role="log" aria-live="polite">
+                    <div class="welcome-message" id="welcomeMessage">
+                        <div class="welcome-icon">🚀</div>
+                        <h2>Welcome to AI Assistant</h2>
+                        <p>I'm here to help you with any questions you have. Start a conversation below!</p>
+                        <div class="welcome-suggestions">
+                            <button class="suggestion-btn" data-suggestion="What can you help me with?">
+                                What can you help me with?
+                            </button>
+                            <button class="suggestion-btn" data-suggestion="Explain quantum computing">
+                                Explain quantum computing
+                            </button>
+                            <button class="suggestion-btn" data-suggestion="Write a Python function">
+                                Write a Python function
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Typing indicator -->
+                <div class="typing-indicator" id="typingIndicator" aria-hidden="true">
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span class="typing-text">AI is thinking...</span>
+                </div>
+
+                <!-- Input area -->
+                <div class="input-area">
+                    <div class="input-container">
+                        <div class="input-wrapper">
+                            <textarea 
+                                class="message-input" 
+                                id="messageInput" 
+                                placeholder="Type your message here..."
+                                rows="1"
+                                aria-label="Message input"
+                                autocomplete="off"
+                            ></textarea>
+                            
+                            <div class="input-actions">
+                                <button class="action-btn attach-btn" id="attachBtn" title="Attach file" disabled>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                                    </svg>
+                                </button>
+                                
+                                <button class="action-btn think-toggle" id="thinkToggle" title="Enable think mode" aria-pressed="false">
+                                    <span class="think-icon">🧠</span>
+                                </button>
+                                
+                                <button class="action-btn send-btn" id="sendBtn" title="Send message" disabled>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="input-footer">
+                            <div class="input-info">
+                                <span class="input-hint">Press Enter to send, Shift+Enter for new line</span>
+                                <span class="token-counter" id="tokenCounter" aria-live="polite"></span>
+                            </div>
+                            <div class="model-selector">
+                                <select id="modelSelector" aria-label="Select AI model">
+                                    <option value="GLM4_6">GLM-4.6</option>
+                                    <option value="GLM4">GLM-4</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Settings panel -->
+        <div class="settings-panel" id="settingsPanel" role="dialog" aria-hidden="true">
+            <div class="settings-header">
+                <h2>Settings</h2>
+                <button class="close-btn" id="closeSettings" aria-label="Close settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="settings-content">
+                <div class="setting-group">
+                    <h3>Appearance</h3>
+                    <label class="setting-item">
+                        <span>Theme</span>
+                        <select id="themeSelectorSettings">
+                            <option value="auto">Auto</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </label>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>AI Settings</h3>
+                    <label class="setting-item">
+                        <span>Temperature</span>
+                        <input type="range" id="temperatureSlider" min="0" max="2" step="0.1" value="0.7">
+                        <span class="range-value" id="temperatureValue">0.7</span>
+                    </label>
+                    <label class="setting-item">
+                        <span>Max Tokens</span>
+                        <input type="range" id="maxTokensSlider" min="100" max="4096" step="100" value="2048">
+                        <span class="range-value" id="maxTokensValue">2048</span>
+                    </label>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Advanced</h3>
+                    <label class="setting-item">
+                        <span>Auto-scroll</span>
+                        <input type="checkbox" id="autoScrollToggle" checked>
+                    </label>
+                    <label class="setting-item">
+                        <span>Sound notifications</span>
+                        <input type="checkbox" id="soundToggle">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Overlay -->
+        <div class="overlay" id="overlay" aria-hidden="true"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/static/js/app.js"></script>
+    
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/js/sw.js').catch(console.error);
+        }
+    </script>
+</body>
+</html>
