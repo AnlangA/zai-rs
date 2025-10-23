@@ -117,9 +117,6 @@
             const originalCodeRenderer = renderer.code.bind(renderer);
 
             renderer.code = function (code, language) {
-                const langClass = language
-                    ? ` class="language-${language}"`
-                    : "";
                 const copyButton = `<button class="copy-button" onclick="copyCode(this)" title="复制代码">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -127,10 +124,9 @@
                     </svg>
                 </button>`;
 
-                return `<div class="code-block-container">
-                    <pre><code${langClass}>${originalCodeRenderer(code, language)}</code></pre>
-                    ${copyButton}
-                </div>`;
+                // 使用默认的代码块渲染结果，避免产生嵌套的 <pre><code> 结构
+                const codeHtml = originalCodeRenderer(code, language);
+                return `<div class="code-block-container">${codeHtml}${copyButton}</div>`;
             };
 
             marked.use({ renderer });
