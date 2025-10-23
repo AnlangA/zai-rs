@@ -62,6 +62,10 @@
                         placeholder="输入您的消息..."
                         rows="1"
                     ></textarea>
+                    <button id="thinkToggle" class="think-toggle" title="Think 模式：关闭" aria-pressed="false">
+                        <span class="brain">🧠</span>
+                        <span class="label">Think</span>
+                    </button>
                     <button id="sendButton" class="send-button">
                         <span class="send-icon">➤</span>
                     </button>
@@ -159,12 +163,17 @@
             let currentSessionId = null;
             let isStreaming = false;
             let currentStreamingElement = null;
+            let thinkMode = JSON.parse(localStorage.getItem("thinkMode") || "false");
+            // 滚动与高亮控制
+            let prismTimeout = null;
+            let autoStick = true;
 
             // DOM 元素缓存
             const elements = {
                 chatMessages: null,
                 messageInput: null,
                 sendButton: null,
+                thinkToggle: null,
                 typingIndicator: null,
             };
 
@@ -174,6 +183,7 @@
                 elements.chatMessages = document.getElementById("chatMessages");
                 elements.messageInput = document.getElementById("messageInput");
                 elements.sendButton = document.getElementById("sendButton");
+                elements.thinkToggle = document.getElementById("thinkToggle");
                 elements.typingIndicator =
                     document.getElementById("typingIndicator");
 
@@ -190,6 +200,9 @@
                 // 设置事件监听器
                 setupEventListeners();
 
+                // 初始化 Think 按钮 UI
+                updateThinkToggleUI();
+
                 // 调整输入框高度
                 adjustInputHeight();
             }
@@ -203,6 +216,18 @@
                         return;
                     }
                     sendMessage();
+                });
+
+                // Think 按钮事件
+                if (elements.thinkToggle) {
+                    elements.thinkToggle.addEventListener("click", toggleThinkMode);
+                }
+
+                // 聊天区域滚动状态监听（仅在接近底部时才自动跟随）
+                elements.chatMessages.addEventListener("scroll", function(){
+                    const el = elements.chatMessages;
+                    if (!el) return;
+                    autoStick = (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
                 });
 
                 // 输入框键盘事件
@@ -244,6 +269,20 @@
                 elements.messageInput.style.height = "auto";
                 elements.messageInput.style.height =
                     elements.messageInput.scrollHeight + "px";
+            }
+
+            // 切换 Think 模式
+            function toggleThinkMode() {
+                thinkMode = !thinkMode;
+                localStorage.setItem("thinkMode", JSON.stringify(thinkMode));
+                updateThinkToggleUI();
+            }
+
+            function updateThinkToggleUI() {
+                if (!elements.thinkToggle) return;
+                elements.thinkToggle.classList.toggle("active", thinkMode);
+                elements.thinkToggle.setAttribute("aria-pressed", thinkMode ? "true" : "false");
+                elements.thinkToggle.title = thinkMode ? "Think 模式：开启" : "Think 模式：关闭";
             }
 
             // 发送消息
@@ -303,6 +342,7 @@
                 const requestData = {
                     message: message,
                     session_id: currentSessionId,
+                    think: thinkMode,
                 };
 
                 try {
@@ -360,12 +400,13 @@
                                                     marked.parse(data.content),
                                                 );
 
-                                            // 重新高亮代码块
-                                            setTimeout(() => {
+                                            // 重新高亮代码块（防抖）
+                                            clearTimeout(prismTimeout);
+                                            prismTimeout = setTimeout(() => {
                                                 Prism.highlightAllUnder(
-                                                    currentStreamingElement.messageTextEl,
+                                                    currentStreamingElement.messageTextEl
                                                 );
-                                            }, 0);
+                                            }, 120);
                                         } else {
                                             // 对于流式响应，累积内容然后渲染
                                             const currentContent =
@@ -383,12 +424,13 @@
                                                     marked.parse(newContent),
                                                 );
 
-                                            // 重新高亮代码块
-                                            setTimeout(() => {
+                                            // 重新高亮代码块（防抖）
+                                            clearTimeout(prismTimeout);
+                                            prismTimeout = setTimeout(() => {
                                                 Prism.highlightAllUnder(
-                                                    currentStreamingElement.messageTextEl,
+                                                    currentStreamingElement.messageTextEl
                                                 );
-                                            }, 0);
+                                            }, 120);
                                         }
 
                                         scrollToBottom();
@@ -409,7 +451,7 @@
                                                     "zh-CN",
                                                 );
                                         }
-                                        scrollToBottom();
+                                        scrollToBottom(true);
                                     }
                                 } catch (e) {
                                     // 静默处理JSON解析错误
@@ -518,14 +560,25 @@
                 }
             }
 
-            // 滚动到底部（节流）
+            // 滚动到底部（节流 + 平滑 + 仅在接近底部时跟随）
             let scrollTimeout;
-            function scrollToBottom() {
+            function isNearBottom(el) {
+                if (!el) return false;
+                return (el.scrollHeight - el.scrollTop - el.clientHeight) < 80;
+            }
+            function scrollToBottom(immediate = false) {
+                const el = elements.chatMessages;
+                if (!el) return;
+                if (!immediate && !isNearBottom(el)) return; // 用户不在底部则不强制跟随
                 clearTimeout(scrollTimeout);
                 scrollTimeout = setTimeout(() => {
-                    elements.chatMessages.scrollTop =
-                        elements.chatMessages.scrollHeight;
-                }, 16); // 约60fps
+                    const top = el.scrollHeight;
+                    if (el.scrollTo) {
+                        el.scrollTo({ top, behavior: immediate ? "auto" : "smooth" });
+                    } else {
+                        el.scrollTop = top;
+                    }
+                }, immediate ? 0 : 80);
             }
 
             // 页面加载完成后初始化

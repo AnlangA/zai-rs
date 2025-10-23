@@ -1060,3 +1060,53 @@ body {
 /* Remove extra whitespace from first/last child margins inside list items */
 .message-text li > *:first-child { margin-top: 0; }
 .message-text li > *:last-child  { margin-bottom: 0; }
+
+
+/* --- Blockquote (dark theme override): fix light background behind URLs/notes --- */
+.message-text blockquote {
+  margin: 0.9rem 0;                 /* slightly tighter on dark */
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #6366f1;   /* slimmer accent */
+  background: linear-gradient(135deg, rgba(2,6,23,0.55) 0%, rgba(15,23,42,0.70) 100%);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px -6px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  font-style: normal;               /* avoid faint look on dark */
+}
+.message-text blockquote p { margin: 0; }
+/* ensure links stay readable inside blockquotes */
+.message-text blockquote a { color: #93c5fd; border-bottom-color: transparent; }
+.message-text blockquote a:hover { color: #bfdbfe; border-bottom-color: #93c5fd; }
+
+
+/* --- Think toggle button --- */
+.think-toggle {
+  height: 44px;
+  padding: 0 0.875rem;
+  border-radius: 9999px;
+  border: 1.5px solid #334155;
+  background: rgba(17,24,39,0.78);
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+.think-toggle:hover { background: rgba(17,24,39,0.92); border-color: #475569; transform: translateY(-1px); }
+.think-toggle:active { transform: translateY(0); }
+.think-toggle:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,0.25); }
+.think-toggle .brain { font-size: 1.05rem; }
+.think-toggle .label { font-weight: 600; letter-spacing: .2px; }
+
+.think-toggle.active {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #eef2ff;
+  border-color: transparent;
+  box-shadow: 0 6px 16px rgba(79,70,229,0.45);
+}
+
+@media (max-width: 640px) {
+  .think-toggle { height: 40px; padding: 0 0.75rem; }
+  .think-toggle .label { display: none; } /* 移动端仅保留图标，节省空间 */
+}

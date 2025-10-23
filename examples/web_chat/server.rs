@@ -31,6 +31,7 @@ struct ChatSession {
 struct ChatRequest {
     message: String,
     session_id: Option<String>,
+    think: Option<bool>, // enable think mode when true
 }
 
 /// Response payload for chat messages
@@ -61,20 +62,23 @@ fn create_new_session() -> ChatSession {
 }
 
 /// Build ChatCompletion client with messages
-fn build_client(messages: &[TextMessage], api_key: &str) -> ChatCompletion<GLM4_6, TextMessage> {
+fn build_client(messages: &[TextMessage], api_key: &str, think_mode: bool) -> ChatCompletion<GLM4_6, TextMessage> {
     let model = GLM4_6 {};
 
     if messages.is_empty() {
-        return ChatCompletion::new(model, TextMessage::user("你好"), api_key.to_string())
+        let mut client = ChatCompletion::new(model, TextMessage::user("你好"), api_key.to_string())
             .with_temperature(0.7)
             .with_top_p(0.9)
             .with_coding_plan();
+        client = client.with_thinking(if think_mode { ThinkingType::Enabled } else { ThinkingType::Disabled });
+        return client;
     }
 
     let mut client = ChatCompletion::new(model, messages[0].clone(), api_key.to_string())
         .with_temperature(0.7)
         .with_top_p(0.9)
         .with_coding_plan();
+    client = client.with_thinking(if think_mode { ThinkingType::Enabled } else { ThinkingType::Disabled });
 
     for msg in messages.iter().skip(1) {
         client = client.add_messages(msg.clone());
@@ -103,7 +107,7 @@ async fn chat_handler(
     session.messages.push(TextMessage::user(&request.message));
 
     // Build client with current messages
-    let client = build_client(&session.messages, &api_key);
+    let client = build_client(&session.messages, &api_key, request.think.unwrap_or(false));
 
     // Get AI response
     match client.send().await {
@@ -154,7 +158,7 @@ async fn chat_stream_handler(
     session.messages.push(TextMessage::user(&request.message));
 
     // Build client with current messages
-    let client = build_client(&session.messages, &api_key);
+    let client = build_client(&session.messages, &api_key, request.think.unwrap_or(false));
     let mut streaming_client = client.enable_stream();
 
     let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunk>(1);
