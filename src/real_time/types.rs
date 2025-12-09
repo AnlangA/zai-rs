@@ -117,14 +117,19 @@ pub struct VadConfig {
     #[serde(rename = "type")]
     pub vad_type: VadType,
     /// Whether to automatically create a response when VAD stop event occurs
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub create_response: Option<bool>,
     /// Whether to automatically interrupt any ongoing response when VAD start event occurs
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub interrupt_response: Option<bool>,
     /// Amount of audio to include before VAD detects speech (in milliseconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_padding_ms: Option<u32>,
     /// Silence duration for detecting speech stop (in milliseconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub silence_duration_ms: Option<u32>,
     /// VAD activation threshold (0.0 to 1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f32>,
 }
 
@@ -142,50 +147,68 @@ pub struct Tool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GreetingConfig {
     /// Whether to enable greeting
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enable: Option<bool>,
     /// Custom greeting content (max 1024 characters)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
 }
 
 /// Beta fields for the session
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct BetaFields {
     /// Chat mode (audio or video)
+    #[serde(rename = "chat_mode")]
     pub chat_mode: String,
     /// Text-to-speech source (e.g., "e2e")
+    #[serde(rename = "tts_source")]
     pub tts_source: Option<String>,
     /// Whether to enable auto search
+    #[serde(rename = "auto_search")]
     pub auto_search: Option<bool>,
     /// Greeting configuration
+    #[serde(rename = "greeting_config")]
     pub greeting_config: Option<GreetingConfig>,
 }
 
 /// Session configuration for real-time conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct SessionConfig {
     /// Model name (e.g., "glm-realtime-flash")
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Modalities to control model output (text, audio)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub modalities: Option<Vec<String>>,
     /// System instructions for the model
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
     /// Voice to use for audio output
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
     /// Input audio format (wav, pcm)
     pub input_audio_format: String,
     /// Output audio format (pcm)
     pub output_audio_format: String,
     /// Input audio noise reduction configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub input_audio_noise_reduction: Option<NoiseReductionConfig>,
     /// VAD configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub turn_detection: Option<VadConfig>,
     /// Model temperature (0.0 to 1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     /// Maximum response output tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_response_output_tokens: Option<String>,
     /// Tools for function calling
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tool>>,
     /// Beta fields
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub beta_fields: Option<BetaFields>,
 }
 
@@ -233,10 +256,13 @@ pub struct ContentPart {
     #[serde(rename = "type")]
     pub content_type: ContentType,
     /// Text content (for text types)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// Audio content (base64 encoded, for audio types)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub audio: Option<String>,
     /// Audio transcript (for audio types)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transcript: Option<String>,
 }
 
@@ -931,8 +957,9 @@ pub struct HeartbeatEvent {
     pub base: BaseServerEvent,
 }
 
-/// Session information
+/// Session information returned by server
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct SessionInfo {
     /// Object type (always "realtime.session")
     pub object: String,
@@ -941,22 +968,31 @@ pub struct SessionInfo {
     /// Model name
     pub model: String,
     /// Modalities
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub modalities: Option<Vec<String>>,
     /// Instructions
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
     /// Voice
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
     /// Input audio format
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub input_audio_format: Option<String>,
     /// Output audio format
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub output_audio_format: Option<String>,
     /// Temperature
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     /// VAD configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub turn_detection: Option<VadConfig>,
     /// Tools
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tool>>,
     /// Beta fields
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub beta_fields: Option<BetaFields>,
 }
 
@@ -1173,15 +1209,14 @@ impl EventHandlerAdapter {
     pub fn new(event_handler: Box<dyn EventHandler + Send + Sync>) -> Self {
         Self { event_handler }
     }
+}
 
-    /// Parse and handle a server message
-    async fn handle_server_message(
-        &mut self,
-        message: &str,
-    ) -> Result<(), crate::client::error::ZaiError> {
-        use crate::client::error::ZaiError;
+impl crate::client::wss::WebSocketEventHandler for EventHandlerAdapter {
+    fn handle_text_message(&mut self, message: &str) -> Result<(), crate::client::error::ZaiError> {
+        // Debug: print all received messages
+        log::info!("Received WebSocket message: {}", message);
 
-        // Try to parse as a known server event
+        // Parse the message synchronously
         match serde_json::from_str::<ServerEvent>(message) {
             Ok(event) => {
                 match event {
@@ -1230,7 +1265,7 @@ impl EventHandlerAdapter {
                     }
                     Err(e) => {
                         log::error!("Failed to parse message as JSON: {}", e);
-                        return Err(ZaiError::Unknown {
+                        return Err(crate::client::error::ZaiError::Unknown {
                             code: 0,
                             message: format!("Failed to parse message as JSON: {}", e),
                         });
@@ -1240,20 +1275,6 @@ impl EventHandlerAdapter {
         }
 
         Ok(())
-    }
-}
-
-impl crate::client::wss::WebSocketEventHandler for EventHandlerAdapter {
-    fn handle_text_message(&mut self, message: &str) -> Result<(), crate::client::error::ZaiError> {
-        // Use tokio::spawn to make the async function work in a sync context
-        // This is a common pattern when bridging async and sync code
-        let message = message.to_string();
-
-        // Block on the async function
-        match futures::executor::block_on(self.handle_server_message(&message)) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e),
-        }
     }
 
     fn handle_binary_message(&mut self, data: &[u8]) -> Result<(), crate::client::error::ZaiError> {

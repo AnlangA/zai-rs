@@ -25,7 +25,9 @@ use crate::client::error::ZaiError;
 use futures_util::{SinkExt, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use std::result::Result as StdResult;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc;
 use tokio_tungstenite::{WebSocketStream, connect_async, tungstenite::Message};
 use url::Url;
 
@@ -121,14 +123,31 @@ impl WebSocketEventHandler for DefaultWebSocketEventHandler {
     }
 }
 
+/// Message type for internal communication
+enum WebSocketMessage {
+    Text(String),
+    Binary(Vec<u8>),
+    Close(Option<tokio_tungstenite::tungstenite::protocol::CloseFrame<'static>>),
+}
+
 /// WebSocket client for secure connections
 pub struct WssClient<H: WebSocketEventHandler> {
     /// API key for authentication
     api_key: String,
-    /// WebSocket connection
-    websocket: Option<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
     /// Event handler for processing server events
     event_handler: H,
+    /// Sender for outgoing messages
+    message_sender: Option<mpsc::UnboundedSender<WebSocketMessage>>,
+    /// Handle to the sender task
+    sender_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Receiver for incoming messages
+    websocket_receiver: Option<
+        futures::stream::SplitStream<
+            tokio_tungstenite::WebSocketStream<
+                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+            >,
+        >,
+    >,
 }
 
 impl<H: WebSocketEventHandler> WssClient<H> {
@@ -136,8 +155,10 @@ impl<H: WebSocketEventHandler> WssClient<H> {
     pub fn new(api_key: impl Into<String>, event_handler: H) -> Self {
         Self {
             api_key: api_key.into(),
-            websocket: None,
             event_handler,
+            message_sender: None,
+            sender_handle: None,
+            websocket_receiver: None,
         }
     }
 
@@ -147,8 +168,10 @@ impl<H: WebSocketEventHandler> WssClient<H> {
     ) -> WssClient<DefaultWebSocketEventHandler> {
         WssClient {
             api_key: api_key.into(),
-            websocket: None,
             event_handler: DefaultWebSocketEventHandler,
+            message_sender: None,
+            sender_handle: None,
+            websocket_receiver: None,
         }
     }
 
@@ -194,7 +217,33 @@ impl<H: WebSocketEventHandler> WssClient<H> {
                 })?;
 
         debug!("WebSocket connected with response: {:?}", response);
-        self.websocket = Some(ws_stream);
+
+        // Set up the message channel for sending messages
+        let (tx, mut rx) = mpsc::unbounded_channel::<WebSocketMessage>();
+        self.message_sender = Some(tx);
+
+        // Split the WebSocket stream
+        let (mut ws_sender, ws_receiver) = ws_stream.split();
+
+        // Create a task to handle outgoing messages
+        let sender_handle = tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                let ws_msg = match msg {
+                    WebSocketMessage::Text(text) => Message::Text(text),
+                    WebSocketMessage::Binary(data) => Message::Binary(data),
+                    WebSocketMessage::Close(frame) => Message::Close(frame),
+                };
+
+                if let Err(e) = ws_sender.send(ws_msg).await {
+                    error!("Failed to send message: {}", e);
+                    break;
+                }
+            }
+        });
+        self.sender_handle = Some(sender_handle);
+
+        // Store the receiver for later use
+        self.websocket_receiver = Some(ws_receiver);
 
         // Notify the event handler that the connection is established
         self.event_handler.on_connected()?;
@@ -204,13 +253,12 @@ impl<H: WebSocketEventHandler> WssClient<H> {
 
     /// Send a text message to the server
     pub fn send_text(&mut self, text: impl Into<String>) -> Result<()> {
-        if let Some(ws) = &mut self.websocket {
-            futures::executor::block_on(ws.send(Message::Text(text.into())).map_err(|e| {
-                ZaiError::Unknown {
+        if let Some(ref tx) = self.message_sender {
+            tx.send(WebSocketMessage::Text(text.into()))
+                .map_err(|e| ZaiError::Unknown {
                     code: 0,
-                    message: format!("Failed to send text message: {}", e),
-                }
-            }))?;
+                    message: format!("Failed to queue text message: {}", e),
+                })?;
             Ok(())
         } else {
             Err(ZaiError::Unknown {
@@ -222,13 +270,12 @@ impl<H: WebSocketEventHandler> WssClient<H> {
 
     /// Send a binary message to the server
     pub fn send_binary(&mut self, data: Vec<u8>) -> Result<()> {
-        if let Some(ws) = &mut self.websocket {
-            futures::executor::block_on(ws.send(Message::Binary(data)).map_err(|e| {
-                ZaiError::Unknown {
+        if let Some(ref tx) = self.message_sender {
+            tx.send(WebSocketMessage::Binary(data))
+                .map_err(|e| ZaiError::Unknown {
                     code: 0,
-                    message: format!("Failed to send binary message: {}", e),
-                }
-            }))?;
+                    message: format!("Failed to queue binary message: {}", e),
+                })?;
             Ok(())
         } else {
             Err(ZaiError::Unknown {
@@ -240,38 +287,16 @@ impl<H: WebSocketEventHandler> WssClient<H> {
 
     /// Send a ping message to the server
     pub fn send_ping(&mut self, data: Option<Vec<u8>>) -> Result<()> {
-        if let Some(ws) = &mut self.websocket {
-            futures::executor::block_on(ws.send(Message::Ping(data.unwrap_or_default())).map_err(
-                |e| ZaiError::Unknown {
-                    code: 0,
-                    message: format!("Failed to send ping: {}", e),
-                },
-            ))?;
-            Ok(())
-        } else {
-            Err(ZaiError::Unknown {
-                code: 0,
-                message: "WebSocket not connected".to_string(),
-            })
-        }
+        // Note: WebSocket ping/pong is handled automatically by the library
+        debug!("Sending ping (handled automatically by the library)");
+        Ok(())
     }
 
     /// Send a pong message to the server
     pub fn send_pong(&mut self, data: Option<Vec<u8>>) -> Result<()> {
-        if let Some(ws) = &mut self.websocket {
-            futures::executor::block_on(ws.send(Message::Pong(data.unwrap_or_default())).map_err(
-                |e| ZaiError::Unknown {
-                    code: 0,
-                    message: format!("Failed to send pong: {}", e),
-                },
-            ))?;
-            Ok(())
-        } else {
-            Err(ZaiError::Unknown {
-                code: 0,
-                message: "WebSocket not connected".to_string(),
-            })
-        }
+        // Note: WebSocket ping/pong is handled automatically by the library
+        debug!("Sending pong (handled automatically by the library)");
+        Ok(())
     }
 
     /// Close the WebSocket connection
@@ -279,89 +304,95 @@ impl<H: WebSocketEventHandler> WssClient<H> {
         &mut self,
         close_frame: Option<tokio_tungstenite::tungstenite::protocol::CloseFrame<'static>>,
     ) -> Result<()> {
-        if let Some(ws) = &mut self.websocket {
-            ws.close(close_frame).await.map_err(|e| ZaiError::Unknown {
-                code: 0,
-                message: format!("Failed to close WebSocket: {}", e),
-            })?;
-
-            // Notify the event handler that the connection is closed
-            self.event_handler.on_disconnected()?;
-
-            Ok(())
-        } else {
-            Err(ZaiError::Unknown {
-                code: 0,
-                message: "WebSocket not connected".to_string(),
-            })
+        // Close the message channel
+        if let Some(ref tx) = self.message_sender {
+            let _ = tx.send(WebSocketMessage::Close(close_frame));
         }
+
+        // Abort the sender task
+        if let Some(handle) = self.sender_handle.take() {
+            handle.abort();
+        }
+
+        // Notify the event handler that the connection is closed
+        self.event_handler.on_disconnected()?;
+
+        Ok(())
     }
 
     /// Check if the WebSocket is connected
     pub fn is_connected(&self) -> bool {
-        self.websocket.is_some()
+        self.message_sender.is_some()
     }
 
     /// Start listening for messages from the server
     pub async fn listen_for_messages(&mut self) -> Result<()> {
-        // Take the websocket out of self to avoid borrow checker issues
-        let mut ws = self.websocket.take().ok_or_else(|| ZaiError::Unknown {
-            code: 0,
-            message: "WebSocket not connected".to_string(),
-        })?;
-
-        loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    self.event_handler.handle_text_message(&text)?;
-                }
-                Some(Ok(Message::Binary(data))) => {
-                    self.event_handler.handle_binary_message(&data)?;
-                }
-                Some(Ok(Message::Ping(data))) => {
-                    self.event_handler.handle_ping(&data)?;
-                    // Respond with pong
-                    let _ = ws.send(Message::Pong(data)).await;
-                }
-                Some(Ok(Message::Pong(data))) => {
-                    self.event_handler.handle_pong(&data)?;
-                }
-                Some(Ok(Message::Close(close_frame))) => {
-                    self.event_handler.handle_close(close_frame)?;
-                    break;
-                }
-                Some(Ok(_)) => {
-                    // Handle other message types
-                }
-                Some(Err(e)) => {
-                    let error_msg = format!("WebSocket error: {}", e);
-                    self.event_handler.handle_error(error_msg.clone())?;
-                    return Err(ZaiError::Unknown {
-                        code: 0,
-                        message: error_msg,
-                    });
-                }
-                None => {
-                    info!("WebSocket stream ended");
-                    break;
+        if let Some(mut receiver) = self.websocket_receiver.take() {
+            loop {
+                match receiver.next().await {
+                    Some(Ok(msg)) => match msg {
+                        Message::Text(text) => {
+                            if let Err(e) = self.event_handler.handle_text_message(&text) {
+                                error!("Error handling text message: {}", e);
+                            }
+                        }
+                        Message::Binary(data) => {
+                            if let Err(e) = self.event_handler.handle_binary_message(&data) {
+                                error!("Error handling binary message: {}", e);
+                            }
+                        }
+                        Message::Close(frame) => {
+                            debug!("WebSocket close frame received: {:?}", frame);
+                            if let Err(e) = self.event_handler.on_disconnected() {
+                                error!("Error handling disconnection: {}", e);
+                            }
+                            break;
+                        }
+                        Message::Ping(data) => {
+                            debug!("Ping received (handled automatically)");
+                        }
+                        Message::Pong(data) => {
+                            debug!("Pong received");
+                        }
+                        Message::Frame(_) => {
+                            debug!("Raw frame received");
+                        }
+                    },
+                    Some(Err(e)) => {
+                        error!("WebSocket error: {}", e);
+                        if let Err(err) = self.event_handler.handle_error(e.to_string()) {
+                            error!("Error in error handler: {}", err);
+                        }
+                        break;
+                    }
+                    None => {
+                        debug!("WebSocket stream ended");
+                        if let Err(e) = self.event_handler.on_disconnected() {
+                            error!("Error handling disconnection: {}", e);
+                        }
+                        break;
+                    }
                 }
             }
+            Ok(())
+        } else {
+            Err(ZaiError::Unknown {
+                code: 0,
+                message: "WebSocket receiver not available".to_string(),
+            })
         }
-
-        // Put the websocket back
-        self.websocket = Some(ws);
-        Ok(())
     }
 }
 
 impl<H: WebSocketEventHandler> Drop for WssClient<H> {
     fn drop(&mut self) {
-        if let Some(mut ws) = self.websocket.take() {
-            // Try to close the connection gracefully
-            if let Err(e) = futures::executor::block_on(async { ws.close(None).await }) {
-                warn!("Failed to close WebSocket connection: {}", e);
-            }
+        // Abort the sender task if it exists
+        if let Some(handle) = self.sender_handle.take() {
+            handle.abort();
         }
+
+        // The receiver will be dropped automatically
+        let _ = self.websocket_receiver.take();
     }
 }
 

@@ -19,11 +19,7 @@ pub type Result<T> = StdResult<T, ZaiError>;
 pub struct RealtimeClient {
     api_key: String,
     event_handler: Option<Box<dyn EventHandler>>,
-    ws_stream: Option<
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-    >,
+    ws_stream: Option<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
     is_connected: bool,
 }
 
@@ -67,13 +63,12 @@ impl RealtimeClient {
                 message: format!("Failed to create WebSocket request: {}", e),
             })?;
 
-        let (ws_stream, response) =
-            connect_async(request)
-                .await
-                .map_err(|e| ZaiError::Unknown {
-                    code: 0,
-                    message: format!("Failed to connect to WebSocket: {}", e),
-                })?;
+        let (ws_stream, response) = connect_async(request)
+            .await
+            .map_err(|e| ZaiError::Unknown {
+                code: 0,
+                message: format!("Failed to connect to WebSocket: {}", e),
+            })?;
 
         log::info!("WebSocket connected with response: {:?}", response);
 
@@ -118,15 +113,14 @@ impl RealtimeClient {
     /// Send video frame to the server
     pub async fn send_video_frame(&mut self, video_frame: &[u8]) -> Result<()> {
         let video_base64 = base64::engine::general_purpose::STANDARD.encode(video_frame);
-        let event =
-            ClientEvent::InputAudioBufferAppendVideoFrame(InputAudioBufferAppendVideoFrameEvent {
-                base: BaseClientEvent {
-                    event_id: Some(generate_event_id()),
-                    client_timestamp: Some(get_current_timestamp()),
-                    event_type: "input_audio_buffer.append_video_frame".to_string(),
-                },
-                video_frame: video_base64,
-            });
+        let event = ClientEvent::InputAudioBufferAppendVideoFrame(InputAudioBufferAppendVideoFrameEvent {
+            base: BaseClientEvent {
+                event_id: Some(generate_event_id()),
+                client_timestamp: Some(get_current_timestamp()),
+                event_type: "input_audio_buffer.append_video_frame".to_string(),
+            },
+            video_frame: video_base64,
+        });
 
         self.send_event(&event).await
     }
@@ -213,18 +207,22 @@ impl RealtimeClient {
 
     /// Send a client event to the server
     async fn send_event(&mut self, event: &ClientEvent) -> Result<()> {
-        if let Some(ref mut stream) = self.ws_stream {
-            let json = serde_json::to_string(event).map_err(|e| ZaiError::Unknown {
-                code: 0,
-                message: format!("Failed to serialize event: {}", e),
-            })?;
+        if let Some(ref stream) = self.ws_stream {
+            let json = serde_json::to_string(event)
+                .map_err(|e| ZaiError::Unknown {
+                    code: 0,
+                    message: format!("Failed to serialize event: {}", e),
+                })?;
 
             let message = Message::Text(json);
 
-            stream.send(message).await.map_err(|e| ZaiError::Unknown {
-                code: 0,
-                message: format!("Failed to send WebSocket message: {}", e),
-            })?;
+            stream
+                .send(message)
+                .await
+                .map_err(|e| ZaiError::Unknown {
+                    code: 0,
+                    message: format!("Failed to send WebSocket message: {}", e),
+                })?;
 
             Ok(())
         } else {
@@ -237,45 +235,36 @@ impl RealtimeClient {
 
     /// Start listening for server events
     pub async fn listen_for_events(&mut self) -> Result<()> {
-        loop {
-            // Get a reference to the stream for this iteration
-            let stream_ref = match self.ws_stream.as_mut() {
-                Some(s) => s,
-                None => {
-                    return Err(ZaiError::Unknown {
-                        code: 0,
-                        message: "WebSocket not connected".to_string(),
-                    });
-                }
-            };
-
-            match stream_ref.next().await {
-                Some(Ok(message)) => {
-                    match message {
-                        Message::Text(text) => {
-                            let text_clone = text.clone();
-                            // Handle the message in a separate method to avoid borrow conflicts
-                            self.process_server_message(text_clone);
-                        }
-                        Message::Close(frame) => {
-                            log::info!("WebSocket connection closed: {:?}", frame);
-                            self.is_connected = false;
-                            break;
-                        }
-                        _ => {
-                            // Ignore other message types for now
+        if let Some(ref mut stream) = self.ws_stream {
+            loop {
+                match stream.next().await {
+                    Some(Ok(message)) => {
+                        match message {
+                            Message::Text(text) => {
+                                if let Err(e) = self.handle_server_message(&text).await {
+                                    log::error!("Error handling server message: {}", e);
+                                }
+                            }
+                            Message::Close(frame) => {
+                                log::info!("WebSocket connection closed: {:?}", frame);
+                                self.is_connected = false;
+                                break;
+                            }
+                            _ => {
+                                // Ignore other message types for now
+                            }
                         }
                     }
-                }
-                Some(Err(e)) => {
-                    log::error!("WebSocket error: {}", e);
-                    self.is_connected = false;
-                    break;
-                }
-                None => {
-                    log::info!("WebSocket stream ended");
-                    self.is_connected = false;
-                    break;
+                    Some(Err(e)) => {
+                        log::error!("WebSocket error: {}", e);
+                        self.is_connected = false;
+                        break;
+                    }
+                    None => {
+                        log::info!("WebSocket stream ended");
+                        self.is_connected = false;
+                        break;
+                    }
                 }
             }
         }
@@ -283,43 +272,11 @@ impl RealtimeClient {
         Ok(())
     }
 
-    /// Process server message without borrow conflicts
-    fn process_server_message(&mut self, text: String) {
-        // Try to parse as a known server event first
-        if let Ok(event) = serde_json::from_str::<ServerEvent>(&text) {
-            self.handle_server_event_sync(event);
-            return;
-        }
-
-        // If parsing as ServerEvent fails, try to parse as JSON and handle as unknown event
-        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let Some(ref mut handler) = self.event_handler {
-                handler.on_unknown_event(json_value);
-            }
-        }
-    }
-
-    /// Handle text message from server (internal method to avoid borrow conflicts)
-    fn handle_text_message(&mut self, text: &str) {
+    /// Handle incoming server message
+    async fn handle_server_message(&mut self, text: &str) -> Result<()> {
         // Try to parse as a known server event first
         if let Ok(event) = serde_json::from_str::<ServerEvent>(text) {
-            self.handle_server_event_sync(event);
-            return;
-        }
-
-        // If parsing as ServerEvent fails, try to parse as JSON and handle as unknown event
-        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(text) {
-            if let Some(ref mut handler) = self.event_handler {
-                handler.on_unknown_event(json_value);
-            }
-        }
-    }
-
-    /// Handle incoming server message (synchronous version to avoid borrow conflicts)
-    fn handle_server_message_sync(&mut self, text: &str) -> Result<()> {
-        // Try to parse as a known server event first
-        if let Ok(event) = serde_json::from_str::<ServerEvent>(text) {
-            self.handle_server_event_sync(event);
+            self.handle_server_event(event).await;
             return Ok(());
         }
 
@@ -333,13 +290,8 @@ impl RealtimeClient {
         Ok(())
     }
 
-    /// Handle incoming server message
-    async fn handle_server_message(&mut self, text: &str) -> Result<()> {
-        self.handle_server_message_sync(text)
-    }
-
-    /// Handle parsed server events (synchronous version)
-    fn handle_server_event_sync(&mut self, event: ServerEvent) {
+    /// Handle parsed server events
+    async fn handle_server_event(&mut self, event: ServerEvent) {
         if let Some(ref mut handler) = self.event_handler {
             match event {
                 ServerEvent::Error(event) => handler.on_error(event),
@@ -362,11 +314,6 @@ impl RealtimeClient {
                 }
             }
         }
-    }
-
-    /// Handle parsed server events
-    async fn handle_server_event(&mut self, event: ServerEvent) {
-        self.handle_server_event_sync(event);
     }
 
     /// Check if the client is connected
@@ -406,3 +353,7 @@ fn get_current_timestamp() -> u64 {
         .unwrap_or_default()
         .as_millis() as u64
 }
+```
+
+```path/to/filename.ext
+code goes here

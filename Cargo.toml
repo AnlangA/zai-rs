@@ -167,16 +167,12 @@ name = "web_chat"
 path = "examples/web_chat/server.rs"
 
 [[example]]
-name = "realtime_audio_chat"
+name = "audio_chat"
 path = "examples/realtime/audio_chat.rs"
 
 [[example]]
-name = "realtime_video_chat"
+name = "video_chat"
 path = "examples/realtime/video_chat.rs"
-
-[[example]]
-name = "realtime_audio_chat_direct"
-path = "examples/realtime/audio_chat_direct.rs"
 
 
 [dependencies]
