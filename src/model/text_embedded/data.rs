@@ -20,15 +20,23 @@ impl EmbeddingRequest {
     }
 
     /// Optional: validate constraints before sending
-    pub fn validate(&self) -> Result<(), validator::ValidationError> {
-        self.body.validate_model_constraints()
+    pub fn validate(&self) -> crate::ZaiResult<()> {
+        self.body.validate_model_constraints().map_err(|e| {
+            crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("Validation error: {:?}", e),
+            }
+        })
     }
 
     /// Send the request and parse typed response.
     /// Automatically runs `validate()` before sending.
-    pub async fn send(&self) -> anyhow::Result<EmbeddingResponse> {
+    pub async fn send(&self) -> crate::ZaiResult<EmbeddingResponse> {
         if let Err(e) = self.validate() {
-            return Err(anyhow::anyhow!("validation failed: {}", e));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("validation failed: {}", e),
+            });
         }
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<EmbeddingResponse>().await?;
@@ -37,7 +45,7 @@ impl EmbeddingRequest {
 
     #[deprecated(note = "Use send() instead")]
     /// Deprecated: use `send()`.
-    pub async fn execute(&self) -> anyhow::Result<EmbeddingResponse> {
+    pub async fn execute(&self) -> crate::ZaiResult<EmbeddingResponse> {
         self.send().await
     }
 }

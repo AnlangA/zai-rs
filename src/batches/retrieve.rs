@@ -1,4 +1,5 @@
 use super::types::BatchItem;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Retrieve a batch task by ID (GET /paas/v4/batches/{batch_id})
@@ -27,7 +28,7 @@ impl BatchesRetrieveRequest {
     }
 
     /// Send request and parse typed response as a single BatchItem
-    pub async fn send(&self) -> anyhow::Result<BatchesRetrieveResponse> {
+    pub async fn send(&self) -> ZaiResult<BatchesRetrieveResponse> {
         let resp: reqwest::Response = self.get().await?;
         let parsed = resp.json::<BatchesRetrieveResponse>().await?;
         Ok(parsed)

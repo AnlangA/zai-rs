@@ -82,24 +82,40 @@ impl RerankBody {
     }
 
     /// Optional runtime validation for constraints expressed in the docs
-    pub fn validate_constraints(&self) -> Result<(), anyhow::Error> {
+
+    pub fn validate_constraints(&self) -> crate::ZaiResult<()> {
         if self.query.chars().count() > 4096 {
-            anyhow::bail!("query length exceeds 4096 characters");
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "query length exceeds 4096 characters".to_string(),
+            });
         }
         if self.documents.is_empty() {
-            anyhow::bail!("documents must not be empty");
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "documents must not be empty".to_string(),
+            });
         }
         if self.documents.len() > 128 {
-            anyhow::bail!("documents length exceeds 128");
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "documents length exceeds 128".to_string(),
+            });
         }
         for (i, d) in self.documents.iter().enumerate() {
             if d.chars().count() > 4096 {
-                anyhow::bail!("document at index {} exceeds 4096 characters", i);
+                return Err(crate::client::error::ZaiError::ApiError {
+                    code: 1200,
+                    message: format!("document at index {} exceeds 4096 characters", i),
+                });
             }
         }
         if let Some(n) = self.top_n {
             if n > self.documents.len() {
-                anyhow::bail!("top_n cannot exceed documents length");
+                return Err(crate::client::error::ZaiError::ApiError {
+                    code: 1200,
+                    message: "top_n cannot exceed documents length".to_string(),
+                });
             }
         }
         Ok(())

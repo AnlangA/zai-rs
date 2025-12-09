@@ -71,7 +71,7 @@ pub enum ToolError {
     ConcurrentAccessError { message: Cow<'static, str> },
 
     #[error("Internal error: {0}")]
-    Internal(#[from] anyhow::Error),
+    Internal(String),
 }
 
 impl ToolError {

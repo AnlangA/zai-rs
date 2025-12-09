@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -51,7 +52,7 @@ impl DocumentReembeddingRequest {
     }
 
     /// Send POST request with JSON body and parse typed response
-    pub async fn send(&self) -> anyhow::Result<DocumentReembeddingResponse> {
+    pub async fn send(&self) -> ZaiResult<DocumentReembeddingResponse> {
         // validate body
         self.body.validate()?;
         let resp = self.post().await?;

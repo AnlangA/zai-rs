@@ -49,6 +49,7 @@
 
 pub mod batches;
 pub mod client;
+pub use client::error::*;
 pub mod file;
 pub mod knowledge;
 

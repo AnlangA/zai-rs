@@ -54,29 +54,44 @@ where
         self
     }
 
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> crate::ZaiResult<()> {
         // Check body constraints
-        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+
+        self.body
+            .validate()
+            .map_err(|e| crate::client::error::ZaiError::from(e))?;
         // Ensure file path exists
-        let p = self
-            .file_path
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("file_path is required"))?;
+
+        let p =
+            self.file_path
+                .as_ref()
+                .ok_or_else(|| crate::client::error::ZaiError::ApiError {
+                    code: 1200,
+                    message: "file_path is required".to_string(),
+                })?;
+
         if !Path::new(p).exists() {
-            return Err(anyhow::anyhow!(format!("file_path not found: {}", p)));
+            return Err(crate::client::error::ZaiError::FileError {
+                code: 0,
+                message: format!("file_path not found: {}", p),
+            });
         }
+
         Ok(())
     }
 
-    pub async fn send(&self) -> anyhow::Result<super::response::AudioTranscriptionResponse>
+    pub async fn send(&self) -> crate::ZaiResult<super::response::AudioTranscriptionResponse>
     where
         N: Clone + Send + Sync + 'static,
     {
         self.validate()?;
+
         let resp = self.post().await?;
+
         let parsed = resp
             .json::<super::response::AudioTranscriptionResponse>()
             .await?;
+
         Ok(parsed)
     }
 }
@@ -101,16 +116,23 @@ where
         &self.body
     }
 
-    // Override default JSON post with multipart/form-data post
-    fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+    fn post(
+        &self,
+    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let key = self.key.clone();
+
         let url = (*self.api_url()).to_string();
+
         let body = self.body.clone();
+
         let file_path_opt = self.file_path.clone();
 
         async move {
             let file_path =
-                file_path_opt.ok_or_else(|| anyhow::anyhow!("file_path is required"))?;
+                file_path_opt.ok_or_else(|| crate::client::error::ZaiError::ApiError {
+                    code: 1200,
+                    message: "file_path is required".to_string(),
+                })?;
 
             let mut form = reqwest::multipart::Form::new();
 

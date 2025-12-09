@@ -3,6 +3,7 @@
 //! This module provides the file parser creation client for creating file parsing tasks.
 
 use super::{request::*, response::*};
+use crate::ZaiResult;
 use serde_json;
 use std::path::Path;
 
@@ -56,22 +57,24 @@ impl FileParserCreateRequest {
         file_path: &Path,
         tool_type: ToolType,
         file_type: FileType,
-    ) -> anyhow::Result<Self> {
+    ) -> crate::ZaiResult<Self> {
         // Validate that file exists
         if !file_path.exists() {
-            return Err(anyhow::anyhow!(
-                "File does not exist: {}",
-                file_path.display()
-            ));
+            return Err(crate::client::error::ZaiError::FileError {
+                code: 0,
+                message: format!("File does not exist: {}", file_path.display()),
+            });
         }
 
         // Validate that file type is supported by tool
         if !file_type.is_supported_by(&tool_type) {
-            return Err(anyhow::anyhow!(
-                "File type {:?} is not supported by tool type {:?}",
-                file_type,
-                tool_type
-            ));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!(
+                    "File type {:?} is not supported by tool type {:?}",
+                    file_type, tool_type
+                ),
+            });
         }
 
         Ok(Self {
@@ -97,12 +100,15 @@ impl FileParserCreateRequest {
         key: String,
         file_path: &Path,
         tool_type: ToolType,
-    ) -> anyhow::Result<Self> {
+    ) -> crate::ZaiResult<Self> {
         let file_type = FileType::from_path(file_path).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not determine file type from path: {}",
-                file_path.display()
-            )
+            crate::client::error::ZaiError::FileError {
+                code: 0,
+                message: format!(
+                    "Could not determine file type from path: {}",
+                    file_path.display()
+                ),
+            }
         })?;
 
         Self::new(key, file_path, tool_type, file_type)
@@ -113,7 +119,7 @@ impl FileParserCreateRequest {
     /// ## Returns
     ///
     /// A `FileParserCreateResponse` containing the task ID and status.
-    pub async fn send(&self) -> anyhow::Result<FileParserCreateResponse> {
+    pub async fn send(&self) -> ZaiResult<FileParserCreateResponse> {
         println!("📤 Creating file parser task...");
         println!("📁 File: {}", self.file_path.display());
         println!("🛠️  Tool type: {:?}", self.tool_type);
@@ -157,25 +163,28 @@ impl FileParserCreateRequest {
         println!("📄 Raw response: {}", response_text);
 
         if !status.is_success() {
-            return Err(anyhow::anyhow!("HTTP {} - {}", status, response_text));
+            return Err(crate::client::error::ZaiError::HttpError {
+                status: status.as_u16(),
+                message: response_text,
+            });
         }
 
         let create_response: FileParserCreateResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                anyhow::anyhow!(
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!(
                     "Failed to decode response: {} - Response was: {}",
-                    e,
-                    response_text
-                )
+                    e, response_text
+                ),
             })?;
 
         println!("✅ Task created successfully: {:?}", create_response);
 
         if !create_response.is_success() {
-            return Err(anyhow::anyhow!(
-                "Task creation failed: {}",
-                create_response.message
-            ));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 0,
+                message: format!("Task creation failed: {}", create_response.message),
+            });
         }
 
         Ok(create_response)

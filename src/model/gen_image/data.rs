@@ -68,9 +68,14 @@ where
         self
     }
 
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> crate::ZaiResult<()> {
         // Body-level field validations
-        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+        self.body
+            .validate()
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("Validation error: {:?}", e),
+            })?;
         // Require prompt
         if self
             .body
@@ -79,22 +84,26 @@ where
             .map(|s| s.trim().is_empty())
             .unwrap_or(true)
         {
-            return Err(anyhow::anyhow!("prompt is required"));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "prompt is required".to_string(),
+            });
         }
         // Validate custom size when present
         if let Some(size) = &self.body.size {
             if let super::image_request::ImageSize::Custom { .. } = size {
                 if !size.is_valid() {
-                    return Err(anyhow::anyhow!(
-                        "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels"
-                    ));
+                    return Err(crate::client::error::ZaiError::ApiError {
+                        code: 1200,
+                        message: "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels".to_string(),
+                    });
                 }
             }
         }
         Ok(())
     }
 
-    pub async fn send(&self) -> anyhow::Result<super::image_response::ImageResponse> {
+    pub async fn send(&self) -> crate::ZaiResult<super::image_response::ImageResponse> {
         self.validate()?;
         let resp = self.post().await?;
         let parsed = resp.json::<super::image_response::ImageResponse>().await?;

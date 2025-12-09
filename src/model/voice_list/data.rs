@@ -1,4 +1,5 @@
 use super::request::VoiceListQuery;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 use url::Url;
 
@@ -34,12 +35,12 @@ impl VoiceListRequest {
         self.url = url.to_string();
     }
 
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> ZaiResult<()> {
         // No required params; URL already built. Optionally, validate query formats here.
         Ok(())
     }
 
-    pub async fn send(&self) -> anyhow::Result<super::response::VoiceListResponse> {
+    pub async fn send(&self) -> ZaiResult<super::response::VoiceListResponse> {
         self.validate()?;
         let resp = self.get().await?;
         let parsed = resp.json::<super::response::VoiceListResponse>().await?;

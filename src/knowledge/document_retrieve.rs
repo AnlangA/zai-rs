@@ -1,4 +1,5 @@
 use super::types::DocumentDetailResponse;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Retrieve document detail by id
@@ -19,7 +20,7 @@ impl DocumentRetrieveRequest {
     }
 
     /// Send GET request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<DocumentDetailResponse> {
+    pub async fn send(&self) -> ZaiResult<DocumentDetailResponse> {
         let resp = self.get().await?;
         let parsed = resp.json::<DocumentDetailResponse>().await?;
         Ok(parsed)

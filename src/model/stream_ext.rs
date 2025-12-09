@@ -72,10 +72,10 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
     fn stream_for_each<'a, F, Fut>(
         &'a mut self,
         mut on_chunk: F,
-    ) -> impl core::future::Future<Output = anyhow::Result<()>> + 'a
+    ) -> impl core::future::Future<Output = crate::ZaiResult<()>> + 'a
     where
         F: FnMut(ChatStreamResponse) -> Fut + 'a,
-        Fut: core::future::Future<Output = anyhow::Result<()>> + 'a,
+        Fut: core::future::Future<Output = crate::ZaiResult<()>> + 'a,
     {
         async move {
             let resp = self.post().await?;
@@ -85,7 +85,12 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
             while let Some(next) = stream.next().await {
                 let bytes = match next {
                     Ok(b) => b,
-                    Err(e) => return Err(anyhow::anyhow!("Stream error: {}", e)),
+                    Err(e) => {
+                        return Err(crate::client::error::ZaiError::Unknown {
+                            code: 0,
+                            message: format!("Stream error: {}", e),
+                        });
+                    }
                 };
                 buf.extend_from_slice(&bytes);
                 while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
@@ -139,8 +144,8 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
     fn to_stream<'a>(
         &'a mut self,
     ) -> impl core::future::Future<
-        Output = anyhow::Result<
-            Pin<Box<dyn Stream<Item = anyhow::Result<ChatStreamResponse>> + Send + 'static>>,
+        Output = crate::ZaiResult<
+            Pin<Box<dyn Stream<Item = crate::ZaiResult<ChatStreamResponse>> + Send + 'static>>,
         >,
     > + 'a {
         async move {
@@ -182,7 +187,13 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                     match s.next().await {
                         Some(Ok(bytes)) => buf.extend_from_slice(&bytes),
                         Some(Err(e)) => {
-                            return Some((Err(anyhow::anyhow!("Stream error: {}", e)), (s, buf)));
+                            return Some((
+                                Err(crate::client::error::ZaiError::Unknown {
+                                    code: 0,
+                                    message: format!("Stream error: {}", e),
+                                }),
+                                (s, buf),
+                            ));
                         }
                         None => return None,
                     }

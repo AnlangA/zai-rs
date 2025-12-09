@@ -112,27 +112,33 @@ where
     }
 
     /// Validate request parameters for non-stream async chat (StreamOff)
-    pub fn validate(&self) -> anyhow::Result<()> {
-        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+
+    pub fn validate(&self) -> crate::ZaiResult<()> {
+        self.body
+            .validate()
+            .map_err(|e| crate::client::error::ZaiError::from(e))?;
         if matches!(self.body.stream, Some(true)) {
-            return Err(anyhow::anyhow!(
-                "stream=true detected; use enable_stream() and streaming APIs instead"
-            ));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "stream=true detected; use enable_stream() and streaming APIs instead"
+                    .to_string(),
+            });
         }
+
         Ok(())
     }
 
-    /// Send the request and parse typed response.
-    /// Automatically runs `validate()` before sending.
     pub async fn send(
         &self,
-    ) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse>
+    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
     where
         N: serde::Serialize,
         M: serde::Serialize,
     {
         self.validate()?;
+
         let resp: reqwest::Response = self.post().await?;
+
         let parsed = resp
             .json::<crate::model::chat_base_response::ChatCompletionResponse>()
             .await?;

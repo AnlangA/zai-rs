@@ -24,16 +24,19 @@ impl TokenizerRequest {
     }
 
     /// Optional: validate constraints before sending
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> crate::ZaiResult<()> {
         if self.body.messages.is_empty() {
-            anyhow::bail!("messages must not be empty");
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "messages must not be empty".to_string(),
+            });
         }
         Ok(())
     }
 
     /// Send the request and parse typed response.
     /// Automatically runs `validate()` before sending.
-    pub async fn send(&self) -> anyhow::Result<TokenizerResponse> {
+    pub async fn send(&self) -> crate::ZaiResult<TokenizerResponse> {
         self.validate()?;
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<TokenizerResponse>().await?;
@@ -42,7 +45,7 @@ impl TokenizerRequest {
 
     #[deprecated(note = "Use send() instead")]
     /// Deprecated: use `send()`.
-    pub async fn execute(&self) -> anyhow::Result<TokenizerResponse> {
+    pub async fn execute(&self) -> crate::ZaiResult<TokenizerResponse> {
         self.send().await
     }
 }

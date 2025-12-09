@@ -45,12 +45,17 @@ where
         self
     }
 
-    pub fn validate(&self) -> anyhow::Result<()> {
-        self.body.validate().map_err(|e| anyhow::anyhow!(e))?;
+    pub fn validate(&self) -> crate::ZaiResult<()> {
+        self.body
+            .validate()
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("Validation error: {:?}", e),
+            })?;
         Ok(())
     }
 
-    pub async fn send(&self) -> anyhow::Result<super::response::VoiceCloneResponse> {
+    pub async fn send(&self) -> crate::ZaiResult<super::response::VoiceCloneResponse> {
         self.validate()?;
         let resp = self.post().await?;
         let parsed = resp.json::<super::response::VoiceCloneResponse>().await?;

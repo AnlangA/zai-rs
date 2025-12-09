@@ -98,23 +98,23 @@ impl KnowledgeUpdateRequest {
         self
     }
 
-    /// Validate and send the update request. Requires at least one field set.
-    pub async fn send(&self) -> anyhow::Result<KnowledgeUpdateResponse> {
+    pub async fn send(&self) -> crate::ZaiResult<KnowledgeUpdateResponse> {
         if self.body.is_empty() {
-            return Err(anyhow::anyhow!(
-                "update body is empty; set at least one field"
-            ));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "update body is empty; set at least one field".to_string(),
+            });
         }
+
         self.body.validate()?;
         let resp = self.put().await?;
         let parsed = resp.json::<KnowledgeUpdateResponse>().await?;
         Ok(parsed)
     }
 
-    /// Perform HTTP PUT with JSON body and error handling similar to other clients
     pub fn put(
         &self,
-    ) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let url = self.url.clone();
         let key = self.key.clone();
         let body = self.body.clone();
@@ -139,23 +139,22 @@ impl KnowledgeUpdateRequest {
             }
             #[derive(serde::Deserialize)]
             struct ErrObj {
-                code: serde_json::Value,
+                _code: serde_json::Value,
                 message: String,
             }
+
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(anyhow::anyhow!(
-                    "HTTP {} {} | code={} | message={}",
+                return Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
-                    status.canonical_reason().unwrap_or(""),
-                    parsed.error.code,
-                    parsed.error.message
+                    0,
+                    parsed.error.message,
                 ));
             }
-            Err(anyhow::anyhow!(
-                "HTTP {} {} | body={}",
+
+            Err(crate::client::error::ZaiError::from_api_response(
                 status.as_u16(),
-                status.canonical_reason().unwrap_or(""),
-                text
+                0,
+                text,
             ))
         }
     }

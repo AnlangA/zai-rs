@@ -1,6 +1,7 @@
 use url::Url;
 
 use super::types::KnowledgeListResponse;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Query parameters for knowledge list API
@@ -73,7 +74,7 @@ impl KnowledgeListRequest {
     }
 
     /// Send request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<KnowledgeListResponse> {
+    pub async fn send(&self) -> ZaiResult<KnowledgeListResponse> {
         let resp = self.get().await?;
         let parsed = resp.json::<KnowledgeListResponse>().await?;
         Ok(parsed)
@@ -83,7 +84,7 @@ impl KnowledgeListRequest {
     pub async fn send_with_query(
         mut self,
         q: &KnowledgeListQuery,
-    ) -> anyhow::Result<KnowledgeListResponse> {
+    ) -> ZaiResult<KnowledgeListResponse> {
         use validator::Validate;
         q.validate()?;
         self.rebuild_url(q);

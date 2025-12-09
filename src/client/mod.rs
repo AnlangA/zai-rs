@@ -20,4 +20,7 @@
 pub mod http;
 pub use http::*;
 
+pub mod error;
+pub use error::*;
+
 pub mod wss;

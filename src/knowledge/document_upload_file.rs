@@ -94,29 +94,41 @@ impl DocumentUploadFileRequest {
     }
 
     /// Validate cross-field constraints not expressible via `validator`
-    fn validate_cross(&self) -> anyhow::Result<()> {
+
+    fn validate_cross(&self) -> crate::ZaiResult<()> {
         // When knowledge_type is Custom (5), sentence_size should be within 20..=2000
         if let Some(DocumentSliceType::Custom) = self.options.knowledge_type {
             // sentence_size recommended; API shows default 300; we ensure range if provided
             if let Some(sz) = self.options.sentence_size {
                 if !(20..=2000).contains(&sz) {
-                    anyhow::bail!("sentence_size must be 20..=2000 when knowledge_type=Custom (5)");
+                    return Err(crate::client::error::ZaiError::ApiError {
+                        code: 1200,
+                        message: "sentence_size must be 20..=2000 when knowledge_type=Custom (5)"
+                            .to_string(),
+                    });
                 }
             }
         }
         if let Some(ref w) = self.options.word_num_limit {
             if !w.chars().all(|c| c.is_ascii_digit()) {
-                anyhow::bail!("word_num_limit must be numeric string");
+                return Err(crate::client::error::ZaiError::ApiError {
+                    code: 1200,
+                    message: "word_num_limit must be numeric string".to_string(),
+                });
             }
         }
         if self.files.is_empty() {
-            anyhow::bail!("at least one file path must be provided");
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "at least one file path must be provided".to_string(),
+            });
         }
         Ok(())
     }
 
     /// Send multipart request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<UploadFileResponse> {
+
+    pub async fn send(&self) -> crate::ZaiResult<UploadFileResponse> {
         // Field validations
         self.options.validate()?;
         self.validate_cross()?;
@@ -143,7 +155,10 @@ impl HttpClient for DocumentUploadFileRequest {
     }
 
     // Override POST to send multipart/form-data
-    fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+
+    fn post(
+        &self,
+    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let url = self.url.clone();
         let key = self.key.clone();
         let files = self.files.clone();
@@ -210,24 +225,23 @@ impl HttpClient for DocumentUploadFileRequest {
             }
             #[derive(serde::Deserialize)]
             struct ErrObj {
-                code: serde_json::Value,
+                _code: serde_json::Value,
                 message: String,
             }
+
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(anyhow::anyhow!(
-                    "HTTP {} {} | code={} | message={}",
+                return Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
-                    status.canonical_reason().unwrap_or(""),
-                    parsed.error.code,
-                    parsed.error.message
+                    0,
+                    parsed.error.message,
+                ));
+            } else {
+                return Err(crate::client::error::ZaiError::from_api_response(
+                    status.as_u16(),
+                    0,
+                    text,
                 ));
             }
-            Err(anyhow::anyhow!(
-                "HTTP {} {} | body={}",
-                status.as_u16(),
-                status.canonical_reason().unwrap_or(""),
-                text
-            ))
         }
     }
 }

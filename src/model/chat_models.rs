@@ -51,8 +51,6 @@ impl_message_binding!(GLM4_6, TextMessage);
 impl_model_markers!(GLM4_6: Chat, AsyncChat, ThinkEnable);
 impl ToolStreamEnable for GLM4_6 {}
 
-
-
 define_model_type!(GLM4_5, "glm-4.5");
 impl_message_binding!(GLM4_5, TextMessage);
 impl_model_markers!(GLM4_5: Chat, AsyncChat, ThinkEnable);

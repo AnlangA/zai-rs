@@ -1,3 +1,4 @@
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -113,7 +114,7 @@ impl DocumentUploadUrlRequest {
     }
 
     /// Validate and send
-    pub async fn send(&self) -> anyhow::Result<UploadUrlResponse> {
+    pub async fn send(&self) -> ZaiResult<UploadUrlResponse> {
         self.body.validate()?;
         let resp = self.post().await?;
         let parsed = resp.json::<UploadUrlResponse>().await?;

@@ -175,18 +175,26 @@ impl WebSearchBody {
     }
 
     /// Validate the request body constraints
-    pub fn validate_constraints(&self) -> anyhow::Result<()> {
+    pub fn validate_constraints(&self) -> crate::ZaiResult<()> {
         self.validate()
-            .map_err(|e| anyhow::anyhow!("Validation error: {}", e))?;
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("Validation error: {}", e),
+            })?;
 
         // Additional validation for count based on search engine
         if let Some(count) = self.count {
             if matches!(self.search_engine, SearchEngine::SearchProSogou) {
                 match count {
                     10 | 20 | 30 | 40 | 50 => {}
-                    _ => anyhow::bail!(
-                        "search_pro_sogou only supports count values: 10, 20, 30, 40, 50"
-                    ),
+                    _ => {
+                        return Err(crate::client::error::ZaiError::ApiError {
+                            code: 1200,
+                            message:
+                                "search_pro_sogou only supports count values: 10, 20, 30, 40, 50"
+                                    .to_string(),
+                        });
+                    }
                 }
             }
         }

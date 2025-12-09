@@ -62,7 +62,11 @@ fn create_new_session() -> ChatSession {
 }
 
 /// Build ChatCompletion client with messages
-fn build_client(messages: &[TextMessage], api_key: &str, think_mode: bool) -> ChatCompletion<GLM4_6, TextMessage> {
+fn build_client(
+    messages: &[TextMessage],
+    api_key: &str,
+    think_mode: bool,
+) -> ChatCompletion<GLM4_6, TextMessage> {
     let model = GLM4_6 {};
 
     if messages.is_empty() {
@@ -70,7 +74,11 @@ fn build_client(messages: &[TextMessage], api_key: &str, think_mode: bool) -> Ch
             .with_temperature(0.7)
             .with_top_p(0.9)
             .with_coding_plan();
-        client = client.with_thinking(if think_mode { ThinkingType::Enabled } else { ThinkingType::Disabled });
+        client = client.with_thinking(if think_mode {
+            ThinkingType::Enabled
+        } else {
+            ThinkingType::Disabled
+        });
         return client;
     }
 
@@ -78,7 +86,11 @@ fn build_client(messages: &[TextMessage], api_key: &str, think_mode: bool) -> Ch
         .with_temperature(0.7)
         .with_top_p(0.9)
         .with_coding_plan();
-    client = client.with_thinking(if think_mode { ThinkingType::Enabled } else { ThinkingType::Disabled });
+    client = client.with_thinking(if think_mode {
+        ThinkingType::Enabled
+    } else {
+        ThinkingType::Disabled
+    });
 
     for msg in messages.iter().skip(1) {
         client = client.add_messages(msg.clone());

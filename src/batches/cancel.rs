@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::BatchItem;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Empty body for cancel API (serializes to `{}`)
@@ -32,7 +33,7 @@ impl CancelBatchRequest {
     }
 
     /// Send the request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<CancelBatchResponse> {
+    pub async fn send(&self) -> ZaiResult<CancelBatchResponse> {
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<CancelBatchResponse>().await?;
         Ok(parsed)

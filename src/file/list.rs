@@ -1,6 +1,7 @@
 use url::Url;
 
 use super::request::FileListQuery;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Files list request (GET /paas/v4/files)
@@ -47,7 +48,7 @@ impl FileListRequest {
         self
     }
     /// Send request and parse typed response.
-    pub async fn send(&self) -> anyhow::Result<super::response::FileListResponse> {
+    pub async fn send(&self) -> ZaiResult<super::response::FileListResponse> {
         let resp = self.get().await?;
         let parsed = resp.json::<super::response::FileListResponse>().await?;
         Ok(parsed)
@@ -57,7 +58,7 @@ impl FileListRequest {
     pub async fn send_with_query(
         mut self,
         q: &super::request::FileListQuery,
-    ) -> anyhow::Result<super::response::FileListResponse> {
+    ) -> ZaiResult<super::response::FileListResponse> {
         use validator::Validate;
         q.validate()?;
         self.rebuild_url(q);

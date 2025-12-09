@@ -34,13 +34,12 @@ impl FileUploadRequest {
 
     pub fn with_content_type(mut self, ct: impl Into<String>) -> Self {
         self.content_type = Some(ct.into());
+
         self
     }
-}
 
-impl FileUploadRequest {
-    /// Send the upload request and parse typed response (`FileObject`).
-    pub async fn send(&self) -> anyhow::Result<super::response::FileObject> {
+    /// Send the upload request and parse typed response (`FileObject`)
+    pub async fn send(&self) -> crate::ZaiResult<super::response::FileObject> {
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<super::response::FileObject>().await?;
         Ok(parsed)
@@ -63,9 +62,14 @@ impl HttpClient for FileUploadRequest {
     }
 
     // Override POST to send multipart/form-data
-    fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+
+    fn post(
+        &self,
+    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let url: String = "https://open.bigmodel.cn/api/paas/v4/files".to_string();
+
         let key: String = self.key.clone();
+
         let purpose = self.purpose.clone();
         let path = self.file_path.clone();
         let file_name = self.file_name.clone();
@@ -84,9 +88,12 @@ impl HttpClient for FileUploadRequest {
 
             let mut part = reqwest::multipart::Part::bytes(std::fs::read(&path)?).file_name(fname);
             if let Some(ct) = content_type {
-                part = part
-                    .mime_str(&ct)
-                    .map_err(|e| anyhow::anyhow!("invalid content-type: {}", e))?;
+                part =
+                    part.mime_str(&ct)
+                        .map_err(|e| crate::client::error::ZaiError::ApiError {
+                            code: 1200,
+                            message: format!("invalid content-type: {}", e),
+                        })?;
             }
             form = form.part("file", part);
 
@@ -110,23 +117,21 @@ impl HttpClient for FileUploadRequest {
             }
             #[derive(serde::Deserialize)]
             struct ErrObj {
-                code: serde_json::Value,
+                _code: serde_json::Value,
                 message: String,
             }
+
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(anyhow::anyhow!(
-                    "HTTP {} {} | code={} | message={}",
+                return Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
-                    status.canonical_reason().unwrap_or(""),
-                    parsed.error.code,
-                    parsed.error.message
+                    0,
+                    parsed.error.message,
                 ));
             } else {
-                return Err(anyhow::anyhow!(
-                    "HTTP {} {} | body={}",
+                return Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
-                    status.canonical_reason().unwrap_or(""),
-                    text
+                    0,
+                    text,
                 ));
             }
         }

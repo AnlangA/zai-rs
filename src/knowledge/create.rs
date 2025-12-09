@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Embedding model id enum mapped to integer ids
@@ -123,9 +124,12 @@ impl CreateKnowledgeRequest {
     }
 
     /// Validate and send, returning typed response
-    pub async fn send(&self) -> anyhow::Result<CreateKnowledgeResponse> {
+
+    pub async fn send(&self) -> ZaiResult<CreateKnowledgeResponse> {
         self.body.validate()?;
+
         let resp: reqwest::Response = self.post().await?;
+
         let parsed = resp.json::<CreateKnowledgeResponse>().await?;
         Ok(parsed)
     }

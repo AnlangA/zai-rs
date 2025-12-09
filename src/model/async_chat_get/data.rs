@@ -30,21 +30,27 @@ where
         }
     }
 
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> crate::ZaiResult<()> {
         if self.url.trim().is_empty() {
-            return Err(anyhow::anyhow!("empty URL"));
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "empty URL".to_string(),
+            });
         }
         Ok(())
     }
 
     pub async fn send(
         &self,
-    ) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse> {
+    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse> {
         self.validate()?;
+
         let resp = self.get().await?;
+
         let parsed = resp
             .json::<crate::model::chat_base_response::ChatCompletionResponse>()
             .await?;
+
         Ok(parsed)
     }
 }

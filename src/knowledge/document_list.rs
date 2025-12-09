@@ -1,6 +1,7 @@
 use url::Url;
 
 use super::types::DocumentListResponse;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Query parameters for listing documents under a knowledge base
@@ -93,7 +94,7 @@ impl DocumentListRequest {
     pub async fn send_with_query(
         mut self,
         q: &DocumentListQuery,
-    ) -> anyhow::Result<DocumentListResponse> {
+    ) -> ZaiResult<DocumentListResponse> {
         use validator::Validate;
         q.validate()?;
         self.rebuild_url(q);
@@ -101,7 +102,7 @@ impl DocumentListRequest {
     }
 
     /// Send and parse typed response
-    pub async fn send(&self) -> anyhow::Result<DocumentListResponse> {
+    pub async fn send(&self) -> ZaiResult<DocumentListResponse> {
         let resp = self.get().await?;
         let parsed = resp.json::<DocumentListResponse>().await?;
         Ok(parsed)

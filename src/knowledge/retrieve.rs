@@ -1,4 +1,5 @@
 use super::types::KnowledgeDetailResponse;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Knowledge detail request (GET /llm-application/open/knowledge/{id})
@@ -24,7 +25,7 @@ impl KnowledgeRetrieveRequest {
     }
 
     /// Send and parse typed response
-    pub async fn send(&self) -> anyhow::Result<KnowledgeDetailResponse> {
+    pub async fn send(&self) -> ZaiResult<KnowledgeDetailResponse> {
         let resp = self.get().await?;
         let parsed = resp.json::<KnowledgeDetailResponse>().await?;
         Ok(parsed)

@@ -19,9 +19,12 @@ impl DocumentImageListRequest {
     }
 
     /// Send POST request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<DocumentImageListResponse> {
-        let resp = self.post().await?;
+
+    pub async fn send(&self) -> crate::ZaiResult<DocumentImageListResponse> {
+        let resp: reqwest::Response = self.post().await?;
+
         let parsed = resp.json::<DocumentImageListResponse>().await?;
+
         Ok(parsed)
     }
 }
@@ -42,7 +45,9 @@ impl HttpClient for DocumentImageListRequest {
     }
 
     // Override POST: send no body, only auth header
-    fn post(&self) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+    fn post(
+        &self,
+    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let url = self.url.clone();
         let key = self.key.clone();
         async move {
@@ -65,23 +70,22 @@ impl HttpClient for DocumentImageListRequest {
             }
             #[derive(serde::Deserialize)]
             struct ErrObj {
-                code: serde_json::Value,
+                _code: serde_json::Value,
                 message: String,
             }
+
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(anyhow::anyhow!(
-                    "HTTP {} {} | code={} | message={}",
+                return Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
-                    status.canonical_reason().unwrap_or(""),
-                    parsed.error.code,
-                    parsed.error.message
+                    0,
+                    parsed.error.message,
                 ));
             }
-            Err(anyhow::anyhow!(
-                "HTTP {} {} | body={}",
+
+            Err(crate::client::error::ZaiError::from_api_response(
                 status.as_u16(),
-                status.canonical_reason().unwrap_or(""),
-                text
+                0,
+                text,
             ))
         }
     }

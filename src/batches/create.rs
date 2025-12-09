@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use validator::Validate;
 
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Endpoint for batch requests
@@ -80,14 +81,18 @@ impl CreateBatchRequest {
     }
 
     /// Validate body using `validator`
-    pub fn validate(&self) -> anyhow::Result<()> {
-        self.body.validate().map_err(|e| anyhow::anyhow!(e))
+
+    pub fn validate(&self) -> ZaiResult<()> {
+        self.body.validate().map_err(|e| e.into())
     }
 
     /// Send request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<CreateBatchResponse> {
+
+    pub async fn send(&self) -> ZaiResult<CreateBatchResponse> {
         self.validate()?;
+
         let resp: reqwest::Response = self.post().await?;
+
         let parsed = resp.json::<CreateBatchResponse>().await?;
         Ok(parsed)
     }

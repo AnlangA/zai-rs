@@ -3,6 +3,7 @@
 //! This module provides the file parser result client for retrieving file parsing results.
 
 use super::{request::*, response::*};
+use crate::ZaiResult;
 use serde_json;
 
 /// File parser result client.
@@ -59,10 +60,7 @@ impl FileParserResultRequest {
     /// ## Returns
     ///
     /// A `FileParserResultResponse` containing the parsing result.
-    pub async fn get_result(
-        &self,
-        format_type: FormatType,
-    ) -> anyhow::Result<FileParserResultResponse> {
+    pub async fn get_result(&self, format_type: FormatType) -> ZaiResult<FileParserResultResponse> {
         let url = format!(
             "https://open.bigmodel.cn/api/paas/v4/files/parser/result/{}/{}",
             self.task_id, format_type
@@ -80,7 +78,10 @@ impl FileParserResultRequest {
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
             println!("❌ Error response: {}", error_text);
-            return Err(anyhow::anyhow!("HTTP {} - {}", status, error_text));
+            return Err(crate::client::error::ZaiError::HttpError {
+                status: status.as_u16(),
+                message: error_text,
+            });
         }
 
         let response_body = response.text().await?;
@@ -107,7 +108,7 @@ impl FileParserResultRequest {
         format_type: FormatType,
         timeout_seconds: u64,
         poll_interval_seconds: u64,
-    ) -> anyhow::Result<FileParserResultResponse> {
+    ) -> ZaiResult<FileParserResultResponse> {
         println!(
             "⏳ Starting polling for result (timeout: {}s, interval: {}s)",
             timeout_seconds, poll_interval_seconds
@@ -125,14 +126,20 @@ impl FileParserResultRequest {
                 }
                 ParserStatus::Failed => {
                     println!("💥 Parsing failed: {}", result.message);
-                    return Err(anyhow::anyhow!("Parsing failed: {}", result.message));
+                    return Err(crate::client::error::ZaiError::ApiError {
+                        code: 0,
+                        message: format!("Parsing failed: {}", result.message),
+                    });
                 }
                 ParserStatus::Processing => {
                     let elapsed = start_time.elapsed().as_secs();
                     println!("⏳ Still processing... ({}s elapsed)", elapsed);
                     if elapsed > timeout_seconds {
                         println!("⏰ Timeout reached!");
-                        return Err(anyhow::anyhow!("Timeout waiting for parsing result"));
+                        return Err(crate::client::error::ZaiError::RateLimitError {
+                            code: 0,
+                            message: "Timeout waiting for parsing result".to_string(),
+                        });
                     }
                     println!(
                         "⏱️  Waiting {} seconds before next check...",
@@ -152,7 +159,7 @@ impl FileParserResultRequest {
     /// A tuple containing text result and download link result.
     pub async fn get_all_results(
         &self,
-    ) -> anyhow::Result<(FileParserResultResponse, FileParserResultResponse)> {
+    ) -> ZaiResult<(FileParserResultResponse, FileParserResultResponse)> {
         let text_result = self.get_result(FormatType::Text).await?;
         let download_result = self.get_result(FormatType::DownloadLink).await?;
         Ok((text_result, download_result))

@@ -21,28 +21,35 @@ impl FileContentRequest {
     }
 
     /// Send the request and return raw bytes of the file content.
-    pub async fn send(&self) -> anyhow::Result<Vec<u8>> {
+
+    pub async fn send(&self) -> crate::ZaiResult<Vec<u8>> {
         let resp: reqwest::Response = self.get().await?;
+
         let status = resp.status();
+
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!(
-                "HTTP {} {} | body={}",
+
+            return Err(crate::client::error::ZaiError::from_api_response(
                 status.as_u16(),
-                status.canonical_reason().unwrap_or(""),
-                text
+                0,
+                text,
             ));
         }
+
         let bytes = resp.bytes().await?;
         Ok(bytes.to_vec())
     }
 
-    /// Send the request and save content to the given path.
     /// It will create parent directories if missing.
+
     /// Returns the number of bytes written.
-    pub async fn send_to<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<usize> {
+
+    pub async fn send_to<P: AsRef<std::path::Path>>(&self, path: P) -> crate::ZaiResult<usize> {
         let bytes = self.send().await?;
+
         let p = path.as_ref();
+
         if let Some(parent) = p.parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;

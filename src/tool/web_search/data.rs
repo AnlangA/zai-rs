@@ -1,3 +1,4 @@
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 use crate::tool::web_search::{request::*, response::*};
 use async_trait::async_trait;
@@ -72,12 +73,12 @@ impl WebSearchRequest {
     }
 
     /// Validate the request
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> ZaiResult<()> {
         self.body.validate_constraints()
     }
 
     /// Send the web search request and return the response
-    pub async fn send(&self) -> anyhow::Result<WebSearchResponse> {
+    pub async fn send(&self) -> ZaiResult<WebSearchResponse> {
         self.validate()?;
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<WebSearchResponse>().await?;

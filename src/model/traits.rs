@@ -143,7 +143,7 @@ pub trait SseStreamable: HttpClient {
     fn stream_sse_for_each<'a, F>(
         &'a mut self,
         mut on_data: F,
-    ) -> impl core::future::Future<Output = anyhow::Result<()>> + 'a
+    ) -> impl core::future::Future<Output = crate::ZaiResult<()>> + 'a
     where
         F: FnMut(&[u8]) + 'a,
     {
@@ -179,7 +179,7 @@ pub trait SseStreamable: HttpClient {
                             }
                         }
                     }
-                    Err(e) => return Err(anyhow::anyhow!("Stream error: {}", e)),
+                    Err(e) => return Err(crate::client::error::ZaiError::NetworkError(e)),
                 }
             }
             Ok(())

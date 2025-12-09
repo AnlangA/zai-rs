@@ -62,11 +62,10 @@ impl Moderation {
         &mut self.body
     }
 
-    /// Validates the moderation request parameters.
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
-            .map_err(|e: validator::ValidationErrors| anyhow::anyhow!(e))?;
+            .map_err(|e| crate::client::error::ZaiError::from(e))?;
         Ok(())
     }
 
@@ -77,10 +76,14 @@ impl Moderation {
     /// ## Returns
     ///
     /// A `ModerationResponse` containing the moderation results and usage statistics.
-    pub async fn send(&self) -> anyhow::Result<ModerationResponse> {
+
+    pub async fn send(&self) -> crate::ZaiResult<ModerationResponse> {
         self.validate()?;
+
         let resp: reqwest::Response = self.post().await?;
+
         let parsed = resp.json::<ModerationResponse>().await?;
+
         Ok(parsed)
     }
 }

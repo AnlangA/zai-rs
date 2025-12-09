@@ -1,5 +1,6 @@
 use super::request::{RerankBody, RerankModel};
 use super::response::RerankResponse;
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 /// Text Rerank request client (JSON POST)
@@ -36,13 +37,18 @@ impl RerankRequest {
     }
 
     /// Optional: validate constraints before sending
-    pub fn validate(&self) -> anyhow::Result<()> {
-        self.body.validate_constraints().map_err(Into::into)
+    pub fn validate(&self) -> ZaiResult<()> {
+        self.body
+            .validate_constraints()
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("Validation error: {:?}", e),
+            })
     }
 
     /// Send the request and parse typed response.
     /// Automatically runs `validate()` before sending.
-    pub async fn send(&self) -> anyhow::Result<RerankResponse> {
+    pub async fn send(&self) -> ZaiResult<RerankResponse> {
         self.validate()?;
         let resp: reqwest::Response = self.post().await?;
         let parsed = resp.json::<RerankResponse>().await?;
@@ -51,7 +57,7 @@ impl RerankRequest {
 
     #[deprecated(note = "Use send() instead")]
     /// Deprecated: use `send()`.
-    pub async fn execute(&self) -> anyhow::Result<RerankResponse> {
+    pub async fn execute(&self) -> ZaiResult<RerankResponse> {
         self.send().await
     }
 }

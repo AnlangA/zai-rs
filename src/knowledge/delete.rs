@@ -22,10 +22,9 @@ impl KnowledgeDeleteRequest {
         }
     }
 
-    /// Perform HTTP DELETE with error handling compatible with {"error":{...}}
     pub fn delete(
         &self,
-    ) -> impl std::future::Future<Output = anyhow::Result<reqwest::Response>> + Send {
+    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let url = self.url.clone();
         let key = self.key.clone();
         async move {
@@ -46,29 +45,28 @@ impl KnowledgeDeleteRequest {
             }
             #[derive(serde::Deserialize)]
             struct ErrObj {
-                code: serde_json::Value,
+                _code: serde_json::Value,
                 message: String,
             }
+
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(anyhow::anyhow!(
-                    "HTTP {} {} | code={} | message={}",
+                return Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
-                    status.canonical_reason().unwrap_or(""),
-                    parsed.error.code,
-                    parsed.error.message
+                    0,
+                    parsed.error.message,
                 ));
             }
-            Err(anyhow::anyhow!(
-                "HTTP {} {} | body={}",
+
+            Err(crate::client::error::ZaiError::from_api_response(
                 status.as_u16(),
-                status.canonical_reason().unwrap_or(""),
-                text
+                0,
+                text,
             ))
         }
     }
 
     /// Send delete request and parse typed response
-    pub async fn send(&self) -> anyhow::Result<KnowledgeDeleteResponse> {
+    pub async fn send(&self) -> crate::ZaiResult<KnowledgeDeleteResponse> {
         let resp = self.delete().await?;
         let parsed = resp.json::<KnowledgeDeleteResponse>().await?;
         Ok(parsed)

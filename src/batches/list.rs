@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 use validator::Validate;
 
+use crate::ZaiResult;
 use crate::client::http::HttpClient;
 
 use super::types::BatchItem;
@@ -84,9 +85,12 @@ impl BatchesListRequest {
     }
 
     /// Send the request and parse typed response.
-    pub async fn send(&self) -> anyhow::Result<BatchesListResponse> {
+
+    pub async fn send(&self) -> ZaiResult<BatchesListResponse> {
         let resp: reqwest::Response = self.get().await?;
+
         let parsed = resp.json::<BatchesListResponse>().await?;
+
         Ok(parsed)
     }
 }
