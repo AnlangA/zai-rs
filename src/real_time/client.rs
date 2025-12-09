@@ -3,19 +3,23 @@
 //! This module provides the WebSocket client implementation for the GLM-Realtime API.
 //! It handles establishing connections, sending events, and processing responses.
 
-use crate::client::error::{Error, Result};
+use crate::client::error::ZaiError;
+use std::result::Result as StdResult;
+pub type Result<T> = StdResult<T, ZaiError>;
+use crate::real_time::RealtimeModel;
 use crate::real_time::types::*;
+use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
-use serde_json::{json, Value};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio_tungstenite::{connect_async, tungstenite::Message, WebSocketStream};
+use serde_json::Value;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio_tungstenite::{WebSocketStream, connect_async, tungstenite::Message};
 use url::Url;
 
 /// WebSocket client for real-time communication with GLM models
 pub struct RealtimeClient {
     /// API key for authentication
-    api_key: String,
+    pub api_key: String,
     /// WebSocket connection
     websocket: Option<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
     /// Event handler for processing server events
@@ -44,28 +48,45 @@ impl RealtimeClient {
     /// Connect to the real-time API with the given session configuration
     pub async fn connect<M>(&mut self, model: M, config: SessionConfig) -> Result<()>
     where
-        M: RealtimeModel,
+        M: RealtimeModel + Into<String>,
     {
         let websocket_url = model.websocket_url();
-        let url = Url::parse(&websocket_url)
-            .map_err(|e| Error::IoError(format!("Invalid WebSocket URL: {}", e)))?;
+        let url = Url::parse(&websocket_url).map_err(|e| ZaiError::Unknown {
+            code: 0,
+            message: format!("Invalid WebSocket URL: {}", e),
+        })?;
 
         let request = tokio_tungstenite::tungstenite::http::Request::builder()
             .uri(url.as_str())
             .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Host", url.host_str().unwrap_or("open.bigmodel.cn"))
+            .header(
+                "Sec-WebSocket-Key",
+                tokio_tungstenite::tungstenite::handshake::client::generate_key(),
+            )
+            .header("Sec-WebSocket-Version", "13")
+            .header("Connection", "Upgrade")
+            .header("Upgrade", "websocket")
             .body(())
-            .map_err(|e| Error::IoError(format!("Failed to create WebSocket request: {}", e)))?;
+            .map_err(|e| ZaiError::Unknown {
+                code: 0,
+                message: format!("Failed to create WebSocket request: {}", e),
+            })?;
 
-        let (ws_stream, response) = connect_async(request)
-            .await
-            .map_err(|e| Error::ConnectionError(format!("Failed to connect: {}", e)))?;
+        let (ws_stream, response) =
+            connect_async(request)
+                .await
+                .map_err(|e| ZaiError::Unknown {
+                    code: 0,
+                    message: format!("Failed to connect: {}", e),
+                })?;
 
         debug!("WebSocket connected with response: {:?}", response);
         self.websocket = Some(ws_stream);
 
         // Update the session configuration
         let mut update_config = config;
-        update_config.model = Some(model.model().to_string());
+        update_config.model = Some(model.into());
 
         self.send_event(ClientEvent::SessionUpdate(SessionUpdateEvent {
             base: BaseClientEvent {
@@ -74,21 +95,22 @@ impl RealtimeClient {
                 event_type: "session.update".to_string(),
             },
             session: update_config,
-        ))?;
+        }))?;
 
         Ok(())
     }
 
     /// Send an event to the server
     pub fn send_event(&mut self, event: ClientEvent) -> Result<()> {
-        let json = serde_json::to_string(&event)
-            .map_err(|e| Error::SerializationError(e.to_string()))?;
+        let json = serde_json::to_string(&event)?;
 
         if let Some(ws) = &mut self.websocket {
-            ws.send(Message::Text(json))
-                .map_err(|e| Error::ConnectionError(format!("Failed to send event: {}", e)))?;
+            let _ = ws.send(Message::Text(json));
         } else {
-            return Err(Error::ConnectionError("WebSocket not connected".to_string()));
+            return Err(ZaiError::Unknown {
+                code: 0,
+                message: "WebSocket not connected".to_string(),
+            });
         }
 
         Ok(())
@@ -96,15 +118,17 @@ impl RealtimeClient {
 
     /// Send audio data to the server
     pub fn send_audio(&mut self, audio_data: &[u8]) -> Result<()> {
-        let audio_base64 = base64::encode(audio_data);
-        self.send_event(ClientEvent::InputAudioBufferAppend(InputAudioBufferAppendEvent {
-            base: BaseClientEvent {
-                event_id: Some(generate_event_id()),
-                client_timestamp: Some(get_current_timestamp()),
-                event_type: "input_audio_buffer.append".to_string(),
+        let audio_base64 = base64::engine::general_purpose::STANDARD.encode(audio_data);
+        self.send_event(ClientEvent::InputAudioBufferAppend(
+            InputAudioBufferAppendEvent {
+                base: BaseClientEvent {
+                    event_id: Some(generate_event_id()),
+                    client_timestamp: Some(get_current_timestamp()),
+                    event_type: "input_audio_buffer.append".to_string(),
+                },
+                audio: audio_base64,
             },
-            audio: audio_base64,
-        }))
+        ))
     }
 
     /// Send a video frame to the server (base64 encoded jpg)
@@ -123,24 +147,28 @@ impl RealtimeClient {
 
     /// Commit the audio buffer to create a response
     pub fn commit_audio_buffer(&mut self) -> Result<()> {
-        self.send_event(ClientEvent::InputAudioBufferCommit(InputAudioBufferCommitEvent {
-            base: BaseClientEvent {
-                event_id: Some(generate_event_id()),
-                client_timestamp: Some(get_current_timestamp()),
-                event_type: "input_audio_buffer.commit".to_string(),
+        self.send_event(ClientEvent::InputAudioBufferCommit(
+            InputAudioBufferCommitEvent {
+                base: BaseClientEvent {
+                    event_id: Some(generate_event_id()),
+                    client_timestamp: Some(get_current_timestamp()),
+                    event_type: "input_audio_buffer.commit".to_string(),
+                },
             },
-        }))
+        ))
     }
 
     /// Clear the audio buffer
     pub fn clear_audio_buffer(&mut self) -> Result<()> {
-        self.send_event(ClientEvent::InputAudioBufferClear(InputAudioBufferClearEvent {
-            base: BaseClientEvent {
-                event_id: Some(generate_event_id()),
-                client_timestamp: Some(get_current_timestamp()),
-                event_type: "input_audio_buffer.clear".to_string(),
+        self.send_event(ClientEvent::InputAudioBufferClear(
+            InputAudioBufferClearEvent {
+                base: BaseClientEvent {
+                    event_id: Some(generate_event_id()),
+                    client_timestamp: Some(get_current_timestamp()),
+                    event_type: "input_audio_buffer.clear".to_string(),
+                },
             },
-        }))
+        ))
     }
 
     /// Create a response from the model
@@ -167,82 +195,93 @@ impl RealtimeClient {
 
     /// Create a conversation item
     pub fn create_conversation_item(&mut self, item: RealtimeConversationItem) -> Result<()> {
-        self.send_event(ClientEvent::ConversationItemCreate(ConversationItemCreateEvent {
-            base: BaseClientEvent {
-                event_id: Some(generate_event_id()),
-                client_timestamp: Some(get_current_timestamp()),
-                event_type: "conversation.item.create".to_string(),
+        self.send_event(ClientEvent::ConversationItemCreate(
+            ConversationItemCreateEvent {
+                base: BaseClientEvent {
+                    event_id: Some(generate_event_id()),
+                    client_timestamp: Some(get_current_timestamp()),
+                    event_type: "conversation.item.create".to_string(),
+                },
+                item,
             },
-            item,
-        }))
+        ))
     }
 
     /// Delete a conversation item
     pub fn delete_conversation_item(&mut self, item_id: &str) -> Result<()> {
-        self.send_event(ClientEvent::ConversationItemDelete(ConversationItemDeleteEvent {
-            base: BaseClientEvent {
-                event_id: Some(generate_event_id()),
-                client_timestamp: Some(get_current_timestamp()),
-                event_type: "conversation.item.delete".to_string(),
+        self.send_event(ClientEvent::ConversationItemDelete(
+            ConversationItemDeleteEvent {
+                base: BaseClientEvent {
+                    event_id: Some(generate_event_id()),
+                    client_timestamp: Some(get_current_timestamp()),
+                    event_type: "conversation.item.delete".to_string(),
+                },
+                item_id: item_id.to_string(),
             },
-            item_id: item_id.to_string(),
-        }))
+        ))
     }
 
     /// Retrieve a conversation item
     pub fn retrieve_conversation_item(&mut self, item_id: &str) -> Result<()> {
-        self.send_event(ClientEvent::ConversationItemRetrieve(ConversationItemRetrieveEvent {
-            base: BaseClientEvent {
-                event_id: Some(generate_event_id()),
-                client_timestamp: Some(get_current_timestamp()),
-                event_type: "conversation.item.retrieve".to_string(),
+        self.send_event(ClientEvent::ConversationItemRetrieve(
+            ConversationItemRetrieveEvent {
+                base: BaseClientEvent {
+                    event_id: Some(generate_event_id()),
+                    client_timestamp: Some(get_current_timestamp()),
+                    event_type: "conversation.item.retrieve".to_string(),
+                },
+                item_id: item_id.to_string(),
             },
-            item_id: item_id.to_string(),
-        }))
+        ))
     }
 
     /// Start listening for server events
     pub async fn listen_for_events(&mut self) -> Result<()> {
-        if let Some(ws) = &mut self.websocket {
-            loop {
-                match ws.next().await {
-                    Some(Ok(Message::Text(text))) => {
-                        debug!("Received message: {}", text);
-                        self.handle_server_message(text).await?;
-                    }
-                    Some(Ok(Message::Binary(data))) => {
-                        debug!("Received binary data of length: {}", data.len());
-                        // Handle binary messages if needed
-                    }
-                    Some(Ok(Message::Ping(data))) => {
-                        debug!("Received ping");
-                        // Respond with pong
-                        ws.send(Message::Pong(data))
-                            .await
-                            .map_err(|e| Error::ConnectionError(format!("Failed to send pong: {}", e)))?;
-                    }
-                    Some(Ok(Message::Pong(_))) => {
-                        debug!("Received pong");
-                    }
-                    Some(Ok(Message::Close(close_frame))) => {
-                        info!("WebSocket closed: {:?}", close_frame);
-                        break;
-                    }
-                    Some(Err(e)) => {
-                        error!("WebSocket error: {}", e);
-                        return Err(Error::ConnectionError(format!("WebSocket error: {}", e)));
-                    }
-                    None => {
-                        info!("WebSocket stream ended");
-                        break;
-                    }
-                    _ => {}
+        // Take the websocket out of self to avoid borrow checker issues
+        let mut ws = self.websocket.take().ok_or_else(|| ZaiError::Unknown {
+            code: 0,
+            message: "WebSocket not connected".to_string(),
+        })?;
+
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    debug!("Received message: {}", text);
+                    self.handle_server_message(text).await?;
                 }
+                Some(Ok(Message::Binary(data))) => {
+                    debug!("Received binary data of length: {}", data.len());
+                    // Handle binary messages if needed
+                }
+                Some(Ok(Message::Ping(data))) => {
+                    debug!("Received ping");
+                    // Respond with pong
+                    let _ = ws.send(Message::Pong(data)).await;
+                }
+                Some(Ok(Message::Pong(_))) => {
+                    debug!("Received pong");
+                }
+                Some(Ok(Message::Close(close_frame))) => {
+                    info!("WebSocket closed: {:?}", close_frame);
+                    break;
+                }
+                Some(Err(e)) => {
+                    error!("WebSocket error: {}", e);
+                    return Err(ZaiError::Unknown {
+                        code: 0,
+                        message: format!("WebSocket error: {}", e),
+                    });
+                }
+                None => {
+                    info!("WebSocket stream ended");
+                    break;
+                }
+                _ => {}
             }
-        } else {
-            return Err(Error::ConnectionError("WebSocket not connected".to_string()));
         }
 
+        // Put the websocket back
+        self.websocket = Some(ws);
         Ok(())
     }
 
@@ -289,7 +328,10 @@ impl RealtimeClient {
                 // If parsing fails, try to parse as a generic JSON value
                 match serde_json::from_str::<Value>(&message) {
                     Ok(value) => {
-                        warn!("Failed to parse as known event: {}. Treating as unknown event.", e);
+                        warn!(
+                            "Failed to parse as known event: {}. Treating as unknown event.",
+                            e
+                        );
                         self.event_handler.on_unknown_event(value);
                     }
                     Err(e) => {
@@ -365,9 +407,6 @@ impl RealtimeClient {
             ServerEvent::ResponseCancelled(event) => {
                 debug!("Response cancelled: {:?}", event);
             }
-            ServerEvent::RateLimitsUpdated(event) => {
-                debug!("Rate limits updated: {:?}", event);
-            }
             _ => {
                 // This should never happen if the enum is exhaustive
                 warn!("Unhandled server event: {:?}", event);
@@ -378,13 +417,23 @@ impl RealtimeClient {
     }
 }
 
+impl Clone for RealtimeClient {
+    fn clone(&self) -> Self {
+        // Note: This is a simplified clone that doesn't clone the actual WebSocket connection
+        // In a real implementation, you would need a more sophisticated approach
+        Self {
+            api_key: self.api_key.clone(),
+            websocket: None,
+            event_handler: Box::new(DefaultEventHandler),
+        }
+    }
+}
+
 impl Drop for RealtimeClient {
     fn drop(&mut self) {
         if let Some(mut ws) = self.websocket.take() {
             // Try to close the connection gracefully
-            if let Err(e) = futures::executor::block_on(async {
-                ws.close(None).await
-            }) {
+            if let Err(e) = futures::executor::block_on(async { ws.close(None).await }) {
                 warn!("Failed to close WebSocket connection: {}", e);
             }
         }

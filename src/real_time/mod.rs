@@ -66,5 +66,5 @@ pub mod types;
 
 // Re-export the main types for convenience
 pub use client::RealtimeClient;
-pub use models::{GLMRealtimeAir, GLMRealtimeFlash, RealtimeModel};
+pub use models::{GLMRealtime, RealtimeModel};
 pub use types::*;

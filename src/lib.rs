@@ -54,5 +54,6 @@ pub mod file;
 pub mod knowledge;
 
 pub mod model;
+pub mod real_time;
 pub mod tool;
 pub mod toolkits;

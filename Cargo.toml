@@ -166,6 +166,14 @@ path = "examples/translation_bot.rs"
 name = "web_chat"
 path = "examples/web_chat/server.rs"
 
+[[example]]
+name = "realtime_audio_chat"
+path = "examples/realtime/audio_chat.rs"
+
+[[example]]
+name = "realtime_video_chat"
+path = "examples/realtime/video_chat.rs"
+
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
@@ -192,6 +200,8 @@ axum = "0.7"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
+tokio-tungstenite = { version = "0.24.0", features = ["native-tls"] }
+futures-util = "0.3.31"
 
 [features]
 default = []

@@ -8,6 +8,7 @@
 //! - Handle function calling during video conversations
 
 use base64;
+use base64::Engine;
 use std::env;
 use std::fs;
 use std::time::Duration;
@@ -25,14 +26,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env::var("ZHIPU_API_KEY").expect("Please set the ZHIPU_API_KEY environment variable");
 
     // Create a custom event handler to log events
-    let mut event_handler = VideoChatEventHandler::new();
+    let event_handler = VideoChatEventHandler::new();
 
     // Create a real-time client
-    let mut client = RealtimeClient::new(api_key).with_event_handler(&mut event_handler);
+    let mut client = RealtimeClient::new(api_key).with_event_handler(event_handler.clone());
+    let mut event_handler = event_handler.clone();
 
     // Configure the session for video chat
     let session_config = SessionConfig {
-        model: Some("glm-realtime-air".to_string()),
+        model: Some("glm-realtime".to_string()),
         modalities: Some(vec!["text".to_string(), "audio".to_string()]),
         instructions: Some(
             "你是一个智能视频助手。请根据用户展示的视觉内容提供相关的回答和建议。".to_string(),
@@ -83,12 +85,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to GLM-Realtime for video chat...");
 
     // Connect to the real-time API
-    client.connect(GLMRealtimeAir, session_config).await?;
+    client.connect(GLMRealtime, session_config).await?;
 
     println!("Connected! Starting video chat...");
 
     // Start listening for events in a separate task
-    let client_clone = client.clone();
+    let mut client_clone = client.clone();
     tokio::spawn(async move {
         if let Err(e) = client_clone.listen_for_events().await {
             eprintln!("Error listening for events: {}", e);
@@ -121,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            let image_base64 = base64::encode(&image_data);
+            let image_base64 = base64::engine::general_purpose::STANDARD.encode(&image_data);
 
             // Send the video frame
             if let Err(e) = client.send_video_frame(&image_base64) {
@@ -242,6 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Custom event handler for video chat
+#[derive(Clone)]
 struct VideoChatEventHandler {
     /// Received text from the model
     pub received_text: Option<String>,
@@ -257,6 +260,7 @@ impl VideoChatEventHandler {
         }
     }
 
+    #[allow(dead_code)]
     fn clear_text_buffer(&mut self) {
         self.received_text = None;
     }
@@ -297,7 +301,7 @@ impl EventHandler for VideoChatEventHandler {
         println!("[Audio stream completed]");
     }
 
-    fn on_response_done(&mut self, event: ResponseDoneEvent) {
+    fn on_response_done(&mut self, _event: ResponseDoneEvent) {
         println!("Response completed");
     }
 
@@ -331,20 +335,10 @@ impl EventHandler for VideoChatEventHandler {
     }
 }
 
-// Clone implementation for RealtimeClient
-impl Clone for RealtimeClient {
-    fn clone(&self) -> Self {
-        // Note: This is a simplified clone that doesn't clone the actual WebSocket connection
-        // In a real implementation, you would need a more sophisticated approach
-        Self {
-            api_key: self.api_key.clone(),
-            websocket: None,
-            event_handler: Box::new(DefaultEventHandler),
-        }
-    }
-}
+// Clone implementation for RealtimeClient is now in the client.rs module
 
 /// Simulate capturing video frames from a camera
+#[allow(dead_code)]
 async fn capture_video_frame() -> Result<String, Box<dyn std::error::Error>> {
     println!("In a real application, this would capture a video frame from a camera.");
     // In a real implementation, you would use a library like opencv to capture video frames
@@ -353,7 +347,8 @@ async fn capture_video_frame() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 /// Simulate playing audio through speakers
-async fn play_audio_through_speakers(audio_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+#[allow(dead_code)]
+async fn play_audio_through_speakers(_audio_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     println!("In a real application, this would play audio through speakers.");
     // In a real implementation, you would use a library like rodio to play audio
     sleep(Duration::from_millis(1000)).await;
@@ -361,7 +356,8 @@ async fn play_audio_through_speakers(audio_data: &[u8]) -> Result<(), Box<dyn st
 }
 
 /// Simulate displaying video output
-async fn display_video_frame(frame_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+#[allow(dead_code)]
+async fn display_video_frame(_frame_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     println!("In a real application, this would display the video frame.");
     // In a real implementation, you would use a GUI library to display the frame
     Ok(())

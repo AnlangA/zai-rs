@@ -5,7 +5,7 @@
 //! conversation items, session configurations, and other related types.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+// No longer needed - removing unused import
 
 /// The different types of voices available for the model
 #[derive(Debug, Clone, Serialize, Deserialize)]
