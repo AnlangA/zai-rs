@@ -4,18 +4,19 @@
 //! perfect markdown rendering, and industry-leading user experience.
 
 use axum::{
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
 use std::net::SocketAddr;
 use tower::ServiceBuilder;
 use tower_http::{
+    LatencyUnit,
     cors::CorsLayer,
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
-    LatencyUnit,
 };
-use tracing::{info, Level};
+use tracing::{Level, info};
 
+mod client;
 mod server;
 use server::{config::Config, routes, state::AppState};
 
@@ -57,7 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn create_app(state: AppState, config: Config) -> Router {
     // Configure CORS
     let cors_layer = CorsLayer::new()
-        .allow_origin(config.cors_origins.iter().map(|s| s.parse().unwrap()).collect::<Vec<_>>())
+        .allow_origin(
+            config
+                .cors_origins
+                .iter()
+                .map(|s| s.parse().unwrap())
+                .collect::<Vec<_>>(),
+        )
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any)
         .allow_credentials(true);
@@ -84,9 +91,5 @@ fn create_app(state: AppState, config: Config) -> Router {
         .route("/", get(routes::index::index_handler))
         // Add state and middleware
         .with_state(state)
-        .layer(
-            ServiceBuilder::new()
-                .layer(cors_layer)
-                .layer(trace_layer),
-        )
+        .layer(ServiceBuilder::new().layer(cors_layer).layer(trace_layer))
 }

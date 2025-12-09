@@ -33,48 +33,48 @@ pub async fn send_message(
     Json(request): Json<ChatRequest>,
 ) -> AppResult<Json<ChatResponse>> {
     let start_time = Instant::now();
-    
+
     // Validate request
     request.validate().map_err(AppError::from)?;
-    
+
     // Rate limiting check
     let client_ip = "127.0.0.1"; // In real app, extract from request
     if !state.rate_limiter.is_allowed(client_ip, 10, 60)? {
         return Err(AppError::RateLimitExceeded);
     }
-    
+
     // Get or create session
     let session_id = state.sessions.get_or_create(request.session_id.clone())?;
-    
+
     // Get session and add user message
     let mut session = state.sessions.get(&session_id)?;
     let user_message = zai_rs::model::TextMessage::user(&request.message);
     session.add_message(user_message.clone());
-    
+
     // Build chat completion client
     let api_key = state.config.api_key.clone();
     let messages = session.get_recent_messages(50); // Keep last 50 messages for context
-    
+
     let client = crate::server::models::ChatCompletionBuilder::new(api_key)
         .messages(messages)
         .temperature(request.get_temperature())
         .top_p(request.get_top_p())
         .with_thinking(request.is_think_mode())
         .build()?;
-    
+
     // Get AI response
     let response = client.send().await.map_err(AppError::from)?;
     let ai_text = crate::server::models::chat_utils::extract_text_from_response(&response)
         .unwrap_or_else(|| "抱歉，我现在无法回复。".to_string());
-    
+
     // Add AI response to session
     let assistant_message = zai_rs::model::TextMessage::assistant(&ai_text);
     session.add_message(assistant_message);
     state.sessions.update(&session_id, session)?;
-    
+
     // Calculate processing time
     let processing_time = start_time.elapsed().as_millis() as u64;
-    
+
     // Build response
     let chat_response = ChatResponse {
         reply: ai_text,
@@ -97,7 +97,7 @@ pub async fn send_message(
             estimated_cost: None,
         }),
     };
-    
+
     Ok(Json(chat_response))
 }
 
@@ -107,89 +107,96 @@ pub async fn stream_message(
     Json(request): Json<ChatRequest>,
 ) -> AppResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
     let start_time = Instant::now();
-    
+
     // Validate request
     request.validate().map_err(AppError::from)?;
-    
+
     // Rate limiting check
     let client_ip = "127.0.0.1"; // In real app, extract from request
     if !state.rate_limiter.is_allowed(client_ip, 10, 60)? {
         return Err(AppError::RateLimitExceeded);
     }
-    
+
     // Get or create session
     let session_id = state.sessions.get_or_create(request.session_id.clone())?;
     let session_id_clone = session_id.clone();
-    
+
     // Get session and add user message
     let mut session = state.sessions.get(&session_id)?;
     let user_message = zai_rs::model::TextMessage::user(&request.message);
     session.add_message(user_message.clone());
-    
+
     // Build streaming chat completion client
     let api_key = state.config.api_key.clone();
     let messages = session.get_recent_messages(50);
-    
+
     let client = crate::server::models::ChatCompletionBuilder::new(api_key)
         .messages(messages)
         .temperature(request.get_temperature())
         .top_p(request.get_top_p())
         .with_thinking(request.is_think_mode())
         .build()?;
-    
+
     let mut streaming_client = client.enable_stream();
-    
+
     // Create channel for streaming chunks
     let (tx, mut rx) = mpsc::channel::<StreamChunk>(100);
-    
+
     // Spawn streaming task
     let state_clone = state.clone();
     let request_clone = request.clone();
-    
+
     tokio::spawn(async move {
         let mut accumulated_response = String::new();
         let mut chunk_count = 0;
-        
+
         let stream_result = streaming_client
             .stream_for_each(|chunk: zai_rs::model::ChatStreamResponse| {
                 let tx = tx.clone();
                 let session_id = session_id_clone.clone();
                 let mut accumulated = accumulated_response.clone();
-                
+
                 async move {
                     // Extract content from chunk
-                    if let Some(content) = crate::server::models::chat_utils::extract_text_from_chunk(&chunk) {
+                    if let Some(content) =
+                        crate::server::models::chat_utils::extract_text_from_chunk(&chunk)
+                    {
                         accumulated.push_str(&content);
                         chunk_count += 1;
-                        
+
                         let stream_chunk = StreamChunk {
                             content: content.clone(),
                             session_id: session_id.clone(),
                             done: false,
                             metadata: Some(StreamMetadata {
-                                finish_reason: chunk.choices.get(0).and_then(|c| c.finish_reason.clone()),
+                                finish_reason: chunk
+                                    .choices
+                                    .get(0)
+                                    .and_then(|c| c.finish_reason.clone()),
                                 model: chunk.model.clone(),
-                                has_reasoning: chunk.choices.get(0)
+                                has_reasoning: chunk
+                                    .choices
+                                    .get(0)
                                     .and_then(|c| c.delta.as_ref())
                                     .and_then(|d| d.reasoning_content.as_ref())
                                     .is_some(),
                             }),
                             usage: None, // Usage typically comes in final chunk
                         };
-                        
+
                         if let Err(e) = tx.send(stream_chunk).await {
                             tracing::error!("Failed to send stream chunk: {}", e);
-                            return Err(zai_rs::client::error_handler::ClientError::StreamingError(
-                                "Channel send failed".to_string()
+                            return Err(crate::client::error_handler::ClientError::StreamingError(
+                                "Channel send failed".to_string(),
                             ));
                         }
                     }
-                    
+
                     Ok(())
                 }
             })
             .await;
-        
+
         // Handle stream completion or error
         match stream_result {
             Ok(_) => {
@@ -205,13 +212,14 @@ pub async fn stream_message(
                     }),
                     usage: None,
                 };
-                
+
                 let _ = tx.send(final_chunk).await;
-                
+
                 // Update session with complete response
                 let mut sessions_guard = state_clone.sessions.sessions.write().await;
                 if let Some(session) = sessions_guard.get_mut(&session_id_clone) {
-                    let assistant_message = zai_rs::model::TextMessage::assistant(&accumulated_response);
+                    let assistant_message =
+                        zai_rs::model::TextMessage::assistant(&accumulated_response);
                     session.add_message(assistant_message);
                 }
             }
@@ -233,7 +241,7 @@ pub async fn stream_message(
             }
         }
     });
-    
+
     // Convert channel receiver to SSE stream
     let stream = stream::unfold(rx, |mut rx| async move {
         match rx.recv().await {
@@ -244,7 +252,7 @@ pub async fn stream_message(
             None => None,
         }
     });
-    
+
     Ok(Sse::new(stream))
 }
 
@@ -254,16 +262,21 @@ pub async fn get_history(
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> AppResult<Json<ChatHistoryResponse>> {
     let session = state.sessions.get(&session_id)?;
-    
-    let messages: Vec<ChatMessage> = session.messages.iter().enumerate().map(|(index, msg)| {
-        ChatMessage {
-            id: format!("{}-{}", session_id, index),
-            role: msg.role.clone(),
-            content: msg.content.clone(),
-            timestamp: session.created_at.to_rfc3339(), // Simplified timestamp
-        }
-    }).collect();
-    
+
+    let messages: Vec<ChatMessage> = session
+        .messages
+        .iter()
+        .enumerate()
+        .map(|(index, msg)| {
+            ChatMessage {
+                id: format!("{}-{}", session_id, index),
+                role: msg.role.clone(),
+                content: msg.content.clone(),
+                timestamp: session.created_at.to_rfc3339(), // Simplified timestamp
+            }
+        })
+        .collect();
+
     Ok(Json(ChatHistoryResponse {
         session_id,
         messages,
@@ -283,16 +296,17 @@ pub async fn clear_history(
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> AppResult<Json<ClearHistoryResponse>> {
     let mut session = state.sessions.get(&session_id)?;
-    
+
     // Keep system messages if any, clear the rest
-    let system_messages: Vec<zai_rs::model::TextMessage> = session.messages
+    let system_messages: Vec<zai_rs::model::TextMessage> = session
+        .messages
         .into_iter()
         .filter(|msg| msg.role == "system")
         .collect();
-    
+
     session.messages = system_messages;
     state.sessions.update(&session_id, session)?;
-    
+
     Ok(Json(ClearHistoryResponse {
         success: true,
         message: "Chat history cleared successfully".to_string(),

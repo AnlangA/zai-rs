@@ -1,9 +1,62 @@
 //! Structured error handling for API responses
 
-use crate::model::chat_base_response::ErrorResponse;
-use log::{error, warn};
 use reqwest::Response;
 use serde_json::from_str;
+use tracing::{error, warn};
+
+/// Error response structure for API responses
+#[derive(Debug, serde::Deserialize)]
+pub struct ErrorResponse {
+    pub error: ErrorDetail,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ErrorDetail {
+    pub code: String,
+    pub message: String,
+}
+
+impl ErrorResponse {
+    /// Check if this is a validation error
+    pub fn is_validation_error(&self) -> bool {
+        self.error.code == "invalid_request" || self.error.code == "validation_error"
+    }
+}
+
+/// Client error types used by the web_chat application
+#[derive(Debug)]
+pub enum ClientError {
+    /// Invalid request parameters
+    InvalidRequest(String),
+    /// Error during streaming operations
+    StreamingError(String),
+    /// Network or connection errors
+    NetworkError(String),
+    /// API response errors
+    ApiError(String),
+    /// Authentication errors
+    AuthenticationError(String),
+    /// Rate limit errors
+    RateLimitError(String),
+    /// Internal server errors
+    InternalError(String),
+}
+
+impl std::fmt::Display for ClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientError::InvalidRequest(msg) => write!(f, "Invalid request: {}", msg),
+            ClientError::StreamingError(msg) => write!(f, "Streaming error: {}", msg),
+            ClientError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            ClientError::ApiError(msg) => write!(f, "API error: {}", msg),
+            ClientError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
+            ClientError::RateLimitError(msg) => write!(f, "Rate limit error: {}", msg),
+            ClientError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ClientError {}
 
 /// Enhanced error information with context
 #[derive(Debug)]

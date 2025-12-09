@@ -5,10 +5,10 @@ pub fn html_escape(text: &str) -> String {
     let mut result = String::with_capacity(text.len() * 2);
     for ch in text.chars() {
         match ch {
-            '&' => result.push_str("&"),
-            '<' => result.push_str("<"),
-            '>' => result.push_str(">"),
-            '"' => result.push_str("""),
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
             '\'' => result.push_str("&#x27;"),
             _ => result.push(ch),
         }
@@ -24,11 +24,25 @@ pub fn generate_session_id() -> String {
 /// Format duration in human-readable format
 pub fn format_duration(seconds: i64) -> String {
     if seconds < 60 {
-        format!("{}s", seconds)
+        let mut result = seconds.to_string();
+        result.push_str(" seconds");
+        result
     } else if seconds < 3600 {
-        format!("{}m {}s", seconds / 60, seconds % 60)
+        let minutes = seconds / 60;
+        let secs = seconds % 60;
+        let mut result = minutes.to_string();
+        result.push_str(" minutes ");
+        result.push_str(&secs.to_string());
+        result.push_str(" seconds");
+        result
     } else {
-        format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60)
+        let hours = seconds / 3600;
+        let minutes = (seconds % 3600) / 60;
+        let mut result = hours.to_string();
+        result.push_str(" hours ");
+        result.push_str(&minutes.to_string());
+        result.push_str(" minutes");
+        result
     }
 }
 
@@ -37,6 +51,10 @@ pub fn truncate_text(text: &str, max_length: usize) -> String {
     if text.len() <= max_length {
         text.to_string()
     } else {
-        format!("{}...", &text[..max_length.saturating_sub(3)])
+        let truncate_len = max_length.saturating_sub(3);
+        let prefix = &text[..truncate_len];
+        let mut result = String::from(prefix);
+        result.push_str("...");
+        result
     }
 }

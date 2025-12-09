@@ -1,9 +1,9 @@
 //! Error types and handling for the web chat application
 
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -14,34 +14,34 @@ use thiserror::Error;
 pub enum AppError {
     #[error("Configuration error: {0}")]
     Config(#[from] crate::server::config::ConfigError),
-    
+
     #[error("Chat API error: {0}")]
     ChatApi(String),
-    
+
     #[error("Session not found: {0}")]
     SessionNotFound(String),
-    
+
     #[error("Session expired: {0}")]
     SessionExpired(String),
-    
+
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
-    
+
     #[error("Streaming error: {0}")]
     StreamingError(String),
-    
+
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
-    
+
     #[error("Internal server error")]
     InternalError,
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Unauthorized")]
     Unauthorized,
-    
+
     #[error("Service unavailable")]
     ServiceUnavailable,
 }
@@ -112,14 +112,14 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status_code();
         let error_response = self.to_error_response();
-        
+
         tracing::error!(
             error.code = %error_response.error.code,
             error.message = %error_response.error.message,
             error.status = %status.as_u16(),
             "Application error occurred"
         );
-        
+
         (status, Json(error_response)).into_response()
     }
 }
@@ -127,9 +127,9 @@ impl IntoResponse for AppError {
 /// Result type alias for application operations
 pub type AppResult<T> = Result<T, AppError>;
 
-/// Convert from ZAI-RS errors to AppError
-impl From<zai_rs::client::error_handler::ClientError> for AppError {
-    fn from(error: zai_rs::client::error_handler::ClientError) -> Self {
+/// Convert from local ClientError to AppError
+impl From<crate::client::error_handler::ClientError> for AppError {
+    fn from(error: crate::client::error_handler::ClientError) -> Self {
         AppError::ChatApi(error.to_string())
     }
 }
@@ -165,22 +165,22 @@ impl From<std::time::SystemTimeError> for AppError {
 /// Error handling utilities
 pub mod error_utils {
     use super::*;
-    
+
     /// Create a bad request error with a custom message
     pub fn bad_request(message: impl Into<String>) -> AppError {
         AppError::BadRequest(message.into())
     }
-    
+
     /// Create an invalid request error with a custom message
     pub fn invalid_request(message: impl Into<String>) -> AppError {
         AppError::InvalidRequest(message.into())
     }
-    
+
     /// Create a session not found error
     pub fn session_not_found(session_id: impl Into<String>) -> AppError {
         AppError::SessionNotFound(session_id.into())
     }
-    
+
     /// Create a streaming error with a custom message
     pub fn streaming_error(message: impl Into<String>) -> AppError {
         AppError::StreamingError(message.into())
