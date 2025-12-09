@@ -24,3 +24,7 @@ pub mod error;
 pub use error::*;
 
 pub mod wss;
+pub use wss::{
+    DefaultWebSocketEventHandler, WebSocketClient, WebSocketEventHandler, WssClient,
+    generate_event_id, get_current_timestamp,
+};

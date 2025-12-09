@@ -1,11 +1,14 @@
-//! Example of real-time video chat with GLM-Realtime
+//! Example of real-time video chat with GLM-Realtime using trait-based WebSocket client
 //!
 //! This example demonstrates how to:
-//! - Connect to the GLM-Realtime API for video conversations
+//! - Connect to the GLM-Realtime API using the new trait-based WebSocket client
 //! - Configure a session for video chat
 //! - Send video frames and audio to the model
 //! - Receive and process video-aware responses
 //! - Handle function calling during video conversations
+//!
+//! The example showcases the trait-based approach where models implement the WebSocketClient
+//! trait to define their connection parameters.
 
 use base64;
 use base64::Engine;
@@ -28,9 +31,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a custom event handler to log events
     let event_handler = VideoChatEventHandler::new();
 
-    // Create a real-time client
+    // Create a real-time client using the new trait-based WebSocket client
     let mut client = RealtimeClient::new(api_key).with_event_handler(event_handler.clone());
     let mut event_handler = event_handler.clone();
+
+    // The GLMRealtime model now implements the WebSocketClient trait, which defines
+    // WebSocket URL and connection parameters. This allows for trait-based
+    // configuration of WebSocket connections for different models.
 
     // Configure the session for video chat
     let session_config = SessionConfig {
@@ -334,6 +341,33 @@ impl EventHandler for VideoChatEventHandler {
         }
     }
 }
+
+// Example of how to use the GLMRealtime model with the trait-based WebSocket client
+// The GLMRealtime model implements the WebSocketClient trait, which defines
+// the WebSocket URL and connection parameters.
+
+// You can also implement custom headers for GLMRealtime by creating a wrapper:
+// struct CustomGLMRealtimeWrapper {
+//     model: GLMRealtime,
+//     custom_headers: Vec<(String, String)>,
+// }
+//
+// impl WebSocketClient for CustomGLMRealtimeWrapper {
+//     fn websocket_url(&self) -> String {
+//         self.model.websocket_url()
+//     }
+//
+//     fn websocket_host(&self) -> &'static str {
+//         self.model.websocket_host()
+//     }
+//
+//     fn custom_headers(&self) -> Vec<(String, String)> {
+//         self.custom_headers.clone()
+//     }
+// }
+//
+// This trait-based approach allows different models to define their own
+// connection parameters while reusing the same WebSocket client implementation.
 
 // Clone implementation for RealtimeClient is now in the client.rs module
 

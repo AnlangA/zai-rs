@@ -1161,3 +1161,142 @@ impl EventHandler for DefaultEventHandler {
         log::warn!("Unknown event: {:?}", event);
     }
 }
+
+/// Adapter to bridge EventHandler with WebSocketEventHandler
+pub struct EventHandlerAdapter {
+    /// The real-time event handler
+    event_handler: Box<dyn EventHandler + Send + Sync>,
+}
+
+impl EventHandlerAdapter {
+    /// Create a new adapter with the given event handler
+    pub fn new(event_handler: Box<dyn EventHandler + Send + Sync>) -> Self {
+        Self { event_handler }
+    }
+
+    /// Parse and handle a server message
+    async fn handle_server_message(
+        &mut self,
+        message: &str,
+    ) -> Result<(), crate::client::error::ZaiError> {
+        use crate::client::error::ZaiError;
+
+        // Try to parse as a known server event
+        match serde_json::from_str::<ServerEvent>(message) {
+            Ok(event) => {
+                match event {
+                    ServerEvent::Error(event) => {
+                        self.event_handler.on_error(event);
+                    }
+                    ServerEvent::SessionCreated(event) => {
+                        self.event_handler.on_session_created(event);
+                    }
+                    ServerEvent::SessionUpdated(event) => {
+                        self.event_handler.on_session_updated(event);
+                    }
+                    ServerEvent::ResponseTextDelta(event) => {
+                        self.event_handler.on_response_text_delta(event);
+                    }
+                    ServerEvent::ResponseTextDone(event) => {
+                        self.event_handler.on_response_text_done(event);
+                    }
+                    ServerEvent::ResponseAudioDelta(event) => {
+                        self.event_handler.on_response_audio_delta(event);
+                    }
+                    ServerEvent::ResponseAudioDone(event) => {
+                        self.event_handler.on_response_audio_done(event);
+                    }
+                    ServerEvent::ResponseDone(event) => {
+                        self.event_handler.on_response_done(event);
+                    }
+                    ServerEvent::Heartbeat(event) => {
+                        self.event_handler.on_heartbeat(event);
+                    }
+                    _ => {
+                        // For other events, pass as JSON value
+                        log::debug!("Unhandled server event: {:?}", event);
+                    }
+                }
+            }
+            Err(e) => {
+                // If parsing fails, try to parse as a generic JSON value
+                match serde_json::from_str::<serde_json::Value>(message) {
+                    Ok(value) => {
+                        log::warn!(
+                            "Failed to parse as known event: {}. Treating as unknown event.",
+                            e
+                        );
+                        self.event_handler.on_unknown_event(value);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse message as JSON: {}", e);
+                        return Err(ZaiError::Unknown {
+                            code: 0,
+                            message: format!("Failed to parse message as JSON: {}", e),
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl crate::client::wss::WebSocketEventHandler for EventHandlerAdapter {
+    fn handle_text_message(&mut self, message: &str) -> Result<(), crate::client::error::ZaiError> {
+        // Use tokio::spawn to make the async function work in a sync context
+        // This is a common pattern when bridging async and sync code
+        let message = message.to_string();
+
+        // Block on the async function
+        match futures::executor::block_on(self.handle_server_message(&message)) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn handle_binary_message(&mut self, data: &[u8]) -> Result<(), crate::client::error::ZaiError> {
+        log::debug!("Received binary data of length: {}", data.len());
+        // For binary data, we don't have a specific handler in the real-time API
+        // So we just log it
+        Ok(())
+    }
+
+    fn handle_ping(&mut self, data: &[u8]) -> Result<(), crate::client::error::ZaiError> {
+        log::debug!("Received ping with data length: {}", data.len());
+        Ok(())
+    }
+
+    fn handle_pong(&mut self, data: &[u8]) -> Result<(), crate::client::error::ZaiError> {
+        log::debug!("Received pong with data length: {}", data.len());
+        Ok(())
+    }
+
+    fn handle_close(
+        &mut self,
+        frame: Option<tokio_tungstenite::tungstenite::protocol::CloseFrame<'static>>,
+    ) -> Result<(), crate::client::error::ZaiError> {
+        log::info!("WebSocket close frame received: {:?}", frame);
+        Ok(())
+    }
+
+    fn handle_error(&mut self, error: String) -> Result<(), crate::client::error::ZaiError> {
+        log::error!("WebSocket error: {}", error);
+        // Create an error event and pass it to the event handler
+        let error_event = ErrorEvent {
+            base: BaseServerEvent {
+                event_id: crate::client::wss::generate_event_id(),
+                event_type: "error".to_string(),
+                client_timestamp: Some(crate::client::wss::get_current_timestamp()),
+            },
+            error: ErrorDetail {
+                error_type: "websocket_error".to_string(),
+                code: "0".to_string(),
+                message: error,
+            },
+        };
+        self.event_handler.on_error(error_event);
+        Ok(())
+    }
+}

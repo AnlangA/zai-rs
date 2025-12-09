@@ -3,16 +3,12 @@
 //! This module contains model definitions for the GLM-Realtime API.
 //! It defines the available real-time models and their capabilities.
 
+use crate::client::wss::WebSocketClient;
 use crate::model::traits::ModelName;
 use serde::{Deserialize, Serialize};
 
 /// Real-time model base trait
-pub trait RealtimeModel: ModelName {
-    /// Returns the websocket URL for the real-time API
-    fn websocket_url(&self) -> String {
-        "wss://open.bigmodel.cn/api/paas/v4/realtime".to_string()
-    }
-}
+pub trait RealtimeModel: ModelName + WebSocketClient {}
 
 /// GLM-Realtime model - Real-time audio/video conversations
 ///
@@ -41,3 +37,9 @@ impl Into<String> for GLMRealtime {
 }
 
 impl RealtimeModel for GLMRealtime {}
+
+impl WebSocketClient for GLMRealtime {
+    fn websocket_url(&self) -> String {
+        "wss://open.bigmodel.cn/api/paas/v4/realtime".to_string()
+    }
+}

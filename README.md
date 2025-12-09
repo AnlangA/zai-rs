@@ -75,4 +75,4 @@ cargo run --example chat_loop
     - [x] DEL 删除文档
     - [x] POST 重新向量化
 - 实时API
-    - [ ] 音视频通话
+    - [x] 音视频通话

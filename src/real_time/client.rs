@@ -4,24 +4,19 @@
 //! It handles establishing connections, sending events, and processing responses.
 
 use crate::client::error::ZaiError;
+use crate::client::wss::{WssClient, generate_event_id, get_current_timestamp};
 use std::result::Result as StdResult;
 pub type Result<T> = StdResult<T, ZaiError>;
 use crate::real_time::RealtimeModel;
 use crate::real_time::types::*;
 use base64::Engine;
-use futures_util::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
-use serde_json::Value;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio_tungstenite::{WebSocketStream, connect_async, tungstenite::Message};
-use url::Url;
 
 /// WebSocket client for real-time communication with GLM models
 pub struct RealtimeClient {
     /// API key for authentication
     pub api_key: String,
-    /// WebSocket connection
-    websocket: Option<WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+    /// WebSocket client
+    websocket_client: Option<WssClient<EventHandlerAdapter>>,
     /// Event handler for processing server events
     event_handler: Box<dyn EventHandler + Send + Sync>,
 }
@@ -29,10 +24,11 @@ pub struct RealtimeClient {
 impl RealtimeClient {
     /// Create a new real-time client with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
+        let event_handler = Box::new(DefaultEventHandler);
         Self {
             api_key: api_key.into(),
-            websocket: None,
-            event_handler: Box::new(DefaultEventHandler),
+            websocket_client: None,
+            event_handler,
         }
     }
 
@@ -48,41 +44,18 @@ impl RealtimeClient {
     /// Connect to the real-time API with the given session configuration
     pub async fn connect<M>(&mut self, model: M, config: SessionConfig) -> Result<()>
     where
-        M: RealtimeModel + Into<String>,
+        M: RealtimeModel,
     {
-        let websocket_url = model.websocket_url();
-        let url = Url::parse(&websocket_url).map_err(|e| ZaiError::Unknown {
-            code: 0,
-            message: format!("Invalid WebSocket URL: {}", e),
-        })?;
+        // Create an adapter for the event handler
+        // We can't clone the event_handler, so we need to use a different approach
+        let event_handler =
+            std::mem::replace(&mut self.event_handler, Box::new(DefaultEventHandler));
+        let adapter = EventHandlerAdapter::new(event_handler);
+        let mut ws_client = WssClient::new(&self.api_key, adapter);
 
-        let request = tokio_tungstenite::tungstenite::http::Request::builder()
-            .uri(url.as_str())
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Host", url.host_str().unwrap_or("open.bigmodel.cn"))
-            .header(
-                "Sec-WebSocket-Key",
-                tokio_tungstenite::tungstenite::handshake::client::generate_key(),
-            )
-            .header("Sec-WebSocket-Version", "13")
-            .header("Connection", "Upgrade")
-            .header("Upgrade", "websocket")
-            .body(())
-            .map_err(|e| ZaiError::Unknown {
-                code: 0,
-                message: format!("Failed to create WebSocket request: {}", e),
-            })?;
-
-        let (ws_stream, response) =
-            connect_async(request)
-                .await
-                .map_err(|e| ZaiError::Unknown {
-                    code: 0,
-                    message: format!("Failed to connect: {}", e),
-                })?;
-
-        debug!("WebSocket connected with response: {:?}", response);
-        self.websocket = Some(ws_stream);
+        // Connect using the new WebSocket client
+        ws_client.connect(&model).await?;
+        self.websocket_client = Some(ws_client);
 
         // Update the session configuration
         let mut update_config = config;
@@ -104,8 +77,8 @@ impl RealtimeClient {
     pub fn send_event(&mut self, event: ClientEvent) -> Result<()> {
         let json = serde_json::to_string(&event)?;
 
-        if let Some(ws) = &mut self.websocket {
-            let _ = ws.send(Message::Text(json));
+        if let Some(ws) = &mut self.websocket_client {
+            ws.send_text(json)?;
         } else {
             return Err(ZaiError::Unknown {
                 code: 0,
@@ -237,219 +210,28 @@ impl RealtimeClient {
 
     /// Start listening for server events
     pub async fn listen_for_events(&mut self) -> Result<()> {
-        // Take the websocket out of self to avoid borrow checker issues
-        let mut ws = self.websocket.take().ok_or_else(|| ZaiError::Unknown {
-            code: 0,
-            message: "WebSocket not connected".to_string(),
-        })?;
-
-        loop {
-            match ws.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    debug!("Received message: {}", text);
-                    self.handle_server_message(text).await?;
-                }
-                Some(Ok(Message::Binary(data))) => {
-                    debug!("Received binary data of length: {}", data.len());
-                    // Handle binary messages if needed
-                }
-                Some(Ok(Message::Ping(data))) => {
-                    debug!("Received ping");
-                    // Respond with pong
-                    let _ = ws.send(Message::Pong(data)).await;
-                }
-                Some(Ok(Message::Pong(_))) => {
-                    debug!("Received pong");
-                }
-                Some(Ok(Message::Close(close_frame))) => {
-                    info!("WebSocket closed: {:?}", close_frame);
-                    break;
-                }
-                Some(Err(e)) => {
-                    error!("WebSocket error: {}", e);
-                    return Err(ZaiError::Unknown {
-                        code: 0,
-                        message: format!("WebSocket error: {}", e),
-                    });
-                }
-                None => {
-                    info!("WebSocket stream ended");
-                    break;
-                }
-                _ => {}
-            }
+        if let Some(ws) = &mut self.websocket_client {
+            ws.listen_for_messages().await?;
+            Ok(())
+        } else {
+            Err(ZaiError::Unknown {
+                code: 0,
+                message: "WebSocket not connected".to_string(),
+            })
         }
-
-        // Put the websocket back
-        self.websocket = Some(ws);
-        Ok(())
-    }
-
-    /// Handle a server message
-    async fn handle_server_message(&mut self, message: String) -> Result<()> {
-        // Try to parse as a known server event
-        match serde_json::from_str::<ServerEvent>(&message) {
-            Ok(event) => {
-                match event {
-                    ServerEvent::Error(event) => {
-                        self.event_handler.on_error(event);
-                    }
-                    ServerEvent::SessionCreated(event) => {
-                        self.event_handler.on_session_created(event);
-                    }
-                    ServerEvent::SessionUpdated(event) => {
-                        self.event_handler.on_session_updated(event);
-                    }
-                    ServerEvent::ResponseTextDelta(event) => {
-                        self.event_handler.on_response_text_delta(event);
-                    }
-                    ServerEvent::ResponseTextDone(event) => {
-                        self.event_handler.on_response_text_done(event);
-                    }
-                    ServerEvent::ResponseAudioDelta(event) => {
-                        self.event_handler.on_response_audio_delta(event);
-                    }
-                    ServerEvent::ResponseAudioDone(event) => {
-                        self.event_handler.on_response_audio_done(event);
-                    }
-                    ServerEvent::ResponseDone(event) => {
-                        self.event_handler.on_response_done(event);
-                    }
-                    ServerEvent::Heartbeat(event) => {
-                        self.event_handler.on_heartbeat(event);
-                    }
-                    _ => {
-                        // Handle other events
-                        self.handle_other_server_events(event).await?;
-                    }
-                }
-            }
-            Err(e) => {
-                // If parsing fails, try to parse as a generic JSON value
-                match serde_json::from_str::<Value>(&message) {
-                    Ok(value) => {
-                        warn!(
-                            "Failed to parse as known event: {}. Treating as unknown event.",
-                            e
-                        );
-                        self.event_handler.on_unknown_event(value);
-                    }
-                    Err(e) => {
-                        error!("Failed to parse message as JSON: {}", e);
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Handle server events that don't have dedicated methods in the EventHandler trait
-    async fn handle_other_server_events(&mut self, event: ServerEvent) -> Result<()> {
-        match event {
-            ServerEvent::TranscriptionSessionUpdated(event) => {
-                debug!("Transcription session updated: {:?}", event);
-            }
-            ServerEvent::ConversationItemCreated(event) => {
-                debug!("Conversation item created: {:?}", event);
-            }
-            ServerEvent::ConversationItemDeleted(event) => {
-                debug!("Conversation item deleted: {:?}", event);
-            }
-            ServerEvent::ConversationItemRetrieved(event) => {
-                debug!("Conversation item retrieved: {:?}", event);
-            }
-            ServerEvent::InputAudioTranscriptionCompleted(event) => {
-                debug!("Input audio transcription completed: {:?}", event);
-            }
-            ServerEvent::InputAudioTranscriptionFailed(event) => {
-                debug!("Input audio transcription failed: {:?}", event);
-            }
-            ServerEvent::InputAudioBufferCommitted(event) => {
-                debug!("Input audio buffer committed: {:?}", event);
-            }
-            ServerEvent::InputAudioBufferCleared(event) => {
-                debug!("Input audio buffer cleared: {:?}", event);
-            }
-            ServerEvent::InputAudioBufferSpeechStarted(event) => {
-                debug!("Input audio buffer speech started: {:?}", event);
-            }
-            ServerEvent::InputAudioBufferSpeechStopped(event) => {
-                debug!("Input audio buffer speech stopped: {:?}", event);
-            }
-            ServerEvent::ResponseOutputItemAdded(event) => {
-                debug!("Response output item added: {:?}", event);
-            }
-            ServerEvent::ResponseOutputItemDone(event) => {
-                debug!("Response output item done: {:?}", event);
-            }
-            ServerEvent::ResponseContentPartAdded(event) => {
-                debug!("Response content part added: {:?}", event);
-            }
-            ServerEvent::ResponseContentPartDone(event) => {
-                debug!("Response content part done: {:?}", event);
-            }
-            ServerEvent::ResponseFunctionCallArgumentsDone(event) => {
-                debug!("Response function call arguments done: {:?}", event);
-            }
-            ServerEvent::ResponseFunctionCallSimpleBrowser(event) => {
-                debug!("Response function call simple browser: {:?}", event);
-            }
-            ServerEvent::ResponseAudioTranscriptDelta(event) => {
-                debug!("Response audio transcript delta: {:?}", event);
-            }
-            ServerEvent::ResponseAudioTranscriptDone(event) => {
-                debug!("Response audio transcript done: {:?}", event);
-            }
-            ServerEvent::ResponseCreated(event) => {
-                debug!("Response created: {:?}", event);
-            }
-            ServerEvent::ResponseCancelled(event) => {
-                debug!("Response cancelled: {:?}", event);
-            }
-            _ => {
-                // This should never happen if the enum is exhaustive
-                warn!("Unhandled server event: {:?}", event);
-            }
-        }
-
-        Ok(())
     }
 }
 
 impl Clone for RealtimeClient {
+    // Note: Implementing Clone for RealtimeClient is challenging because
+    // Box<dyn EventHandler> doesn't implement Clone. This would require
+    // a more complex approach in a production environment.
+    // For now, we'll implement a simplified version that creates a new DefaultEventHandler.
     fn clone(&self) -> Self {
-        // Note: This is a simplified clone that doesn't clone the actual WebSocket connection
-        // In a real implementation, you would need a more sophisticated approach
         Self {
             api_key: self.api_key.clone(),
-            websocket: None,
+            websocket_client: None,
             event_handler: Box::new(DefaultEventHandler),
         }
     }
-}
-
-impl Drop for RealtimeClient {
-    fn drop(&mut self) {
-        if let Some(mut ws) = self.websocket.take() {
-            // Try to close the connection gracefully
-            if let Err(e) = futures::executor::block_on(async { ws.close(None).await }) {
-                warn!("Failed to close WebSocket connection: {}", e);
-            }
-        }
-    }
-}
-
-/// Generate a unique event ID
-fn generate_event_id() -> String {
-    use uuid::Uuid;
-    Uuid::new_v4().to_string()
-}
-
-/// Get the current timestamp in milliseconds
-fn get_current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }

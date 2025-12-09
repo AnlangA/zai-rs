@@ -1,4 +1,4 @@
-//! 最简单的音频聊天示例
+//! 直接的音频聊天示例
 //!
 //! 这个示例展示了如何使用 GLM-Realtime API 进行音频对话：
 //! 1. 连接到 GLM-Realtime API
@@ -12,28 +12,18 @@ use tokio::time::sleep;
 
 use zai_rs::real_time::*;
 
-/// 自定义事件处理器，用于捕获AI的响应
-#[derive(Clone)]
-struct SimpleAudioEventHandler {
-    /// 接收到的文字回复
-    pub response_text: String,
-    /// 音频转录结果
-    pub audio_transcript: String,
-    /// 响应是否完成
-    pub response_completed: bool,
+/// 简单的事件处理器，用于捕获AI的响应
+struct DirectAudioEventHandler {
+    // 这里我们不存储状态，而是直接打印响应
 }
 
-impl SimpleAudioEventHandler {
+impl DirectAudioEventHandler {
     fn new() -> Self {
-        Self {
-            response_text: String::new(),
-            audio_transcript: String::new(),
-            response_completed: false,
-        }
+        Self {}
     }
 }
 
-impl EventHandler for SimpleAudioEventHandler {
+impl EventHandler for DirectAudioEventHandler {
     fn on_error(&mut self, event: ErrorEvent) {
         eprintln!("错误: {}", event.error.message);
     }
@@ -47,14 +37,13 @@ impl EventHandler for SimpleAudioEventHandler {
     }
 
     fn on_response_text_delta(&mut self, event: ResponseTextDeltaEvent) {
+        // 直接打印响应文本
         print!("{}", event.delta);
         std::io::Write::flush(&mut std::io::stdout()).unwrap();
-        self.response_text.push_str(&event.delta);
     }
 
-    fn on_response_text_done(&mut self, event: ResponseTextDoneEvent) {
-        println!("\n文本响应完成");
-        self.response_text = event.text;
+    fn on_response_text_done(&mut self, _event: ResponseTextDoneEvent) {
+        println!("\n=== 文本响应完成 ===");
     }
 
     fn on_response_audio_delta(&mut self, _event: ResponseAudioDeltaEvent) {
@@ -66,8 +55,8 @@ impl EventHandler for SimpleAudioEventHandler {
     }
 
     fn on_response_done(&mut self, _event: ResponseDoneEvent) {
-        println!("\n响应完成");
-        self.response_completed = true;
+        println!("\n=== 响应完成 ===");
+        println!("音频聊天示例成功完成！");
     }
 
     fn on_heartbeat(&mut self, _event: HeartbeatEvent) {
@@ -80,8 +69,8 @@ impl EventHandler for SimpleAudioEventHandler {
             match event_type {
                 "input_audio_transcription.completed" => {
                     if let Some(transcript) = event.get("transcript").and_then(|v| v.as_str()) {
-                        println!("音频转录: {}", transcript);
-                        self.audio_transcript = transcript.to_string();
+                        println!("=== 音频转录 ===");
+                        println!("{}", transcript);
                     }
                 }
                 _ => {
@@ -152,24 +141,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     };
 
+    // 连接API并发送数据的完整流程
     println!("正在连接到 GLM-Realtime API...");
 
-    // 使用循环重试机制
+    // 使用重试机制
     let mut retry_count = 0;
     let max_retries = 3;
-    let mut event_handler = SimpleAudioEventHandler::new();
 
     while retry_count < max_retries {
-        // 每次重试创建一个新的客户端和事件处理器
-        event_handler = SimpleAudioEventHandler::new();
+        // 每次重试创建新的客户端和事件处理器
+        let event_handler = DirectAudioEventHandler::new();
         let mut client = RealtimeClient::new(&api_key).with_event_handler(event_handler);
 
         match client.connect(GLMRealtime, session_config.clone()).await {
             Ok(_) => {
-                println!("连接成功！");
+                println!("连接成功！开始发送音频数据...");
 
                 // 发送音频数据
-                println!("正在发送音频数据...");
                 if let Err(e) = client.send_audio(&audio_data) {
                     eprintln!("发送音频失败: {}", e);
                     retry_count += 1;
@@ -177,8 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 println!("音频数据发送完成！");
 
-                // 提交音频缓冲区以触发处理
-                println!("提交音频缓冲区...");
+                // 提交音频缓冲区
                 if let Err(e) = client.commit_audio_buffer() {
                     eprintln!("提交音频缓冲区失败: {}", e);
                     retry_count += 1;
@@ -186,8 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 println!("音频缓冲区提交完成！");
 
-                // 创建响应
-                println!("请求生成响应...");
+                // 请求生成响应
                 if let Err(e) = client.create_response() {
                     eprintln!("创建响应失败: {}", e);
                     retry_count += 1;
@@ -195,42 +181,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 println!("响应请求已发送！");
 
-                // 等待响应完成
-                println!("等待 AI 回复...");
+                // 开始监听响应，设置60秒超时
+                println!("开始监听AI响应（最多60秒）...");
+                println!("=== AI回复 ===");
 
-                // 使用超时机制等待响应
-                let mut attempts = 0;
-                let max_attempts = 30; // 最多等待30秒
-
-                // 启动一个任务来监听事件
-                let mut client_for_listening = client;
-                let listener_task = tokio::spawn(async move {
-                    if let Err(e) = client_for_listening.listen_for_events().await {
-                        eprintln!("监听事件时出错: {}", e);
+                // 使用tokio::select!来实现超时控制
+                tokio::select! {
+                    // 监听事件
+                    result = client.listen_for_events() => {
+                        match result {
+                            Ok(_) => {
+                                println!("\n事件监听完成");
+                            }
+                            Err(e) => {
+                                eprintln!("\n监听事件时出错: {}", e);
+                            }
+                        }
                     }
-                });
-
-                // 主线程等待响应完成
-                while attempts < max_attempts {
-                    sleep(Duration::from_secs(1)).await;
-                    attempts += 1;
-
-                    // 检查响应是否完成
-                    if attempts % 5 == 0 && attempts > 0 {
-                        println!("仍在等待回复... (已等待 {} 秒)", attempts);
+                    // 超时控制
+                    _ = sleep(Duration::from_secs(60)) => {
+                        println!("\n等待响应超时（60秒）");
                     }
                 }
 
-                // 取消监听任务
-                listener_task.abort();
-
-                // 打印最终结果
-                println!("\n=== 结果 ===");
-
-                // 注意：响应内容和转录已经在事件处理过程中显示在控制台上了
-                println!("音频转录和AI回复已显示在上方");
-
-                println!("\n音频聊天示例完成。");
+                // 完成
                 return Ok(());
             }
             Err(e) => {

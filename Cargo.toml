@@ -174,6 +174,10 @@ path = "examples/realtime/audio_chat.rs"
 name = "realtime_video_chat"
 path = "examples/realtime/video_chat.rs"
 
+[[example]]
+name = "realtime_audio_chat_direct"
+path = "examples/realtime/audio_chat_direct.rs"
+
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
