@@ -1,71 +1,52 @@
-//! # Real-time Audio and Video Communication Module
+//! # Real-Time Audio and Video Module
 //!
-//! This module provides functionality for real-time audio and video conversations with GLM models.
-//! It implements the GLM-Realtime API which enables low-latency voice and video interactions
-//! through WebSocket connections.
+//! This module provides data structures and types for the GLM-Realtime API,
+//! which enables real-time audio and video conversations with AI models.
 //!
-//! ## Features
+//! ## Key Features
 //!
-//! - **Real-time Audio Chat**: Bidirectional audio conversations with AI models
-//! - **Video Chat Support**: Video input with AI understanding and response
-//! - **Function Calling**: Tool integration during real-time conversations
-//! - **Voice Activity Detection**: Both client and server-side VAD support
-//! - **Audio Processing**: Input audio noise reduction and format handling
+//! - **Real-time Communication** - WebSocket-based low-latency audio/video interactions
+//! - **Multimodal Support** - Text, audio, and video input/output capabilities
+//! - **Voice Activity Detection** - Both client-side and server-side VAD support
+//! - **Function Calling** - Integration with external tools and APIs
+//! - **Stream Processing** - Incremental response handling
 //!
-//! ## Components
+//! ## Module Structure
 //!
-//! - [`client`] - WebSocket client for real-time communication
-//! - [`types`] - Data structures for events and conversations
-//! - [`models`] - Real-time model definitions
+//! - [`types`] - Core data types and shared structures
+//! - [`client_events`] - Client-to-server event definitions
+//! - [`server_events`] - Server-to-client event definitions
+//! - [`session`] - Session configuration and management
 //!
 //! ## Usage Example
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use zai_rs::real_time::*;
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let api_key = std::env::var("ZHIPU_API_KEY")?;
-//!
-//!     // Create a real-time client
-//!     let mut client = RealtimeClient::new(api_key);
-//!
-//!     // Configure the session
-//!     let session_config = SessionConfig {
-//!         model: "glm-realtime-flash".to_string(),
+//! // Create a session update event
+//! let session_update = ClientEvent::SessionUpdate(SessionUpdateEvent {
+//!     event_id: "session-123".to_string(),
+//!     client_timestamp: 1625097600000,
+//!     session: Session {
+//!         model: "glm-realtime".to_string(),
 //!         modalities: vec!["text".to_string(), "audio".to_string()],
 //!         voice: "tongtong".to_string(),
-//!         input_audio_format: "wav".to_string(),
-//!         output_audio_format: "pcm".to_string(),
-//!         // ... other configuration options
+//!         // ... other session parameters
 //!         ..Default::default()
-//!     };
+//!     },
+//! });
 //!
-//!     // Connect and start a session
-//!     client.connect(session_config).await?;
-//!
-//!     // Handle events...
-//!
-//!     Ok(())
-//! }
+//! // Serialize to JSON for WebSocket transmission
+//! let json = serde_json::to_string(&session_update)?;
 //! ```
-//!
-//! ## Event Flow
-//!
-//! The real-time API follows an event-driven model where:
-//!
-//! 1. Client sends configuration and input events
-//! 2. Server processes and responds with output events
-//! 3. Both sides maintain a persistent WebSocket connection
-//!
-//! For more detailed information about the API, see the [GLM-Realtime documentation](https://docs.bigmodel.cn/cn/guide/models/sound-and-video/glm-realtime).
 
-pub mod client;
-pub mod models;
+pub mod client_events;
+pub mod server_events;
+pub mod session;
 pub mod types;
 
-// Re-export the main types for convenience
-pub use client::RealtimeClient;
-pub use models::{GLMRealtime, RealtimeModel};
-pub use types::EventHandlerAdapter;
+// Re-export commonly used types for convenience
+pub use client_events::*;
+pub use server_events::*;
+pub use session::*;
 pub use types::*;

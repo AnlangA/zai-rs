@@ -22,13 +22,12 @@
 //! underlying WebSocket connection logic.
 
 use crate::client::error::ZaiError;
-use futures_util::{SinkExt, StreamExt, TryFutureExt};
-use log::{debug, error, info, warn};
+use futures_util::{SinkExt, StreamExt};
+use log::{debug, error, info};
 use std::result::Result as StdResult;
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
-use tokio_tungstenite::{WebSocketStream, connect_async, tungstenite::Message};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 use url::Url;
 
 pub type Result<T> = StdResult<T, ZaiError>;
@@ -286,14 +285,14 @@ impl<H: WebSocketEventHandler> WssClient<H> {
     }
 
     /// Send a ping message to the server
-    pub fn send_ping(&mut self, data: Option<Vec<u8>>) -> Result<()> {
+    pub fn send_ping(&mut self, _data: Option<Vec<u8>>) -> Result<()> {
         // Note: WebSocket ping/pong is handled automatically by the library
         debug!("Sending ping (handled automatically by the library)");
         Ok(())
     }
 
     /// Send a pong message to the server
-    pub fn send_pong(&mut self, data: Option<Vec<u8>>) -> Result<()> {
+    pub fn send_pong(&mut self, _data: Option<Vec<u8>>) -> Result<()> {
         // Note: WebSocket ping/pong is handled automatically by the library
         debug!("Sending pong (handled automatically by the library)");
         Ok(())
@@ -348,10 +347,10 @@ impl<H: WebSocketEventHandler> WssClient<H> {
                             }
                             break;
                         }
-                        Message::Ping(data) => {
+                        Message::Ping(_data) => {
                             debug!("Ping received (handled automatically)");
                         }
-                        Message::Pong(data) => {
+                        Message::Pong(_data) => {
                             debug!("Pong received");
                         }
                         Message::Frame(_) => {
