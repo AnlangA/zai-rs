@@ -3,6 +3,12 @@
 //! This module provides data structures and types for the GLM-Realtime API,
 //! which enables real-time audio and video conversations with AI models.
 //!
+//! ## API Endpoint
+//!
+//! The GLM-Realtime API is built on top of WebSocket API:
+//! - **API URL**: `wss://open.bigmodel.cn/api/paas/v4/realtime`
+//! - **Authentication**: Use JWT or API Key in the `Authorization` header
+//!
 //! ## Key Features
 //!
 //! - **Real-time Communication** - WebSocket-based low-latency audio/video interactions

@@ -29,10 +29,18 @@ pub struct Session {
     pub voice: Option<String>,
 
     /// Input audio format.
+    ///
+    /// Supports `wav` and `pcm` formats. For PCM, it's recommended to include the sample rate:
+    /// - `pcm16` (sample rate 16000)
+    /// - `pcm24` (sample rate 24000)
+    ///
+    /// Without sample rate, the default is 16000. Only supports single channel and 16-bit depth.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_audio_format: Option<String>,
 
     /// Output audio format.
+    ///
+    /// Currently only supports "pcm" format with 24 kHz sample rate, single channel, 16-bit depth.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_audio_format: Option<String>,
 
@@ -135,10 +143,21 @@ impl Session {
 }
 
 /// Configuration for input audio noise reduction.
+///
+/// Supports two types of noise reduction for different recording environments:
+///
+/// ### Near Field Mode (`near_field`)
+/// - Optimized for close-proximity microphones, such as those in headphones or headsets
+/// - Best for situations where the user speaks directly into the microphone
+///
+/// ### Far Field Mode (`far_field`)
+/// - Optimized for distant microphones, such as those in laptops or conference rooms
+/// - Better for situations where the user is not close to the microphone
+///
 #[derive(Clone, Debug, Serialize, Deserialize, Validate, Default)]
 #[serde(default)]
 pub struct InputAudioNoiseReduction {
-    /// Type of noise reduction.
+    /// Type of noise reduction. Either "near_field" or "far_field".
     pub r#type: String,
 }
 
@@ -161,10 +180,26 @@ impl InputAudioNoiseReduction {
 }
 
 /// Configuration for voice activity detection (VAD).
+///
+/// The Realtime API supports two VAD detection methods, controlled by the `turn_detection.type` parameter:
+///
+/// ### Server VAD Mode (`server_vad`)
+/// - The model intelligently detects when to generate a response
+/// - Lower client complexity - only needs to continuously upload audio
+/// - Model manages interruption detection
+/// - Model manages speech detection
+///
+/// ### Client VAD Mode (when `turn_detection` is not specified)
+/// - Client decides when to trigger model inference
+/// - Higher client complexity - needs to determine when to upload audio and trigger the model
+/// - Client manages interruption detection
+/// - Client manages speech detection
+///
 #[derive(Clone, Debug, Serialize, Deserialize, Validate, Default)]
 #[serde(default)]
 pub struct TurnDetection {
-    /// Type of VAD detection.
+    /// Type of VAD detection. Must be "server_vad" for Server VAD mode.
+    /// If not specified, Client VAD mode is used.
     pub r#type: String,
 
     /// Whether to create response when VAD stops.
@@ -176,14 +211,17 @@ pub struct TurnDetection {
     pub interrupt_response: Option<bool>,
 
     /// Only for ServerVAD mode: padding in milliseconds before VAD detection.
+    /// Default is 300ms. Includes audio before VAD detection to avoid cutting off the beginning of speech.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_padding_ms: Option<u32>,
 
     /// Only for ServerVAD mode: silence duration in milliseconds for speech stop detection.
+    /// Default is 500ms. Shorter values result in faster model responses but may jump in during brief pauses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub silence_duration_ms: Option<u32>,
 
     /// Only for ServerVAD mode: threshold for VAD activation (0.0 to 1.0).
+    /// Default is 0.5. Higher thresholds require louder audio to activate the model and may perform better in noisy environments.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f32>,
 }
