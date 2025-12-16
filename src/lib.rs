@@ -57,3 +57,4 @@ pub mod model;
 pub mod real_time;
 pub mod tool;
 pub mod toolkits;
+pub mod traits_macro;

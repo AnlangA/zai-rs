@@ -51,11 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 轮询直到完成
         let request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key.clone());
         loop {
-            let result = async {
-                let resp = request.get().await.map_err(|e| anyhow::anyhow!(e))?;
-                resp.json::<ChatCompletionResponse>()
-                    .await
-                    .map_err(|e| anyhow::anyhow!(e))
+            let result: Result<ChatCompletionResponse, Box<dyn std::error::Error>> = async {
+                let resp = request.get().await?;
+                let json = resp.json::<ChatCompletionResponse>().await?;
+                Ok(json)
             }
             .await;
 
@@ -63,10 +62,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(body) => match body.task_status() {
                     Some(TaskStatus::Success) => {
                         println!("状态: 完成");
-                        body.choices()
-                            .and_then(|choices| choices.first())
-                            .and_then(|choice| choice.message.content())
-                            .map(|content| println!("回复: {}", content));
+                        if let Some(choices) = body.choices() {
+                            if let Some(choice) = choices.first() {
+                                if let Some(content) = choice.message.content() {
+                                    println!("回复: {}", content);
+                                }
+                            }
+                        }
                         break;
                     }
                     Some(TaskStatus::Fail) => {

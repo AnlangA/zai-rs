@@ -48,8 +48,7 @@ use crate::{define_model_type, impl_message_binding, impl_model_markers};
 
 define_model_type!(GLM4_6, "glm-4.6");
 impl_message_binding!(GLM4_6, TextMessage);
-impl_model_markers!(GLM4_6: Chat, AsyncChat, ThinkEnable);
-impl ToolStreamEnable for GLM4_6 {}
+impl_model_markers!(GLM4_6: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
 
 define_model_type!(GLM4_5, "glm-4.5");
 impl_message_binding!(GLM4_5, TextMessage);

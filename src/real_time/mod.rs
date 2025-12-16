@@ -50,12 +50,18 @@
 //! ```
 
 pub mod client_events;
+pub mod data;
+pub mod rt_models;
 pub mod server_events;
 pub mod session;
+pub mod traits;
 pub mod types;
 
 // Re-export commonly used types for convenience
 pub use client_events::*;
+pub use data::*;
+pub use rt_models::*;
 pub use server_events::*;
 pub use session::*;
+pub use traits::*;
 pub use types::*;
