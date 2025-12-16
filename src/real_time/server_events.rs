@@ -13,71 +13,101 @@ use crate::real_time::types::*;
 
 /// Represents a server event sent to the client.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type")]
 pub enum ServerEvent {
     /// Error event.
+    #[serde(rename = "error")]
     Error(ErrorEvent),
     /// Session created event.
+    #[serde(rename = "session.created")]
     SessionCreated(SessionCreatedEvent),
     /// Session updated event.
+    #[serde(rename = "session.updated")]
     SessionUpdated(SessionUpdatedEvent),
     /// Transcription session updated event.
+    #[serde(rename = "transcription_session.updated")]
     TranscriptionSessionUpdated(TranscriptionSessionUpdatedEvent),
     /// Conversation item created event.
+    #[serde(rename = "conversation.item.created")]
     ConversationItemCreated(ConversationItemCreatedEvent),
     /// Conversation item deleted event.
+    #[serde(rename = "conversation.item.deleted")]
     ConversationItemDeleted(ConversationItemDeletedEvent),
     /// Conversation item retrieved event.
+    #[serde(rename = "conversation.item.retrieved")]
     ConversationItemRetrieved(ConversationItemRetrievedEvent),
     /// Input audio transcription completed event.
+    #[serde(rename = "conversation.item.input_audio_transcription.completed")]
     ConversationItemInputAudioTranscriptionCompleted(
         ConversationItemInputAudioTranscriptionCompletedEvent,
     ),
     /// Input audio transcription failed event.
+    #[serde(rename = "conversation.item.input_audio_transcription.failed")]
     ConversationItemInputAudioTranscriptionFailed(
         ConversationItemInputAudioTranscriptionFailedEvent,
     ),
     /// Input audio buffer committed event.
+    #[serde(rename = "input_audio_buffer.committed")]
     InputAudioBufferCommitted(InputAudioBufferCommittedEvent),
     /// Input audio buffer cleared event.
+    #[serde(rename = "input_audio_buffer.cleared")]
     InputAudioBufferCleared(InputAudioBufferClearedEvent),
     /// Input audio buffer speech started event.
+    #[serde(rename = "input_audio_buffer.speech_started")]
     InputAudioBufferSpeechStarted(InputAudioBufferSpeechStartedEvent),
     /// Input audio buffer speech stopped event.
+    #[serde(rename = "input_audio_buffer.speech_stopped")]
     InputAudioBufferSpeechStopped(InputAudioBufferSpeechStoppedEvent),
     /// Response output item added event.
+    #[serde(rename = "response.output_item.added")]
     ResponseOutputItemAdded(ResponseOutputItemAddedEvent),
     /// Response output item done event.
+    #[serde(rename = "response.output_item.done")]
     ResponseOutputItemDone(ResponseOutputItemDoneEvent),
     /// Response content part added event.
+    #[serde(rename = "response.content_part.added")]
     ResponseContentPartAdded(ResponseContentPartAddedEvent),
     /// Response content part done event.
+    #[serde(rename = "response.content_part.done")]
     ResponseContentPartDone(ResponseContentPartDoneEvent),
     /// Response function call arguments done event.
+    #[serde(rename = "response.function_call_arguments.done")]
     ResponseFunctionCallArgumentsDone(ResponseFunctionCallArgumentsDoneEvent),
     /// Response function call simple browser event.
+    #[serde(rename = "response.function_call.simple_browser")]
     ResponseFunctionCallSimpleBrowser(ResponseFunctionCallSimpleBrowserEvent),
     /// Response text delta event.
+    #[serde(rename = "response.text.delta")]
     ResponseTextDelta(ResponseTextDeltaEvent),
     /// Response text done event.
+    #[serde(rename = "response.text.done")]
     ResponseTextDone(ResponseTextDoneEvent),
     /// Response audio transcript delta event.
+    #[serde(rename = "response.audio_transcript.delta")]
     ResponseAudioTranscriptDelta(ResponseAudioTranscriptDeltaEvent),
     /// Response audio transcript done event.
+    #[serde(rename = "response.audio_transcript.done")]
     ResponseAudioTranscriptDone(ResponseAudioTranscriptDoneEvent),
     /// Response audio delta event.
+    #[serde(rename = "response.audio.delta")]
     ResponseAudioDelta(ResponseAudioDeltaEvent),
     /// Response audio done event.
+    #[serde(rename = "response.audio.done")]
     ResponseAudioDone(ResponseAudioDoneEvent),
     /// Response created event.
+    #[serde(rename = "response.created")]
     ResponseCreated(ResponseCreatedEvent),
     /// Response cancelled event.
+    #[serde(rename = "response.cancelled")]
     ResponseCancelled(ResponseCancelledEvent),
     /// Response done event.
+    #[serde(rename = "response.done")]
     ResponseDone(ResponseDoneEvent),
     /// Rate limits updated event.
+    #[serde(rename = "rate_limits.updated")]
     RateLimitsUpdated(RateLimitsUpdatedEvent),
     /// Heartbeat event.
+    #[serde(rename = "heartbeat")]
     Heartbeat(HeartbeatEvent),
 }
 
@@ -741,9 +771,56 @@ pub struct HeartbeatEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::real_time::client_events::TranscriptionSession;
     use crate::real_time::session::Session;
     use crate::real_time::types::{ItemStatus, ItemType, RealtimeConversationItem};
+
+    #[test]
+    fn test_server_event_serialization_with_type_field() {
+        let mut session = Session::default();
+        session.model = Some("glm-realtime".to_string());
+        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
+        session.voice = Some("tongtong".to_string());
+
+        let mut session_created_event = SessionCreatedEvent::default();
+        session_created_event.event_id = Some("event123".to_string());
+        session_created_event.client_timestamp = Some(1625097600000);
+        session_created_event.session = session;
+
+        let server_event = ServerEvent::SessionCreated(session_created_event);
+        let json = serde_json::to_string(&server_event).unwrap();
+
+        // Check if the JSON contains the "type" field with the correct value
+        assert!(json.contains("\"type\":\"session.created\""));
+
+        // Parse the JSON to verify it can be deserialized correctly
+        let deserialized_event: ServerEvent = serde_json::from_str(&json).unwrap();
+        match deserialized_event {
+            ServerEvent::SessionCreated(event) => {
+                assert_eq!(event.event_id, Some("event123".to_string()));
+                assert_eq!(event.client_timestamp, Some(1625097600000));
+                assert_eq!(event.session.model, Some("glm-realtime".to_string()));
+            }
+            _ => panic!("Expected SessionCreated event"),
+        }
+    }
+
+    #[test]
+    fn test_transcription_session_updated_event_serialization() {
+        let mut session = TranscriptionSession::default();
+        session.input_audio_format = Some("pcm".to_string());
+        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
+
+        let mut event = TranscriptionSessionUpdatedEvent::default();
+        event.event_id = Some("event123".to_string());
+        event.client_timestamp = Some(1625097600000);
+        event.session = session;
+
+        let server_event = ServerEvent::TranscriptionSessionUpdated(event);
+        let json = serde_json::to_string(&server_event).unwrap();
+
+        // Check if the JSON contains the "type" field with the correct value
+        assert!(json.contains("\"type\":\"transcription_session.updated\""));
+    }
 
     #[test]
     fn test_session_created_event_serialization() {
@@ -815,32 +892,6 @@ mod tests {
         assert_eq!(
             event.get_error().get_message(),
             deserialized_event.get_error().get_message()
-        );
-    }
-
-    #[test]
-    fn test_transcription_session_updated_event_serialization() {
-        let mut session = TranscriptionSession::default();
-        session.input_audio_format = Some("pcm".to_string());
-        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
-
-        let mut event = TranscriptionSessionUpdatedEvent::default();
-        event.event_id = Some("transcription-123".to_string());
-        event.client_timestamp = Some(1625097600000);
-        event.session = session;
-
-        let json = event.to_json().unwrap();
-        let deserialized_event: TranscriptionSessionUpdatedEvent =
-            TranscriptionSessionUpdatedEvent::from_json(&json).unwrap();
-
-        assert_eq!(event.get_event_id(), deserialized_event.get_event_id());
-        assert_eq!(
-            event.get_client_timestamp(),
-            deserialized_event.get_client_timestamp()
-        );
-        assert_eq!(
-            event.get_session().input_audio_format,
-            deserialized_event.get_session().input_audio_format
         );
     }
 
