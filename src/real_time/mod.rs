@@ -30,20 +30,23 @@
 //! use zai_rs::real_time::*;
 //!
 //! // Create a session update event
-//! let session_update = ClientEvent::SessionUpdate(SessionUpdateEvent {
-//!     event_id: "session-123".to_string(),
-//!     client_timestamp: 1625097600000,
-//!     session: Session {
-//!         model: "glm-realtime".to_string(),
-//!         modalities: vec!["text".to_string(), "audio".to_string()],
-//!         voice: "tongtong".to_string(),
-//!         // ... other session parameters
-//!         ..Default::default()
-//!     },
-//! });
+//! let mut session = Session::default();
+//! session.model = Some("glm-realtime".to_string());
+//! session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
+//! session.voice = Some("tongtong".to_string());
+//!
+//! let mut session_update_event = SessionUpdateEvent::default();
+//! session_update_event.event_id = Some("session-123".to_string());
+//! session_update_event.client_timestamp = Some(1625097600000);
+//! session_update_event.set_session(session);
+//!
+//! let session_update = ClientEvent::SessionUpdate(session_update_event);
 //!
 //! // Serialize to JSON for WebSocket transmission
 //! let json = serde_json::to_string(&session_update)?;
+//!
+//! // The JSON will contain the "type" field with dot-separated naming:
+//! // {"type":"session.update","event_id":"session-123",...}
 //! ```
 
 pub mod client_events;
