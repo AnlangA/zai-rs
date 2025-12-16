@@ -12,29 +12,40 @@ use crate::real_time::types::*;
 
 /// Represents a client event sent to the server.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type")]
 pub enum ClientEvent {
     /// Updates the session configuration.
+    #[serde(rename = "session.update")]
     SessionUpdate(SessionUpdateEvent),
     /// Updates the transcription session configuration.
+    #[serde(rename = "transcription_session.update")]
     TranscriptionSessionUpdate(TranscriptionSessionUpdateEvent),
     /// Appends audio data to the input buffer.
+    #[serde(rename = "input_audio_buffer.append")]
     InputAudioBufferAppend(InputAudioBufferAppendEvent),
     /// Appends a video frame to the input buffer.
+    #[serde(rename = "input_audio_buffer.append_video_frame")]
     InputAudioBufferAppendVideoFrame(InputAudioBufferAppendVideoFrameEvent),
     /// Commits the audio data in the input buffer.
+    #[serde(rename = "input_audio_buffer.commit")]
     InputAudioBufferCommit(InputAudioBufferCommitEvent),
     /// Clears the audio data in the input buffer.
+    #[serde(rename = "input_audio_buffer.clear")]
     InputAudioBufferClear(InputAudioBufferClearEvent),
     /// Creates a new conversation item.
+    #[serde(rename = "conversation.item.create")]
     ConversationItemCreate(ConversationItemCreateEvent),
     /// Deletes a conversation item.
+    #[serde(rename = "conversation.item.delete")]
     ConversationItemDelete(ConversationItemDeleteEvent),
     /// Retrieves a conversation item.
+    #[serde(rename = "conversation.item.retrieve")]
     ConversationItemRetrieve(ConversationItemRetrieveEvent),
     /// Creates a new response.
+    #[serde(rename = "response.create")]
     ResponseCreate(ResponseCreateEvent),
     /// Cancels the current response.
+    #[serde(rename = "response.cancel")]
     ResponseCancel(ResponseCancelEvent),
 }
 
@@ -708,6 +719,36 @@ mod tests {
     use super::*;
     use crate::real_time::session::Session;
     use crate::real_time::types::{ItemStatus, ItemType, RealtimeConversationItem, Role};
+
+    #[test]
+    fn test_client_event_serialization_with_type_field() {
+        let mut session = Session::default();
+        session.model = Some("glm-realtime".to_string());
+        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
+        session.voice = Some("tongtong".to_string());
+
+        let mut session_update_event = SessionUpdateEvent::default();
+        session_update_event.event_id = Some("session-123".to_string());
+        session_update_event.client_timestamp = Some(1625097600000);
+        session_update_event.set_session(session);
+
+        let client_event = ClientEvent::SessionUpdate(session_update_event);
+        let json = serde_json::to_string(&client_event).unwrap();
+
+        // Check if the JSON contains the "type" field with the correct value
+        assert!(json.contains("\"type\":\"session.update\""));
+
+        // Parse the JSON to verify it can be deserialized correctly
+        let deserialized_event: ClientEvent = serde_json::from_str(&json).unwrap();
+        match deserialized_event {
+            ClientEvent::SessionUpdate(event) => {
+                assert_eq!(event.event_id, Some("session-123".to_string()));
+                assert_eq!(event.client_timestamp, Some(1625097600000));
+                assert_eq!(event.session.model, Some("glm-realtime".to_string()));
+            }
+            _ => panic!("Expected SessionUpdate event"),
+        }
+    }
 
     #[test]
     fn test_session_update_event_serialization() {
