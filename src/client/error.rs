@@ -2,6 +2,9 @@
 //!
 //! This module defines comprehensive error types that map to the ZhipuAI API error codes
 //! as documented at https://docs.bigmodel.cn/cn/api/api-code
+//!
+//! The error handling supports both HTTP and WebSocket connections with appropriate
+//! error mapping for each protocol.
 
 use thiserror::Error;
 
@@ -11,6 +14,10 @@ pub enum ZaiError {
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
     HttpError { status: u16, message: String },
+
+    /// WebSocket connection errors
+    #[error("WebSocket error [{code}]: {message}")]
+    WebSocketError { code: u16, message: String },
 
     /// Authentication and authorization errors
     #[error("Authentication error [{code}]: {message}")]
@@ -36,13 +43,29 @@ pub enum ZaiError {
     #[error("File error [{code}]: {message}")]
     FileError { code: u16, message: String },
 
-    /// Network/IO errors
+    /// Network/IO errors (includes HTTP and WebSocket transport errors)
     #[error("Network error: {0}")]
-    NetworkError(reqwest::Error),
+    NetworkError(String),
+
+    /// Connection errors (for WebSocket connection establishment)
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
+
+    /// Protocol errors (WebSocket protocol violations)
+    #[error("Protocol error: {0}")]
+    ProtocolError(String),
 
     /// JSON parsing errors
     #[error("JSON error: {0}")]
     JsonError(serde_json::Error),
+
+    /// TLS/SSL errors
+    #[error("TLS error: {0}")]
+    TlsError(String),
+
+    /// Timeout errors
+    #[error("Timeout error: {0}")]
+    TimeoutError(String),
 
     /// Other errors
     #[error("Unknown error [{code}]: {message}")]
@@ -129,6 +152,55 @@ impl ZaiError {
         }
     }
 
+    /// Create an error from HTTP status code (used by WebSocket client)
+    pub fn from_status_code(status: u16, message: Option<String>) -> Self {
+        let msg = message.unwrap_or_else(|| match status {
+            400 => "Bad request".to_string(),
+            401 => "Unauthorized".to_string(),
+            403 => "Forbidden".to_string(),
+            404 => "Not found".to_string(),
+            429 => "Too many requests".to_string(),
+            500 => "Internal server error".to_string(),
+            502 => "Bad gateway".to_string(),
+            503 => "Service unavailable".to_string(),
+            504 => "Gateway timeout".to_string(),
+            _ => format!("HTTP status {}", status),
+        });
+
+        ZaiError::HttpError {
+            status,
+            message: msg,
+        }
+    }
+
+    /// Create a WebSocket-specific error
+    pub fn websocket_error(code: u16, message: impl Into<String>) -> Self {
+        ZaiError::WebSocketError {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// Create a WebSocket connection error
+    pub fn websocket_connection_error(message: impl Into<String>) -> Self {
+        ZaiError::ConnectionError(message.into())
+    }
+
+    /// Create a WebSocket protocol error
+    pub fn websocket_protocol_error(message: impl Into<String>) -> Self {
+        ZaiError::ProtocolError(message.into())
+    }
+
+    /// Create a timeout error
+    pub fn timeout(message: impl Into<String>) -> Self {
+        ZaiError::TimeoutError(message.into())
+    }
+
+    /// Create a TLS error
+    pub fn tls(message: impl Into<String>) -> Self {
+        ZaiError::TlsError(message.into())
+    }
+
     /// Check if the error is a rate limit error
     pub fn is_rate_limit(&self) -> bool {
         matches!(self, ZaiError::RateLimitError { .. })
@@ -137,6 +209,41 @@ impl ZaiError {
     /// Check if the error is an authentication error
     pub fn is_auth_error(&self) -> bool {
         matches!(self, ZaiError::AuthError { .. })
+    }
+
+    /// Check if the error is a network/connection error
+    pub fn is_network_error(&self) -> bool {
+        matches!(
+            self,
+            ZaiError::NetworkError(_)
+                | ZaiError::ConnectionError(_)
+                | ZaiError::TlsError(_)
+                | ZaiError::TimeoutError(_)
+        )
+    }
+
+    /// Check if the error is a WebSocket-specific error
+    pub fn is_websocket_error(&self) -> bool {
+        matches!(
+            self,
+            ZaiError::WebSocketError { .. }
+                | ZaiError::ConnectionError(_)
+                | ZaiError::ProtocolError(_)
+        )
+    }
+
+    /// Check if the error is retryable (transient)
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            ZaiError::RateLimitError { .. } => true,
+            ZaiError::NetworkError(_) => true,
+            ZaiError::ConnectionError(_) => true,
+            ZaiError::TimeoutError(_) => true,
+            ZaiError::TlsError(_) => false, // TLS errors are usually not retryable immediately
+            ZaiError::HttpError { status, .. } => matches!(status, 429 | 500 | 502 | 503 | 504),
+            ZaiError::Unknown { code, .. } => matches!(code, 500 | 502 | 503 | 504),
+            _ => false,
+        }
     }
 
     /// Check if the error is a client error (4xx)
@@ -149,6 +256,7 @@ impl ZaiError {
             | ZaiError::RateLimitError { .. }
             | ZaiError::ContentPolicyError { .. }
             | ZaiError::FileError { .. } => true,
+            ZaiError::WebSocketError { code, .. } => *code >= 400 && *code < 500,
             _ => false,
         }
     }
@@ -157,6 +265,7 @@ impl ZaiError {
     pub fn is_server_error(&self) -> bool {
         match self {
             ZaiError::HttpError { status, .. } => *status >= 500,
+            ZaiError::WebSocketError { code, .. } => *code >= 500,
             ZaiError::Unknown { code, .. } => *code >= 500,
             _ => false,
         }
@@ -166,6 +275,9 @@ impl ZaiError {
         match self {
             ZaiError::HttpError { status, message } => {
                 format!("HTTP[{}]: {}", status, message)
+            }
+            ZaiError::WebSocketError { code, message } => {
+                format!("WS[{}]: {}", code, message)
             }
             ZaiError::AuthError { code, message } => {
                 format!("AUTH[{}]: {}", code, message)
@@ -188,8 +300,20 @@ impl ZaiError {
             ZaiError::NetworkError(err) => {
                 format!("NETWORK: {}", err)
             }
+            ZaiError::ConnectionError(err) => {
+                format!("CONN: {}", err)
+            }
+            ZaiError::ProtocolError(err) => {
+                format!("PROTO: {}", err)
+            }
             ZaiError::JsonError(err) => {
                 format!("JSON: {}", err)
+            }
+            ZaiError::TlsError(err) => {
+                format!("TLS: {}", err)
+            }
+            ZaiError::TimeoutError(err) => {
+                format!("TIMEOUT: {}", err)
             }
             ZaiError::Unknown { code, message } => {
                 format!("UNKNOWN[{}]: {}", code, message)
@@ -201,13 +325,18 @@ impl ZaiError {
     pub fn code(&self) -> Option<u16> {
         match self {
             ZaiError::HttpError { status, .. } => Some(*status),
+            ZaiError::WebSocketError { code, .. } => Some(*code),
             ZaiError::AuthError { code, .. } => Some(*code),
             ZaiError::AccountError { code, .. } => Some(*code),
             ZaiError::ApiError { code, .. } => Some(*code),
             ZaiError::RateLimitError { code, .. } => Some(*code),
             ZaiError::ContentPolicyError { code, .. } => Some(*code),
             ZaiError::FileError { code, .. } => Some(*code),
-            ZaiError::NetworkError(_) => None,
+            ZaiError::NetworkError(_)
+            | ZaiError::ConnectionError(_)
+            | ZaiError::ProtocolError(_)
+            | ZaiError::TlsError(_)
+            | ZaiError::TimeoutError(_) => None,
             ZaiError::JsonError(_) => None,
             ZaiError::Unknown { code, .. } => Some(*code),
         }
@@ -217,14 +346,19 @@ impl ZaiError {
     pub fn message(&self) -> String {
         match self {
             ZaiError::HttpError { message, .. } => message.clone(),
+            ZaiError::WebSocketError { message, .. } => message.clone(),
             ZaiError::AuthError { message, .. } => message.clone(),
             ZaiError::AccountError { message, .. } => message.clone(),
             ZaiError::ApiError { message, .. } => message.clone(),
             ZaiError::RateLimitError { message, .. } => message.clone(),
             ZaiError::ContentPolicyError { message, .. } => message.clone(),
             ZaiError::FileError { message, .. } => message.clone(),
-            ZaiError::NetworkError(err) => err.to_string(),
+            ZaiError::NetworkError(err) => err.clone(),
+            ZaiError::ConnectionError(err) => err.clone(),
+            ZaiError::ProtocolError(err) => err.clone(),
             ZaiError::JsonError(err) => err.to_string(),
+            ZaiError::TlsError(err) => err.clone(),
+            ZaiError::TimeoutError(err) => err.clone(),
             ZaiError::Unknown { message, .. } => message.clone(),
         }
     }
@@ -238,9 +372,44 @@ impl From<reqwest::Error> for ZaiError {
     fn from(err: reqwest::Error) -> Self {
         if let Some(status) = err.status() {
             ZaiError::from_api_response(status.as_u16(), 0, err.to_string())
+        } else if err.is_timeout() {
+            ZaiError::TimeoutError(err.to_string())
+        } else if err.is_connect() {
+            ZaiError::ConnectionError(err.to_string())
+        } else if err.is_request() {
+            ZaiError::NetworkError(err.to_string())
         } else {
-            ZaiError::NetworkError(err)
+            ZaiError::NetworkError(err.to_string())
         }
+    }
+}
+
+/// Convert from tokio_tungstenite::tungstenite::Error to ZaiError
+impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
+    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
+        use tokio_tungstenite::tungstenite::Error;
+
+        match err {
+            Error::ConnectionClosed => ZaiError::websocket_connection_error("Connection closed"),
+            Error::AlreadyClosed => {
+                ZaiError::websocket_connection_error("Connection already closed")
+            }
+            Error::Io(io_err) => ZaiError::NetworkError(io_err.to_string()),
+            Error::Tls(tls_err) => ZaiError::tls(format!("TLS error: {}", tls_err)),
+            Error::Capacity(msg) => ZaiError::ProtocolError(format!("Capacity error: {}", msg)),
+            Error::Protocol(msg) => ZaiError::ProtocolError(format!("Protocol error: {}", msg)),
+            Error::Utf8 => ZaiError::ProtocolError("UTF-8 encoding error".to_string()),
+            Error::Url(url_err) => ZaiError::ConnectionError(format!("Invalid URL: {}", url_err)),
+            // Note: Some variants may not exist in all versions of tokio-tungstenite
+            _ => ZaiError::NetworkError(format!("WebSocket error: {}", err)),
+        }
+    }
+}
+
+/// Convert from tokio_tungstenite::tungstenite::http::Error to ZaiError
+impl From<tokio_tungstenite::tungstenite::http::Error> for ZaiError {
+    fn from(err: tokio_tungstenite::tungstenite::http::Error) -> Self {
+        ZaiError::ConnectionError(format!("HTTP request error: {}", err))
     }
 }
 
@@ -264,6 +433,29 @@ impl From<validator::ValidationErrors> for ZaiError {
 /// Convert from std::io::Error to ZaiError
 impl From<std::io::Error> for ZaiError {
     fn from(err: std::io::Error) -> Self {
+        match err.kind() {
+            std::io::ErrorKind::TimedOut => ZaiError::TimeoutError(err.to_string()),
+            std::io::ErrorKind::ConnectionRefused => ZaiError::ConnectionError(err.to_string()),
+            std::io::ErrorKind::ConnectionReset => ZaiError::ConnectionError(err.to_string()),
+            std::io::ErrorKind::ConnectionAborted => ZaiError::ConnectionError(err.to_string()),
+            std::io::ErrorKind::NotConnected => ZaiError::ConnectionError(err.to_string()),
+            std::io::ErrorKind::BrokenPipe => ZaiError::ConnectionError(err.to_string()),
+            std::io::ErrorKind::WouldBlock => ZaiError::NetworkError(err.to_string()),
+            _ => ZaiError::NetworkError(err.to_string()),
+        }
+    }
+}
+
+/// Convert from tokio::time::error::Elapsed to ZaiError
+impl From<tokio::time::error::Elapsed> for ZaiError {
+    fn from(err: tokio::time::error::Elapsed) -> Self {
+        ZaiError::TimeoutError(format!("Operation timed out: {:?}", err))
+    }
+}
+
+/// Convert from Box<dyn std::error::Error + Send + Sync> to ZaiError
+impl From<Box<dyn std::error::Error + Send + Sync>> for ZaiError {
+    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
         ZaiError::Unknown {
             code: 0,
             message: err.to_string(),
