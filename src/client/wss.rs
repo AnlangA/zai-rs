@@ -1,5 +1,6 @@
 use super::error::*;
 use futures_util::{SinkExt, StreamExt};
+use log::info;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::http::Request;
@@ -34,6 +35,7 @@ pub trait WssClient {
 
             let (ws_stream, response) = connect_async(request).await?;
 
+            info!("WebSocket response: {:#?}", response);
             // 检查响应状态码，WebSocket成功升级应该是101
             let status = response.status().as_u16();
             if status != 101 {
