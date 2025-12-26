@@ -122,17 +122,17 @@ impl HttpClient for FileUploadRequest {
             }
 
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(crate::client::error::ZaiError::from_api_response(
+                Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
                     0,
                     parsed.error.message,
-                ));
+                ))
             } else {
-                return Err(crate::client::error::ZaiError::from_api_response(
+                Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
                     0,
                     text,
-                ));
+                ))
             }
         }
     }

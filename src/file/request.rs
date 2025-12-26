@@ -21,6 +21,12 @@ pub struct FileListQuery {
     pub limit: Option<u32>,
 }
 
+impl Default for FileListQuery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileListQuery {
     pub fn new() -> Self {
         Self {

@@ -54,7 +54,6 @@ struct ApiError {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-
 enum ErrorCode {
     Str(String),
 
@@ -79,11 +78,9 @@ fn to_api_code(code: &ErrorCode) -> u16 {
 }
 
 /// A single shared HTTP client for connection pooling and TLS reuse.
-
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 /// Gets the shared HTTP client instance.
-
 fn http_client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -93,7 +90,6 @@ fn http_client() -> &'static reqwest::Client {
 }
 
 /// Trait for HTTP clients that communicate with the Zhipu AI API.
-
 pub trait HttpClient {
     type Body: serde::Serialize;
     type ApiUrl: AsRef<str>;
@@ -104,7 +100,6 @@ pub trait HttpClient {
     fn body(&self) -> &Self::Body;
 
     /// Sends a POST request to the API endpoint.
-
     fn post(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
         let body_compact = serde_json::to_string(self.body());
 
@@ -154,19 +149,18 @@ pub trait HttpClient {
 
             if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&text) {
                 let api_code = to_api_code(&parsed.error.code);
-                return Err(ZaiError::from_api_response(
+                Err(ZaiError::from_api_response(
                     status.as_u16(),
                     api_code,
                     parsed.error.message,
-                ));
+                ))
             } else {
-                return Err(ZaiError::from_api_response(status.as_u16(), 0, text));
+                Err(ZaiError::from_api_response(status.as_u16(), 0, text))
             }
         }
     }
 
     /// Sends a GET request to the API endpoint.
-
     fn get(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
         let url = self.api_url().as_ref().to_owned();
 
@@ -196,13 +190,13 @@ pub trait HttpClient {
 
             if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&text) {
                 let api_code = to_api_code(&parsed.error.code);
-                return Err(ZaiError::from_api_response(
+                Err(ZaiError::from_api_response(
                     status.as_u16(),
                     api_code,
                     parsed.error.message,
-                ));
+                ))
             } else {
-                return Err(ZaiError::from_api_response(status.as_u16(), 0, text));
+                Err(ZaiError::from_api_response(status.as_u16(), 0, text))
             }
         }
     }
