@@ -1,5 +1,5 @@
 use super::super::traits::*;
-use super::request::AudioTranscriptionBody;
+use super::request::AudioToTextBody;
 use serde::Serialize;
 use std::path::Path;
 
@@ -8,23 +8,23 @@ use validator::Validate;
 use crate::client::http::HttpClient;
 
 /// Audio transcription request (multipart/form-data)
-pub struct AudioTranscriptionRequest<N>
+pub struct AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
     pub key: String,
-    pub body: AudioTranscriptionBody<N>,
+    pub body: AudioToTextBody<N>,
     file_path: Option<String>,
 }
 
-impl<N> AudioTranscriptionRequest<N>
+impl<N> AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize + Clone,
 {
     pub fn new(model: N, key: String) -> Self {
         Self {
             key,
-            body: AudioTranscriptionBody::new(model),
+            body: AudioToTextBody::new(model),
             file_path: None,
         }
     }
@@ -59,7 +59,7 @@ where
 
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::from(e))?;
+            .map_err(crate::client::error::ZaiError::from)?;
         // Ensure file path exists
 
         let p =
@@ -80,7 +80,7 @@ where
         Ok(())
     }
 
-    pub async fn send(&self) -> crate::ZaiResult<super::response::AudioTranscriptionResponse>
+    pub async fn send(&self) -> crate::ZaiResult<super::response::AudioToTextResponse>
     where
         N: Clone + Send + Sync + 'static,
     {
@@ -89,18 +89,18 @@ where
         let resp = self.post().await?;
 
         let parsed = resp
-            .json::<super::response::AudioTranscriptionResponse>()
+            .json::<super::response::AudioToTextResponse>()
             .await?;
 
         Ok(parsed)
     }
 }
 
-impl<N> HttpClient for AudioTranscriptionRequest<N>
+impl<N> HttpClient for AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize + Clone + Send + Sync + 'static,
 {
-    type Body = AudioTranscriptionBody<N>;
+    type Body = AudioToTextBody<N>;
     type ApiUrl = &'static str;
     type ApiKey = String;
 

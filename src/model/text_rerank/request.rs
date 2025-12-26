@@ -3,15 +3,12 @@ use serde::{Deserialize, Serialize};
 /// Rerank model enum
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum RerankModel {
+    #[default]
     Rerank,
 }
 
-impl Default for RerankModel {
-    fn default() -> Self {
-        RerankModel::Rerank
-    }
-}
 
 /// Request body for rerank API
 #[derive(Debug, Clone, Serialize)]
@@ -82,7 +79,6 @@ impl RerankBody {
     }
 
     /// Optional runtime validation for constraints expressed in the docs
-
     pub fn validate_constraints(&self) -> crate::ZaiResult<()> {
         if self.query.chars().count() > 4096 {
             return Err(crate::client::error::ZaiError::ApiError {
@@ -110,14 +106,13 @@ impl RerankBody {
                 });
             }
         }
-        if let Some(n) = self.top_n {
-            if n > self.documents.len() {
+        if let Some(n) = self.top_n
+            && n > self.documents.len() {
                 return Err(crate::client::error::ZaiError::ApiError {
                     code: 1200,
                     message: "top_n cannot exceed documents length".to_string(),
                 });
             }
-        }
         Ok(())
     }
 }

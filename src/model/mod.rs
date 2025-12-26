@@ -60,7 +60,6 @@
 
 pub mod async_chat;
 pub mod async_chat_get;
-pub mod audio_to_speech;
 pub mod audio_to_text;
 pub mod chat;
 pub mod chat_base_request;
@@ -75,6 +74,7 @@ pub mod moderation;
 pub mod stream_ext;
 pub mod text_embedded;
 pub mod text_rerank;
+pub mod text_to_audio;
 pub mod text_tokenizer;
 pub mod tools;
 pub mod traits;

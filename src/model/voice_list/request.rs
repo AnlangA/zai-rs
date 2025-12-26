@@ -11,6 +11,12 @@ pub struct VoiceListQuery {
     pub voice_type: Option<VoiceType>,
 }
 
+impl Default for VoiceListQuery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VoiceListQuery {
     pub fn new() -> Self {
         Self {

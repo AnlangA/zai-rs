@@ -16,8 +16,8 @@ mod tests {
     #[derive(Debug, Clone)]
     struct TestModel {}
 
-    impl Into<String> for TestModel {
-        fn into(self) -> String {
+    impl From<TestModel> for String {
+        fn from(_val: TestModel) -> Self {
             "cogvideox-3".to_string()
         }
     }

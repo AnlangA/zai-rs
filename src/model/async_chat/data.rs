@@ -112,11 +112,10 @@ where
     }
 
     /// Validate request parameters for non-stream async chat (StreamOff)
-
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::from(e))?;
+            .map_err(crate::client::error::ZaiError::from)?;
         if matches!(self.body.stream, Some(true)) {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: 1200,

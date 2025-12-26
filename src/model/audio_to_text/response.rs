@@ -3,7 +3,7 @@ use validator::Validate;
 
 /// ASR transcription response
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct AudioTranscriptionResponse {
+pub struct AudioToTextResponse {
     /// Task ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,

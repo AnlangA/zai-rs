@@ -46,6 +46,10 @@ use super::traits::*;
 use crate::model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage};
 use crate::{define_model_type, impl_message_binding, impl_model_markers};
 
+define_model_type!(GLM4_7, "glm-4.7");
+impl_message_binding!(GLM4_7, TextMessage);
+impl_model_markers!(GLM4_7: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
+
 define_model_type!(GLM4_6, "glm-4.6");
 impl_message_binding!(GLM4_6, TextMessage);
 impl_model_markers!(GLM4_6: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);

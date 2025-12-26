@@ -65,7 +65,7 @@ impl Moderation {
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::from(e))?;
+            .map_err(crate::client::error::ZaiError::from)?;
         Ok(())
     }
 
@@ -76,7 +76,6 @@ impl Moderation {
     /// ## Returns
     ///
     /// A `ModerationResponse` containing the moderation results and usage statistics.
-
     pub async fn send(&self) -> crate::ZaiResult<ModerationResponse> {
         self.validate()?;
 

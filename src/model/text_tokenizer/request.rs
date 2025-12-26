@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 /// Tokenizer-capable models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum TokenizerModel {
     #[serde(rename = "glm-4-plus")]
+    #[default]
     Glm4Plus,
     #[serde(rename = "glm-4-0520")]
     Glm40520,
@@ -16,11 +18,6 @@ pub enum TokenizerModel {
     Glm4Flash,
 }
 
-impl Default for TokenizerModel {
-    fn default() -> Self {
-        TokenizerModel::Glm4Plus
-    }
-}
 
 /// One message item for tokenizer input
 #[derive(Debug, Clone, Serialize, Deserialize)]

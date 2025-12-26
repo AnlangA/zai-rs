@@ -17,7 +17,7 @@ where
     /// Image generation quality
     /// - HD: generates more refined and detailed images with higher consistency, takes ~20 seconds
     /// - Standard: fast image generation, suitable for scenarios requiring speed, takes ~5-10 seconds
-    /// This parameter only supports cogview-4-250304
+    ///   This parameter only supports cogview-4-250304
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<ImageQuality>,
     /// Image size
@@ -52,7 +52,7 @@ pub enum ImageQuality {
 /// Recommended sizes:
 /// - 1024x1024 (default)
 /// - 768x1344
-/// - 864x1152  
+/// - 864x1152
 /// - 1344x768
 /// - 1152x864
 /// - 1440x720
