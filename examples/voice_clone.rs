@@ -1,4 +1,4 @@
-use zai_rs::model::voice_clone::model::CogTtsClone;
+use zai_rs::model::voice_clone::model::GlmTtsClone;
 use zai_rs::model::voice_clone::response::VoiceCloneResponse;
 use zai_rs::model::voice_clone::*;
 
@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Example values from the spec
-    let model = CogTtsClone {};
+    let model = GlmTtsClone {};
     let voice_name = "my_custom_voice_001";
     let text = "你好，这是一段示例音频的文本内容，用于音色复刻参考。";
     let input = "欢迎使用我们的音色复刻服务，这将生成与示例音频相同音色的语音。";
