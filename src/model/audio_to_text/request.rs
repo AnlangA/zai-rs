@@ -4,7 +4,7 @@ use validator::Validate;
 
 /// Body parameters holder for audio transcription (used to build multipart form)
 #[derive(Debug, Clone, Serialize, Validate)]
-pub struct AudioTranscriptionBody<N>
+pub struct AudioToTextBody<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
@@ -30,7 +30,7 @@ where
     pub user_id: Option<String>,
 }
 
-impl<N> AudioTranscriptionBody<N>
+impl<N> AudioToTextBody<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
