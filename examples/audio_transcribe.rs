@@ -1,4 +1,4 @@
-use zai_rs::model::audio_to_text::audio_asr_model::GlmAsr;
+use zai_rs::model::audio_to_text::model::GlmAsr;
 use zai_rs::model::audio_to_text::response::AudioTranscriptionResponse;
 use zai_rs::model::audio_to_text::*;
 
