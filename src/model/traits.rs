@@ -15,7 +15,7 @@
 //! - [`VideoGen`] - Video generation capability
 //! - [`ImageGen`] - Image generation capability
 //! - [`AudioToText`] - Speech recognition capability
-//! - [`TextToSpeech`] - Text-to-speech capability
+//! - [`TextToAudio`] - Text-to-speech capability
 //! - [`VoiceClone`] - Voice cloning capability
 //!
 //! ### Type Safety
@@ -85,7 +85,7 @@ pub trait AudioToText {}
 ///
 /// Models implementing this trait can convert text input to audio output,
 /// supporting various voices and audio formats.
-pub trait TextToSpeech {}
+pub trait TextToAudio {}
 
 /// Indicates that a model supports voice cloning.
 ///

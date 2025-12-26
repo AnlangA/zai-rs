@@ -5,7 +5,7 @@ use validator::Validate;
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct TtsRequestBody<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     /// TTS model (e.g., cogtts)
     pub model: N,
@@ -40,7 +40,7 @@ where
 
 impl<N> TtsRequestBody<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     pub fn new(model: N) -> Self {
         Self {

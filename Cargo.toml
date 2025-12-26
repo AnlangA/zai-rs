@@ -50,8 +50,8 @@ name = "gen_image"
 path = "examples/gen_image.rs"
 
 [[example]]
-name = "tts_speech"
-path = "examples/tts_speech.rs"
+name = "text_to_audio"
+path = "examples/text_to_audio.rs"
 
 [[example]]
 name = "voice_clone"

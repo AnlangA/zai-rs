@@ -4,17 +4,17 @@ use crate::client::http::HttpClient;
 use serde::Serialize;
 
 /// Text-to-speech request wrapper using JSON body
-pub struct TtsSpeechRequest<N>
+pub struct TextToAudioRequest<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     pub key: String,
     body: TtsRequestBody<N>,
 }
 
-impl<N> TtsSpeechRequest<N>
+impl<N> TextToAudioRequest<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     pub fn new(model: N, key: String) -> Self {
         let body = TtsRequestBody::new(model);
@@ -51,9 +51,9 @@ where
     }
 }
 
-impl<N> HttpClient for TtsSpeechRequest<N>
+impl<N> HttpClient for TextToAudioRequest<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     type Body = TtsRequestBody<N>;
     type ApiUrl = &'static str;
