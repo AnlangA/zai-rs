@@ -87,8 +87,8 @@ name = "web_search"
 path = "examples/web_search.rs"
 
 [[example]]
-name = "audio_transcribe"
-path = "examples/audio_transcribe.rs"
+name = "audio_to_text"
+path = "examples/audio_to_text.rs"
 
 [[example]]
 name = "embedding"

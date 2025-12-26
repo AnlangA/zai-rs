@@ -1,5 +1,5 @@
 use zai_rs::model::audio_to_text::model::GlmAsr;
-use zai_rs::model::audio_to_text::response::AudioTranscriptionResponse;
+use zai_rs::model::audio_to_text::response::AudioToTextResponse;
 use zai_rs::model::audio_to_text::*;
 
 #[tokio::main]
@@ -14,12 +14,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build and send request
     let model = GlmAsr {};
-    let client = AudioTranscriptionRequest::new(model, key)
+    let client = AudioToTextRequest::new(model, key)
         .with_file_path(file_path)
         .with_temperature(0.95)
         .with_stream(false);
 
-    let body: AudioTranscriptionResponse = client.send().await?;
+    let body: AudioToTextResponse = client.send().await?;
     println!("{:#?}", body);
 
     Ok(())
