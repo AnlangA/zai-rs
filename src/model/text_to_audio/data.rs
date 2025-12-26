@@ -1,5 +1,5 @@
 use super::super::traits::*;
-use super::request::{TtsAudioFormat, TtsRequestBody, TtsVoice};
+use super::request::{TtsAudioFormat, TextToAudioBody, TtsVoice};
 use crate::client::http::HttpClient;
 use serde::Serialize;
 
@@ -9,7 +9,7 @@ where
     N: ModelName + TextToAudio + Serialize,
 {
     pub key: String,
-    body: TtsRequestBody<N>,
+    body: TextToAudioBody<N>,
 }
 
 impl<N> TextToAudioRequest<N>
@@ -17,11 +17,11 @@ where
     N: ModelName + TextToAudio + Serialize,
 {
     pub fn new(model: N, key: String) -> Self {
-        let body = TtsRequestBody::new(model);
+        let body = TextToAudioBody::new(model);
         Self { key, body }
     }
 
-    pub fn body_mut(&mut self) -> &mut TtsRequestBody<N> {
+    pub fn body_mut(&mut self) -> &mut TextToAudioBody<N> {
         &mut self.body
     }
 
@@ -55,7 +55,7 @@ impl<N> HttpClient for TextToAudioRequest<N>
 where
     N: ModelName + TextToAudio + Serialize,
 {
-    type Body = TtsRequestBody<N>;
+    type Body = TextToAudioBody<N>;
     type ApiUrl = &'static str;
     type ApiKey = String;
 
