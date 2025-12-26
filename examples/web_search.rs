@@ -12,7 +12,7 @@
 use zai_rs::tool::web_search::{SearchEngine, WebSearchRequest};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger
     let _ = env_logger::try_init();
 

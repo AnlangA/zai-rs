@@ -1,7 +1,6 @@
 use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 
-use tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

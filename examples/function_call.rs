@@ -1,5 +1,4 @@
 use log::info;
-use tokio;
 use zai_rs::model::chat::data::ChatCompletion;
 use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
@@ -83,7 +82,7 @@ fn get_key() -> String {
 /// 从响应中解析第一条 tool_call: 返回 (id, name, arguments)
 fn parse_first_tool_call(v: &serde_json::Value) -> Option<(String, String, String)> {
     let tool_calls = v.pointer("/choices/0/message/tool_calls")?.as_array()?;
-    let tc0 = tool_calls.get(0)?;
+    let tc0 = tool_calls.first()?;
     let id = tc0.get("id")?.as_str()?.to_string();
     let func = tc0.get("function")?;
     let name = func.get("name")?.as_str()?.to_string();

@@ -6,7 +6,7 @@ use zai_rs::batches::*;
 use zai_rs::file::*;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::try_init();
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
@@ -26,13 +26,13 @@ async fn main() -> anyhow::Result<()> {
             ]
         }
     });
-    writeln!(f, "{}", line.to_string())?;
+    writeln!(f, "{}", line)?;
 
     // 2) Upload the .jsonl file as purpose=batch
     let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
         .with_content_type("application/jsonl");
     let file: FileObject = upload.send().await?;
-    let file_id = file.id.ok_or_else(|| anyhow::anyhow!("missing file id"))?;
+    let file_id = file.id.ok_or_else(|| Box::<dyn std::error::Error>::from("missing file id"))?;
 
     // 3) Create a batch task using the uploaded file
     let created: CreateBatchResponse =
@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     let batch_id = created
         .id
         .clone()
-        .ok_or_else(|| anyhow::anyhow!("create returned no batch id"))?;
+        .ok_or_else(|| Box::<dyn std::error::Error>::from("create returned no batch id"))?;
     println!(
         "created batch: id={:?} status={:?}",
         created.id, created.status

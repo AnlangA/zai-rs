@@ -2,7 +2,6 @@ use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::*;
 
 use std::io::{self, Write};
-use tokio;
 
 fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
     // 简化版：假设服务端总是返回纯字符串内容
@@ -42,9 +41,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 获取第一条 choice 的文本内容
         let ai_text = body
             .choices()
-            .and_then(|cs| cs.get(0))
+            .and_then(|cs| cs.first())
             .and_then(|c| c.message().content())
-            .and_then(|v| extract_text_from_content(v))
+            .and_then(extract_text_from_content)
             .unwrap_or_else(|| "<empty>".to_string());
 
         println!("AI> {}\n", ai_text);

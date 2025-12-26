@@ -23,7 +23,7 @@ fn make_jsonl_line(custom_id: &str, user_content: &str) -> String {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::try_init();
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
     let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
         .with_content_type("application/jsonl");
     let file: FileObject = upload.send().await?;
-    let file_id = file.id.ok_or_else(|| anyhow::anyhow!("missing file id"))?;
+    let file_id = file.id.ok_or_else(|| Box::<dyn std::error::Error>::from("missing file id"))?;
 
     // Step 3: Create the batch task using the send() interface
     let create = CreateBatchRequest::new(key.clone(), file_id, BatchEndpoint::ChatCompletions)

@@ -7,7 +7,6 @@
 //!   cargo run --example tool_stream_min
 
 use serde_json::json;
-use tokio;
 use zai_rs::model::*;
 
 #[tokio::main]
@@ -46,15 +45,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     client
         .stream_for_each(move |chunk: ChatStreamResponse| async move {
-            chunk
+            if let Some(tool_calls) = chunk
                 .choices
                 .first()
                 .and_then(|choice| choice.delta.as_ref())
                 .and_then(|delta| delta.tool_calls.as_ref())
-                .and_then(|tool_calls| {
-                    println!("{:#?}", tool_calls);
-                    Some(())
-                });
+            {
+                println!("{:#?}", tool_calls);
+            }
             Ok(())
         })
         .await?;

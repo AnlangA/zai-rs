@@ -1,10 +1,8 @@
 use zai_rs::model::*;
 
 use base64::Engine;
-use chrono;
 use std::fs::File;
 use std::io::Write;
-use tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let audio_b64 = body
                 .choices()
-                .and_then(|cs| cs.get(0))
+                .and_then(|cs| cs.first())
                 .and_then(|c| c.message().audio())
                 .and_then(|a| a.data());
 

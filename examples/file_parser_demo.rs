@@ -7,7 +7,7 @@ use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolTy
 use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("ZHIPU_API_KEY")?;
 
     // Create test file
@@ -18,14 +18,14 @@ This demonstrates the file parsing capabilities of the Zhipu AI API.
 The parser should extract and return the text content.
 "#;
 
-    std::fs::write(&test_file_path, test_content)?;
+    std::fs::write(test_file_path, test_content)?;
 
     // === Method 1: Basic file parsing with wait for result ===
     println!("\n=== Method 1: File parsing with polling ===");
 
     let create_request = FileParserCreateRequest::new(
         api_key.clone(),
-        &test_file_path,
+        test_file_path,
         ToolType::Lite,
         FileType::TXT,
     )?;
@@ -67,7 +67,7 @@ The parser should extract and return the text content.
 
     // Cleanup
     if test_file_path.exists() {
-        std::fs::remove_file(&test_file_path)?;
+        std::fs::remove_file(test_file_path)?;
         println!("Cleaned up test file");
     }
 

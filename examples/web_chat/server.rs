@@ -9,7 +9,6 @@ use axum::{
     response::{Html, Sse, sse::Event},
     routing::{get, post},
 };
-use env_logger;
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
@@ -126,9 +125,9 @@ async fn chat_handler(
         Ok(body) => {
             let ai_text = body
                 .choices()
-                .and_then(|cs| cs.get(0))
+                .and_then(|cs| cs.first())
                 .and_then(|c| c.message().content())
-                .and_then(|v| extract_text_from_content(v))
+                .and_then(extract_text_from_content)
                 .unwrap_or_else(|| "抱歉，我现在无法回复。".to_string());
 
             // Add AI response to session
@@ -183,15 +182,15 @@ async fn chat_stream_handler(
         let accumulated_response = Arc::new(RwLock::new(String::new()));
         let accumulated_clone = accumulated_response.clone();
 
-        if let Err(_) = streaming_client
+        if (streaming_client
             .stream_for_each(|chunk: ChatStreamResponse| {
                 let tx = tx.clone();
                 let session_id = session_id_clone.clone();
                 let acc_ref = accumulated_clone.clone();
                 async move {
-                    if let Some(choice) = chunk.choices.get(0) {
-                        if let Some(delta) = &choice.delta {
-                            if let Some(content) = &delta.content {
+                    if let Some(choice) = chunk.choices.first()
+                        && let Some(delta) = &choice.delta
+                            && let Some(content) = &delta.content {
                                 // 累积响应内容
                                 {
                                     let mut acc = acc_ref.write().await;
@@ -205,21 +204,19 @@ async fn chat_stream_handler(
 
                                 let stream_chunk = StreamChunk {
                                     content: content.clone(),
-                                    session_id: session_id,
+                                    session_id,
                                     done: false,
                                 };
-                                if let Err(_) = tx.send(stream_chunk).await {
+                                if (tx.send(stream_chunk).await).is_err() {
                                     eprintln!("❌ 发送流式数据块失败");
                                 } else {
                                     eprintln!("✅ 流式数据块已发送");
                                 }
                             }
-                        }
-                    }
                     Ok(())
                 }
             })
-            .await
+            .await).is_err()
         {
             // Send error chunk if streaming fails
             let error_chunk = StreamChunk {

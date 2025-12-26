@@ -5,7 +5,7 @@ use zai_rs::batches::*;
 use zai_rs::file::*;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::try_init();
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
