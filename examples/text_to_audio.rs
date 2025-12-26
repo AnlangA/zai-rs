@@ -10,14 +10,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build TTS request
     let model = GlmTts {};
-    let input = "你好，今天天气怎么样";
+    let input =
+        "你好，我是你的朋友，我会rap:\"床前明月光，嘿嘿！疑是地上霜。举头望明月，低头思故乡。\"";
     let client = TextToAudioRequest::new(model, key)
         .with_input(input)
         .with_voice(TtsVoice::Tongtong)
         .with_speed(1.0)
         .with_volume(1.0)
         .with_response_format(TtsAudioFormat::Wav)
-        .with_watermark_enabled(true);
+        .with_watermark_enabled(false);
 
     // Send and write audio to file
     let resp = client.post().await?;
