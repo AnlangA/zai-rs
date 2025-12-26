@@ -19,7 +19,6 @@ impl DocumentImageListRequest {
     }
 
     /// Send POST request and parse typed response
-
     pub async fn send(&self) -> crate::ZaiResult<DocumentImageListResponse> {
         let resp: reqwest::Response = self.post().await?;
 

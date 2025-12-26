@@ -67,7 +67,6 @@ impl DocumentDeleteRequest {
     }
 
     /// Send delete request and parse typed response
-
     pub async fn send(&self) -> crate::ZaiResult<DocumentDeleteResponse> {
         let resp = self.delete().await?;
 

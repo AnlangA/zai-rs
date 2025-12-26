@@ -141,7 +141,7 @@ pub struct Choice {
 /// Notes:
 /// - Depending on the model/mode, only one of `content`, `audio`, or `tool_calls` may be set.
 /// - Prefer `content` for final text; `reasoning_content` may contain internal traces (when available).
-
+///
 /// Assistant message payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Message {
@@ -272,7 +272,6 @@ pub struct MCPInputSchema {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Input schema type for MCP tools.
 /// Currently only `object` is observed; kept as an enum for forward compatibility.
-
 #[serde(rename_all = "lowercase")]
 pub enum MCPInputType {
     Object,
@@ -324,7 +323,6 @@ pub struct Usage {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 /// Details for how prompt tokens were accounted.
 /// Fields here are provider-specific and may expand in the future.
-
 pub struct PromptTokensDetails {
     /// Number of tokens hit by cache
     #[serde(skip_serializing_if = "Option::is_none")]

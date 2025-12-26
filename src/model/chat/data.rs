@@ -225,13 +225,12 @@ where
     }
 
     /// Validate request parameters for non-stream chat (StreamOff)
-
     pub fn validate(&self) -> crate::ZaiResult<()> {
         // Field-level validation from ChatBody (temperature/top_p/max_tokens/user_id/stop...)
 
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::from(e))?;
+            .map_err(crate::client::error::ZaiError::from)?;
         // Ensure not accidentally enabling stream in StreamOff state
 
         if matches!(self.body.stream, Some(true)) {

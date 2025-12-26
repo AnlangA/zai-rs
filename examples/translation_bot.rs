@@ -36,7 +36,6 @@
 
 use std::io::{self, Write};
 use std::sync::Arc;
-use tokio;
 use tokio::sync::Mutex;
 use zai_rs::model::*;
 
@@ -188,8 +187,7 @@ impl TranslationBot {
                 let finish = finish_clone.clone();
                 async move {
                     if let Some(content) = chunk
-                        .choices
-                        .get(0)
+                        .choices.first()
                         .and_then(|c| c.delta.as_ref())
                         .and_then(|d| d.content.as_deref())
                     {
@@ -202,7 +200,7 @@ impl TranslationBot {
                     }
 
                     if let Some(reason) =
-                        chunk.choices.get(0).and_then(|c| c.finish_reason.as_ref())
+                        chunk.choices.first().and_then(|c| c.finish_reason.as_ref())
                     {
                         let mut finish_guard = finish.lock().await;
                         *finish_guard = Some(reason.clone());

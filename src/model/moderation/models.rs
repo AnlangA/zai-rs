@@ -32,17 +32,14 @@ where
 
 /// Content moderation model type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ModerationModel {
     /// Default moderation model
     #[serde(rename = "moderation")]
+    #[default]
     Moderation,
 }
 
-impl Default for ModerationModel {
-    fn default() -> Self {
-        Self::Moderation
-    }
-}
 
 /// Moderation input content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,21 +111,19 @@ impl ModerationRequest {
         let mut errors = validator::ValidationErrors::new();
 
         // Validate text input length
-        if let ModerationInput::Text(text) = &self.input {
-            if text.len() > 2000 {
+        if let ModerationInput::Text(text) = &self.input
+            && text.len() > 2000 {
                 errors.add(
                     "input",
                     validator::ValidationError::new("text_length_exceeded"),
                 );
             }
-        }
 
         // Validate multimedia URL
-        if let ModerationInput::Multimedia(multimedia) = &self.input {
-            if multimedia.url.parse::<url::Url>().is_err() {
+        if let ModerationInput::Multimedia(multimedia) = &self.input
+            && multimedia.url.parse::<url::Url>().is_err() {
                 errors.add("input", validator::ValidationError::new("invalid_url"));
             }
-        }
 
         if errors.is_empty() {
             Ok(())

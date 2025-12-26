@@ -183,8 +183,8 @@ impl WebSearchBody {
             })?;
 
         // Additional validation for count based on search engine
-        if let Some(count) = self.count {
-            if matches!(self.search_engine, SearchEngine::SearchProSogou) {
+        if let Some(count) = self.count
+            && matches!(self.search_engine, SearchEngine::SearchProSogou) {
                 match count {
                     10 | 20 | 30 | 40 | 50 => {}
                     _ => {
@@ -197,7 +197,6 @@ impl WebSearchBody {
                     }
                 }
             }
-        }
 
         Ok(())
     }

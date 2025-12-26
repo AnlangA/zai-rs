@@ -1015,6 +1015,12 @@ pub struct Audio {
     pub id: Option<String>,
 }
 
+impl Default for Audio {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Audio {
     /// Creates a new Audio instance with the given ID.
     ///

@@ -20,6 +20,12 @@ pub struct BatchesListQuery {
     pub limit: Option<u32>,
 }
 
+impl Default for BatchesListQuery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BatchesListQuery {
     /// Create an empty query (no filters)
     pub fn new() -> Self {
@@ -85,7 +91,6 @@ impl BatchesListRequest {
     }
 
     /// Send the request and parse typed response.
-
     pub async fn send(&self) -> ZaiResult<BatchesListResponse> {
         let resp: reqwest::Response = self.get().await?;
 

@@ -94,29 +94,26 @@ impl DocumentUploadFileRequest {
     }
 
     /// Validate cross-field constraints not expressible via `validator`
-
     fn validate_cross(&self) -> crate::ZaiResult<()> {
         // When knowledge_type is Custom (5), sentence_size should be within 20..=2000
         if let Some(DocumentSliceType::Custom) = self.options.knowledge_type {
             // sentence_size recommended; API shows default 300; we ensure range if provided
-            if let Some(sz) = self.options.sentence_size {
-                if !(20..=2000).contains(&sz) {
+            if let Some(sz) = self.options.sentence_size
+                && !(20..=2000).contains(&sz) {
                     return Err(crate::client::error::ZaiError::ApiError {
                         code: 1200,
                         message: "sentence_size must be 20..=2000 when knowledge_type=Custom (5)"
                             .to_string(),
                     });
                 }
-            }
         }
-        if let Some(ref w) = self.options.word_num_limit {
-            if !w.chars().all(|c| c.is_ascii_digit()) {
+        if let Some(ref w) = self.options.word_num_limit
+            && !w.chars().all(|c| c.is_ascii_digit()) {
                 return Err(crate::client::error::ZaiError::ApiError {
                     code: 1200,
                     message: "word_num_limit must be numeric string".to_string(),
                 });
             }
-        }
         if self.files.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: 1200,
@@ -127,7 +124,6 @@ impl DocumentUploadFileRequest {
     }
 
     /// Send multipart request and parse typed response
-
     pub async fn send(&self) -> crate::ZaiResult<UploadFileResponse> {
         // Field validations
         self.options.validate()?;
@@ -230,17 +226,17 @@ impl HttpClient for DocumentUploadFileRequest {
             }
 
             if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(crate::client::error::ZaiError::from_api_response(
+                Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
                     0,
                     parsed.error.message,
-                ));
+                ))
             } else {
-                return Err(crate::client::error::ZaiError::from_api_response(
+                Err(crate::client::error::ZaiError::from_api_response(
                     status.as_u16(),
                     0,
                     text,
-                ));
+                ))
             }
         }
     }

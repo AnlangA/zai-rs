@@ -90,16 +90,14 @@ where
             });
         }
         // Validate custom size when present
-        if let Some(size) = &self.body.size {
-            if let super::image_request::ImageSize::Custom { .. } = size {
-                if !size.is_valid() {
+        if let Some(size) = &self.body.size
+            && let super::image_request::ImageSize::Custom { .. } = size
+                && !size.is_valid() {
                     return Err(crate::client::error::ZaiError::ApiError {
                         code: 1200,
                         message: "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels".to_string(),
                     });
                 }
-            }
-        }
         Ok(())
     }
 

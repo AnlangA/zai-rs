@@ -22,7 +22,6 @@ impl KnowledgeCapacityRequest {
     }
 
     /// Send and parse typed response
-
     pub async fn send(&self) -> crate::ZaiResult<KnowledgeCapacityResponse> {
         let resp = self.get().await?;
 

@@ -97,11 +97,10 @@ where
     N: ModelName + VideoGen + Serialize,
 {
     /// Validate request parameters for video generation
-
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::from(e))?;
+            .map_err(crate::client::error::ZaiError::from)?;
         Ok(())
     }
 }

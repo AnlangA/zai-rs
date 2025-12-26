@@ -132,7 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(calls) = last_resp
         .choices()
-        .and_then(|v| v.get(0))
+        .and_then(|v| v.first())
         .and_then(|c| c.message().tool_calls())
     {
         let tool_msgs = executor.execute_tool_calls_parallel(calls).await;

@@ -109,11 +109,14 @@ pub async fn call_mcp_tool(
     server: &ServerSink,
     name: impl Into<String>,
     args: Option<Value>,
-) -> anyhow::Result<(String, Value)> {
+) -> crate::ZaiResult<(String, Value)> {
     // Validate name and normalize args
     let name: String = name.into();
     if name.trim().is_empty() {
-        anyhow::bail!("tool name cannot be empty");
+        return Err(crate::client::error::ZaiError::Unknown {
+            code: 0,
+            message: "tool name cannot be empty".to_string(),
+        });
     }
     let arguments = match args {
         Some(Value::Object(map)) => Some(map),
@@ -132,7 +135,11 @@ pub async fn call_mcp_tool(
             name: name.clone().into(),
             arguments,
         })
-        .await?;
+        .await
+        .map_err(|e| crate::client::error::ZaiError::Unknown {
+            code: 0,
+            message: format!("RMCP service error: {}", e),
+        })?;
     Ok((name, call_tool_result_to_json(&res)))
 }
 
@@ -141,7 +148,7 @@ pub async fn call_mcp_tool(
 pub async fn call_mcp_tools_collect<I>(
     server: &ServerSink,
     calls: I,
-) -> anyhow::Result<HashMap<String, Value>>
+) -> crate::ZaiResult<HashMap<String, Value>>
 where
     I: IntoIterator<Item = (String, Option<Value>)>,
 {
@@ -175,12 +182,12 @@ impl McpToolCaller {
         &self,
         name: impl Into<String>,
         args: Option<Value>,
-    ) -> anyhow::Result<(String, Value)> {
+    ) -> crate::ZaiResult<(String, Value)> {
         call_mcp_tool(&self.server, name, args).await
     }
 
     /// Batch call tools and collect results.
-    pub async fn call_collect<I>(&self, calls: I) -> anyhow::Result<HashMap<String, Value>>
+    pub async fn call_collect<I>(&self, calls: I) -> crate::ZaiResult<HashMap<String, Value>>
     where
         I: IntoIterator<Item = (String, Option<Value>)>,
     {
@@ -202,14 +209,14 @@ impl McpToolCaller {
 pub async fn execute_tool_calls_as_messages(
     caller: &McpToolCaller,
     resp: &crate::model::chat_base_response::ChatCompletionResponse,
-) -> anyhow::Result<Vec<crate::model::chat_message_types::TextMessage>> {
+) -> crate::ZaiResult<Vec<crate::model::chat_message_types::TextMessage>> {
     use crate::model::chat_base_response::ToolCallMessage;
     use crate::model::chat_message_types::TextMessage;
 
     let mut out: Vec<TextMessage> = Vec::new();
     let calls: Option<&[ToolCallMessage]> = resp
         .choices()
-        .and_then(|v| v.get(0))
+        .and_then(|v| v.first())
         .and_then(|c| c.message().tool_calls());
 
     let Some(calls) = calls else { return Ok(out) };
@@ -260,10 +267,13 @@ pub async fn execute_tool_calls_as_messages(
         };
 
         // Call RMCP server via rmcp-kits
-        let (_tool, payload) = caller
+        let (_tool, payload): (String, Value) = caller
             .call(name, args_value)
             .await
-            .map_err(|e| anyhow::anyhow!("RMCP call_tool failed: {}", e))?;
+            .map_err(|e| crate::client::error::ZaiError::Unknown {
+                code: 0,
+                message: format!("RMCP call_tool failed: {}", e),
+            })?;
 
         // Wrap tool result as a tool message with id
         out.push(TextMessage::tool_with_id(payload.to_string(), id));
@@ -289,7 +299,7 @@ pub async fn run_mcp_tool_roundtrip<N>(
         crate::model::traits::StreamOff,
     >,
     system_hint_after_tools: Option<&str>,
-) -> anyhow::Result<crate::model::chat_base_response::ChatCompletionResponse>
+) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
 where
     N: crate::model::traits::ModelName + crate::model::traits::Chat + serde::Serialize,
     (N, crate::model::chat_message_types::TextMessage): crate::model::traits::Bounded,
@@ -300,7 +310,7 @@ where
 
     log::info!("AI response: {:#?}", first_resp);
 
-    let tool_msgs = execute_tool_calls_as_messages(caller, &first_resp).await?;
+    let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> = execute_tool_calls_as_messages(caller, &first_resp).await?;
 
     if tool_msgs.is_empty() {
         return Ok(first_resp);
@@ -329,17 +339,16 @@ where
 pub fn extract_final_text(
     resp: &crate::model::chat_base_response::ChatCompletionResponse,
 ) -> Option<String> {
-    let msg = resp.choices()?.get(0)?.message();
+    let msg = resp.choices()?.first()?.message();
     match msg.content() {
         Some(serde_json::Value::String(s)) => Some(s.clone()),
         Some(serde_json::Value::Array(arr)) => arr.iter().find_map(|item| {
-            if let serde_json::Value::Object(obj) = item {
-                if obj.get("type").and_then(|v| v.as_str()) == Some("text") {
-                    return obj
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                }
+            if let serde_json::Value::Object(obj) = item
+                && obj.get("type").and_then(|v| v.as_str()) == Some("text") {
+                return obj
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
             }
             None
         }),

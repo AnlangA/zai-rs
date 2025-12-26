@@ -51,11 +51,10 @@ pub fn parse_tool_calls_robust(response: &Value) -> Vec<LlmToolCall<'_>> {
     } else if let Some(choices) = response.get("choices").and_then(|v| v.as_array()) {
         // Choices format
         for choice in choices {
-            if let Some(msg) = choice.get("message") {
-                if let Some(calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
+            if let Some(msg) = choice.get("message")
+                && let Some(calls) = msg.get("tool_calls").and_then(|v| v.as_array()) {
                     results.extend(parse_tool_calls_array(calls));
                 }
-            }
         }
     } else if let Some(function_call) = response.get("function_call") {
         // Legacy function_call format

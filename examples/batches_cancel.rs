@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ]
         }
     });
-    writeln!(f, "{}", line.to_string())?;
+    writeln!(f, "{}", line)?;
 
     // 2) Upload the .jsonl file as purpose=batch
     let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)

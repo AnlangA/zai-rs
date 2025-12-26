@@ -1,4 +1,3 @@
-use tokio;
 use zai_rs::client::http::*;
 use zai_rs::model::async_chat::AsyncChatCompletion;
 use zai_rs::model::async_chat_get::AsyncChatGetRequest;
@@ -63,10 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(body) => match body.task_status() {
                     Some(TaskStatus::Success) => {
                         println!("状态: 完成");
-                        body.choices()
+                        if let Some(content) = body.choices()
                             .and_then(|choices| choices.first())
-                            .and_then(|choice| choice.message.content())
-                            .map(|content| println!("回复: {}", content));
+                            .and_then(|choice| choice.message.content()) { println!("回复: {}", content) }
                         break;
                     }
                     Some(TaskStatus::Fail) => {

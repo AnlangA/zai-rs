@@ -21,7 +21,6 @@ impl FileContentRequest {
     }
 
     /// Send the request and return raw bytes of the file content.
-
     pub async fn send(&self) -> crate::ZaiResult<Vec<u8>> {
         let resp: reqwest::Response = self.get().await?;
 
@@ -42,19 +41,16 @@ impl FileContentRequest {
     }
 
     /// It will create parent directories if missing.
-
     /// Returns the number of bytes written.
-
     pub async fn send_to<P: AsRef<std::path::Path>>(&self, path: P) -> crate::ZaiResult<usize> {
         let bytes = self.send().await?;
 
         let p = path.as_ref();
 
-        if let Some(parent) = p.parent() {
-            if !parent.as_os_str().is_empty() {
+        if let Some(parent) = p.parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
-        }
         use std::io::Write;
         let mut f = std::fs::File::create(p)?;
         f.write_all(&bytes)?;

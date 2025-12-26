@@ -3,7 +3,6 @@ use zai_rs::model::chat_base_response::ChatCompletionResponse;
 use zai_rs::model::chat_base_response::TaskStatus;
 use zai_rs::model::gen_video_async::*;
 
-use tokio;
 use zai_rs::client::http::*;
 
 #[tokio::main]

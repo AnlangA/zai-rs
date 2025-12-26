@@ -75,21 +75,17 @@ impl EmbeddingBody {
     pub fn validate_model_constraints(&self) -> Result<(), validator::ValidationError> {
         use validator::ValidationError;
         // If input is Batch for embedding-3, enforce max 64 items (per API doc)
-        if let EmbeddingModel::Embedding3 = self.model {
-            if let EmbeddingInput::Batch(ref v) = self.input {
-                if v.len() > 64 {
+        if let EmbeddingModel::Embedding3 = self.model
+            && let EmbeddingInput::Batch(ref v) = self.input
+                && v.len() > 64 {
                     return Err(ValidationError::new("batch_too_long"));
                 }
-            }
-        }
         // If model = embedding-2 and dimensions is Some, it must be 1024
-        if let EmbeddingModel::Embedding2 = self.model {
-            if let Some(d) = self.dimensions {
-                if d != EmbeddingDimensions::D1024 {
+        if let EmbeddingModel::Embedding2 = self.model
+            && let Some(d) = self.dimensions
+                && d != EmbeddingDimensions::D1024 {
                     return Err(ValidationError::new("embedding2_dims_must_be_1024"));
                 }
-            }
-        }
         Ok(())
     }
 }

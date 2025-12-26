@@ -124,7 +124,6 @@ impl CreateKnowledgeRequest {
     }
 
     /// Validate and send, returning typed response
-
     pub async fn send(&self) -> ZaiResult<CreateKnowledgeResponse> {
         self.body.validate()?;
 

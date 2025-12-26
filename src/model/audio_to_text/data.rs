@@ -59,7 +59,7 @@ where
 
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::from(e))?;
+            .map_err(crate::client::error::ZaiError::from)?;
         // Ensure file path exists
 
         let p =
