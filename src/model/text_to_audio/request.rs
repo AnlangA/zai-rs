@@ -3,9 +3,9 @@ use serde::Serialize;
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Validate)]
-pub struct TtsRequestBody<N>
+pub struct TextToAudioBody<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     /// TTS model (e.g., cogtts)
     pub model: N,
@@ -38,9 +38,9 @@ where
     pub watermark_enabled: Option<bool>,
 }
 
-impl<N> TtsRequestBody<N>
+impl<N> TextToAudioBody<N>
 where
-    N: ModelName + TextToSpeech + Serialize,
+    N: ModelName + TextToAudio + Serialize,
 {
     pub fn new(model: N) -> Self {
         Self {

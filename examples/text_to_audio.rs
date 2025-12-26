@@ -1,6 +1,6 @@
 use zai_rs::client::http::*;
-use zai_rs::model::audio_to_speech::tts_model::CogTts;
-use zai_rs::model::audio_to_speech::*;
+use zai_rs::model::text_to_audio::model::GlmTts;
+use zai_rs::model::text_to_audio::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,9 +9,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Build TTS request
-    let model = CogTts {};
+    let model = GlmTts {};
     let input = "你好，今天天气怎么样";
-    let client = TtsSpeechRequest::new(model, key)
+    let client = TextToAudioRequest::new(model, key)
         .with_input(input)
         .with_voice(TtsVoice::Tongtong)
         .with_speed(1.0)
