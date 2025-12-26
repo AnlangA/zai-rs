@@ -1,6 +1,6 @@
 [package]
 name = "zai-rs"
-version = "0.1.7"
+version = "0.1.9"
 edition = "2024"
 authors = ["anlang <2682525840@qq.com>"]
 description = "一个 Rust SDK, 用于调用 智普AI API"
@@ -50,8 +50,8 @@ name = "gen_image"
 path = "examples/gen_image.rs"
 
 [[example]]
-name = "tts_speech"
-path = "examples/tts_speech.rs"
+name = "text_to_audio"
+path = "examples/text_to_audio.rs"
 
 [[example]]
 name = "voice_clone"
@@ -87,8 +87,8 @@ name = "web_search"
 path = "examples/web_search.rs"
 
 [[example]]
-name = "audio_transcribe"
-path = "examples/audio_transcribe.rs"
+name = "audio_to_text"
+path = "examples/audio_to_text.rs"
 
 [[example]]
 name = "embedding"
