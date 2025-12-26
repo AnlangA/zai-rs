@@ -14,6 +14,20 @@ use crate::model::chat_base_response::ToolCallMessage;
 use crate::model::chat_message_types::TextMessage;
 use crate::model::tools::{Function, Tools};
 
+/// Type alias for the complex handler type to reduce complexity warnings
+type ToolHandler = std::sync::Arc<
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
 /// Enhanced retry configuration with exponential backoff
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
@@ -133,6 +147,12 @@ impl std::fmt::Debug for ToolExecutor {
             .field("tool_count", &tool_count)
             .field("config", &self.config)
             .finish()
+    }
+}
+
+impl Default for ToolExecutor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -268,21 +288,7 @@ impl ToolExecutor {
     pub fn add_functions_from_dir_with_registry(
         &self,
         dir: impl AsRef<std::path::Path>,
-        handlers: &std::collections::HashMap<
-            String,
-            std::sync::Arc<
-                dyn Fn(
-                        serde_json::Value,
-                    ) -> std::pin::Pin<
-                        Box<
-                            dyn std::future::Future<
-                                    Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                                > + Send,
-                        >,
-                    > + Send
-                    + Sync,
-            >,
-        >,
+        handlers: &std::collections::HashMap<String, ToolHandler>,
         strict: bool,
     ) -> ToolResult<Vec<String>> {
         use serde_json::Value;
@@ -538,6 +544,12 @@ impl ToolExecutor {
 /// Builder for creating tool executors with fluent API
 pub struct ExecutorBuilder {
     config: ExecutionConfig,
+}
+
+impl Default for ExecutorBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ExecutorBuilder {

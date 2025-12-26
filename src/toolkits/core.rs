@@ -171,23 +171,26 @@ pub mod conversions {
 // Single-struct dynamic FunctionTool
 // -----------------------------
 
+/// Type alias for the complex handler type to reduce complexity warnings
+type ToolHandler = std::sync::Arc<
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
 /// A single-struct tool that carries metadata, JSON schema, and an async handler
 pub struct FunctionTool {
     metadata: ToolMetadata,
     input_schema: serde_json::Value,
     compiled_schema: Arc<jsonschema::Validator>,
-    handler: std::sync::Arc<
-        dyn Fn(
-                serde_json::Value,
-            ) -> std::pin::Pin<
-                Box<
-                    dyn std::future::Future<
-                            Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                        > + Send,
-                >,
-            > + Send
-            + Sync,
-    >,
+    handler: ToolHandler,
 }
 
 impl Clone for FunctionTool {
@@ -345,20 +348,7 @@ pub struct FunctionToolBuilder {
     // Optional staged schema pieces for convenience building when schema() is omitted or for merging
     staged_properties: Option<serde_json::Map<String, serde_json::Value>>,
     staged_required: Vec<String>,
-    handler: Option<
-        std::sync::Arc<
-            dyn Fn(
-                    serde_json::Value,
-                ) -> std::pin::Pin<
-                    Box<
-                        dyn std::future::Future<
-                                Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                            > + Send,
-                    >,
-                > + Send
-                + Sync,
-        >,
-    >,
+    handler: Option<ToolHandler>,
 }
 
 impl FunctionToolBuilder {
