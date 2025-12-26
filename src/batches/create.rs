@@ -81,13 +81,11 @@ impl CreateBatchRequest {
     }
 
     /// Validate body using `validator`
-
     pub fn validate(&self) -> ZaiResult<()> {
         self.body.validate().map_err(|e| e.into())
     }
 
     /// Send request and parse typed response
-
     pub async fn send(&self) -> ZaiResult<CreateBatchResponse> {
         self.validate()?;
 
