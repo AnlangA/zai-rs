@@ -5,7 +5,7 @@
 use zai_rs::model::moderation::*;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
     let api_key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable not set");

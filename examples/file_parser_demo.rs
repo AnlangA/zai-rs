@@ -7,7 +7,7 @@ use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolTy
 use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("ZHIPU_API_KEY")?;
 
     // Create test file

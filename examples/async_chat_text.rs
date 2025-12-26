@@ -52,10 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key.clone());
         loop {
             let result = async {
-                let resp = request.get().await.map_err(|e| anyhow::anyhow!(e))?;
+                let resp = request.get().await.map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
                 resp.json::<ChatCompletionResponse>()
                     .await
-                    .map_err(|e| anyhow::anyhow!(e))
+                    .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))
             }
             .await;
 
