@@ -19,7 +19,7 @@
 //! use zai_rs::tool::web_search::{WebSearchRequest, SearchEngine};
 //!
 //! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let api_key = std::env::var("ZHIPU_API_KEY")?;
 //!
 //!     let request = WebSearchRequest::new(

@@ -17,7 +17,7 @@
 //! use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
 //!
 //! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let api_key = std::env::var("ZHIPU_API_KEY")?;
 //!     let task_id = "task_123456789";
 //!
