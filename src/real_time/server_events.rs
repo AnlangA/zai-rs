@@ -234,7 +234,6 @@ impl SessionCreatedEvent {
 }
 
 /// This duplicate definition has been removed.
-
 /// Transcription session updated event.
 #[derive(Clone, Debug, Serialize, Deserialize, Validate, Default)]
 #[serde(default)]
@@ -776,15 +775,18 @@ mod tests {
 
     #[test]
     fn test_server_event_serialization_with_type_field() {
-        let mut session = Session::default();
-        session.model = Some("glm-realtime".to_string());
-        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
-        session.voice = Some("tongtong".to_string());
+        let session = Session {
+            model: Some("glm-realtime".to_string()),
+            modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+            voice: Some("tongtong".to_string()),
+            ..Default::default()
+        };
 
-        let mut session_created_event = SessionCreatedEvent::default();
-        session_created_event.event_id = Some("event123".to_string());
-        session_created_event.client_timestamp = Some(1625097600000);
-        session_created_event.session = session;
+        let session_created_event = SessionCreatedEvent {
+            event_id: Some("event123".to_string()),
+            client_timestamp: Some(1625097600000),
+            session,
+        };
 
         let server_event = ServerEvent::SessionCreated(session_created_event);
         let json = serde_json::to_string(&server_event).unwrap();
@@ -806,14 +808,17 @@ mod tests {
 
     #[test]
     fn test_transcription_session_updated_event_serialization() {
-        let mut session = TranscriptionSession::default();
-        session.input_audio_format = Some("pcm".to_string());
-        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
+        let session = TranscriptionSession {
+            input_audio_format: Some("pcm".to_string()),
+            modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+            ..Default::default()
+        };
 
-        let mut event = TranscriptionSessionUpdatedEvent::default();
-        event.event_id = Some("event123".to_string());
-        event.client_timestamp = Some(1625097600000);
-        event.session = session;
+        let event = TranscriptionSessionUpdatedEvent {
+            event_id: Some("event123".to_string()),
+            client_timestamp: Some(1625097600000),
+            session,
+        };
 
         let server_event = ServerEvent::TranscriptionSessionUpdated(event);
         let json = serde_json::to_string(&server_event).unwrap();
@@ -824,15 +829,18 @@ mod tests {
 
     #[test]
     fn test_session_created_event_serialization() {
-        let mut session = Session::default();
-        session.model = Some("glm-realtime".to_string());
-        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
-        session.voice = Some("tongtong".to_string());
+        let session = Session {
+            model: Some("glm-realtime".to_string()),
+            modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+            voice: Some("tongtong".to_string()),
+            ..Default::default()
+        };
 
-        let mut event = SessionCreatedEvent::default();
-        event.event_id = Some("session-123".to_string());
-        event.client_timestamp = Some(1625097600000);
-        event.session = session;
+        let event = SessionCreatedEvent {
+            event_id: Some("session-123".to_string()),
+            client_timestamp: Some(1625097600000),
+            session,
+        };
 
         let json = event.to_json().unwrap();
         let deserialized_event: SessionCreatedEvent =
@@ -851,15 +859,18 @@ mod tests {
 
     #[test]
     fn test_session_updated_event_serialization() {
-        let mut session = Session::default();
-        session.model = Some("glm-realtime".to_string());
-        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
-        session.voice = Some("tongtong".to_string());
+        let session = Session {
+            model: Some("glm-realtime".to_string()),
+            modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+            voice: Some("tongtong".to_string()),
+            ..Default::default()
+        };
 
-        let mut event = SessionUpdatedEvent::default();
-        event.event_id = Some("session-123".to_string());
-        event.client_timestamp = Some(1625097600000);
-        event.session = session;
+        let event = SessionUpdatedEvent {
+            event_id: Some("session-123".to_string()),
+            client_timestamp: Some(1625097600000),
+            session,
+        };
 
         let json = event.to_json().unwrap();
         let deserialized_event: SessionUpdatedEvent =
@@ -878,12 +889,15 @@ mod tests {
 
     #[test]
     fn test_error_event_serialization() {
-        let mut error_info = ErrorInfo::default();
-        error_info.message = Some("Failed to process request".to_string());
+        let error_info = ErrorInfo {
+            message: Some("Failed to process request".to_string()),
+            ..Default::default()
+        };
 
-        let mut event = ErrorEvent::default();
-        event.event_id = Some("error-123".to_string());
-        event.error = error_info;
+        let event = ErrorEvent {
+            event_id: Some("error-123".to_string()),
+            error: error_info,
+        };
 
         let json = event.to_json().unwrap();
         let deserialized_event: ErrorEvent = ErrorEvent::from_json(&json).unwrap();
@@ -897,16 +911,19 @@ mod tests {
 
     #[test]
     fn test_conversation_item_created_event_serialization() {
-        let mut item = RealtimeConversationItem::default();
-        item.id = Some("item-123".to_string());
-        item.item_type = ItemType::Message;
-        item.object = "realtime.item".to_string();
-        item.status = Some(ItemStatus::Completed);
+        let item = RealtimeConversationItem {
+            id: Some("item-123".to_string()),
+            item_type: ItemType::Message,
+            object: "realtime.item".to_string(),
+            status: Some(ItemStatus::Completed),
+            ..Default::default()
+        };
 
-        let mut event = ConversationItemCreatedEvent::default();
-        event.event_id = Some("item-created-123".to_string());
-        event.client_timestamp = Some(1625097600000);
-        event.item = item;
+        let event = ConversationItemCreatedEvent {
+            event_id: Some("item-created-123".to_string()),
+            client_timestamp: Some(1625097600000),
+            item,
+        };
 
         let json = event.to_json().unwrap();
         let deserialized_event: ConversationItemCreatedEvent =

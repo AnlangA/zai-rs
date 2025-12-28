@@ -33,8 +33,12 @@ macro_rules! define_model_type {
         $(#[$meta])*
         pub struct $name {}
 
-        impl ::core::convert::Into<String> for $name {
-            fn into(self) -> String { $s.to_string() }
+        impl ::core::convert::From<String> for $name {
+            fn from(_: String) -> Self { $name {} }
+        }
+
+        impl ::core::convert::From<$name> for String {
+            fn from(_: $name) -> String { $s.to_string() }
         }
 
         impl ::serde::Serialize for $name {

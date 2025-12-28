@@ -601,12 +601,14 @@ mod tests {
 
     #[test]
     fn test_realtime_conversation_item_serialization() {
-        let mut item = RealtimeConversationItem::default();
-        item.id = Some("item-123".to_string());
-        item.item_type = ItemType::Message;
-        item.object = "realtime.item".to_string();
-        item.status = Some(ItemStatus::Completed);
-        item.role = Some(Role::User);
+        let item = RealtimeConversationItem {
+            id: Some("item-123".to_string()),
+            item_type: ItemType::Message,
+            object: "realtime.item".to_string(),
+            status: Some(ItemStatus::Completed),
+            role: Some(Role::User),
+            ..Default::default()
+        };
 
         let json = item.to_json().unwrap();
         let deserialized_item: RealtimeConversationItem =
@@ -633,10 +635,12 @@ mod tests {
 
     #[test]
     fn test_realtime_response_serialization() {
-        let mut response = RealtimeResponse::default();
-        response.id = Some("resp-123".to_string());
-        response.object = "realtime.response".to_string();
-        response.status = Some(ResponseStatus::Completed);
+        let response = RealtimeResponse {
+            id: Some("resp-123".to_string()),
+            object: "realtime.response".to_string(),
+            status: Some(ResponseStatus::Completed),
+            ..Default::default()
+        };
 
         let json = response.to_json().unwrap();
         let deserialized_response: RealtimeResponse = RealtimeResponse::from_json(&json).unwrap();
@@ -648,10 +652,12 @@ mod tests {
 
     #[test]
     fn test_usage_serialization() {
-        let mut usage = Usage::default();
-        usage.total_tokens = Some(100);
-        usage.input_tokens = Some(60);
-        usage.output_tokens = Some(40);
+        let usage = Usage {
+            total_tokens: Some(100),
+            input_tokens: Some(60),
+            output_tokens: Some(40),
+            ..Default::default()
+        };
 
         let json = usage.to_json().unwrap();
         let deserialized_usage: Usage = Usage::from_json(&json).unwrap();

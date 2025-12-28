@@ -524,10 +524,12 @@ mod tests {
 
     #[test]
     fn test_session_serialization() {
-        let mut session = Session::default();
-        session.model = Some("glm-realtime".to_string());
-        session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
-        session.voice = Some("tongtong".to_string());
+        let session = Session {
+            model: Some("glm-realtime".to_string()),
+            modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+            voice: Some("tongtong".to_string()),
+            ..Default::default()
+        };
 
         let json = session.to_json().unwrap();
         let deserialized_session: Session = Session::from_json(&json).unwrap();
@@ -542,9 +544,11 @@ mod tests {
 
     #[test]
     fn test_turn_detection_serialization() {
-        let mut turn_detection = TurnDetection::default();
-        turn_detection.r#type = "server_vad".to_string();
-        turn_detection.threshold = Some(0.5);
+        let turn_detection = TurnDetection {
+            r#type: "server_vad".to_string(),
+            threshold: Some(0.5),
+            ..Default::default()
+        };
 
         let json = turn_detection.to_json().unwrap();
         let deserialized_turn_detection: TurnDetection = TurnDetection::from_json(&json).unwrap();
