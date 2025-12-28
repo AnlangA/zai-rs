@@ -376,8 +376,6 @@ impl From<reqwest::Error> for ZaiError {
             ZaiError::TimeoutError(err.to_string())
         } else if err.is_connect() {
             ZaiError::ConnectionError(err.to_string())
-        } else if err.is_request() {
-            ZaiError::NetworkError(err.to_string())
         } else {
             ZaiError::NetworkError(err.to_string())
         }
