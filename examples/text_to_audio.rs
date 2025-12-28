@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "你好，我是你的朋友，我会rap:\"床前明月光，嘿嘿！疑是地上霜。举头望明月，低头思故乡。\"";
     let client = TextToAudioRequest::new(model, key)
         .with_input(input)
-        .with_voice(TtsVoice::Tongtong)
+        .with_voice(Voice::Tongtong)
         .with_speed(1.0)
         .with_volume(1.0)
         .with_response_format(TtsAudioFormat::Wav)
