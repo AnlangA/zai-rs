@@ -1,4 +1,4 @@
-use serde_json;
+
 use zai_rs::real_time::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -6,14 +6,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Client Events ===");
 
     // Session update event
-    let mut session = Session::default();
-    session.model = Some("glm-realtime".to_string());
-    session.modalities = Some(vec!["text".to_string(), "audio".to_string()]);
-    session.voice = Some("tongtong".to_string());
+    let session = Session {
+        model: Some("glm-realtime".to_string()),
+        modalities: Some(vec!["text".to_string(), "audio".to_string()]),
+        voice: Some("tongtong".to_string()),
+        ..Default::default()
+    };
 
-    let mut session_update_event = SessionUpdateEvent::default();
-    session_update_event.event_id = Some("session-123".to_string());
-    session_update_event.client_timestamp = Some(1625097600000);
+    let mut session_update_event = SessionUpdateEvent {
+        event_id: Some("session-123".to_string()),
+        client_timestamp: Some(1625097600000),
+        ..Default::default()
+    };
     session_update_event.set_session(session);
 
     let client_event = ClientEvent::SessionUpdate(session_update_event);
@@ -23,11 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Input audio buffer append event
-    let mut audio_append_event = InputAudioBufferAppendEvent::default();
-    audio_append_event.event_id = Some("audio-123".to_string());
-    audio_append_event.client_timestamp = Some(1625097600000);
-    audio_append_event.audio =
-        "UklGRiQZAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAZAAAR9Hrx...".to_string();
+    let audio_append_event = InputAudioBufferAppendEvent {
+        event_id: Some("audio-123".to_string()),
+        client_timestamp: Some(1625097600000),
+        audio: "UklGRiQZAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAZAAAR9Hrx...".to_string(),
+    };
 
     let client_event = ClientEvent::InputAudioBufferAppend(audio_append_event);
     let json = serde_json::to_string_pretty(&client_event)?;
@@ -39,10 +43,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Server Events ===");
 
     // Session created event
-    let mut session_created_event = SessionCreatedEvent::default();
-    session_created_event.event_id = Some("event-123".to_string());
-    session_created_event.client_timestamp = Some(1625097600000);
-    session_created_event.session = Session::default();
+    let session_created_event = SessionCreatedEvent {
+        event_id: Some("event-123".to_string()),
+        client_timestamp: Some(1625097600000),
+        session: Session::default(),
+    };
 
     let server_event = ServerEvent::SessionCreated(session_created_event);
     let json = serde_json::to_string_pretty(&server_event)?;
@@ -51,10 +56,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Response created event
-    let mut response_created_event = ResponseCreatedEvent::default();
-    response_created_event.event_id = Some("event-456".to_string());
-    response_created_event.client_timestamp = Some(1625097601000);
-    response_created_event.response = RealtimeResponse::default();
+    let response_created_event = ResponseCreatedEvent {
+        event_id: Some("event-456".to_string()),
+        client_timestamp: Some(1625097601000),
+        response: RealtimeResponse::default(),
+    };
 
     let server_event = ServerEvent::ResponseCreated(response_created_event);
     let json = serde_json::to_string_pretty(&server_event)?;
