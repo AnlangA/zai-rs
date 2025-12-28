@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = "你好，今天天气怎么样";
     let client = TextToAudioRequest::new(model, key)
         .with_input(input)
-        .with_voice(TtsVoice::Tongtong)
+        .with_voice(Voice::Tongtong)
         .with_speed(1.0)
         .with_volume(1.0)
         .with_response_format(TtsAudioFormat::Wav)

@@ -10,14 +10,14 @@ where
     /// TTS model (e.g., cogtts)
     pub model: N,
 
-    /// Text to convert to speech (max 4096)
+    /// Text to convert to speech (max 1024)
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[validate(length(max = 4096))]
+    #[validate(length(max = 1024))]
     pub input: Option<String>,
 
     /// Voice preset
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub voice: Option<TtsVoice>,
+    pub voice: Option<Voice>,
 
     /// Speed in [0.5, 2]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -46,7 +46,7 @@ where
         Self {
             model,
             input: None,
-            voice: Some(TtsVoice::Tongtong),
+            voice: Some(Voice::Tongtong),
             speed: None,
             volume: None,
             response_format: Some(TtsAudioFormat::Wav),
@@ -59,7 +59,7 @@ where
         self
     }
 
-    pub fn with_voice(mut self, voice: TtsVoice) -> Self {
+    pub fn with_voice(mut self, voice: Voice) -> Self {
         self.voice = Some(voice);
         self
     }
@@ -86,7 +86,7 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub enum TtsVoice {
+pub enum Voice {
     Tongtong,
     Chuichui,
     Xiaochen,
@@ -96,19 +96,19 @@ pub enum TtsVoice {
     Luodo,
 }
 
-impl serde::Serialize for TtsVoice {
+impl serde::Serialize for Voice {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let s = match self {
-            TtsVoice::Tongtong => "tongtong",
-            TtsVoice::Chuichui => "chuichui",
-            TtsVoice::Xiaochen => "xiaochen",
-            TtsVoice::Jam => "jam",
-            TtsVoice::Kazi => "kazi",
-            TtsVoice::Douji => "douji",
-            TtsVoice::Luodo => "luodo",
+            Voice::Tongtong => "tongtong",
+            Voice::Chuichui => "chuichui",
+            Voice::Xiaochen => "xiaochen",
+            Voice::Jam => "jam",
+            Voice::Kazi => "kazi",
+            Voice::Douji => "douji",
+            Voice::Luodo => "luodo",
         };
         serializer.serialize_str(s)
     }

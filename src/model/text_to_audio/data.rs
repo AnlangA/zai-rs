@@ -1,5 +1,5 @@
 use super::super::traits::*;
-use super::request::{TtsAudioFormat, TextToAudioBody, TtsVoice};
+use super::request::{TextToAudioBody, TtsAudioFormat, Voice};
 use crate::client::http::HttpClient;
 use serde::Serialize;
 
@@ -29,7 +29,7 @@ where
         self.body = self.body.with_input(input);
         self
     }
-    pub fn with_voice(mut self, voice: TtsVoice) -> Self {
+    pub fn with_voice(mut self, voice: Voice) -> Self {
         self.body = self.body.with_voice(voice);
         self
     }
