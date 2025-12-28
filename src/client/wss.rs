@@ -1,19 +1,16 @@
 use super::error::*;
 use futures_util::{SinkExt, StreamExt};
 use log::info;
-use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::http::Request;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
-
-type WssStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
 /// WebSocket connection that provides split read/write handles
 pub struct WssConnection {
-    write_sink: futures_util::stream::SplitSink<WssStream, Message>,
-    read_stream: futures_util::stream::SplitStream<WssStream>,
+    write_sink: futures_util::stream::SplitSink<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>, Message>,
+    read_stream: futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>>,
 }
 
+/// Trait for WebSocket client configuration
 pub trait WssClient {
     type ApiUrl: AsRef<str>;
     type ApiKey: AsRef<str>;
@@ -26,17 +23,26 @@ pub trait WssClient {
         let key = self.api_key().as_ref().to_owned();
 
         async move {
-            // 创建带有Authorization头部的请求
-            let request = Request::builder()
-                .uri(&url)
-                .header("Authorization", format!("Bearer {}", key))
-                .body(()) // WebSocket connection body should be empty
-                .map_err(|e| ZaiError::from(e))?;
+            info!("Connecting to WebSocket: {}", url);
 
-            let (ws_stream, response) = connect_async(request).await?;
+            // Convert URL to client request (handles WebSocket handshake headers automatically)
+            let mut req = url.into_client_request()
+                .map_err(|e| ZaiError::websocket_error(0, format!("Invalid URL: {}", e)))?;
+
+            // Add Authorization header
+            req.headers_mut()
+                .insert(
+                    "Authorization",
+                    format!("Bearer {}", key).parse()
+                        .map_err(|e| ZaiError::websocket_error(0, format!("Invalid auth header: {}", e)))?,
+                );
+
+            // Connect with custom request
+            let (ws_stream, response): (WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>, _) =
+                connect_async(req).await?;
 
             info!("WebSocket response: {:#?}", response);
-            // 检查响应状态码，WebSocket成功升级应该是101
+            // Check response status code, WebSocket upgrade should be 101
             let status = response.status().as_u16();
             if status != 101 {
                 return Err(ZaiError::from_status_code(status, None));
@@ -83,7 +89,6 @@ impl WssConnection {
                     }
                     Message::Frame(frame) => {
                         // Handle raw WebSocket frames
-                        // Use the frame's display format to get information
                         let frame_info = format!("Raw frame: {}", frame);
                         Ok(Some(frame_info))
                     }
