@@ -167,12 +167,8 @@ name = "web_chat"
 path = "examples/web_chat/server.rs"
 
 [[example]]
-name = "realtime_simple"
-path = "examples/realtime_simple.rs"
-
-[[example]]
-name = "realtime_demo"
-path = "examples/realtime_demo.rs"
+name = "simple_realtime"
+path = "examples/simple_realtime.rs"
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
