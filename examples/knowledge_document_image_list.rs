@@ -18,11 +18,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         resp.code, resp.message, resp.timestamp
     );
     if let Some(data) = &resp.data
-        && let Some(images) = &data.images {
-            for it in images.iter() {
-                println!("image: text={:?} url={:?}", it.text, it.cos_url);
-            }
+        && let Some(images) = &data.images
+    {
+        for it in images.iter() {
+            println!("image: text={:?} url={:?}", it.text, it.cos_url);
         }
+    }
 
     Ok(())
 }

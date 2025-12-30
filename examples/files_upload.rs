@@ -11,7 +11,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "data/file_test.md".to_string());
 
-    // purpose: choose one from batch/file-extract/code-interpreter/agent/voice-clone-input
+    // purpose: choose one from
+    // batch/file-extract/code-interpreter/agent/voice-clone-input
     let purpose = FilePurpose::FileExtract;
 
     let client = FileUploadRequest::new(key, purpose, &path)

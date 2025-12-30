@@ -1,15 +1,18 @@
-use zai_rs::model::async_chat_get::AsyncChatGetRequest;
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
-use zai_rs::model::chat_base_response::TaskStatus;
-use zai_rs::model::gen_video_async::*;
-
-use zai_rs::client::http::*;
+use zai_rs::{
+    client::http::*,
+    model::{
+        async_chat_get::AsyncChatGetRequest,
+        chat_base_response::{ChatCompletionResponse, TaskStatus},
+        gen_video_async::*,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let model = CogVideoX3 {};
-    let key = std::env::var("ZHIPU_API_KEY").unwrap();
+    let key =
+        std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
     println!("{key}");
     let user_text = "可爱小猫叠在一起";
 
@@ -18,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let resp = client.post().await?;
     let body: ChatCompletionResponse = resp.json().await?;
 
-    let task_id = body.id().unwrap();
+    let task_id = body.id().ok_or("Task ID not found in response")?;
     println!("Task ID: {}", task_id);
 
     // 使用 async_chat_get 轮询结果
@@ -38,19 +41,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 break;
-            }
+            },
             Some(TaskStatus::Fail) => {
                 println!("Video generation failed!");
                 break;
-            }
+            },
             Some(TaskStatus::Processing) => {
                 println!("Processing...");
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            }
+            },
             None => {
                 println!("No task status found");
                 break;
-            }
+            },
         }
     }
 

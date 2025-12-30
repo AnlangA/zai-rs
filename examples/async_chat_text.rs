@@ -1,16 +1,20 @@
-use zai_rs::client::http::*;
-use zai_rs::model::async_chat::AsyncChatCompletion;
-use zai_rs::model::async_chat_get::AsyncChatGetRequest;
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
-use zai_rs::model::chat_base_response::TaskStatus;
-use zai_rs::model::*;
+use zai_rs::{
+    client::http::*,
+    model::{
+        async_chat::AsyncChatCompletion,
+        async_chat_get::AsyncChatGetRequest,
+        chat_base_response::{ChatCompletionResponse, TaskStatus},
+        *,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // 获取API密钥
-    let key = std::env::var("ZHIPU_API_KEY").unwrap();
+    let key =
+        std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
 
     // 提交异步聊天任务
     println!("=== 提交异步聊天任务 ===");
@@ -35,10 +39,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("任务ID: {}", task_id);
                     task_ids.push((message, task_id.to_string()));
                 }
-            }
+            },
             Err(e) => {
                 println!("提交失败: {}", e);
-            }
+            },
         }
     }
 
@@ -51,7 +55,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key.clone());
         loop {
             let result = async {
-                let resp = request.get().await.map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+                let resp = request
+                    .get()
+                    .await
+                    .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
                 resp.json::<ChatCompletionResponse>()
                     .await
                     .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))
@@ -62,28 +69,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(body) => match body.task_status() {
                     Some(TaskStatus::Success) => {
                         println!("状态: 完成");
-                        if let Some(content) = body.choices()
+                        if let Some(content) = body
+                            .choices()
                             .and_then(|choices| choices.first())
-                            .and_then(|choice| choice.message.content()) { println!("回复: {}", content) }
+                            .and_then(|choice| choice.message.content())
+                        {
+                            println!("回复: {}", content)
+                        }
                         break;
-                    }
+                    },
                     Some(TaskStatus::Fail) => {
                         println!("状态: 失败");
                         break;
-                    }
+                    },
                     Some(TaskStatus::Processing) => {
                         println!("状态: 处理中...");
                         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    }
+                    },
                     None => {
                         println!("状态: 未知");
                         break;
-                    }
+                    },
                 },
                 Err(e) => {
                     println!("获取结果失败: {}", e);
                     break;
-                }
+                },
             }
         }
         println!("---");

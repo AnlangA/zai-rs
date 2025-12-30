@@ -34,8 +34,11 @@
 //! cargo run --example translation_bot
 //! ```
 
-use std::io::{self, Write};
-use std::sync::Arc;
+use std::{
+    io::{self, Write},
+    sync::Arc,
+};
+
 use tokio::sync::Mutex;
 use zai_rs::model::*;
 
@@ -187,7 +190,8 @@ impl TranslationBot {
                 let finish = finish_clone.clone();
                 async move {
                     if let Some(content) = chunk
-                        .choices.first()
+                        .choices
+                        .first()
                         .and_then(|c| c.delta.as_ref())
                         .and_then(|d| d.content.as_deref())
                     {
@@ -245,23 +249,23 @@ impl TranslationBot {
                 "exit" | "quit" | "退出" => {
                     println!("👋 再见！");
                     break;
-                }
+                },
                 "help" | "帮助" => {
                     self.show_help();
                     continue;
-                }
+                },
                 _ => {
                     // Perform translation
                     match self.translate_stream(&user_input).await {
                         Ok(_) => {
                             println!(); // Add spacing
-                        }
+                        },
                         Err(e) => {
                             eprintln!("❌ 翻译出错: {}", e);
                             println!();
-                        }
+                        },
                     }
-                }
+                },
             }
         }
 

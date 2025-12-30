@@ -3,9 +3,10 @@
 //! This example shows how to integrate zai-tools with LLM function calling.
 
 use serde_json::json;
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
-use zai_rs::model::*;
-use zai_rs::toolkits::prelude::*;
+use zai_rs::{
+    model::{chat_base_response::ChatCompletionResponse, *},
+    toolkits::prelude::*,
+};
 
 fn make_weather_tool() -> FunctionTool {
     FunctionTool::builder("get_weather", "Get weather for a city")
@@ -17,7 +18,10 @@ fn make_weather_tool() -> FunctionTool {
         }))
         .handler(|args| async move {
             // 获取参数
-            let city = args.get("city").and_then(|v| v.as_str()).unwrap_or("");
+            let city = args
+                .get("city")
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| "");
 
             // 参数验证
             if city.trim().is_empty() {
@@ -64,7 +68,7 @@ fn make_calc_tool() -> FunctionTool {
         .property("b", json!({ "type": "number", "description": "Right operand" }))
         .required("op").required("a").required("b")
         .handler(|args| async move {
-            let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("");
+            let op = args.get("op").and_then(|v| v.as_str()).unwrap_or_else(|| "");
 
             // 使用 ErrorContext 的 with_operation 来添加上下文信息
             let a = args.get("a").and_then(|v| v.as_f64())
@@ -118,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tool_defs = executor.export_all_tools_as_functions();
 
     // Setup LLM client
-    let key = get_key();
+    let key = get_key()?;
     let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
 
     let mut client = ChatCompletion::new(model(), TextMessage::user(user_text), key)
@@ -127,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_tokens(512);
 
     // First round
-    let last_resp: ChatCompletionResponse = client.send().await.unwrap();
+    let last_resp: ChatCompletionResponse = client.send().await?;
     println!("📨 LLM Response: {:#?}", last_resp);
 
     if let Some(calls) = last_resp
@@ -145,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
         client = client.add_messages(sys);
 
-        let next_body: ChatCompletionResponse = client.send().await.unwrap();
+        let next_body: ChatCompletionResponse = client.send().await?;
         println!("Model after tool: {:#?}", next_body);
     }
 
@@ -156,11 +160,14 @@ fn model() -> GLM4_5_flash {
     GLM4_5_flash {}
 }
 
-fn get_key() -> String {
-    std::env::var("ZHIPU_API_KEY").unwrap_or_else(|_| {
-        println!("Please enter your ZHIPU_API_KEY:");
-        let mut key = String::new();
-        std::io::stdin().read_line(&mut key).unwrap();
-        key.trim().to_string()
-    })
+fn get_key() -> Result<String, Box<dyn std::error::Error>> {
+    match std::env::var("ZHIPU_API_KEY") {
+        Ok(key) => Ok(key),
+        Err(_) => {
+            println!("Please enter your ZHIPU_API_KEY:");
+            let mut key = String::new();
+            std::io::stdin().read_line(&mut key)?;
+            Ok(key.trim().to_string())
+        },
+    }
 }

@@ -29,12 +29,14 @@ pub async fn static_files(Path(file_path): Path<PathBuf>) -> impl IntoResponse {
                 .first_or_octet_stream()
                 .to_string();
 
-            Response::builder()
+            match Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, mime_type)
                 .body(axum::body::Body::from(content))
-                .unwrap()
-                .into_response()
+            {
+                Ok(response) => response.into_response(),
+                Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to build response").into_response(),
+            }
         }
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file").into_response(),
     }

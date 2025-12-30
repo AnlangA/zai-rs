@@ -1,7 +1,7 @@
 //! # Chat Coding Plan Example
 //!
-//! This example demonstrates how to use the ZAI-RS SDK with the coding plan API endpoint
-//! for specialized coding assistance with the Zhipu AI API.
+//! This example demonstrates how to use the ZAI-RS SDK with the coding plan API
+//! endpoint for specialized coding assistance with the Zhipu AI API.
 //!
 //! ## Features Demonstrated
 //!
@@ -24,9 +24,7 @@
 //! cargo run --example chat_coding_plan
 //! ```
 
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
-use zai_rs::model::*;
-
+use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,7 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment variable
     let key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
 
-    // User input for coding assistance (Chinese: "Help me write a Rust function to calculate factorial")
+    // User input for coding assistance (Chinese: "Help me write a Rust function to
+    // calculate factorial")
     let user_text = "帮我写一个计算阶乘的 Rust 函数。只返回函数。其他内容不要返回";
 
     // Build the chat completion request with coding plan endpoint

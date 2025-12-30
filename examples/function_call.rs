@@ -1,9 +1,8 @@
 use log::info;
-use zai_rs::model::chat::data::ChatCompletion;
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
-use zai_rs::model::*;
+use zai_rs::model::{chat::data::ChatCompletion, chat_base_response::ChatCompletionResponse, *};
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let model = GLM4_5_flash {};
@@ -26,7 +25,7 @@ async fn main() {
     };
 
     // 读取 API Key，并保留以便后续继续对话
-    let key = get_key();
+    let key = get_key()?;
 
     // 会话的第一条用户消息
     let user_text = "你是谁，帮为查找深圳今天的天气";
@@ -37,9 +36,12 @@ async fn main() {
         .with_top_p(0.9)
         .with_max_tokens(512)
         .add_tool(tools);
-    let body: ChatCompletionResponse = client.send().await.unwrap();
-    let v = serde_json::to_value(&body).unwrap();
-    info!("{}", serde_json::to_string_pretty(&v).unwrap());
+    let body: ChatCompletionResponse = client.send().await?;
+    let v = serde_json::to_value(&body).expect("Failed to serialize response to JSON");
+    info!(
+        "{}",
+        serde_json::to_string_pretty(&v).expect("Failed to format JSON")
+    );
 
     // 1) 解析第一条 tool_call（更简洁）
     if let Some((id, name, arguments)) = parse_first_tool_call(&v) {
@@ -50,32 +52,38 @@ async fn main() {
             .unwrap_or_else(|| serde_json::json!({"ok": false, "error": "no_result"}));
         info!(
             "模拟函数返回结果: {}",
-            serde_json::to_string_pretty(&result).unwrap()
+            serde_json::to_string_pretty(&result).expect("Failed to format JSON")
         );
 
         // 3) 回传工具结果并继续一轮对话（复用同一个 client）
-        let tool_msg = TextMessage::tool_with_id(serde_json::to_string(&result).unwrap(), id);
+        let tool_msg = TextMessage::tool_with_id(
+            serde_json::to_string(&result).expect("Failed to serialize tool result"),
+            id,
+        );
         client = client.add_messages(tool_msg).with_max_tokens(512);
 
-        let body2: ChatCompletionResponse = client.send().await.unwrap();
-        let v2 = serde_json::to_value(&body2).unwrap();
+        let body2: ChatCompletionResponse = client.send().await?;
+        let v2 = serde_json::to_value(&body2).expect("Failed to serialize response to JSON");
         info!(
             "继续对话返回: {}",
-            serde_json::to_string_pretty(&v2).unwrap()
+            serde_json::to_string_pretty(&v2).expect("Failed to format JSON")
         );
     } else {
         info!("未发现 tool_calls");
     }
+
+    Ok(())
 }
 
-fn get_key() -> String {
+fn get_key() -> Result<String, Box<dyn std::error::Error>> {
     if let Ok(key) = std::env::var("ZHIPU_API_KEY") {
-        key
+        Ok(key)
     } else {
         // 从输入中读取
         let mut key = String::new();
-        std::io::stdin().read_line(&mut key).unwrap();
-        key.trim().to_string()
+        println!("请输入 ZHIPU_API_KEY: ");
+        std::io::stdin().read_line(&mut key)?;
+        Ok(key.trim().to_string())
     }
 }
 
@@ -104,12 +112,12 @@ fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
                         "error": "invalid_arguments",
                         "raw": arguments,
                     }));
-                }
+                },
             };
             let city = parsed
                 .get("city")
                 .and_then(|v| v.as_str())
-                .unwrap_or("未知城市");
+                .unwrap_or_else(|| "未知城市");
 
             // 返回一个模拟的天气结果
             Some(serde_json::json!({
@@ -125,7 +133,7 @@ fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
                 },
                 "source": "mock",
             }))
-        }
+        },
         _ => {
             // 未知的工具名
             Some(serde_json::json!({
@@ -134,6 +142,6 @@ fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
                 "name": name,
                 "raw_arguments": arguments,
             }))
-        }
+        },
     }
 }

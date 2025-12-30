@@ -2,6 +2,8 @@
 //!
 //! A simplified web chat application using the zai-rs crate.
 
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
+
 use axum::{
     Json, Router,
     extract::State,
@@ -11,7 +13,6 @@ use axum::{
 };
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use uuid::Uuid;
@@ -137,14 +138,14 @@ async fn chat_handler(
                 reply: ai_text,
                 session_id,
             }))
-        }
+        },
         Err(e) => {
             eprintln!("Chat API error: {:?}", e);
             Ok(Json(ChatResponse {
                 reply: "服务器内部错误，请稍后重试。".to_string(),
                 session_id,
             }))
-        }
+        },
     }
 }
 
@@ -190,33 +191,31 @@ async fn chat_stream_handler(
                 async move {
                     if let Some(choice) = chunk.choices.first()
                         && let Some(delta) = &choice.delta
-                            && let Some(content) = &delta.content {
-                                // 累积响应内容
-                                {
-                                    let mut acc = acc_ref.write().await;
-                                    acc.push_str(content);
-                                    eprintln!(
-                                        "📝 收到流式数据块 ({} chars): {:?}",
-                                        content.len(),
-                                        content
-                                    );
-                                }
+                        && let Some(content) = &delta.content
+                    {
+                        // 累积响应内容
+                        {
+                            let mut acc = acc_ref.write().await;
+                            acc.push_str(content);
+                            eprintln!("📝 收到流式数据块 ({} chars): {:?}", content.len(), content);
+                        }
 
-                                let stream_chunk = StreamChunk {
-                                    content: content.clone(),
-                                    session_id,
-                                    done: false,
-                                };
-                                if (tx.send(stream_chunk).await).is_err() {
-                                    eprintln!("❌ 发送流式数据块失败");
-                                } else {
-                                    eprintln!("✅ 流式数据块已发送");
-                                }
-                            }
+                        let stream_chunk = StreamChunk {
+                            content: content.clone(),
+                            session_id,
+                            done: false,
+                        };
+                        if (tx.send(stream_chunk).await).is_err() {
+                            eprintln!("❌ 发送流式数据块失败");
+                        } else {
+                            eprintln!("✅ 流式数据块已发送");
+                        }
+                    }
                     Ok(())
                 }
             })
-            .await).is_err()
+            .await)
+            .is_err()
         {
             // Send error chunk if streaming fails
             let error_chunk = StreamChunk {
@@ -256,11 +255,11 @@ async fn chat_stream_handler(
                 let json = serde_json::to_string(&chunk).unwrap_or_default();
                 eprintln!("📤 发送SSE事件: {} chars, done: {}", json.len(), chunk.done);
                 Some((Ok(Event::default().data(json)), rx))
-            }
+            },
             None => {
                 eprintln!("🔚 SSE流结束");
                 None
-            }
+            },
         }
     });
 
