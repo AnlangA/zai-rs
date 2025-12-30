@@ -1,8 +1,8 @@
 //! # Model Module
 //!
-//! Contains all data models, request/response types, and API abstractions for the Zhipu AI API.
-//! This module provides type-safe representations of API entities and comprehensive support
-//! for various AI capabilities.
+//! Contains all data models, request/response types, and API abstractions for
+//! the Zhipu AI API. This module provides type-safe representations of API
+//! entities and comprehensive support for various AI capabilities.
 //!
 //! ## Module Organization
 //!
@@ -88,14 +88,12 @@ pub mod voice_list;
 pub use async_chat::data::AsyncChatCompletion;
 pub use async_chat_get::data::AsyncChatGetRequest;
 pub use chat::data::ChatCompletion;
-pub use moderation::data::Moderation;
-pub use stream_ext::StreamChatLikeExt;
-
+pub use chat_base_response::TaskStatus;
 pub use chat_message_types::*;
 pub use chat_models::*;
-pub use gen_video_async::*;
-pub use tools::*;
-
-pub use chat_base_response::TaskStatus;
 pub use chat_stream_response::ChatStreamResponse;
+pub use gen_video_async::*;
+pub use moderation::data::Moderation;
+pub use stream_ext::StreamChatLikeExt;
+pub use tools::*;
 pub use traits::SseStreamable;

@@ -1,6 +1,5 @@
 use super::types::KnowledgeDetailResponse;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Knowledge detail request (GET /llm-application/open/knowledge/{id})
 pub struct KnowledgeRetrieveRequest {

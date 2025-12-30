@@ -1,15 +1,17 @@
 //! Core traits and types with enhanced type safety
 
+use std::{
+    borrow::Cow,
+    collections::{HashMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
+
 use async_trait::async_trait;
 use jsonschema;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 
 use crate::toolkits::error::{ToolResult, error_context};
 
@@ -185,7 +187,8 @@ type ToolHandler = std::sync::Arc<
         + Sync,
 >;
 
-/// A single-struct tool that carries metadata, JSON schema, and an async handler
+/// A single-struct tool that carries metadata, JSON schema, and an async
+/// handler
 pub struct FunctionTool {
     metadata: ToolMetadata,
     input_schema: serde_json::Value,
@@ -208,7 +211,8 @@ impl FunctionTool {
     pub fn builder(name: impl Into<String>, description: impl Into<String>) -> FunctionToolBuilder {
         FunctionToolBuilder::new(name, description)
     }
-    /// Convenience: build a FunctionTool directly from a full JSON schema and a handler
+    /// Convenience: build a FunctionTool directly from a full JSON schema and a
+    /// handler
     pub fn from_schema<F, Fut>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -228,7 +232,8 @@ impl FunctionTool {
     }
     /// Build a FunctionTool from a full JSON spec (supports two shapes):
     /// 1) {"name":..., "description":..., "parameters": {...}}
-    /// 2) {"type":"function", "function": {"name":..., "description":..., "parameters": {...}}}
+    /// 2) {"type":"function", "function": {"name":..., "description":...,
+    ///    "parameters": {...}}}
     pub fn from_function_spec<F, Fut>(
         spec: serde_json::Value,
         f: F,
@@ -296,7 +301,8 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
     Ok(validator)
 }
 
-/// (internal) Parses the name, description, and parameters from a JSON function spec.
+/// (internal) Parses the name, description, and parameters from a JSON function
+/// spec.
 pub(crate) fn parse_function_spec_details(
     spec: &serde_json::Value,
 ) -> crate::toolkits::error::ToolResult<(String, String, Option<serde_json::Value>)> {
@@ -345,7 +351,8 @@ pub(crate) fn parse_function_spec_details(
 pub struct FunctionToolBuilder {
     metadata: ToolMetadata,
     input_schema: Option<serde_json::Value>,
-    // Optional staged schema pieces for convenience building when schema() is omitted or for merging
+    // Optional staged schema pieces for convenience building when schema() is omitted or for
+    // merging
     staged_properties: Option<serde_json::Map<String, serde_json::Value>>,
     staged_required: Vec<String>,
     handler: Option<ToolHandler>,
@@ -398,8 +405,9 @@ impl FunctionToolBuilder {
         self
     }
 
-    /// Chain API: add one property to the schema. If `schema(json!(...))` is also provided,
-    /// the property will be merged into its `properties` object.
+    /// Chain API: add one property to the schema. If `schema(json!(...))` is
+    /// also provided, the property will be merged into its `properties`
+    /// object.
     pub fn property(mut self, name: impl Into<String>, schema: serde_json::Value) -> Self {
         let name = name.into();
         let entry = self
@@ -409,7 +417,8 @@ impl FunctionToolBuilder {
         self
     }
 
-    /// Chain API: mark a property as required. Will be merged with any provided schema's `required`.
+    /// Chain API: mark a property as required. Will be merged with any provided
+    /// schema's `required`.
     pub fn required(mut self, name: impl Into<String>) -> Self {
         self.staged_required.push(name.into());
         self
@@ -468,7 +477,8 @@ impl FunctionToolBuilder {
             }
         } else {
             // If schema is not an object and also not provided, enforce default
-            // But since we only hit here when schema is not an object (provided by user), we leave it.
+            // But since we only hit here when schema is not an object (provided
+            // by user), we leave it.
         }
 
         // If user provided nothing and schema is empty object, ensure defaults
@@ -477,7 +487,8 @@ impl FunctionToolBuilder {
                 .or_insert(serde_json::Value::String("object".to_string()));
             obj.entry("additionalProperties")
                 .or_insert(serde_json::Value::Bool(false));
-            // Ensure properties exists when we staged some but merging didn't set (edge case)
+            // Ensure properties exists when we staged some but merging didn't set (edge
+            // case)
             if obj.get("properties").is_none() {
                 obj.insert(
                     "properties".to_string(),
@@ -525,5 +536,172 @@ impl DynTool for FunctionTool {
 
     fn clone_box(&self) -> Box<dyn DynTool> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::toolkits::ToolError;
+
+    #[test]
+    fn test_tool_metadata_new() {
+        let metadata = ToolMetadata::new("test_tool", "A test tool").unwrap();
+        assert_eq!(metadata.name, "test_tool");
+        assert_eq!(metadata.description, "A test tool");
+        assert_eq!(metadata.version, "1.0.0");
+        assert!(metadata.enabled);
+    }
+
+    #[test]
+    fn test_tool_metadata_invalid_name_empty() {
+        let result = ToolMetadata::new("", "A test tool");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ToolError::InvalidParameters { .. } => {},
+            _ => panic!("Expected InvalidParameters error"),
+        }
+    }
+
+    #[test]
+    fn test_tool_metadata_invalid_name_special_chars() {
+        let result = ToolMetadata::new("test-tool!", "A test tool");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ToolError::InvalidParameters { .. } => {},
+            _ => panic!("Expected InvalidParameters error"),
+        }
+    }
+
+    #[test]
+    fn test_tool_metadata_builder() {
+        let metadata = ToolMetadata::new("test_tool", "A test tool")
+            .unwrap()
+            .version("2.0.0")
+            .author("Test Author")
+            .tags(vec!["tag1", "tag2"])
+            .enabled(false);
+
+        assert_eq!(metadata.version, "2.0.0");
+        assert_eq!(metadata.author, Some(Cow::Borrowed("Test Author")));
+        assert_eq!(metadata.tags.len(), 2);
+        assert!(!metadata.enabled);
+    }
+
+    #[test]
+    fn test_conversions_to_json() {
+        let value = conversions::to_json(42).unwrap();
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn test_conversions_from_json_string() {
+        let value = serde_json::Value::String("hello".to_string());
+        let result = conversions::from_json_string(value).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_conversions_from_json_string_invalid() {
+        let value = serde_json::Value::Number(42.into());
+        let result = conversions::from_json_string(value);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_conversions_from_json_i32() {
+        let value = serde_json::Value::Number(42.into());
+        let result = conversions::from_json_i32(value).unwrap();
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_conversions_from_json_f64() {
+        let value = serde_json::json!(3.5);
+        let result = conversions::from_json_f64(value).unwrap();
+        assert_eq!(result, 3.5);
+    }
+
+    #[test]
+    fn test_conversions_from_json_bool() {
+        let value = serde_json::Value::Bool(true);
+        let result = conversions::from_json_bool(value).unwrap();
+        assert!(result);
+    }
+
+    #[test]
+    fn test_function_tool_builder() {
+        let tool = FunctionTool::builder("test_tool", "A test tool")
+            .property("param1", serde_json::json!({"type": "string"}))
+            .property("param2", serde_json::json!({"type": "number"}))
+            .required("param1")
+            .handler(|_args| async move { Ok(serde_json::json!({"result": "ok"})) })
+            .build();
+
+        assert!(tool.is_ok());
+        let tool = tool.unwrap();
+        assert_eq!(tool.name(), "test_tool");
+    }
+
+    #[test]
+    fn test_function_tool_clone() {
+        let tool1 = FunctionTool::builder("test_tool", "A test tool")
+            .property("param1", serde_json::json!({"type": "string"}))
+            .required("param1")
+            .handler(|_args| async move { Ok(serde_json::json!({"result": "ok"})) })
+            .build()
+            .unwrap();
+
+        let tool2 = tool1.clone();
+        assert_eq!(tool1.name(), tool2.name());
+        assert_eq!(tool1.input_schema(), tool2.input_schema());
+    }
+
+    #[test]
+    fn test_parse_function_spec_shape1() {
+        let spec = serde_json::json!({
+            "name": "test_tool",
+            "description": "A test tool",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "param1": {"type": "string"}
+                }
+            }
+        });
+
+        let (name, description, parameters) = parse_function_spec_details(&spec).unwrap();
+        assert_eq!(name, "test_tool");
+        assert_eq!(description, "A test tool");
+        assert!(parameters.is_some());
+    }
+
+    #[test]
+    fn test_parse_function_spec_shape2() {
+        let spec = serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "test_tool",
+                "description": "A test tool",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "param1": {"type": "string"}
+                    }
+                }
+            }
+        });
+
+        let (name, description, parameters) = parse_function_spec_details(&spec).unwrap();
+        assert_eq!(name, "test_tool");
+        assert_eq!(description, "A test tool");
+        assert!(parameters.is_some());
+    }
+
+    #[test]
+    fn test_parse_function_spec_invalid() {
+        let spec = serde_json::Value::String("invalid".to_string());
+        let result = parse_function_spec_details(&spec);
+        assert!(result.is_err());
     }
 }

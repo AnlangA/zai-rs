@@ -1,11 +1,12 @@
 //! Content moderation API models and types.
 //!
-//! This module provides data structures for content moderation requests and responses,
-//! supporting text, image, audio, and video content safety analysis.
+//! This module provides data structures for content moderation requests and
+//! responses, supporting text, image, audio, and video content safety analysis.
 //!
 //! ## Features
 //!
-//! - **Multi-format support** - Text, image, audio, and video content moderation
+//! - **Multi-format support** - Text, image, audio, and video content
+//!   moderation
 //! - **Risk detection** - Identifies pornographic, violent, and illegal content
 //! - **Structured results** - Detailed risk level and type information
 //! - **Validation** - Input validation using the validator crate
@@ -31,15 +32,13 @@ where
 }
 
 /// Content moderation model type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum ModerationModel {
     /// Default moderation model
     #[serde(rename = "moderation")]
     #[default]
     Moderation,
 }
-
 
 /// Moderation input content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,18 +111,20 @@ impl ModerationRequest {
 
         // Validate text input length
         if let ModerationInput::Text(text) = &self.input
-            && text.len() > 2000 {
-                errors.add(
-                    "input",
-                    validator::ValidationError::new("text_length_exceeded"),
-                );
-            }
+            && text.len() > 2000
+        {
+            errors.add(
+                "input",
+                validator::ValidationError::new("text_length_exceeded"),
+            );
+        }
 
         // Validate multimedia URL
         if let ModerationInput::Multimedia(multimedia) = &self.input
-            && multimedia.url.parse::<url::Url>().is_err() {
-                errors.add("input", validator::ValidationError::new("invalid_url"));
-            }
+            && multimedia.url.parse::<url::Url>().is_err()
+        {
+            errors.add("input", validator::ValidationError::new("invalid_url"));
+        }
 
         if errors.is_empty() {
             Ok(())

@@ -1,15 +1,14 @@
 use std::time::Duration;
 
-use zai_rs::batches::*;
-
-use zai_rs::file::*;
+use zai_rs::{batches::*, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::try_init();
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    // Get batch_id from CLI arg or BATCH_ID env; otherwise show usage and exit gracefully
+    // Get batch_id from CLI arg or BATCH_ID env; otherwise show usage and exit
+    // gracefully
     let batch_id = "batch_1966317613131636736";
 
     // Poll until completed/failed (max ~2 minutes)

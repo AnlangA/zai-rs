@@ -1,6 +1,7 @@
+use std::marker::PhantomData;
+
 use super::super::traits::*;
 use crate::client::http::HttpClient;
-use std::marker::PhantomData;
 pub struct AsyncChatGetRequest<N>
 where
     N: ModelName + AsyncChat,

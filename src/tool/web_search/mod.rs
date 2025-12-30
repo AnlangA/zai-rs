@@ -1,7 +1,8 @@
 //! Web search API module for the zai-rs crate.
 //!
-//! This module provides functionality to perform web searches using the Zhipu AI web search API.
-//! It supports multiple search engines, intent recognition, and various filtering options.
+//! This module provides functionality to perform web searches using the Zhipu
+//! AI web search API. It supports multiple search engines, intent recognition,
+//! and various filtering options.
 //!
 //! # Features
 //!
@@ -16,7 +17,7 @@
 //! # Example
 //!
 //! ```rust
-//! use zai_rs::tool::web_search::{WebSearchRequest, SearchEngine};
+//! use zai_rs::tool::web_search::{SearchEngine, WebSearchRequest};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {

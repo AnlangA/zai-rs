@@ -1,0 +1,30 @@
+# Clippy configuration for zai-rs
+
+# Maximum function complexity threshold
+cognitive-complexity-threshold = 30
+
+# Maximum type complexity threshold
+type-complexity-threshold = 250
+
+# Suppress certain lints
+too-many-arguments-threshold = 7
+
+# Allow certain lints
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-print-in-tests = true
+
+# Warn on certain patterns
+warn-on-all-wildcard-imports = true
+
+# Disallowed methods
+disallowed-methods = []
+
+# Disallowed types
+disallowed-types = []
+
+# Performance
+vec-box-size-threshold = 4096
+
+# Single-char binding names threshold
+single-char-binding-names-threshold = 4

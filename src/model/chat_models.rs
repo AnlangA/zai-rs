@@ -1,7 +1,8 @@
 //! # AI Model Type Definitions
 //!
 //! This module defines all available AI model types for the Zhipu AI API,
-//! along with their capabilities, message type bindings, and trait implementations.
+//! along with their capabilities, message type bindings, and trait
+//! implementations.
 //!
 //! ## Model Categories
 //!
@@ -30,7 +31,8 @@
 //!
 //! ## Usage
 //!
-//! Models are used by creating instances and passing them to chat completion requests:
+//! Models are used by creating instances and passing them to chat completion
+//! requests:
 //!
 //! ```rust,ignore
 //! use zai_rs::model::chat_models::*;
@@ -43,8 +45,10 @@
 //! ```
 
 use super::traits::*;
-use crate::model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage};
-use crate::{define_model_type, impl_message_binding, impl_model_markers};
+use crate::{
+    define_model_type, impl_message_binding, impl_model_markers,
+    model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage},
+};
 
 define_model_type!(GLM4_7, "glm-4.7");
 impl_message_binding!(GLM4_7, TextMessage);

@@ -1,6 +1,5 @@
 use super::types::BatchItem;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Retrieve a batch task by ID (GET /paas/v4/batches/{batch_id})
 pub struct BatchesRetrieveRequest {
@@ -15,7 +14,8 @@ pub struct BatchesRetrieveRequest {
 impl BatchesRetrieveRequest {
     /// Create a new retrieve request with required path parameter `batch_id`.
     pub fn new(key: String, batch_id: impl AsRef<str>) -> Self {
-        // Batch IDs are expected to be safe; if special chars appear, consider encoding.
+        // Batch IDs are expected to be safe; if special chars appear, consider
+        // encoding.
         let url = format!(
             "https://open.bigmodel.cn/api/paas/v4/batches/{}",
             batch_id.as_ref()

@@ -1,7 +1,7 @@
 //! # Image Generation Example
 //!
-//! This example demonstrates how to use the ZAI-RS SDK for AI-powered image generation
-//! using the CogView4 model from Zhipu AI.
+//! This example demonstrates how to use the ZAI-RS SDK for AI-powered image
+//! generation using the CogView4 model from Zhipu AI.
 //!
 //! ## Features Demonstrated
 //!
@@ -36,7 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = CogView4 {};
 
     // Example prompt and size (equivalent to the curl example)
-    // Chinese: "A cute little kitten sitting on a sunny windowsill with blue sky and white clouds in the background"
+    // Chinese: "A cute little kitten sitting on a sunny windowsill with blue sky
+    // and white clouds in the background"
     let prompt = "一只可爱的小猫咪，坐在阳光明媚的窗台上，背景是蓝天白云.";
     let size = ImageSize::Size1024x1024;
 

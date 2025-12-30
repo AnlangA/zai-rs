@@ -3,16 +3,16 @@
 //! This module provides the core data structures used for chat API requests,
 //! including the main request body structure.
 
-use super::tools::*;
-use super::traits::*;
 use serde::Serialize;
 use validator::*;
 
+use super::{tools::*, traits::*};
+
 /// Main request body structure for chat API calls.
 ///
-/// This structure represents a complete chat request with all possible configuration options.
-/// It uses generic types to support different model names and message types while maintaining
-/// type safety through trait bounds.
+/// This structure represents a complete chat request with all possible
+/// configuration options. It uses generic types to support different model
+/// names and message types while maintaining type safety through trait bounds.
 ///
 /// # Type Parameters
 ///
@@ -48,18 +48,20 @@ where
     /// A list of messages comprising the conversation so far.
     pub messages: Vec<M>,
 
-    /// A unique identifier for the request. Optional field that will be omitted from
-    /// serialization if not provided.
+    /// A unique identifier for the request. Optional field that will be omitted
+    /// from serialization if not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
 
-    /// Optional thinking prompt or reasoning text that can guide the model's response.
-    /// Only available for models that support thinking capabilities.
+    /// Optional thinking prompt or reasoning text that can guide the model's
+    /// response. Only available for models that support thinking
+    /// capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingType>,
 
-    /// Whether to use sampling during generation. When `true`, the model will use
-    /// probabilistic sampling; when `false`, it will use deterministic generation.
+    /// Whether to use sampling during generation. When `true`, the model will
+    /// use probabilistic sampling; when `false`, it will use deterministic
+    /// generation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub do_sample: Option<bool>,
 
@@ -68,20 +70,22 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 
-    /// Whether to enable streaming of tool calls (streaming function call parameters).
-    /// Only supported by GLM-4.6 models. Defaults to false when omitted.
+    /// Whether to enable streaming of tool calls (streaming function call
+    /// parameters). Only supported by GLM-4.6 models. Defaults to false
+    /// when omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_stream: Option<bool>,
 
-    /// Controls randomness in the output. Higher values (closer to 1.0) make the output
-    /// more random, while lower values (closer to 0.0) make it more deterministic.
-    /// Must be between 0.0 and 1.0.
+    /// Controls randomness in the output. Higher values (closer to 1.0) make
+    /// the output more random, while lower values (closer to 0.0) make it
+    /// more deterministic. Must be between 0.0 and 1.0.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 0.0, max = 1.0))]
     pub temperature: Option<f32>,
 
-    /// Controls diversity via nucleus sampling. Only tokens with cumulative probability
-    /// up to `top_p` are considered. Must be between 0.0 and 1.0.
+    /// Controls diversity via nucleus sampling. Only tokens with cumulative
+    /// probability up to `top_p` are considered. Must be between 0.0 and
+    /// 1.0.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 0.0, max = 1.0))]
     pub top_p: Option<f32>,
@@ -99,8 +103,8 @@ where
     pub tools: Option<Vec<Tools>>,
 
     // tool_choice: enum<string>, but we don't need it for now
-    /// A unique identifier representing your end-user, which can help monitor and
-    /// detect abuse. Must be between 6 and 128 characters long.
+    /// A unique identifier representing your end-user, which can help monitor
+    /// and detect abuse. Must be between 6 and 128 characters long.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 6, max = 128))]
     pub user_id: Option<String>,
@@ -168,8 +172,9 @@ where
         self.max_tokens = Some(max_tokens);
         self
     }
-    /// Deprecated: use `add_tools` (single) or `extend_tools` (Vec) on ChatBody,
-    /// or prefer ChatCompletion::add_tool / add_tools at the client layer.
+    /// Deprecated: use `add_tools` (single) or `extend_tools` (Vec) on
+    /// ChatBody, or prefer ChatCompletion::add_tool / add_tools at the
+    /// client layer.
     #[deprecated(note = "with_tools is deprecated; use add_tool/add_tools instead")]
     pub fn with_tools(mut self, tools: impl Into<Vec<Tools>>) -> Self {
         self.tools = Some(tools.into());
@@ -198,10 +203,12 @@ where
     N: ModelName + ThinkEnable,
     (N, M): Bounded,
 {
-    /// Adds thinking text to the chat body for models that support thinking capabilities.
+    /// Adds thinking text to the chat body for models that support thinking
+    /// capabilities.
     ///
-    /// This method is only available for models that implement the [`ThinkEnable`] trait,
-    /// ensuring type safety for thinking-enabled models.
+    /// This method is only available for models that implement the
+    /// [`ThinkEnable`] trait, ensuring type safety for thinking-enabled
+    /// models.
     ///
     /// # Arguments
     ///
@@ -209,7 +216,8 @@ where
     ///
     /// # Returns
     ///
-    /// Returns `self` with the thinking field set, allowing for method chaining.
+    /// Returns `self` with the thinking field set, allowing for method
+    /// chaining.
     ///
     /// # Examples
     ///
@@ -229,7 +237,8 @@ where
     N: ModelName + ToolStreamEnable,
     (N, M): Bounded,
 {
-    /// Enables streaming tool calls (GLM-4.6 only). Default is false when omitted.
+    /// Enables streaming tool calls (GLM-4.6 only). Default is false when
+    /// omitted.
     pub fn with_tool_stream(mut self, tool_stream: bool) -> Self {
         if tool_stream {
             // Enabling tool_stream implies stream=true

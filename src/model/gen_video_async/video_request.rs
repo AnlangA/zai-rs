@@ -1,6 +1,7 @@
-use super::super::traits::*;
 use serde::Serialize;
 use validator::*;
+
+use super::super::traits::*;
 
 #[derive(Debug, Clone, Validate, Serialize)]
 #[validate(schema(function = "validate_prompt_or_image"))]
@@ -35,8 +36,8 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     pub watermark_enabled: Option<bool>,
     /// Video resolution size
-    /// If not specified, short side defaults to 1080, long side determined by aspect ratio
-    /// Supports up to 4K resolution
+    /// If not specified, short side defaults to 1080, long side determined by
+    /// aspect ratio Supports up to 4K resolution
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<VideoSize>,
     /// Video frame rate (FPS), supported values: 30 or 60, defaults to 30

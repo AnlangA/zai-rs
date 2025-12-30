@@ -1,5 +1,7 @@
-use super::request::{TokenizerBody, TokenizerMessage, TokenizerModel};
-use super::response::TokenizerResponse;
+use super::{
+    request::{TokenizerBody, TokenizerMessage, TokenizerModel},
+    response::TokenizerResponse,
+};
 use crate::client::http::HttpClient;
 
 /// Text Tokenizer request client (JSON POST)

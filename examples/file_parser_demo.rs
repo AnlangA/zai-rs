@@ -1,10 +1,14 @@
 //! File parser demo with real API
 //!
-//! This example demonstrates how to use the file parser API with a real API key.
+//! This example demonstrates how to use the file parser API with a real API
+//! key.
 
 use std::path::Path;
-use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolType};
-use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
+
+use zai_rs::tool::{
+    file_parser_create::{FileParserCreateRequest, FileType, ToolType},
+    file_parser_result::{FileParserResultRequest, FormatType},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,10 +63,10 @@ The parser should extract and return the text content.
             if let Some(download_url) = result_response.download_url() {
                 println!("Download URL: {}", download_url);
             }
-        }
+        },
         Err(e) => {
             println!("Error waiting for result: {}", e);
-        }
+        },
     }
 
     // Cleanup

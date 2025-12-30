@@ -2,8 +2,9 @@
 //!
 //! This example demonstrates the optimized toolkits functionality
 
-use serde_json::json;
 use std::time::Instant;
+
+use serde_json::json;
 use zai_rs::toolkits::prelude::*;
 
 fn create_test_tools() -> Vec<FunctionTool> {
@@ -26,7 +27,7 @@ fn create_test_tools() -> Vec<FunctionTool> {
             let input = args
                 .get("input")
                 .and_then(|v| v.as_str())
-                .unwrap_or("default");
+                .unwrap_or_else(|| "default");
             Ok(json!({ "result": format!("Processed: {}", input) }))
         })
         .build()
@@ -86,7 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "arguments": json!({ "input": format!("parallel test {}", i) }).to_string()
                 }
             }))
-            .unwrap()
+            .expect("Failed to create tool call JSON")
         })
         .collect();
 

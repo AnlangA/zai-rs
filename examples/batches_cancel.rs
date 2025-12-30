@@ -1,9 +1,7 @@
-use std::fs::File;
-use std::io::Write;
+use std::{fs::File, io::Write};
 
 use serde_json::json;
-use zai_rs::batches::*;
-use zai_rs::file::*;
+use zai_rs::{batches::*, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,7 +30,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
         .with_content_type("application/jsonl");
     let file: FileObject = upload.send().await?;
-    let file_id = file.id.ok_or_else(|| Box::<dyn std::error::Error>::from("missing file id"))?;
+    let file_id = file
+        .id
+        .ok_or_else(|| Box::<dyn std::error::Error>::from("missing file id"))?;
 
     // 3) Create a batch task using the uploaded file
     let created: CreateBatchResponse =

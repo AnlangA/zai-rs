@@ -1,11 +1,14 @@
 //! # File Parser Creation API
 //!
-//! This module provides the file parser creation client for creating file parsing tasks.
+//! This module provides the file parser creation client for creating file
+//! parsing tasks.
+
+use std::path::Path;
+
+use serde_json;
 
 use super::{request::*, response::*};
 use crate::ZaiResult;
-use serde_json;
-use std::path::Path;
 
 /// File parser creation client.
 ///
@@ -51,7 +54,8 @@ impl FileParserCreateRequest {
     ///
     /// ## Returns
     ///
-    /// A new `FileParserCreateRequest` instance or an error if validation fails.
+    /// A new `FileParserCreateRequest` instance or an error if validation
+    /// fails.
     pub fn new(
         key: String,
         file_path: &Path,
@@ -85,7 +89,8 @@ impl FileParserCreateRequest {
         })
     }
 
-    /// Creates a new file parser creation request with automatic file type detection.
+    /// Creates a new file parser creation request with automatic file type
+    /// detection.
     ///
     /// ## Arguments
     ///
@@ -95,7 +100,8 @@ impl FileParserCreateRequest {
     ///
     /// ## Returns
     ///
-    /// A new `FileParserCreateRequest` instance or an error if validation fails.
+    /// A new `FileParserCreateRequest` instance or an error if validation
+    /// fails.
     pub fn new_with_auto_type(
         key: String,
         file_path: &Path,

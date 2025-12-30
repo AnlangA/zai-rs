@@ -1,7 +1,10 @@
-use super::super::traits::*;
-use super::request::{TextToAudioBody, TtsAudioFormat, Voice};
-use crate::client::http::HttpClient;
 use serde::Serialize;
+
+use super::{
+    super::traits::*,
+    request::{TextToAudioBody, TtsAudioFormat, Voice},
+};
+use crate::client::http::HttpClient;
 
 /// Text-to-speech request wrapper using JSON body
 pub struct TextToAudioRequest<N>

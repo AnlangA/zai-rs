@@ -6,8 +6,10 @@
 //!
 //! ## Features
 //!
-//! - **Secure WebSocket Connections** - WSS protocol support for encrypted communication
-//! - **Real-time Bidirectional Communication** - Full-duplex communication channels
+//! - **Secure WebSocket Connections** - WSS protocol support for encrypted
+//!   communication
+//! - **Real-time Bidirectional Communication** - Full-duplex communication
+//!   channels
 //! - **Automatic Reconnection** - Robust connection management with retry logic
 //! - **Message Framing** - Proper WebSocket message handling and parsing
 //!
@@ -40,7 +42,8 @@
 //!
 //! The WSS module will provide:
 //!
-//! - **Connection Management** - Handle WebSocket handshake and connection lifecycle
+//! - **Connection Management** - Handle WebSocket handshake and connection
+//!   lifecycle
 //! - **Message Protocol** - Define message formats for AI interactions
 //! - **Error Handling** - Comprehensive error handling for network issues
 //! - **Authentication** - Secure API key authentication over WebSocket

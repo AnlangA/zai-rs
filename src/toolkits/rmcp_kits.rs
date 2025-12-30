@@ -37,14 +37,13 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use validator::Validate;
-
 use rmcp::{
     model::{CallToolRequestParam, CallToolResult, Tool},
     service::ServerSink,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use validator::Validate;
 
 use crate::model::{Function, Tools};
 
@@ -67,7 +66,8 @@ pub fn mcp_tools_to_functions(tools: &[Tool]) -> Vec<Tools> {
     tools.iter().map(mcp_tool_to_function).collect()
 }
 
-/// Normalize a CallToolResult to a compact JSON payload suitable for LLM tool results.
+/// Normalize a CallToolResult to a compact JSON payload suitable for LLM tool
+/// results.
 ///
 /// Preference order:
 /// 1) `structured_content` if present
@@ -126,7 +126,7 @@ pub async fn call_mcp_tool(
                 "error": {"type": "invalid_arguments", "message": "arguments must be a JSON object", "got": other}
             });
             return Ok((name.clone(), val));
-        }
+        },
         None => None,
     };
 
@@ -165,7 +165,8 @@ where
     Ok(map)
 }
 
-/// A small helper that encapsulates a server handle and provides a concise call API.
+/// A small helper that encapsulates a server handle and provides a concise call
+/// API.
 #[derive(Clone)]
 pub struct McpToolCaller {
     server: ServerSink,
@@ -195,8 +196,8 @@ impl McpToolCaller {
     }
 }
 
-/// Execute tool calls requested by the first choice in a ChatCompletionResponse and
-/// build tool messages ready to append to the chat.
+/// Execute tool calls requested by the first choice in a ChatCompletionResponse
+/// and build tool messages ready to append to the chat.
 ///
 /// This encapsulates:
 /// - Extracting tool_calls from the assistant message
@@ -210,8 +211,7 @@ pub async fn execute_tool_calls_as_messages(
     caller: &McpToolCaller,
     resp: &crate::model::chat_base_response::ChatCompletionResponse,
 ) -> crate::ZaiResult<Vec<crate::model::chat_message_types::TextMessage>> {
-    use crate::model::chat_base_response::ToolCallMessage;
-    use crate::model::chat_message_types::TextMessage;
+    use crate::model::{chat_base_response::ToolCallMessage, chat_message_types::TextMessage};
 
     let mut out: Vec<TextMessage> = Vec::new();
     let calls: Option<&[ToolCallMessage]> = resp
@@ -229,7 +229,7 @@ pub async fn execute_tool_calls_as_messages(
             None => {
                 log::warn!("Tool call without id, skipping");
                 continue;
-            }
+            },
         };
 
         // Extract function payload
@@ -238,7 +238,7 @@ pub async fn execute_tool_calls_as_messages(
             None => {
                 log::warn!("Tool call missing function payload, skipping");
                 continue;
-            }
+            },
         };
 
         // Name must be present
@@ -247,7 +247,7 @@ pub async fn execute_tool_calls_as_messages(
             None => {
                 log::warn!("Tool call missing function name, skipping");
                 continue;
-            }
+            },
         };
 
         // Parse JSON arguments if present, and only accept JSON object
@@ -257,22 +257,22 @@ pub async fn execute_tool_calls_as_messages(
                 Ok(_) => {
                     log::warn!("Function arguments are not an object; passing None");
                     None
-                }
+                },
                 Err(e) => {
                     log::warn!("Failed to parse function arguments JSON: {}", e);
                     None
-                }
+                },
             },
             None => None,
         };
 
         // Call RMCP server via rmcp-kits
-        let (_tool, payload): (String, Value) = caller
-            .call(name, args_value)
-            .await
-            .map_err(|e| crate::client::error::ZaiError::Unknown {
-                code: 0,
-                message: format!("RMCP call_tool failed: {}", e),
+        let (_tool, payload): (String, Value) =
+            caller.call(name, args_value).await.map_err(|e| {
+                crate::client::error::ZaiError::Unknown {
+                    code: 0,
+                    message: format!("RMCP call_tool failed: {}", e),
+                }
             })?;
 
         // Wrap tool result as a tool message with id
@@ -310,7 +310,8 @@ where
 
     log::info!("AI response: {:#?}", first_resp);
 
-    let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> = execute_tool_calls_as_messages(caller, &first_resp).await?;
+    let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> =
+        execute_tool_calls_as_messages(caller, &first_resp).await?;
 
     if tool_msgs.is_empty() {
         return Ok(first_resp);
@@ -333,7 +334,8 @@ where
 
 /// Extract a concise final text from ChatCompletionResponse when possible.
 /// - If content is a string, return it
-/// - If content is an array, return the first item of type "text"'s `text` field
+/// - If content is an array, return the first item of type "text"'s `text`
+///   field
 /// - Otherwise return None
 #[cfg(feature = "rmcp-kits")]
 pub fn extract_final_text(
@@ -344,7 +346,8 @@ pub fn extract_final_text(
         Some(serde_json::Value::String(s)) => Some(s.clone()),
         Some(serde_json::Value::Array(arr)) => arr.iter().find_map(|item| {
             if let serde_json::Value::Object(obj) = item
-                && obj.get("type").and_then(|v| v.as_str()) == Some("text") {
+                && obj.get("type").and_then(|v| v.as_str()) == Some("text")
+            {
                 return obj
                     .get("text")
                     .and_then(|v| v.as_str())

@@ -1,8 +1,10 @@
-use super::super::traits::*;
 use serde::Serialize;
 use validator::Validate;
 
-/// Body parameters holder for audio transcription (used to build multipart form)
+use super::super::traits::*;
+
+/// Body parameters holder for audio transcription (used to build multipart
+/// form)
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct AudioToTextBody<N>
 where

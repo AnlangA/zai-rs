@@ -1,6 +1,4 @@
-use zai_rs::model::audio_to_text::model::GlmAsr;
-use zai_rs::model::audio_to_text::response::AudioToTextResponse;
-use zai_rs::model::audio_to_text::*;
+use zai_rs::model::audio_to_text::{model::GlmAsr, response::AudioToTextResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

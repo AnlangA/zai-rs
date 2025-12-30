@@ -3,8 +3,9 @@
 //! This module provides data structures for file parser creation requests,
 //! supporting multiple file formats and parsing tools.
 
-use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 
 /// Parsing tool types with different capabilities.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,7 +102,7 @@ impl FileType {
                         | FileType::TXT
                         | FileType::MD
                 )
-            }
+            },
             ToolType::Expert => matches!(self, FileType::PDF),
             ToolType::Prime => true, // Prime supports all file types
         }

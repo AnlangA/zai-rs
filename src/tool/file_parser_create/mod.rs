@@ -13,20 +13,17 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use zai_rs::tool::file_parser_create::{FileParserCreateRequest, ToolType, FileType};
 //! use std::path::Path;
+//!
+//! use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolType};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let api_key = std::env::var("ZHIPU_API_KEY")?;
 //!     let file_path = Path::new("document.pdf");
 //!
-//!     let request = FileParserCreateRequest::new(
-//!         api_key,
-//!         file_path,
-//!         ToolType::Lite,
-//!         FileType::PDF,
-//!     )?;
+//!     let request =
+//!         FileParserCreateRequest::new(api_key, file_path, ToolType::Lite, FileType::PDF)?;
 //!
 //!     let response = request.send().await?;
 //!     println!("Task created: {}", response.task_id);

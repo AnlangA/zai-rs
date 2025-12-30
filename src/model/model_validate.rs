@@ -1,17 +1,20 @@
 //! # JSON Schema Validation Module
 //!
-//! Provides custom validation functions for JSON Schema validation in the ZAI-RS model API.
-//! This module ensures that JSON schemas used in function definitions and tool configurations
-//! are valid and conform to the JSON Schema specification.
+//! Provides custom validation functions for JSON Schema validation in the
+//! ZAI-RS model API. This module ensures that JSON schemas used in function
+//! definitions and tool configurations are valid and conform to the JSON Schema
+//! specification.
 //!
 //! ## Validation Functions
 //!
 //! - [`validate_json_schema`] - Validates JSON Schema from string input
-//! - [`validate_json_schema_value`] - Validates JSON Schema from parsed JSON value
+//! - [`validate_json_schema_value`] - Validates JSON Schema from parsed JSON
+//!   value
 //!
 //! ## Error Handling
 //!
-//! Both validation functions return `ValidationError` with specific error codes:
+//! Both validation functions return `ValidationError` with specific error
+//! codes:
 //! - `"invalid_json"` - Input string is not valid JSON
 //! - `"invalid_json_schema"` - JSON is valid but not a valid JSON Schema
 //!
@@ -44,24 +47,28 @@
 //!
 //! ## Integration with Validation
 //!
-//! These functions are designed to work with the `validator` crate's custom validation
-//! system, allowing them to be used as field validators in struct definitions.
+//! These functions are designed to work with the `validator` crate's custom
+//! validation system, allowing them to be used as field validators in struct
+//! definitions.
 
 use validator::ValidationError;
 
 /// Validates a JSON Schema from a string input.
 ///
-/// This function parses the input string as JSON and then validates that it conforms
-/// to the JSON Schema specification using the `jsonschema` crate's meta-validation.
+/// This function parses the input string as JSON and then validates that it
+/// conforms to the JSON Schema specification using the `jsonschema` crate's
+/// meta-validation.
 ///
 /// # Arguments
 ///
-/// * `parameters` - A string containing JSON that should represent a valid JSON Schema
+/// * `parameters` - A string containing JSON that should represent a valid JSON
+///   Schema
 ///
 /// # Returns
 ///
 /// * `Ok(())` - If the input is valid JSON and a valid JSON Schema
-/// * `Err(ValidationError)` - If the input is invalid JSON or not a valid JSON Schema
+/// * `Err(ValidationError)` - If the input is invalid JSON or not a valid JSON
+///   Schema
 ///
 /// # Error Codes
 ///
@@ -94,12 +101,13 @@ pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
 
 /// Validates a JSON Schema from a parsed JSON value.
 ///
-/// This function validates that the provided JSON value conforms to the JSON Schema
-/// specification using the `jsonschema` crate's meta-validation.
+/// This function validates that the provided JSON value conforms to the JSON
+/// Schema specification using the `jsonschema` crate's meta-validation.
 ///
 /// # Arguments
 ///
-/// * `parameters` - A reference to a `serde_json::Value` that should represent a valid JSON Schema
+/// * `parameters` - A reference to a `serde_json::Value` that should represent
+///   a valid JSON Schema
 ///
 /// # Returns
 ///

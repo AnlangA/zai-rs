@@ -1,7 +1,7 @@
-use super::request::VoiceListQuery;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
 use url::Url;
+
+use super::request::VoiceListQuery;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// GET voice list request
 pub struct VoiceListRequest {
@@ -36,7 +36,8 @@ impl VoiceListRequest {
     }
 
     pub fn validate(&self) -> ZaiResult<()> {
-        // No required params; URL already built. Optionally, validate query formats here.
+        // No required params; URL already built. Optionally, validate query formats
+        // here.
         Ok(())
     }
 

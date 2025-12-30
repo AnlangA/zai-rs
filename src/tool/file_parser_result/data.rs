@@ -1,10 +1,12 @@
 //! # File Parser Result API
 //!
-//! This module provides the file parser result client for retrieving file parsing results.
+//! This module provides the file parser result client for retrieving file
+//! parsing results.
+
+use serde_json;
 
 use super::{request::*, response::*};
 use crate::ZaiResult;
-use serde_json;
 
 /// File parser result client.
 ///
@@ -123,14 +125,14 @@ impl FileParserResultRequest {
                 ParserStatus::Succeeded => {
                     println!("🎉 Parsing completed successfully!");
                     return Ok(result);
-                }
+                },
                 ParserStatus::Failed => {
                     println!("💥 Parsing failed: {}", result.message);
                     return Err(crate::client::error::ZaiError::ApiError {
                         code: 0,
                         message: format!("Parsing failed: {}", result.message),
                     });
-                }
+                },
                 ParserStatus::Processing => {
                     let elapsed = start_time.elapsed().as_secs();
                     println!("⏳ Still processing... ({}s elapsed)", elapsed);
@@ -147,7 +149,7 @@ impl FileParserResultRequest {
                     );
                     tokio::time::sleep(tokio::time::Duration::from_secs(poll_interval_seconds))
                         .await;
-                }
+                },
             }
         }
     }

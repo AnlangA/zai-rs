@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
+
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Request body for re-embedding a document
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, Default)]

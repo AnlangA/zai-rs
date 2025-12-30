@@ -51,7 +51,8 @@ pub struct EmbeddingBody {
     /// 输入文本，支持字符串或字符串数组
     pub input: EmbeddingInput,
 
-    /// 输出维度，Embedding-3 支持 256/512/1024/2048；Embedding-2 固定 1024（可不填）
+    /// 输出维度，Embedding-3 支持 256/512/1024/2048；Embedding-2 固定
+    /// 1024（可不填）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<EmbeddingDimensions>,
 }
@@ -77,15 +78,17 @@ impl EmbeddingBody {
         // If input is Batch for embedding-3, enforce max 64 items (per API doc)
         if let EmbeddingModel::Embedding3 = self.model
             && let EmbeddingInput::Batch(ref v) = self.input
-                && v.len() > 64 {
-                    return Err(ValidationError::new("batch_too_long"));
-                }
+            && v.len() > 64
+        {
+            return Err(ValidationError::new("batch_too_long"));
+        }
         // If model = embedding-2 and dimensions is Some, it must be 1024
         if let EmbeddingModel::Embedding2 = self.model
             && let Some(d) = self.dimensions
-                && d != EmbeddingDimensions::D1024 {
-                    return Err(ValidationError::new("embedding2_dims_must_be_1024"));
-                }
+            && d != EmbeddingDimensions::D1024
+        {
+            return Err(ValidationError::new("embedding2_dims_must_be_1024"));
+        }
         Ok(())
     }
 }

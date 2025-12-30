@@ -1,10 +1,9 @@
-use super::super::traits::*;
-use super::request::AudioToTextBody;
-use serde::Serialize;
 use std::path::Path;
 
+use serde::Serialize;
 use validator::Validate;
 
+use super::{super::traits::*, request::AudioToTextBody};
 use crate::client::http::HttpClient;
 
 /// Audio transcription request (multipart/form-data)
@@ -88,9 +87,7 @@ where
 
         let resp = self.post().await?;
 
-        let parsed = resp
-            .json::<super::response::AudioToTextResponse>()
-            .await?;
+        let parsed = resp.json::<super::response::AudioToTextResponse>().await?;
 
         Ok(parsed)
     }

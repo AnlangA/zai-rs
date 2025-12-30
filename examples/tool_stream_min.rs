@@ -1,7 +1,7 @@
 //! Minimal example: streaming tool calls (tool_stream)
 //!
-//! This example shows how to enable tool_stream with GLM-4.6 and print incremental
-//! tool_call payloads while streaming.
+//! This example shows how to enable tool_stream with GLM-4.6 and print
+//! incremental tool_call payloads while streaming.
 //!
 //! Run:
 //!   cargo run --example tool_stream_min
@@ -14,7 +14,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1) Read API key
     let key = std::env::var("ZHIPU_API_KEY").expect("Set ZHIPU_API_KEY in your environment");
 
-    // 2) Define a minimal function tool schema (no real execution here; just to trigger tool calls)
+    // 2) Define a minimal function tool schema (no real execution here; just to
+    //    trigger tool calls)
     let add_tool = Tools::Function {
         function: Function::new(
             "add",

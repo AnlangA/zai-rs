@@ -1,12 +1,12 @@
 use url::Url;
 
 use super::request::FileListQuery;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Files list request (GET /paas/v4/files)
 ///
-/// Builds query parameters from `FileListQuery` and performs an authenticated GET.
+/// Builds query parameters from `FileListQuery` and performs an authenticated
+/// GET.
 pub struct FileListRequest {
     pub key: String,
     url: String,

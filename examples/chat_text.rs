@@ -24,9 +24,7 @@
 //! cargo run --example chat_text
 //! ```
 
-use zai_rs::model::chat_base_response::ChatCompletionResponse;
-use zai_rs::model::*;
-
+use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

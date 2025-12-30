@@ -1,11 +1,12 @@
 //! # Content Moderation Module
 //!
-//! This module provides content moderation functionality for analyzing text, image,
-//! audio, and video content for safety risks.
+//! This module provides content moderation functionality for analyzing text,
+//! image, audio, and video content for safety risks.
 //!
 //! ## Features
 //!
-//! - **Multi-format support** - Text, image, audio, and video content moderation
+//! - **Multi-format support** - Text, image, audio, and video content
+//!   moderation
 //! - **Risk detection** - Identifies pornographic, violent, and illegal content
 //! - **Structured results** - Detailed risk level and type information
 //! - **Validation** - Input validation using the validator crate

@@ -5,7 +5,8 @@
 //!
 //! ## Features
 //!
-//! - **Callback-based API** - Simple async closure interface for processing chunks
+//! - **Callback-based API** - Simple async closure interface for processing
+//!   chunks
 //! - **Stream-based API** - Composable, testable, and reusable stream interface
 //! - **Type-safe parsing** - Automatic deserialization of SSE data chunks
 //! - **Error handling** - Comprehensive error propagation and handling
@@ -31,29 +32,36 @@
 //! }
 //! ```
 
-use crate::client::http::HttpClient;
-use crate::model::chat_stream_response::ChatStreamResponse;
-use crate::model::traits::SseStreamable;
+use std::pin::Pin;
+
 use futures::{Stream, StreamExt, stream};
 use log::info;
-use std::pin::Pin;
+
+use crate::{
+    client::http::HttpClient,
+    model::{chat_stream_response::ChatStreamResponse, traits::SseStreamable},
+};
 
 /// Streaming extension trait for chat-like endpoints.
 ///
-/// This trait provides two complementary APIs for processing streaming responses:
+/// This trait provides two complementary APIs for processing streaming
+/// responses:
 /// 1. **Callback-based** - Simple async closure interface
 /// 2. **Stream-based** - Composable stream interface for advanced usage
 ///
-/// Both APIs handle SSE protocol parsing, JSON deserialization, and error propagation.
+/// Both APIs handle SSE protocol parsing, JSON deserialization, and error
+/// propagation.
 pub trait StreamChatLikeExt: SseStreamable + HttpClient {
     /// Processes streaming responses using an async callback function.
     ///
-    /// This method provides a simple interface for handling streaming chat responses.
-    /// Each successfully parsed chunk is passed to the provided callback function.
+    /// This method provides a simple interface for handling streaming chat
+    /// responses. Each successfully parsed chunk is passed to the provided
+    /// callback function.
     ///
     /// ## Arguments
     ///
-    /// * `on_chunk` - Async callback function that processes each `ChatStreamResponse` chunk
+    /// * `on_chunk` - Async callback function that processes each
+    ///   `ChatStreamResponse` chunk
     ///
     /// ## Returns
     ///
@@ -90,7 +98,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                             code: 0,
                             message: format!("Stream error: {}", e),
                         });
-                    }
+                    },
                 };
                 buf.extend_from_slice(&bytes);
                 while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
@@ -130,7 +138,8 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
     ///
     /// ## Returns
     ///
-    /// A future that resolves to a `Stream` of `Result<ChatStreamResponse>` items
+    /// A future that resolves to a `Stream` of `Result<ChatStreamResponse>`
+    /// items
     ///
     /// ## Example
     ///
@@ -179,7 +188,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                             }
                             match serde_json::from_slice::<ChatStreamResponse>(rest) {
                                 Ok(item) => return Some((Ok(item), (s, buf))),
-                                Err(_) => { /* skip invalid json line */ }
+                                Err(_) => { /* skip invalid json line */ },
                             }
                         }
                     }
@@ -194,7 +203,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                                 }),
                                 (s, buf),
                             ));
-                        }
+                        },
                         None => return None,
                     }
                 }

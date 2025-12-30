@@ -9,7 +9,6 @@ pub enum RerankModel {
     Rerank,
 }
 
-
 /// Request body for rerank API
 #[derive(Debug, Clone, Serialize)]
 pub struct RerankBody {
@@ -107,12 +106,13 @@ impl RerankBody {
             }
         }
         if let Some(n) = self.top_n
-            && n > self.documents.len() {
-                return Err(crate::client::error::ZaiError::ApiError {
-                    code: 1200,
-                    message: "top_n cannot exceed documents length".to_string(),
-                });
-            }
+            && n > self.documents.len()
+        {
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "top_n cannot exceed documents length".to_string(),
+            });
+        }
         Ok(())
     }
 }

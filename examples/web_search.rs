@@ -49,10 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("  URL: {}", first_result.link);
                 println!("  Source: {}", first_result.media);
             }
-        }
+        },
         Err(e) => {
             println!("✗ Search failed: {}", e);
-        }
+        },
     }
 
     println!("\n=== Example Complete ===");

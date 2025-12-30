@@ -2,13 +2,14 @@
 //!
 //! A comprehensive tool calling and execution framework for AI applications.
 //! This module was merged from the former `zai-tools` crate and provides
-//! a robust foundation for integrating external tools and functions with AI models.
+//! a robust foundation for integrating external tools and functions with AI
+//! models.
 //!
 //! ## Overview
 //!
-//! The toolkits module enables AI models to invoke external functions, APIs, and tools
-//! in a type-safe and extensible manner. It supports both static tool definitions
-//! and dynamic tool registration at runtime.
+//! The toolkits module enables AI models to invoke external functions, APIs,
+//! and tools in a type-safe and extensible manner. It supports both static tool
+//! definitions and dynamic tool registration at runtime.
 //!
 //! ## Core Components
 //!
@@ -40,6 +41,7 @@
 //!     .build()?;
 //! ```
 
+pub mod cache;
 pub mod core;
 pub mod error;
 pub mod executor;
@@ -62,25 +64,23 @@ pub mod rmcp_kits;
 /// ```
 pub mod prelude {
     // Core traits and types
-    pub use crate::toolkits::core::{DynTool, FunctionTool, ToolMetadata, conversions};
-
-    // Execution (executor now owns registration APIs)
-    pub use crate::toolkits::executor::{
-        ExecutionConfig, ExecutionResult, ExecutorBuilder, ToolExecutor,
-    };
-
-    // Error handling
-    pub use crate::toolkits::error::{ToolError, ToolResult, error_context};
-
     // External re-exports for convenience
     pub use async_trait::async_trait;
     pub use serde::{Deserialize, Serialize};
 
+    // Caching
+    pub use crate::toolkits::cache::{CacheEntry, CacheKey, CacheStats, ToolCallCache};
+    pub use crate::toolkits::core::{DynTool, FunctionTool, ToolMetadata, conversions};
+    // Error handling
+    pub use crate::toolkits::error::{ToolError, ToolResult, error_context};
+    // Execution (executor now owns registration APIs)
+    pub use crate::toolkits::executor::{
+        ExecutionConfig, ExecutionResult, ExecutorBuilder, ToolExecutor,
+    };
     // LLM parsing helpers
     pub use crate::toolkits::llm::{
         LlmToolCall, parse_first_tool_call, parse_tool_calls, parse_tool_calls_from_message,
     };
-
     // RMCP bridge exports when enabled
     #[cfg(feature = "rmcp-kits")]
     pub use crate::toolkits::rmcp_kits::{
@@ -90,6 +90,8 @@ pub mod prelude {
 }
 
 // Re-export commonly used types at crate root for convenience via toolkits::
-pub use crate::toolkits::core::{FunctionTool, ToolMetadata};
-pub use crate::toolkits::error::{ToolError, ToolResult};
-pub use crate::toolkits::executor::ToolExecutor;
+pub use crate::toolkits::{
+    core::{FunctionTool, ToolMetadata},
+    error::{ToolError, ToolResult},
+    executor::ToolExecutor,
+};

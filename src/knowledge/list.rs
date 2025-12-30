@@ -1,8 +1,7 @@
 use url::Url;
 
 use super::types::KnowledgeListResponse;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Query parameters for knowledge list API
 #[derive(Debug, Clone, Default, serde::Serialize, validator::Validate)]

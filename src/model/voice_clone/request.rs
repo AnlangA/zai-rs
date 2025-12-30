@@ -1,6 +1,7 @@
-use super::super::traits::*;
 use serde::Serialize;
 use validator::Validate;
+
+use super::super::traits::*;
 
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct VoiceCloneBody<N>

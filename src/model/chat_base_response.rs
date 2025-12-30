@@ -1,16 +1,20 @@
 //! Base response types for chat API models.
 //!
-//! This module defines the standard response structures for 200 application/json
-//! responses from the service.
+//! This module defines the standard response structures for 200
+//! application/json responses from the service.
 //!
 //! Notes:
-//! - All fields are optional unless documented otherwise; servers may omit fields or return null.
-//! - Some IDs may be numbers on the wire; we normalize them to `String` via custom deserializers.
-//! - In non-stream responses, `choices` typically has length 1 unless the API supports multi-candidate responses.
-/// Internal helper: Accepts string or number and deserializes into `Option<String>`.
+//! - All fields are optional unless documented otherwise; servers may omit
+//!   fields or return null.
+//! - Some IDs may be numbers on the wire; we normalize them to `String` via
+//!   custom deserializers.
+//! - In non-stream responses, `choices` typically has length 1 unless the API
+//!   supports multi-candidate responses.
+/// Internal helper: Accepts string or number and deserializes into
+/// `Option<String>`.
 ///
-/// Why: Some upstream fields (e.g., various `id`/`request_id`) may occasionally be
-/// returned as numbers. This keeps the public structs strongly typed while
+/// Why: Some upstream fields (e.g., various `id`/`request_id`) may occasionally
+/// be returned as numbers. This keeps the public structs strongly typed while
 /// maximizing compatibility with heterogeneous payloads.
 use serde::{Deserialize, Deserializer, Serialize};
 use validator::Validate;
@@ -34,8 +38,10 @@ where
 
 /// Successful business response (HTTP 200, application/json).
 /// Notes:
-/// - `choices` is often a single element in non-stream mode unless explicitly requested otherwise.
-/// - `id`/`request_id` are normalized to `String` even if the server returns numbers.
+/// - `choices` is often a single element in non-stream mode unless explicitly
+///   requested otherwise.
+/// - `id`/`request_id` are normalized to `String` even if the server returns
+///   numbers.
 /// - `usage` is typically present only after completion (not during streaming).
 
 #[derive(Clone, Serialize, Deserialize, Validate, Default)]
@@ -75,15 +81,17 @@ pub struct ChatCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_result: Option<Vec<VideoResultItem>>,
 
-    /// Information related to web search, returned when using WebSearchToolSchema
+    /// Information related to web search, returned when using
+    /// WebSearchToolSchema
     #[serde(skip_serializing_if = "Option::is_none")]
     pub web_search: Option<Vec<WebSearchInfo>>,
 
     /// Content safety related information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_filter: Option<Vec<ContentFilterInfo>>,
-    /// Processing status of the task. One of: PROCESSING (处理中), SUCCESS (成功), FAIL (失败).
-    /// Note: When PROCESSING, the final result needs to be retrieved via a subsequent query.
+    /// Processing status of the task. One of: PROCESSING (处理中), SUCCESS
+    /// (成功), FAIL (失败). Note: When PROCESSING, the final result needs
+    /// to be retrieved via a subsequent query.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_status: Option<TaskStatus>,
 }
@@ -139,8 +147,10 @@ pub struct Choice {
 }
 
 /// Notes:
-/// - Depending on the model/mode, only one of `content`, `audio`, or `tool_calls` may be set.
-/// - Prefer `content` for final text; `reasoning_content` may contain internal traces (when available).
+/// - Depending on the model/mode, only one of `content`, `audio`, or
+///   `tool_calls` may be set.
+/// - Prefer `content` for final text; `reasoning_content` may contain internal
+///   traces (when available).
 ///
 /// Assistant message payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -150,8 +160,9 @@ pub struct Message {
     pub role: Option<String>,
 
     /// Current dialog content.
-    /// If function/tool calling is used, this may be null; otherwise contains the inference result.
-    /// For some models, content may include thinking traces within `<think>` tags, with final output outside.
+    /// If function/tool calling is used, this may be null; otherwise contains
+    /// the inference result. For some models, content may include thinking
+    /// traces within `<think>` tags, with final output outside.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<serde_json::Value>,
 
@@ -170,7 +181,8 @@ pub struct Message {
 
 /// Tool/function call description inside message
 /// Notes:
-/// - When `function` is present, `type` is typically "function"; `mcp` is used for MCP calls.
+/// - When `function` is present, `type` is typically "function"; `mcp` is used
+///   for MCP calls.
 /// - `id` is normalized to `String` (server may return numbers).
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -271,7 +283,8 @@ pub struct MCPInputSchema {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Input schema type for MCP tools.
-/// Currently only `object` is observed; kept as an enum for forward compatibility.
+/// Currently only `object` is observed; kept as an enum for forward
+/// compatibility.
 #[serde(rename_all = "lowercase")]
 pub enum MCPInputType {
     Object,
@@ -279,8 +292,10 @@ pub enum MCPInputType {
 
 /// Audio content returned for voice models.
 /// Notes:
-/// - `data` is base64-encoded audio bytes (e.g., WAV/MP3) — decode before saving/playing.
-/// - `id` and `expires_at` are normalized to `String` and may be numeric on the wire.
+/// - `data` is base64-encoded audio bytes (e.g., WAV/MP3) — decode before
+///   saving/playing.
+/// - `id` and `expires_at` are normalized to `String` and may be numeric on the
+///   wire.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct AudioContent {
@@ -304,8 +319,10 @@ pub struct AudioContent {
 /// Token usage statistics.
 /// Notes:
 /// - `total_tokens` ≈ `prompt_tokens` + `completion_tokens`.
-/// - Some providers omit `usage` in streaming chunks; expect it mainly in the final response.
-/// - `prompt_tokens_details.cached_tokens` often indicates KV-cache hits or reused tokens.
+/// - Some providers omit `usage` in streaming chunks; expect it mainly in the
+///   final response.
+/// - `prompt_tokens_details.cached_tokens` often indicates KV-cache hits or
+///   reused tokens.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Usage {
@@ -331,7 +348,8 @@ pub struct PromptTokensDetails {
 
 /// Web search item returned by the service.
 /// Notes:
-/// - `link` and media URLs may be temporary; consider downloading or caching if needed.
+/// - `link` and media URLs may be temporary; consider downloading or caching if
+///   needed.
 /// - Fields are optional and may vary by search provider/source.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -363,7 +381,8 @@ pub struct WebSearchInfo {
 /// Video generation result item.
 /// Notes:
 /// - URLs may be temporary; fetch/save promptly if you need persistence.
-/// - Some providers deliver video asynchronously; this URL may point to a job/result resource.
+/// - Some providers deliver video asynchronously; this URL may point to a
+///   job/result resource.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct VideoResultItem {
@@ -384,7 +403,8 @@ pub struct VideoResultItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ContentFilterInfo {
-    /// Stage where the safety check applies: assistant (model inference), user (user input), history (context)
+    /// Stage where the safety check applies: assistant (model inference), user
+    /// (user input), history (context)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
 

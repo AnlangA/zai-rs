@@ -1,6 +1,7 @@
 //! File parser creation response models.
 //!
-//! This module provides data structures for file parser task creation responses.
+//! This module provides data structures for file parser task creation
+//! responses.
 
 use serde::{Deserialize, Serialize};
 

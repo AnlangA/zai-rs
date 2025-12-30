@@ -1,8 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Embedding model id enum mapped to integer ids
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

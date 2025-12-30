@@ -178,6 +178,12 @@ validator = { version = "0.20.0", features = ["derive"] }
 url = "2.5.4"
 reqwest = { version = "0.12.23", features = ["json", "multipart", "stream"] }
 
+fastrand = "2.1"
+
+regex = "1"
+
+tracing = "0.1"
+
 base64 = "0.22.1"
 chrono = "0.4"
 async-trait = "0.1"
@@ -199,3 +205,4 @@ rmcp-kits = ["dep:rmcp"]
 
 [dev-dependencies]
 toml = "0.9.5"
+hyper = { version = "0.14", features = ["full"] }

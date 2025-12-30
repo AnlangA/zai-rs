@@ -3,8 +3,9 @@
 //! This module provides data structures for file parser result responses,
 //! including task status and parsed content.
 
-use super::request::FormatType;
 use serde::{Deserialize, Serialize};
+
+use super::request::FormatType;
 
 /// Task processing status.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
