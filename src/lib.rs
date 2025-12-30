@@ -26,8 +26,7 @@
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use zai_rs::model::*;
-//! use zai_rs::client::http::*;
+//! use zai_rs::{client::http::*, model::*};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
