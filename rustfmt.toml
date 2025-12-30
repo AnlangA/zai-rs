@@ -1,0 +1,63 @@
+# Rustfmt configuration for zai-rs
+
+# Edition
+edition = "2024"
+
+# Maximum line width
+max_width = 100
+
+# Hard tabs or spaces
+hard_tabs = false
+tab_spaces = 4
+
+# Newline style
+newline_style = "Unix"
+
+# Use field init shorthand if possible
+use_field_init_shorthand = true
+
+# Use try shorthand
+use_try_shorthand = true
+
+# Force explicit types for public items
+force_explicit_abi = true
+
+# Format comments
+format_code_in_doc_comments = true
+normalize_comments = true
+normalize_doc_attributes = true
+wrap_comments = true
+
+# Imports
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+reorder_imports = true
+
+# Structs
+struct_lit_single_line = true
+struct_variant_width = 35
+
+# Match
+match_arm_blocks = true
+match_block_trailing_comma = true
+
+# Control flow
+control_brace_style = "AlwaysSameLine"
+
+# Blank lines
+blank_lines_upper_bound = 1
+blank_lines_lower_bound = 0
+
+# Spaces
+spaces_around_ranges = false
+
+# Chains
+# chains_overflow_last is not available in current rustfmt version
+
+# Trailing comma
+trailing_comma = "Vertical"
+
+# Misc
+merge_derives = true
+remove_nested_parens = true
+use_small_heuristics = "Default"
