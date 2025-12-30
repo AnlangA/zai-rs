@@ -27,7 +27,39 @@
 //!
 //! ## Usage Examples
 //!
+//! ### Upload a file
+//! ```rust,ignore
+//! use zai_rs::file::{FileUploadRequest, ContentType};
+//! use tokio::fs::File;
 //!
+//! let file = File::open("document.pdf").await?;
+//! let request = FileUploadRequest::new(file, ContentType::Pdf);
+//! let result = client.upload_file(&request).await?;
+//! ```
+//!
+//! ### List files
+//! ```rust,ignore
+//! use zai_rs::file::FileListRequest;
+//!
+//! let request = FileListRequest::new().limit(10);
+//! let files = client.list_files(&request).await?;
+//! ```
+//!
+//! ### Get file content
+//! ```rust,ignore
+//! use zai_rs::file::FileContentRequest;
+//!
+//! let request = FileContentRequest::new(file_id);
+//! let content = client.get_file_content(&request).await?;
+//! ```
+//!
+//! ### Delete a file
+//! ```rust,ignore
+//! use zai_rs::file::FileDeleteRequest;
+//!
+//! let request = FileDeleteRequest::new(file_id);
+//! client.delete_file(&request).await?;
+//! ```
 
 pub mod request;
 pub mod response;

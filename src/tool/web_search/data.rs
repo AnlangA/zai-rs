@@ -1,7 +1,10 @@
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
-use crate::tool::web_search::{request::*, response::*};
 use async_trait::async_trait;
+
+use crate::{
+    ZaiResult,
+    client::http::HttpClient,
+    tool::web_search::{request::*, response::*},
+};
 
 /// Web search API client
 pub struct WebSearchRequest {

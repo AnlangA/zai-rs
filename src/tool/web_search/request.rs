@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Web search engine options supported by the API
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchEngine {
     /// Zhipu basic search engine
@@ -16,7 +16,7 @@ pub enum SearchEngine {
 }
 
 /// Search result recency filter options
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchRecencyFilter {
     /// Search within one day
@@ -32,7 +32,7 @@ pub enum SearchRecencyFilter {
 }
 
 /// Content size options for search results
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentSize {
     /// Medium content size with summary information for basic reasoning needs
@@ -184,19 +184,19 @@ impl WebSearchBody {
 
         // Additional validation for count based on search engine
         if let Some(count) = self.count
-            && matches!(self.search_engine, SearchEngine::SearchProSogou) {
-                match count {
-                    10 | 20 | 30 | 40 | 50 => {}
-                    _ => {
-                        return Err(crate::client::error::ZaiError::ApiError {
-                            code: 1200,
-                            message:
-                                "search_pro_sogou only supports count values: 10, 20, 30, 40, 50"
-                                    .to_string(),
-                        });
-                    }
-                }
+            && matches!(self.search_engine, SearchEngine::SearchProSogou)
+        {
+            match count {
+                10 | 20 | 30 | 40 | 50 => {},
+                _ => {
+                    return Err(crate::client::error::ZaiError::ApiError {
+                        code: 1200,
+                        message: "search_pro_sogou only supports count values: 10, 20, 30, 40, 50"
+                            .to_string(),
+                    });
+                },
             }
+        }
 
         Ok(())
     }

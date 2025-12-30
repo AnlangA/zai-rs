@@ -18,7 +18,6 @@ pub enum TokenizerModel {
     Glm4Flash,
 }
 
-
 /// One message item for tokenizer input
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "lowercase")]

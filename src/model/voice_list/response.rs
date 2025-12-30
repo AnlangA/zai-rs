@@ -1,6 +1,7 @@
-use super::request::VoiceType;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
+
+use super::request::VoiceType;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct VoiceListResponse {

@@ -1,10 +1,10 @@
-use super::super::chat_base_request::*;
-use super::super::tools::*;
-use super::super::traits::*;
-use crate::client::http::HttpClient;
-use serde::Serialize;
 use std::marker::PhantomData;
+
+use serde::Serialize;
 use validator::Validate;
+
+use super::super::{chat_base_request::*, tools::*, traits::*};
+use crate::client::http::HttpClient;
 
 pub struct AsyncChatCompletion<N, M, S = StreamOff>
 where
@@ -37,7 +37,8 @@ where
         &mut self.body
     }
 
-    // Fluent, builder-style forwarding methods to mutate inner ChatBody and return Self
+    // Fluent, builder-style forwarding methods to mutate inner ChatBody and return
+    // Self
     pub fn add_messages(mut self, messages: M) -> Self {
         self.body = self.body.add_messages(messages);
         self
@@ -161,7 +162,8 @@ where
 
     pub fn disable_stream(mut self) -> AsyncChatCompletion<N, M, StreamOff> {
         self.body.stream = Some(false);
-        // Reset tool_stream when disabling streaming since tool_stream depends on stream
+        // Reset tool_stream when disabling streaming since tool_stream depends on
+        // stream
         self.body.tool_stream = None;
         AsyncChatCompletion {
             key: self.key,
@@ -201,7 +203,8 @@ where
 {
 }
 
-// Enable typed streaming extension methods for AsyncChatCompletion<..., StreamOn>
+// Enable typed streaming extension methods for AsyncChatCompletion<...,
+// StreamOn>
 impl<N, M> crate::model::stream_ext::StreamChatLikeExt for AsyncChatCompletion<N, M, StreamOn>
 where
     N: ModelName + Serialize + AsyncChat,

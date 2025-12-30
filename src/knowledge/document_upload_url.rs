@@ -1,9 +1,8 @@
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::types::UploadUrlResponse;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Single URL upload detail
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

@@ -1,8 +1,9 @@
 //! # Streaming Response Types for Chat API Models
 //!
-//! This module defines the data structures used for processing streaming responses
-//! from chat completion APIs. These types are specifically designed to handle
-//! Server-Sent Events (SSE) data chunks where responses arrive incrementally.
+//! This module defines the data structures used for processing streaming
+//! responses from chat completion APIs. These types are specifically designed
+//! to handle Server-Sent Events (SSE) data chunks where responses arrive
+//! incrementally.
 //!
 //! ## Key Differences from Standard Responses
 //!
@@ -35,10 +36,12 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Custom deserializer that accepts strings or numbers, converting to Option<String>.
+/// Custom deserializer that accepts strings or numbers, converting to
+/// Option<String>.
 ///
 /// This helper function handles the wire format flexibility where IDs may be
-/// transmitted as either strings or numbers, normalizing them to Option<String>.
+/// transmitted as either strings or numbers, normalizing them to
+/// Option<String>.
 ///
 /// ## Supported Formats
 ///
@@ -79,7 +82,8 @@ where
 pub struct ChatStreamResponse {
     /// Unique identifier for the streaming session.
     ///
-    /// May be a string or number in the wire format, converted to `Option<String>`.
+    /// May be a string or number in the wire format, converted to
+    /// `Option<String>`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         deserialize_with = "de_opt_string_from_number_or_string"
@@ -173,10 +177,11 @@ pub struct Delta {
 
     /// Streaming tool call payload for tool invocation.
     ///
-    /// When `tool_stream` is enabled and the model emits tool calling information,
-    /// providers often stream this as an array of objects with partial fields.
-    /// Use a flexible Value here to accept strings/arrays/objects without failing
-    /// deserialization on type mismatch across increments.
+    /// When `tool_stream` is enabled and the model emits tool calling
+    /// information, providers often stream this as an array of objects with
+    /// partial fields. Use a flexible Value here to accept
+    /// strings/arrays/objects without failing deserialization on type
+    /// mismatch across increments.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<crate::model::chat_base_response::ToolCallMessage>>,
 }

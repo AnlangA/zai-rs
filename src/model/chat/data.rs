@@ -5,31 +5,34 @@
 //!
 //! ## Type-State Pattern
 //!
-//! The implementation uses Rust's type system to enforce compile-time guarantees
-//! about streaming capabilities through phantom types (`StreamOn`/`StreamOff`).
+//! The implementation uses Rust's type system to enforce compile-time
+//! guarantees about streaming capabilities through phantom types
+//! (`StreamOn`/`StreamOff`).
 //!
 //! ## Features
 //!
-//! - **Type-safe model binding** - Compile-time verification of model-message compatibility
+//! - **Type-safe model binding** - Compile-time verification of model-message
+//!   compatibility
 //! - **Builder pattern** - Fluent API for request construction
 //! - **Streaming support** - Type-state based streaming capability enforcement
 //! - **Tool integration** - Support for function calling and tool usage
-//! - **Parameter control** - Temperature, top-p, max tokens, and other generation parameters
+//! - **Parameter control** - Temperature, top-p, max tokens, and other
+//!   generation parameters
 
-use super::super::chat_base_request::*;
-use super::super::tools::*;
-use super::super::traits::*;
-use crate::client::http::HttpClient;
-use serde::Serialize;
 use std::marker::PhantomData;
+
+use serde::Serialize;
 use validator::Validate;
+
+use super::super::{chat_base_request::*, tools::*, traits::*};
+use crate::client::http::HttpClient;
 
 // Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
 
 /// Type-safe chat completion request structure.
 ///
-/// This struct represents a chat completion request with compile-time guarantees
-/// for model compatibility and streaming capabilities.
+/// This struct represents a chat completion request with compile-time
+/// guarantees for model compatibility and streaming capabilities.
 ///
 /// ## Type Parameters
 ///
@@ -95,14 +98,16 @@ where
 
     /// Gets mutable access to the request body for further customization.
     ///
-    /// This method allows modification of request parameters after initial creation.
+    /// This method allows modification of request parameters after initial
+    /// creation.
     pub fn body_mut(&mut self) -> &mut ChatBody<N, M> {
         &mut self.body
     }
 
     /// Adds additional messages to the conversation.
     ///
-    /// This method provides a fluent interface for building conversation context.
+    /// This method provides a fluent interface for building conversation
+    /// context.
     ///
     /// ## Arguments
     ///
@@ -155,8 +160,9 @@ where
 
     /// Sets a custom API endpoint URL for this chat completion request.
     ///
-    /// This method allows overriding the default API endpoint with a custom URL,
-    /// enabling support for different deployment environments or proxy configurations.
+    /// This method allows overriding the default API endpoint with a custom
+    /// URL, enabling support for different deployment environments or proxy
+    /// configurations.
     ///
     /// ## Arguments
     ///
@@ -179,8 +185,8 @@ where
 
     /// Sets the URL to the coding plan endpoint.
     ///
-    /// This method configures the chat completion request to use the coding-specific
-    /// API endpoint "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".
+    /// This method configures the chat completion request to use the
+    /// coding-specific API endpoint "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".
     ///
     /// ## Returns
     ///
@@ -226,7 +232,8 @@ where
 
     /// Validate request parameters for non-stream chat (StreamOff)
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        // Field-level validation from ChatBody (temperature/top_p/max_tokens/user_id/stop...)
+        // Field-level validation from ChatBody
+        // (temperature/top_p/max_tokens/user_id/stop...)
 
         self.body
             .validate()
@@ -287,7 +294,8 @@ where
     /// A new `ChatCompletion` instance with streaming disabled (`StreamOff`).
     pub fn disable_stream(mut self) -> ChatCompletion<N, M, StreamOff> {
         self.body.stream = Some(false);
-        // Reset tool_stream when disabling streaming since tool_stream depends on stream
+        // Reset tool_stream when disabling streaming since tool_stream depends on
+        // stream
         self.body.tool_stream = None;
         ChatCompletion {
             key: self.key,
@@ -321,7 +329,8 @@ where
     }
 }
 
-/// Enables Server-Sent Events (SSE) streaming for streaming-enabled chat completions.
+/// Enables Server-Sent Events (SSE) streaming for streaming-enabled chat
+/// completions.
 ///
 /// This implementation allows streaming chat completions to be processed
 /// incrementally as responses arrive from the API.

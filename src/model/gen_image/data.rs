@@ -1,8 +1,11 @@
-use super::super::traits::*;
-use super::image_request::{ImageGenBody, ImageQuality, ImageSize};
-use crate::client::http::HttpClient;
 use serde::Serialize;
 use validator::Validate;
+
+use super::{
+    super::traits::*,
+    image_request::{ImageGenBody, ImageQuality, ImageSize},
+};
+use crate::client::http::HttpClient;
 
 /// Image generation request structure
 /// Provides a typed builder around the image generation API body
@@ -92,12 +95,13 @@ where
         // Validate custom size when present
         if let Some(size) = &self.body.size
             && let super::image_request::ImageSize::Custom { .. } = size
-                && !size.is_valid() {
-                    return Err(crate::client::error::ZaiError::ApiError {
+            && !size.is_valid()
+        {
+            return Err(crate::client::error::ZaiError::ApiError {
                         code: 1200,
                         message: "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels".to_string(),
                     });
-                }
+        }
         Ok(())
     }
 

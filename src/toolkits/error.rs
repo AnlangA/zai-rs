@@ -1,6 +1,7 @@
 //! Enhanced error handling with better Rust idioms
 
 use std::borrow::Cow;
+
 use thiserror::Error;
 
 /// Result type for tool operations

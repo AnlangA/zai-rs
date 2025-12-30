@@ -1,8 +1,11 @@
-use super::super::traits::*;
-use super::video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize};
-use crate::client::http::HttpClient;
 use serde::Serialize;
 use validator::Validate;
+
+use super::{
+    super::traits::*,
+    video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize},
+};
+use crate::client::http::HttpClient;
 
 /// Video generation request structure
 /// Handles HTTP requests for video generation API

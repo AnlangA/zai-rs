@@ -1,7 +1,7 @@
 //! # Content Moderation API
 //!
-//! This module provides the content moderation client for analyzing text, image,
-//! audio, and video content for safety risks.
+//! This module provides the content moderation client for analyzing text,
+//! image, audio, and video content for safety risks.
 
 use super::models::*;
 use crate::client::http::HttpClient;
@@ -75,7 +75,8 @@ impl Moderation {
     ///
     /// ## Returns
     ///
-    /// A `ModerationResponse` containing the moderation results and usage statistics.
+    /// A `ModerationResponse` containing the moderation results and usage
+    /// statistics.
     pub async fn send(&self) -> crate::ZaiResult<ModerationResponse> {
         self.validate()?;
 

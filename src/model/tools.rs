@@ -3,17 +3,19 @@
 //! This module defines the various tools that can be used by the assistant,
 //! including function calling, retrieval systems, web search, and MCP tools.
 
+use std::collections::HashMap;
+
+use serde::Serialize;
+use validator::*;
+
 use super::model_validate::validate_json_schema_value;
 use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyFilter};
-use serde::Serialize;
-use std::collections::HashMap;
-use validator::*;
 
 /// Controls thinking/reasoning capabilities in AI models.
 ///
 /// This enum determines whether a model should engage in step-by-step reasoning
-/// when processing requests. Thinking mode can improve accuracy for complex tasks
-/// but may increase response time and token usage.
+/// when processing requests. Thinking mode can improve accuracy for complex
+/// tasks but may increase response time and token usage.
 ///
 /// ## Variants
 ///
@@ -50,19 +52,20 @@ pub enum ThinkingType {
 
 /// Available tools that AI assistants can invoke during conversations.
 ///
-/// This enum defines the different categories of external tools and capabilities
-/// that can be made available to AI models. Each tool type serves specific purposes
-/// and has its own configuration requirements.
+/// This enum defines the different categories of external tools and
+/// capabilities that can be made available to AI models. Each tool type serves
+/// specific purposes and has its own configuration requirements.
 ///
 /// ## Tool Categories
 ///
 /// ### Function Tools
-/// Custom user-defined functions that the AI can call with structured parameters.
-/// Useful for integrating external APIs, databases, or business logic.
+/// Custom user-defined functions that the AI can call with structured
+/// parameters. Useful for integrating external APIs, databases, or business
+/// logic.
 ///
 /// ### Retrieval Tools
-/// Access to knowledge bases, document collections, or information retrieval systems.
-/// Enables the AI to query structured knowledge sources.
+/// Access to knowledge bases, document collections, or information retrieval
+/// systems. Enables the AI to query structured knowledge sources.
 ///
 /// ### Web Search Tools
 /// Internet search capabilities for accessing current information.
@@ -93,8 +96,9 @@ pub enum ThinkingType {
 pub enum Tools {
     /// Custom function calling tool with parameters.
     ///
-    /// Allows the AI to invoke user-defined functions with structured arguments.
-    /// Functions must be pre-defined with JSON schemas for parameter validation.
+    /// Allows the AI to invoke user-defined functions with structured
+    /// arguments. Functions must be pre-defined with JSON schemas for
+    /// parameter validation.
     Function { function: Function },
 
     /// Knowledge retrieval system access tools.
@@ -113,6 +117,7 @@ pub enum Tools {
     ///
     /// Standardized tools that follow the Model Context Protocol specification,
     /// providing a consistent interface for tool integration and communication.
+    #[serde(rename = "mcp")]
     MCP { mcp: MCP },
 }
 
@@ -135,7 +140,8 @@ pub struct Function {
     pub description: String,
 
     /// JSON schema describing the function's parameters.
-    /// Server expects an object; keep as Value to avoid double-encoding strings.
+    /// Server expects an object; keep as Value to avoid double-encoding
+    /// strings.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(custom(function = "validate_json_schema_value"))]
     pub parameters: Option<serde_json::Value>,
@@ -200,18 +206,19 @@ impl Retrieval {
 /// Configuration for web search tool capabilities.
 ///
 /// The order in which search results are returned.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ResultSequence {
     Before,
     After,
 }
 
-/// This structure represents a web search tool that can perform internet searches.
-/// Fields mirror the external web_search schema.
+/// This structure represents a web search tool that can perform internet
+/// searches. Fields mirror the external web_search schema.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct WebSearch {
-    /// Search engine type (required). Supported: search_std, search_pro, search_pro_sogou, search_pro_quark.
+    /// Search engine type (required). Supported: search_std, search_pro,
+    /// search_pro_sogou, search_pro_quark.
     pub search_engine: SearchEngine,
 
     /// Whether to enable web search. Default is false.
@@ -222,7 +229,8 @@ pub struct WebSearch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_query: Option<String>,
 
-    /// Whether to perform search intent detection. true: execute only when intent is detected; false: skip detection and search directly.
+    /// Whether to perform search intent detection. true: execute only when
+    /// intent is detected; false: skip detection and search directly.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_intent: Option<bool>,
 
@@ -261,7 +269,8 @@ pub struct WebSearch {
 }
 
 impl WebSearch {
-    /// Create a WebSearch config with the required search engine; other fields are optional.
+    /// Create a WebSearch config with the required search engine; other fields
+    /// are optional.
     pub fn new(search_engine: SearchEngine) -> Self {
         Self {
             search_engine,
@@ -335,12 +344,13 @@ impl WebSearch {
         self
     }
 }
-///
-/// Represents the MCP connection configuration. When connecting to Zhipu's MCP server
-/// using an MCP code, fill `server_label` with that code and leave `server_url` empty.
+/// Represents the MCP connection configuration. When connecting to Zhipu's MCP
+/// server using an MCP code, fill `server_label` with that code and leave
+/// `server_url` empty.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct MCP {
-    /// MCP server identifier (required). If connecting to Zhipu MCP via code, put the code here.
+    /// MCP server identifier (required). If connecting to Zhipu MCP via code,
+    /// put the code here.
     #[validate(length(min = 1))]
     pub server_label: String,
 
@@ -363,7 +373,8 @@ pub struct MCP {
 }
 
 impl MCP {
-    /// Create a new MCP config with required server_label and default transport type.
+    /// Create a new MCP config with required server_label and default transport
+    /// type.
     pub fn new(server_label: impl Into<String>) -> Self {
         Self {
             server_label: server_label.into(),
@@ -409,7 +420,7 @@ impl MCP {
 }
 
 /// Allowed MCP transport types.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum MCPTransportType {
     Sse,
@@ -433,4 +444,343 @@ pub enum ResponseFormat {
     Text,
     /// Structured JSON object response format.
     JsonObject,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ThinkingType tests
+    #[test]
+    fn test_thinking_type_enabled_serialization() {
+        let thinking = ThinkingType::Enabled;
+        let json = serde_json::to_string(&thinking).unwrap();
+        assert!(json.contains("\"type\":\"enabled\""));
+    }
+
+    #[test]
+    fn test_thinking_type_disabled_serialization() {
+        let thinking = ThinkingType::Disabled;
+        let json = serde_json::to_string(&thinking).unwrap();
+        assert!(json.contains("\"type\":\"disabled\""));
+    }
+
+    // Function tests
+    #[test]
+    fn test_function_new() {
+        let params = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            }
+        });
+        let func = Function::new("test_func", "A test function", params);
+
+        assert_eq!(func.name, "test_func");
+        assert_eq!(func.description, "A test function");
+        assert!(func.parameters.is_some());
+    }
+
+    #[test]
+    fn test_function_serialization() {
+        let params = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "value": {"type": "number"}
+            }
+        });
+        let func = Function::new("test_func", "A test function", params);
+        let json = serde_json::to_string(&func).unwrap();
+
+        assert!(json.contains("\"name\":\"test_func\""));
+        assert!(json.contains("\"description\":\"A test function\""));
+        assert!(json.contains("\"properties\""));
+    }
+
+    #[test]
+    fn test_function_validation() {
+        let params = serde_json::json!({
+            "type": "object",
+            "properties": {}
+        });
+        let func = Function::new("valid_name", "Description", params.clone());
+
+        // Name length validation: 1-64 characters
+        assert!(func.validate().is_ok());
+
+        let invalid_name = Function::new("", "Description", params.clone());
+        assert!(invalid_name.validate().is_err());
+
+        let long_name = Function::new("a".repeat(65), "Description", params);
+        assert!(long_name.validate().is_err());
+    }
+
+    // Retrieval tests
+    #[test]
+    fn test_retrieval_new() {
+        let retrieval = Retrieval::new("kb_123", Some("template".to_string()));
+        assert_eq!(retrieval.knowledge_id, "kb_123");
+        assert_eq!(retrieval.prompt_template, Some("template".to_string()));
+    }
+
+    #[test]
+    fn test_retrieval_new_without_template() {
+        let retrieval = Retrieval::new("kb_456", None);
+        assert_eq!(retrieval.knowledge_id, "kb_456");
+        assert!(retrieval.prompt_template.is_none());
+    }
+
+    #[test]
+    fn test_retrieval_serialization() {
+        let retrieval = Retrieval::new("kb_789", None);
+        let json = serde_json::to_string(&retrieval).unwrap();
+        assert!(json.contains("\"knowledge_id\":\"kb_789\""));
+        // prompt_template should be omitted when None
+        assert!(!json.contains("prompt_template"));
+    }
+
+    // WebSearch tests
+    #[test]
+    fn test_web_search_new() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro);
+        assert_eq!(web_search.search_engine, SearchEngine::SearchPro);
+        assert!(web_search.enable.is_none());
+    }
+
+    #[test]
+    fn test_web_search_with_enable() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_enable(true);
+        assert_eq!(web_search.enable, Some(true));
+    }
+
+    #[test]
+    fn test_web_search_with_search_query() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_search_query("test query");
+        assert_eq!(web_search.search_query, Some("test query".to_string()));
+    }
+
+    #[test]
+    fn test_web_search_with_search_intent() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_search_intent(true);
+        assert_eq!(web_search.search_intent, Some(true));
+    }
+
+    #[test]
+    fn test_web_search_with_count() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_count(10);
+        assert_eq!(web_search.count, Some(10));
+    }
+
+    #[test]
+    fn test_web_search_with_search_domain_filter() {
+        let web_search =
+            WebSearch::new(SearchEngine::SearchPro).with_search_domain_filter("example.com");
+        assert_eq!(
+            web_search.search_domain_filter,
+            Some("example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_web_search_with_search_recency_filter() {
+        let filter = SearchRecencyFilter::OneDay;
+        let web_search =
+            WebSearch::new(SearchEngine::SearchPro).with_search_recency_filter(filter.clone());
+        assert_eq!(web_search.search_recency_filter, Some(filter));
+    }
+
+    #[test]
+    fn test_web_search_with_content_size() {
+        let size = ContentSize::Medium;
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_content_size(size.clone());
+        assert_eq!(web_search.content_size, Some(size));
+    }
+
+    #[test]
+    fn test_web_search_with_result_sequence() {
+        let seq = ResultSequence::After;
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_result_sequence(seq.clone());
+        assert_eq!(web_search.result_sequence, Some(seq));
+    }
+
+    #[test]
+    fn test_web_search_with_search_result() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_search_result(true);
+        assert_eq!(web_search.search_result, Some(true));
+    }
+
+    #[test]
+    fn test_web_search_with_require_search() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_require_search(true);
+        assert_eq!(web_search.require_search, Some(true));
+    }
+
+    #[test]
+    fn test_web_search_with_search_prompt() {
+        let web_search =
+            WebSearch::new(SearchEngine::SearchPro).with_search_prompt("custom prompt");
+        assert_eq!(web_search.search_prompt, Some("custom prompt".to_string()));
+    }
+
+    #[test]
+    fn test_web_search_serialization() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro)
+            .with_enable(true)
+            .with_count(5);
+        let json = serde_json::to_string(&web_search).unwrap();
+        assert!(json.contains("\"search_engine\""));
+        assert!(json.contains("\"enable\":true"));
+        assert!(json.contains("\"count\":5"));
+    }
+
+    // MCP tests
+    #[test]
+    fn test_mcp_new() {
+        let mcp = MCP::new("server_label");
+        assert_eq!(mcp.server_label, "server_label");
+        assert_eq!(mcp.transport_type, Some(MCPTransportType::StreamableHttp));
+        assert!(mcp.allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn test_mcp_with_server_url() {
+        let mcp = MCP::new("server_label").with_server_url("https://example.com");
+        assert_eq!(mcp.server_url, Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_with_transport_type() {
+        let mcp = MCP::new("server_label").with_transport_type(MCPTransportType::Sse);
+        assert_eq!(mcp.transport_type, Some(MCPTransportType::Sse));
+    }
+
+    #[test]
+    fn test_mcp_with_allowed_tools() {
+        let mcp = MCP::new("server_label")
+            .with_allowed_tools(vec!["tool1".to_string(), "tool2".to_string()]);
+        assert_eq!(mcp.allowed_tools.len(), 2);
+        assert!(mcp.allowed_tools.contains(&"tool1".to_string()));
+    }
+
+    #[test]
+    fn test_mcp_add_allowed_tool() {
+        let mcp = MCP::new("server_label")
+            .add_allowed_tool("tool1")
+            .add_allowed_tool("tool2");
+        assert_eq!(mcp.allowed_tools.len(), 2);
+    }
+
+    #[test]
+    fn test_mcp_with_headers() {
+        let mut headers = HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer token".to_string());
+        let mcp = MCP::new("server_label").with_headers(headers.clone());
+        assert_eq!(mcp.headers, Some(headers));
+    }
+
+    #[test]
+    fn test_mcp_with_header() {
+        let mcp = MCP::new("server_label").with_header("Authorization", "Bearer token");
+        let headers = mcp.headers.unwrap();
+        assert_eq!(
+            headers.get("Authorization"),
+            Some(&"Bearer token".to_string())
+        );
+    }
+
+    #[test]
+    fn test_mcp_serialization() {
+        let mcp = MCP::new("server_label")
+            .with_server_url("https://example.com")
+            .with_transport_type(MCPTransportType::Sse);
+        let json = serde_json::to_string(&mcp).unwrap();
+        assert!(json.contains("\"server_label\":\"server_label\""));
+        assert!(json.contains("\"server_url\":\"https://example.com\""));
+        assert!(json.contains("\"transport_type\":\"sse\""));
+        // allowed_tools should be omitted when empty
+        assert!(!json.contains("allowed_tools"));
+    }
+
+    // MCPTransportType tests
+    #[test]
+    fn test_mcp_transport_type_sse_serialization() {
+        let transport = MCPTransportType::Sse;
+        let json = serde_json::to_string(&transport).unwrap();
+        assert!(json.contains("\"sse\""));
+    }
+
+    #[test]
+    fn test_mcp_transport_type_streamable_http_serialization() {
+        let transport = MCPTransportType::StreamableHttp;
+        let json = serde_json::to_string(&transport).unwrap();
+        assert!(json.contains("\"streamable-http\""));
+    }
+
+    // ResponseFormat tests
+    #[test]
+    fn test_response_format_text_serialization() {
+        let format = ResponseFormat::Text;
+        let json = serde_json::to_string(&format).unwrap();
+        assert!(json.contains("\"type\":\"text\""));
+    }
+
+    #[test]
+    fn test_response_format_json_object_serialization() {
+        let format = ResponseFormat::JsonObject;
+        let json = serde_json::to_string(&format).unwrap();
+        assert!(json.contains("\"type\":\"json_object\""));
+    }
+
+    // Tools enum tests
+    #[test]
+    fn test_tools_function_serialization() {
+        let func = Function::new("test_func", "test", serde_json::json!({}));
+        let tools = Tools::Function { function: func };
+        let json = serde_json::to_string(&tools).unwrap();
+        assert!(json.contains("\"type\":\"function\""));
+        assert!(json.contains("\"name\":\"test_func\""));
+    }
+
+    #[test]
+    fn test_tools_retrieval_serialization() {
+        let retrieval = Retrieval::new("kb_123", None);
+        let tools = Tools::Retrieval { retrieval };
+        let json = serde_json::to_string(&tools).unwrap();
+        assert!(json.contains("\"type\":\"retrieval\""));
+        assert!(json.contains("\"knowledge_id\":\"kb_123\""));
+    }
+
+    #[test]
+    fn test_tools_web_search_serialization() {
+        let web_search = WebSearch::new(SearchEngine::SearchPro);
+        let tools = Tools::WebSearch { web_search };
+        let json = serde_json::to_string(&tools).unwrap();
+        assert!(json.contains("\"type\":\"web_search\""));
+        assert!(json.contains("\"search_engine\""));
+    }
+
+    #[test]
+    fn test_tools_mcp_serialization() {
+        let mcp = MCP::new("server_label");
+        let tools = Tools::MCP { mcp };
+        let json = serde_json::to_string(&tools).unwrap();
+        eprintln!("JSON: {}", json);
+        assert!(json.contains("\"type\":\"mcp\""));
+        assert!(json.contains("\"server_label\":\"server_label\""));
+    }
+
+    // ResultSequence tests
+    #[test]
+    fn test_result_sequence_before_serialization() {
+        let seq = ResultSequence::Before;
+        let json = serde_json::to_string(&seq).unwrap();
+        assert!(json.contains("\"before\""));
+    }
+
+    #[test]
+    fn test_result_sequence_after_serialization() {
+        let seq = ResultSequence::After;
+        let json = serde_json::to_string(&seq).unwrap();
+        assert!(json.contains("\"after\""));
+    }
 }

@@ -8,9 +8,10 @@ pub use video_request::*;
 
 #[cfg(test)]
 mod tests {
+    use serde_json;
+
     use super::*;
     use crate::model::traits::{ModelName, VideoGen};
-    use serde_json;
 
     // Mock model type for testing
     #[derive(Debug, Clone)]

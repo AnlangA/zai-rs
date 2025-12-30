@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
-use crate::client::http::HttpClient;
 use validator::Validate;
 
 use super::types::UploadFileResponse;
+use crate::client::http::HttpClient;
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -99,21 +98,23 @@ impl DocumentUploadFileRequest {
         if let Some(DocumentSliceType::Custom) = self.options.knowledge_type {
             // sentence_size recommended; API shows default 300; we ensure range if provided
             if let Some(sz) = self.options.sentence_size
-                && !(20..=2000).contains(&sz) {
-                    return Err(crate::client::error::ZaiError::ApiError {
-                        code: 1200,
-                        message: "sentence_size must be 20..=2000 when knowledge_type=Custom (5)"
-                            .to_string(),
-                    });
-                }
-        }
-        if let Some(ref w) = self.options.word_num_limit
-            && !w.chars().all(|c| c.is_ascii_digit()) {
+                && !(20..=2000).contains(&sz)
+            {
                 return Err(crate::client::error::ZaiError::ApiError {
                     code: 1200,
-                    message: "word_num_limit must be numeric string".to_string(),
+                    message: "sentence_size must be 20..=2000 when knowledge_type=Custom (5)"
+                        .to_string(),
                 });
             }
+        }
+        if let Some(ref w) = self.options.word_num_limit
+            && !w.chars().all(|c| c.is_ascii_digit())
+        {
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "word_num_limit must be numeric string".to_string(),
+            });
+        }
         if self.files.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: 1200,

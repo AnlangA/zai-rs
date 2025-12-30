@@ -1,8 +1,7 @@
 use url::Url;
 
 use super::types::DocumentListResponse;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Query parameters for listing documents under a knowledge base
 #[derive(Debug, Clone, serde::Serialize, validator::Validate)]

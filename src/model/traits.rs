@@ -1,7 +1,8 @@
 //! # Core Traits for AI Model Abstractions
 //!
-//! This module defines the fundamental traits that enable type-safe interactions
-//! with different AI models and capabilities in the Zhipu AI ecosystem.
+//! This module defines the fundamental traits that enable type-safe
+//! interactions with different AI models and capabilities in the Zhipu AI
+//! ecosystem.
 //!
 //! ## Trait Categories
 //!
@@ -24,9 +25,9 @@
 //!
 //! ## Type-State Pattern
 //!
-//! The `StreamState` trait and its implementations (`StreamOn`, `StreamOff`) provide
-//! compile-time guarantees about streaming capabilities, preventing runtime errors
-//! and enabling better API design.
+//! The `StreamState` trait and its implementations (`StreamOn`, `StreamOff`)
+//! provide compile-time guarantees about streaming capabilities, preventing
+//! runtime errors and enabling better API design.
 
 /// Trait for AI models that can be identified by name.
 ///
@@ -49,8 +50,8 @@ pub trait Chat {}
 
 /// Indicates that a model supports asynchronous chat completion.
 ///
-/// Models implementing this trait can be used with the async chat completion API
-/// API for queued, background processing of conversational requests.
+/// Models implementing this trait can be used with the async chat completion
+/// API API for queued, background processing of conversational requests.
 pub trait AsyncChat {}
 
 /// Indicates that a model supports thinking/reasoning capabilities.
@@ -59,8 +60,9 @@ pub trait AsyncChat {}
 /// that show step-by-step thinking processes for complex problem solving.
 pub trait ThinkEnable {}
 
-/// Indicates that a model supports streaming tool calls (tool_stream parameter).
-/// Only models implementing this marker can enable tool_stream in requests.
+/// Indicates that a model supports streaming tool calls (tool_stream
+/// parameter). Only models implementing this marker can enable tool_stream in
+/// requests.
 pub trait ToolStreamEnable {}
 
 /// Indicates that a model supports video generation.
@@ -115,9 +117,10 @@ pub struct StreamOff;
 impl StreamState for StreamOn {}
 impl StreamState for StreamOff {}
 
-use crate::client::http::HttpClient;
 use futures::StreamExt;
 use log::info;
+
+use crate::client::http::HttpClient;
 
 /// Trait for types that support Server-Sent Events (SSE) streaming.
 ///
@@ -127,9 +130,9 @@ use log::info;
 ///
 /// ## Streaming Protocol
 ///
-/// The implementation expects SSE-formatted responses with `data: ` prefixed lines.
-/// Each data line is parsed and passed to the callback function. The stream
-/// terminates when a `[DONE]` marker is encountered.
+/// The implementation expects SSE-formatted responses with `data: ` prefixed
+/// lines. Each data line is parsed and passed to the callback function. The
+/// stream terminates when a `[DONE]` marker is encountered.
 ///
 /// ## Usage
 ///
@@ -178,7 +181,7 @@ pub trait SseStreamable: HttpClient {
                                 on_data(rest);
                             }
                         }
-                    }
+                    },
                     Err(e) => return Err(crate::client::error::ZaiError::NetworkError(e)),
                 }
             }

@@ -1,6 +1,7 @@
+use validator::Validate;
+
 use super::request::VoiceDeleteBody;
 use crate::client::http::HttpClient;
-use validator::Validate;
 
 /// Voice delete request using JSON body
 pub struct VoiceDeleteRequest {

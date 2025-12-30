@@ -1,30 +1,37 @@
 //! Comprehensive chat message types for the ZAI-RS model API.
 //!
-//! This module provides a complete suite of message types designed for various chat scenarios,
-//! including text-only conversations, vision-enabled multimodal interactions, and voice-based communications.
-//! The module is structured to support different conversation types while maintaining type safety and
+//! This module provides a complete suite of message types designed for various
+//! chat scenarios, including text-only conversations, vision-enabled multimodal
+//! interactions, and voice-based communications. The module is structured to
+//! support different conversation types while maintaining type safety and
 //! providing intuitive APIs for developers.
 //!
 //! # Module Organization
 //!
 //! The module is organized into several key components:
 //!
-//! - **TextMessages**: Collections of text-based chat messages with validation constraints
-//! - **TextMessage**: Individual messages in text conversations (user, assistant, system, tool)
-//! - **VisionMessage**: Messages supporting multimedia content (images, videos, files)
+//! - **TextMessages**: Collections of text-based chat messages with validation
+//!   constraints
+//! - **TextMessage**: Individual messages in text conversations (user,
+//!   assistant, system, tool)
+//! - **VisionMessage**: Messages supporting multimedia content (images, videos,
+//!   files)
 //! - **VisionRichContent**: Rich content types for vision-enabled conversations
-//! - **VoiceMessage**: Messages supporting audio input/output for voice interactions
+//! - **VoiceMessage**: Messages supporting audio input/output for voice
+//!   interactions
 //! - **VoiceRichContent**: Content types for voice-enabled conversations
 //! - **ToolCall**: Structured tool invocation capabilities for function calling
 //!
 //! # Core Features
 //!
 //! ## Type Safety
-//! All message types are strongly typed with compile-time validation to ensure correct usage patterns.
-//! The API leverages Rust's type system to prevent invalid message constructions and serialization.
+//! All message types are strongly typed with compile-time validation to ensure
+//! correct usage patterns. The API leverages Rust's type system to prevent
+//! invalid message constructions and serialization.
 //!
 //! ## Serialization Support
-//! All types implement `Serialize` for JSON serialization, with careful attention to:
+//! All types implement `Serialize` for JSON serialization, with careful
+//! attention to:
 //! - Proper field naming conventions (snake_case for JSON, camelCase for Rust)
 //! - Conditional serialization of optional fields
 //! - Custom serialization logic for complex types like `ToolCall`
@@ -129,7 +136,8 @@ use validator::*;
 /// - Must not contain more than 1000 messages
 #[derive(Clone, Serialize, Validate)]
 pub struct TextMessages {
-    /// The collection of text messages. Must contain between 1 and 1000 messages.
+    /// The collection of text messages. Must contain between 1 and 1000
+    /// messages.
     #[validate(length(min = 1, max = 1000))]
     pub messages: Vec<TextMessage>,
 }
@@ -212,10 +220,12 @@ pub enum TextMessage {
     },
     /// A response from the AI assistant.
     Assistant {
-        /// The text content of the assistant's response. Optional when tool calls are present.
+        /// The text content of the assistant's response. Optional when tool
+        /// calls are present.
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<String>,
-        /// Tool calls made by the assistant. Empty vector is omitted from serialization.
+        /// Tool calls made by the assistant. Empty vector is omitted from
+        /// serialization.
         #[serde(skip_serializing_if = "Vec::is_empty")]
         tool_calls: Vec<ToolCall>,
     },
@@ -228,7 +238,8 @@ pub enum TextMessage {
     Tool {
         /// The content returned by the tool.
         content: String,
-        /// The ID of the tool call this message is responding to. Optional field.
+        /// The ID of the tool call this message is responding to. Optional
+        /// field.
         #[serde(skip_serializing_if = "Option::is_none")]
         tool_call_id: Option<String>,
     },
@@ -290,7 +301,8 @@ impl TextMessage {
     ///
     /// # Returns
     ///
-    /// A new `TextMessage::Assistant` variant with the specified content and tool calls.
+    /// A new `TextMessage::Assistant` variant with the specified content and
+    /// tool calls.
     ///
     /// # Examples
     ///
@@ -453,8 +465,8 @@ pub enum VisionRichContent {
     },
     /// Image URL or Base64 encoded image data.
     ///
-    /// Upload constraints: Each image must be under 5MB with maximum resolution of 6000*6000 pixels.
-    /// Supported formats: jpg, png, jpeg.
+    /// Upload constraints: Each image must be under 5MB with maximum resolution
+    /// of 6000*6000 pixels. Supported formats: jpg, png, jpeg.
     ///
     /// Model-specific limits:
     /// - GLM4.5V: maximum 50 images
@@ -610,7 +622,7 @@ impl VisionMessage {
             VisionMessage::User { mut content } => {
                 content.push(rich_content);
                 VisionMessage::User { content }
-            }
+            },
             _ => VisionMessage::User {
                 content: vec![rich_content],
             },
@@ -685,10 +697,10 @@ impl VisionMessage {
 
 /// Represents messages in voice-enabled chat conversations.
 ///
-/// This enum defines message types for conversations that can include audio content
-/// alongside text. It's designed for voice-capable AI models that can process audio input
-/// and generate audio responses. Each variant is serialized with a "role" field to
-/// distinguish message types.
+/// This enum defines message types for conversations that can include audio
+/// content alongside text. It's designed for voice-capable AI models that can
+/// process audio input and generate audio responses. Each variant is serialized
+/// with a "role" field to distinguish message types.
 ///
 /// # Serialization
 ///
@@ -697,14 +709,16 @@ impl VisionMessage {
 ///
 /// # Audio Support
 ///
-/// - **User messages**: Can contain audio input via `VoiceRichContent::InputAudio`
+/// - **User messages**: Can contain audio input via
+///   `VoiceRichContent::InputAudio`
 /// - **Assistant messages**: Can include audio responses via the `audio` field
 /// - **System messages**: Text-only for providing context and instructions
 ///
 /// # Model Compatibility
 ///
-/// This message type is specifically designed for voice-capable models like GLM-4-Voice.
-/// Not all AI models support audio input/output, so check model compatibility before use.
+/// This message type is specifically designed for voice-capable models like
+/// GLM-4-Voice. Not all AI models support audio input/output, so check model
+/// compatibility before use.
 ///
 /// # Examples
 ///
@@ -733,7 +747,8 @@ pub enum VoiceMessage {
     },
     /// A response from the AI assistant, which can include text and/or audio.
     Assistant {
-        /// The text content of the assistant's response. Optional when audio is present.
+        /// The text content of the assistant's response. Optional when audio is
+        /// present.
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<String>,
         /// Audio response data generated by the assistant. Optional field.
@@ -763,8 +778,8 @@ pub enum VoiceMessage {
 ///
 /// # Model Compatibility
 ///
-/// Audio input is supported only by specific voice-capable models like GLM-4-Voice.
-/// Always verify model capabilities before using audio features.
+/// Audio input is supported only by specific voice-capable models like
+/// GLM-4-Voice. Always verify model capabilities before using audio features.
 ///
 /// # Examples
 ///
@@ -786,13 +801,15 @@ pub enum VoiceMessage {
 pub enum VoiceRichContent {
     /// Text content for voice conversations.
     ///
-    /// This variant allows users to send text messages in voice-enabled conversations,
-    /// providing flexibility for mixed text and audio interactions.
+    /// This variant allows users to send text messages in voice-enabled
+    /// conversations, providing flexibility for mixed text and audio
+    /// interactions.
     Text {
         /// The text content of the message.
         text: String,
     },
-    /// Audio input content, supported only by glm-4-voice model for audio input.
+    /// Audio input content, supported only by glm-4-voice model for audio
+    /// input.
     ///
     /// # Field Description
     ///
@@ -868,8 +885,8 @@ impl VoiceRichContent {
 /// Represents supported audio formats for voice interactions.
 ///
 /// This enum defines the audio file formats that are supported for voice input
-/// in the chat system. Each format corresponds to specific audio encoding standards
-/// and compatibility requirements.
+/// in the chat system. Each format corresponds to specific audio encoding
+/// standards and compatibility requirements.
 ///
 /// # Supported Formats
 ///
@@ -886,7 +903,8 @@ impl VoiceRichContent {
 ///
 /// - MP3 files are typically smaller due to compression
 /// - WAV files provide higher quality but use more bandwidth
-/// - Consider the trade-off between quality and file size based on your use case
+/// - Consider the trade-off between quality and file size based on your use
+///   case
 ///
 /// # Examples
 ///
@@ -900,19 +918,21 @@ impl VoiceRichContent {
 /// // Detect format from file extension
 /// let format = VoiceFormat::from_extension("mp3").unwrap();
 /// ```
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum VoiceFormat {
     /// MPEG Audio Layer III format.
     ///
-    /// Compressed audio format that provides good quality with smaller file sizes.
-    /// Ideal for most voice applications due to its balance of quality and size.
+    /// Compressed audio format that provides good quality with smaller file
+    /// sizes. Ideal for most voice applications due to its balance of
+    /// quality and size.
     MP3,
 
     /// Waveform Audio File Format.
     ///
     /// Uncompressed audio format that provides the highest quality but results
-    /// in larger file sizes. Suitable for applications where audio quality is critical.
+    /// in larger file sizes. Suitable for applications where audio quality is
+    /// critical.
     WAV,
 }
 
@@ -925,7 +945,8 @@ impl VoiceFormat {
     ///
     /// # Returns
     ///
-    /// An `Option<VoiceFormat>` containing the matching format, or `None` if not found.
+    /// An `Option<VoiceFormat>` containing the matching format, or `None` if
+    /// not found.
     ///
     /// # Examples
     ///
@@ -950,7 +971,8 @@ impl VoiceFormat {
     ///
     /// # Returns
     ///
-    /// An `Option<VoiceFormat>` containing the matching format, or `None` if not found.
+    /// An `Option<VoiceFormat>` containing the matching format, or `None` if
+    /// not found.
     ///
     /// # Examples
     ///
@@ -970,26 +992,29 @@ impl VoiceFormat {
 
 /// Represents audio response data generated by the assistant.
 ///
-/// This structure contains information about audio responses produced by voice-capable
-/// AI models. It's used to identify and reference specific audio segments in conversations.
+/// This structure contains information about audio responses produced by
+/// voice-capable AI models. It's used to identify and reference specific audio
+/// segments in conversations.
 ///
 /// # Audio ID Management
 ///
 /// The `id` field serves as a unique identifier for audio responses:
 /// - When present: Allows referencing specific audio segments
-/// - When absent: Indicates the audio is anonymous or doesn't need specific reference
+/// - When absent: Indicates the audio is anonymous or doesn't need specific
+///   reference
 ///
 /// # Use Cases
 ///
-/// - **Audio playback**: Use the ID to retrieve and play specific audio responses
+/// - **Audio playback**: Use the ID to retrieve and play specific audio
+///   responses
 /// - **Conversation history**: Reference audio segments in chat logs
 /// - **Audio caching**: Store and retrieve audio content using the ID
 /// - **Analytics**: Track which audio responses were played or requested
 ///
 /// # Serialization
 ///
-/// The struct uses conditional serialization to omit the `id` field when it's `None`,
-/// resulting in cleaner JSON output for anonymous audio responses.
+/// The struct uses conditional serialization to omit the `id` field when it's
+/// `None`, resulting in cleaner JSON output for anonymous audio responses.
 ///
 /// # Examples
 ///
@@ -1137,7 +1162,7 @@ impl VoiceMessage {
             VoiceMessage::User { mut content } => {
                 content.push(rich_content);
                 VoiceMessage::User { content }
-            }
+            },
             _ => VoiceMessage::User {
                 content: vec![rich_content],
             },
@@ -1196,7 +1221,8 @@ impl VoiceMessage {
     ///
     /// # Returns
     ///
-    /// A new `VoiceMessage::Assistant` variant with the specified content and audio.
+    /// A new `VoiceMessage::Assistant` variant with the specified content and
+    /// audio.
     ///
     /// # Examples
     ///
@@ -1237,20 +1263,21 @@ impl VoiceMessage {
 
 /// Represents a tool call made by the assistant.
 ///
-/// Tool calls allow the assistant to invoke external functions, perform web searches,
-/// or access retrieval systems. Each tool call has a unique ID and a specific type
-/// that determines what kind of operation is being performed.
+/// Tool calls allow the assistant to invoke external functions, perform web
+/// searches, or access retrieval systems. Each tool call has a unique ID and a
+/// specific type that determines what kind of operation is being performed.
 ///
 /// # Fields
 ///
 /// * `id` - A unique identifier for this tool call
-/// * `type_` - The type of tool being called (function, web search, or retrieval)
+/// * `type_` - The type of tool being called (function, web search, or
+///   retrieval)
 /// * `function` - Function parameters, required when `type_` is `Function`
 ///
 /// # Serialization
 ///
-/// The struct implements custom serialization logic to ensure that the `function`
-/// field is only included when appropriate for the tool call type.
+/// The struct implements custom serialization logic to ensure that the
+/// `function` field is only included when appropriate for the tool call type.
 #[derive(Debug, Clone)]
 pub struct ToolCall {
     id: String,
@@ -1263,12 +1290,14 @@ impl serde::Serialize for ToolCall {
     ///
     /// This implementation ensures that:
     /// - The `function` field is required when `type_` is `Function`
-    /// - The `function` field is only included when appropriate for the tool type
+    /// - The `function` field is only included when appropriate for the tool
+    ///   type
     /// - Validation errors are returned for invalid combinations
     ///
     /// # Errors
     ///
-    /// Returns a serialization error if `type_` is `Function` but `function` is `None`.
+    /// Returns a serialization error if `type_` is `Function` but `function` is
+    /// `None`.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -1291,13 +1320,13 @@ impl serde::Serialize for ToolCall {
             ToolCallType::Function => {
                 // Function type requires function field (validated above)
                 state.serialize_field("function", &self.function)?;
-            }
+            },
             _ => {
                 // Other types only include function field if present
                 if self.function.is_some() {
                     state.serialize_field("function", &self.function)?;
                 }
-            }
+            },
         }
 
         state.end()
@@ -1306,8 +1335,8 @@ impl serde::Serialize for ToolCall {
 
 /// Specifies the type of tool being called.
 ///
-/// This enum defines the different types of tools that can be invoked by the assistant.
-/// Each type corresponds to a different capability or service.
+/// This enum defines the different types of tools that can be invoked by the
+/// assistant. Each type corresponds to a different capability or service.
 ///
 /// # Variants
 ///
@@ -1327,21 +1356,22 @@ pub enum ToolCallType {
 
 /// Parameters for a function call.
 ///
-/// This structure contains the information needed to invoke a specific function,
-/// including the function name and its arguments serialized as a JSON string.
+/// This structure contains the information needed to invoke a specific
+/// function, including the function name and its arguments serialized as a JSON
+/// string.
 ///
 /// # Structure
 ///
-/// The function parameters are designed to be flexible and work with various function
-/// calling scenarios:
+/// The function parameters are designed to be flexible and work with various
+/// function calling scenarios:
 ///
 /// - **name**: Identifies the function to be called
 /// - **arguments**: JSON-serialized parameters for the function
 ///
 /// # JSON Serialization
 ///
-/// The `arguments` field must contain valid JSON that can be parsed by the target
-/// function. Common patterns include:
+/// The `arguments` field must contain valid JSON that can be parsed by the
+/// target function. Common patterns include:
 ///
 /// ```json
 /// {"location": "Tokyo", "units": "celsius"}
@@ -1351,8 +1381,8 @@ pub enum ToolCallType {
 ///
 /// # Validation
 ///
-/// While this struct doesn't perform validation itself, the calling system should
-/// ensure that:
+/// While this struct doesn't perform validation itself, the calling system
+/// should ensure that:
 /// - The function name exists and is callable
 /// - The arguments match the expected schema for the function
 /// - The JSON is valid and properly formatted
@@ -1383,7 +1413,8 @@ pub struct FunctionParams {
     /// JSON string containing the function arguments.
     ///
     /// This must be valid JSON that can be parsed by the target function.
-    /// The structure should match the expected parameter schema for the function.
+    /// The structure should match the expected parameter schema for the
+    /// function.
     arguments: String,
 }
 
@@ -1420,7 +1451,8 @@ impl ToolCall {
     /// Creates a new web search tool call.
     ///
     /// This method creates a tool call that performs a web search operation.
-    /// Web search tools allow the AI to access current information from the internet.
+    /// Web search tools allow the AI to access current information from the
+    /// internet.
     ///
     /// # Arguments
     ///
@@ -1507,5 +1539,378 @@ impl FunctionParams {
             name: name.into(),
             arguments: arguments.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use validator::Validate;
+
+    use super::*;
+
+    // TextMessages tests
+    #[test]
+    fn test_text_messages_new() {
+        let msg = TextMessage::user("Hello");
+        let messages = TextMessages::new(msg);
+        assert_eq!(messages.messages.len(), 1);
+        assert!(messages.validate().is_ok());
+    }
+
+    #[test]
+    fn test_text_messages_add_message() {
+        let messages = TextMessages::new(TextMessage::user("Hello"))
+            .add_message(TextMessage::assistant("Hi there!"))
+            .add_message(TextMessage::system("You are helpful"));
+
+        assert_eq!(messages.messages.len(), 3);
+        assert!(messages.validate().is_ok());
+    }
+
+    #[test]
+    fn test_text_messages_validation() {
+        let messages = TextMessages::new(TextMessage::user("Test"));
+        assert!(messages.validate().is_ok());
+    }
+
+    // TextMessage tests
+    #[test]
+    fn test_text_message_user() {
+        let msg = TextMessage::user("Hello world");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"user\""));
+        assert!(json.contains("Hello world"));
+    }
+
+    #[test]
+    fn test_text_message_assistant() {
+        let msg = TextMessage::assistant("I can help");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+        assert!(json.contains("I can help"));
+    }
+
+    #[test]
+    fn test_text_message_assistant_with_tools() {
+        let func_params = FunctionParams::new("test_func", "{}");
+        let tool_call = ToolCall::new_function("call_123", func_params);
+        let msg = TextMessage::assistant_with_tools(Some("text".to_string()), vec![tool_call]);
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+        assert!(json.contains("text"));
+        assert!(json.contains("call_123"));
+    }
+
+    #[test]
+    fn test_text_message_assistant_empty_content() {
+        let msg = TextMessage::assistant_with_tools(None, vec![]);
+        let json = serde_json::to_string(&msg).unwrap();
+        // Empty content and empty tool_calls should omit these fields
+        assert!(json.contains("\"role\":\"assistant\""));
+    }
+
+    #[test]
+    fn test_text_message_system() {
+        let msg = TextMessage::system("You are helpful");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"system\""));
+        assert!(json.contains("You are helpful"));
+    }
+
+    #[test]
+    fn test_text_message_tool() {
+        let msg = TextMessage::tool("Tool result");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"tool\""));
+        assert!(json.contains("Tool result"));
+    }
+
+    #[test]
+    fn test_text_message_tool_with_id() {
+        let msg = TextMessage::tool_with_id("Tool result", "call_123");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"tool\""));
+        assert!(json.contains("call_123"));
+    }
+
+    // VisionMessage tests
+    #[test]
+    fn test_vision_message_new_user() {
+        let msg = VisionMessage::new_user();
+        if let VisionMessage::User { content } = msg {
+            assert!(content.is_empty());
+        } else {
+            panic!("Expected User variant");
+        }
+    }
+
+    #[test]
+    fn test_vision_message_add_user() {
+        let msg = VisionMessage::new_user()
+            .add_user(VisionRichContent::text("Hello"))
+            .add_user(VisionRichContent::image("https://example.com/img.jpg"));
+
+        if let VisionMessage::User { content } = msg {
+            assert_eq!(content.len(), 2);
+        } else {
+            panic!("Expected User variant");
+        }
+    }
+
+    #[test]
+    fn test_vision_message_system() {
+        let msg = VisionMessage::system("System instruction");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"system\""));
+    }
+
+    #[test]
+    fn test_vision_message_assistant() {
+        let msg = VisionMessage::assistant("I see a cat");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+    }
+
+    // VisionRichContent tests
+    #[test]
+    fn test_vision_rich_content_text() {
+        let content = VisionRichContent::text("Hello");
+        let json = serde_json::to_string(&content).unwrap();
+        assert!(json.contains("\"type\":\"text\""));
+        assert!(json.contains("Hello"));
+    }
+
+    #[test]
+    fn test_vision_rich_content_image() {
+        let content = VisionRichContent::image("https://example.com/img.jpg");
+        let json = serde_json::to_string(&content).unwrap();
+        assert!(json.contains("\"type\":\"image_url\""));
+        assert!(json.contains("https://example.com/img.jpg"));
+    }
+
+    #[test]
+    fn test_vision_rich_content_video() {
+        let content = VisionRichContent::video("https://example.com/video.mp4");
+        let json = serde_json::to_string(&content).unwrap();
+        assert!(json.contains("\"type\":\"video_url\""));
+    }
+
+    #[test]
+    fn test_vision_rich_content_file() {
+        let content = VisionRichContent::file("https://example.com/doc.pdf");
+        let json = serde_json::to_string(&content).unwrap();
+        assert!(json.contains("\"type\":\"file_url\""));
+    }
+
+    // VoiceMessage tests
+    #[test]
+    fn test_voice_message_new_user() {
+        let msg = VoiceMessage::new_user();
+        if let VoiceMessage::User { content } = msg {
+            assert!(content.is_empty());
+        } else {
+            panic!("Expected User variant");
+        }
+    }
+
+    #[test]
+    fn test_voice_message_add_user() {
+        let msg = VoiceMessage::new_user()
+            .add_user(VoiceRichContent::text("Hello"))
+            .add_user(VoiceRichContent::input_audio(
+                b"audio_data",
+                VoiceFormat::MP3,
+            ));
+
+        if let VoiceMessage::User { content } = msg {
+            assert_eq!(content.len(), 2);
+        } else {
+            panic!("Expected User variant");
+        }
+    }
+
+    #[test]
+    fn test_voice_message_system() {
+        let msg = VoiceMessage::system("System instruction");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"system\""));
+    }
+
+    #[test]
+    fn test_voice_message_assistant() {
+        let msg = VoiceMessage::assistant("Audio response");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+    }
+
+    #[test]
+    fn test_voice_message_assistant_with_audio() {
+        let audio = Audio::with_id("audio_123");
+        let msg = VoiceMessage::assistant_with_audio(Some("text".to_string()), Some(audio));
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+        assert!(json.contains("audio_123"));
+    }
+
+    #[test]
+    fn test_voice_message_assistant_audio_only() {
+        let audio = Audio::with_id("audio_123");
+        let msg = VoiceMessage::assistant_audio_only(audio);
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"role\":\"assistant\""));
+        assert!(json.contains("audio_123"));
+    }
+
+    // VoiceRichContent tests
+    #[test]
+    fn test_voice_rich_content_text() {
+        let content = VoiceRichContent::text("Hello");
+        let json = serde_json::to_string(&content).unwrap();
+        assert!(json.contains("\"type\":\"text\""));
+        assert!(json.contains("Hello"));
+    }
+
+    #[test]
+    fn test_voice_rich_content_input_audio() {
+        let content = VoiceRichContent::input_audio(b"audio_bytes", VoiceFormat::MP3);
+        let json = serde_json::to_string(&content).unwrap();
+        assert!(json.contains("\"type\":\"input_audio\""));
+        assert!(json.contains("\"format\":\"mp3\""));
+        // Should contain base64 encoded data
+        assert!(json.contains("\"data\":"));
+    }
+
+    // VoiceFormat tests
+    #[test]
+    fn test_voice_format_from_extension() {
+        assert_eq!(VoiceFormat::from_extension("mp3"), Some(VoiceFormat::MP3));
+        assert_eq!(VoiceFormat::from_extension("MP3"), Some(VoiceFormat::MP3));
+        assert_eq!(VoiceFormat::from_extension("wav"), Some(VoiceFormat::WAV));
+        assert_eq!(VoiceFormat::from_extension("WAV"), Some(VoiceFormat::WAV));
+        assert_eq!(VoiceFormat::from_extension("ogg"), None);
+        assert_eq!(VoiceFormat::from_extension("flac"), None);
+    }
+
+    #[test]
+    fn test_voice_format_from_mime_type() {
+        assert_eq!(
+            VoiceFormat::from_mime_type("audio/mpeg"),
+            Some(VoiceFormat::MP3)
+        );
+        assert_eq!(
+            VoiceFormat::from_mime_type("audio/wav"),
+            Some(VoiceFormat::WAV)
+        );
+        assert_eq!(
+            VoiceFormat::from_mime_type("audio/x-wav"),
+            Some(VoiceFormat::WAV)
+        );
+        assert_eq!(VoiceFormat::from_mime_type("audio/ogg"), None);
+        assert_eq!(VoiceFormat::from_mime_type("audio/flac"), None);
+    }
+
+    // Audio tests
+    #[test]
+    fn test_audio_new() {
+        let audio = Audio::new();
+        assert!(audio.id.is_none());
+    }
+
+    #[test]
+    fn test_audio_with_id() {
+        let audio = Audio::with_id("audio_123");
+        assert_eq!(audio.id, Some("audio_123".to_string()));
+    }
+
+    #[test]
+    fn test_audio_set_id() {
+        let audio = Audio::new().set_id("audio_456");
+        assert_eq!(audio.id, Some("audio_456".to_string()));
+    }
+
+    #[test]
+    fn test_audio_clear_id() {
+        let audio = Audio::with_id("audio_123").clear_id();
+        assert!(audio.id.is_none());
+    }
+
+    #[test]
+    fn test_audio_serialization() {
+        let audio = Audio::with_id("audio_123");
+        let json = serde_json::to_string(&audio).unwrap();
+        assert!(json.contains("\"audio_123\""));
+
+        let audio_no_id = Audio::new();
+        let json_no_id = serde_json::to_string(&audio_no_id).unwrap();
+        // ID field should be omitted when None
+        assert!(!json_no_id.contains("id"));
+    }
+
+    // ToolCall tests
+    #[test]
+    fn test_tool_call_new_function() {
+        let func_params = FunctionParams::new("test_func", r#"{"arg":"value"}"#);
+        let tool_call = ToolCall::new_function("call_123", func_params);
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains("\"id\":\"call_123\""));
+        assert!(json.contains("\"type\":\"function\""));
+        assert!(json.contains("test_func"));
+    }
+
+    #[test]
+    fn test_tool_call_new_web_search() {
+        let tool_call = ToolCall::new_web_search("search_456");
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains("\"id\":\"search_456\""));
+        assert!(json.contains("\"type\":\"web_search\""));
+    }
+
+    #[test]
+    fn test_tool_call_new_retrieval() {
+        let tool_call = ToolCall::new_retrieval("retrieval_789");
+        let json = serde_json::to_string(&tool_call).unwrap();
+        assert!(json.contains("\"id\":\"retrieval_789\""));
+        assert!(json.contains("\"type\":\"retrieval\""));
+    }
+
+    #[test]
+    fn test_tool_call_function_without_params_panics() {
+        // ToolCall with Function type but no function field should panic during
+        // serialization
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            type_: ToolCallType::Function,
+            function: None,
+        };
+        let result = serde_json::to_string(&tool_call);
+        assert!(result.is_err());
+    }
+
+    // FunctionParams tests
+    #[test]
+    fn test_function_params_new() {
+        let params = FunctionParams::new("test_func", r#"{"arg":"value"}"#);
+        assert_eq!(params.name, "test_func");
+        assert_eq!(params.arguments, r#"{"arg":"value"}"#);
+    }
+
+    #[test]
+    fn test_function_params_serialization() {
+        let params = FunctionParams::new("test_func", r#"{"arg":"value"}"#);
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"name\":\"test_func\""));
+        // arguments is a JSON string, not an object
+        // The serialized JSON will be:
+        // {"name":"test_func","arguments":"{\"arg\":\"value\"}"}
+        assert!(json.contains(r#""arguments":"{\"arg\":\"value\"}""#));
+    }
+
+    #[test]
+    fn test_function_params_deserialization() {
+        let json = r#"{"name":"test_func","arguments":"{\"arg\":\"value\"}"}"#;
+        let params: FunctionParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.name, "test_func");
+        assert_eq!(params.arguments, r#"{"arg":"value"}"#);
     }
 }

@@ -48,9 +48,10 @@ impl FileContentRequest {
         let p = path.as_ref();
 
         if let Some(parent) = p.parent()
-            && !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
         use std::io::Write;
         let mut f = std::fs::File::create(p)?;
         f.write_all(&bytes)?;

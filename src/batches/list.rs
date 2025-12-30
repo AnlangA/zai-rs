@@ -2,10 +2,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 use validator::Validate;
 
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
-
 use super::types::BatchItem;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Query parameters for listing batch processing tasks
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]

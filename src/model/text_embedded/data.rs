@@ -1,5 +1,7 @@
-use super::request::{EmbeddingBody, EmbeddingDimensions, EmbeddingInput, EmbeddingModel};
-use super::response::EmbeddingResponse;
+use super::{
+    request::{EmbeddingBody, EmbeddingDimensions, EmbeddingInput, EmbeddingModel},
+    response::EmbeddingResponse,
+};
 use crate::client::http::HttpClient;
 
 /// Text Embedding request client (JSON POST)

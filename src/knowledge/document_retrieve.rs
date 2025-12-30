@@ -1,6 +1,5 @@
 use super::types::DocumentDetailResponse;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Retrieve document detail by id
 pub struct DocumentRetrieveRequest {

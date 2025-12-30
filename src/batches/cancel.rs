@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::BatchItem;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Empty body for cancel API (serializes to `{}`)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

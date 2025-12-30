@@ -1,8 +1,8 @@
-use super::super::traits::*;
-use super::request::VoiceCloneBody;
-use crate::client::http::HttpClient;
 use serde::Serialize;
 use validator::Validate;
+
+use super::{super::traits::*, request::VoiceCloneBody};
+use crate::client::http::HttpClient;
 
 /// Voice clone request wrapper using JSON
 pub struct VoiceCloneRequest<N>

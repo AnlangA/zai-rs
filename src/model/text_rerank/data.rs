@@ -1,7 +1,8 @@
-use super::request::{RerankBody, RerankModel};
-use super::response::RerankResponse;
-use crate::ZaiResult;
-use crate::client::http::HttpClient;
+use super::{
+    request::{RerankBody, RerankModel},
+    response::RerankResponse,
+};
+use crate::{ZaiResult, client::http::HttpClient};
 
 /// Text Rerank request client (JSON POST)
 pub struct RerankRequest {

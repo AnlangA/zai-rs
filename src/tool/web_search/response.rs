@@ -3,7 +3,8 @@ use validator::Validate;
 
 /// Web search item returned by the service.
 /// Notes:
-/// - `link` and media URLs may be temporary; consider downloading or caching if needed.
+/// - `link` and media URLs may be temporary; consider downloading or caching if
+///   needed.
 /// - Fields are optional and may vary by search provider/source.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct WebSearchInfo {
