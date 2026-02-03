@@ -50,6 +50,7 @@ pub mod batches;
 pub mod client;
 pub use client::error::*;
 pub mod file;
+pub mod io;
 pub mod knowledge;
 
 pub mod model;
