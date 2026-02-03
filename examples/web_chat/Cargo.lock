@@ -267,9 +267,9 @@ checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
 
 [[package]]
 name = "bytes"
-version = "1.11.0"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
@@ -2988,21 +2988,22 @@ dependencies = [
 
 [[package]]
 name = "zai-rs"
-version = "0.1.7"
+version = "0.1.12"
 dependencies = [
- "anyhow",
  "async-trait",
  "axum",
  "base64 0.22.1",
  "chrono",
  "dashmap",
  "env_logger",
+ "fastrand",
  "futures",
  "jsonschema",
  "log",
  "once_cell",
  "parking_lot",
  "rayon",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -3010,6 +3011,7 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "tower-http 0.5.2",
+ "tracing",
  "url",
  "uuid",
  "validator",
