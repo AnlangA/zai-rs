@@ -20,6 +20,7 @@
 //! - [`audio_to_speech`] - Text-to-speech synthesis (TTS)
 //! - [`gen_image`] - Image generation
 //! - [`gen_video_async`] - Video generation (async)
+//! - [`ocr`] - Optical Character Recognition (OCR)
 //!
 //! ### Content Safety
 //! - [`moderation`] - Content moderation and safety analysis
@@ -71,6 +72,7 @@ pub mod gen_image;
 pub mod gen_video_async;
 pub mod model_validate;
 pub mod moderation;
+pub mod ocr;
 pub mod stream_ext;
 pub mod text_embedded;
 pub mod text_rerank;

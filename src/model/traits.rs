@@ -95,6 +95,12 @@ pub trait TextToAudio {}
 /// mimic specific speakers based on audio samples.
 pub trait VoiceClone {}
 
+/// Indicates that a model supports OCR (Optical Character Recognition).
+///
+/// Models implementing this trait can recognize and extract text content
+/// from images, supporting handwritten and printed text in multiple languages.
+pub trait Ocr {}
+
 /// Type-state trait for compile-time streaming capability control.
 ///
 /// This trait enables the type system to enforce whether a request

@@ -91,6 +91,10 @@ name = "audio_to_text"
 path = "examples/audio_to_text.rs"
 
 [[example]]
+name = "ocr"
+path = "examples/ocr.rs"
+
+[[example]]
 name = "embedding"
 path = "examples/embedding.rs"
 
