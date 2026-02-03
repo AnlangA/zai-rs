@@ -188,7 +188,11 @@ pub trait SseStreamable: HttpClient {
                             }
                         }
                     },
-                    Err(e) => return Err(crate::client::error::ZaiError::NetworkError(e)),
+                    Err(e) => {
+                        return Err(crate::client::error::ZaiError::NetworkError(
+                            std::sync::Arc::new(e),
+                        ));
+                    },
                 }
             }
             Ok(())

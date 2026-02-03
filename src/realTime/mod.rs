@@ -7,38 +7,52 @@
 //! ## Features
 //!
 //! - **Audio Streaming** - Real-time audio input and output
-//! - **Video Streaming** - Real-time video input and output  
+//! - **Video Streaming** - Real-time video input and output
 //! - **Low Latency** - Optimized for minimal communication delay
 //! - **Interactive Communication** - Support for bidirectional audio/video calls
-//!
-//! ## Planned Capabilities
-//!
-//! Based on the project roadmap, this module will support:
-//!
-//! - Audio/video calling with AI models
-//! - Real-time transcription and synthesis
-//! - Interactive voice and video conversations
-//! - WebRTC-based communication protocols
-//!
-//! ## Implementation Status
-//!
-//! ⚠️ **Note**: This module is currently under development and APIs are not yet stable.
-//! The implementation is planned for future releases.
 //!
 //! ## Usage
 //!
 //! ```rust,ignore
-//! // Future usage example (API subject to change)
 //! use zai_rs::realTime::*;
 //!
-//! let client = RealTimeClient::new(api_key);
-//! let session = client.start_audio_session().await?;
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = RealTimeClient::new(api_key);
+//!
+//!     // Start an audio session
+//!     let session = client
+//!         .audio_session()
+//!         .model(RealTimeModel::Glm4Voice)
+//!         .build()
+//!         .await?;
+//!
+//!     // Send audio data
+//!     session.send_audio(audio_bytes).await?;
+//!
+//!     // Receive responses
+//!     while let Some(event) = session.next_event().await? {
+//!         match event {
+//!             RealTimeEvent::Audio(data) => {
+//!                 // Handle audio response
+//!             },
+//!             RealTimeEvent::Text(text) => {
+//!                 // Handle transcription
+//!             },
+//!             _ => {},
+//!         }
+//!     }
+//!
+//!     Ok(())
+//! }
 //! ```
-//!
-//! ## See Also
-//!
-//! - [`crate::model::audio_to_text`] - For speech recognition
-//! - [`crate::model::audio_to_speech`] - For text-to-speech synthesis
-//! - [`crate::model::voice_clone`] - For voice cloning capabilities
 
-// Module structure will be expanded when implementation begins
+pub mod client;
+pub mod models;
+pub mod session;
+pub mod types;
+
+pub use client::*;
+pub use models::*;
+pub use session::*;
+pub use types::*;

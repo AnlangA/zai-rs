@@ -117,7 +117,7 @@ fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
             let city = parsed
                 .get("city")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| "未知城市");
+                .unwrap_or("未知城市");
 
             // 返回一个模拟的天气结果
             Some(serde_json::json!({

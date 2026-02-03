@@ -8,6 +8,8 @@
 //! This module provides utilities for masking sensitive information in logs to
 //! prevent accidental exposure of API keys, tokens, and other sensitive data.
 
+use std::sync::Arc;
+
 use regex;
 use thiserror::Error;
 
@@ -224,13 +226,13 @@ pub enum ZaiError {
     #[error("File error [{code}]: {message}")]
     FileError { code: u16, message: String },
 
-    /// Network/IO errors
+    /// Network/IO errors (wrapped in Arc for Clone support)
     #[error("Network error: {0}")]
-    NetworkError(reqwest::Error),
+    NetworkError(Arc<reqwest::Error>),
 
-    /// JSON parsing errors
+    /// JSON parsing errors (wrapped in Arc for Clone support)
     #[error("JSON error: {0}")]
-    JsonError(serde_json::Error),
+    JsonError(Arc<serde_json::Error>),
 
     /// Other errors
     #[error("Unknown error [{code}]: {message}")]
@@ -448,20 +450,9 @@ impl Clone for ZaiError {
                 code: *code,
                 message: message.clone(),
             },
-            ZaiError::NetworkError(_) => {
-                // NetworkError cannot be cloned, create a generic error
-                ZaiError::HttpError {
-                    status: 503,
-                    message: "Network error".to_string(),
-                }
-            },
-            ZaiError::JsonError(_) => {
-                // JsonError cannot be cloned, create a generic error
-                ZaiError::HttpError {
-                    status: 400,
-                    message: "JSON error".to_string(),
-                }
-            },
+            // Arc-wrapped errors can now be cloned properly
+            ZaiError::NetworkError(err) => ZaiError::NetworkError(Arc::clone(err)),
+            ZaiError::JsonError(err) => ZaiError::JsonError(Arc::clone(err)),
             ZaiError::Unknown { code, message } => ZaiError::Unknown {
                 code: *code,
                 message: message.clone(),
@@ -479,7 +470,7 @@ impl From<reqwest::Error> for ZaiError {
         if let Some(status) = err.status() {
             ZaiError::from_api_response(status.as_u16(), 0, err.to_string())
         } else {
-            ZaiError::NetworkError(err)
+            ZaiError::NetworkError(Arc::new(err))
         }
     }
 }
@@ -487,7 +478,7 @@ impl From<reqwest::Error> for ZaiError {
 /// Convert from serde_json::Error to ZaiError
 impl From<serde_json::Error> for ZaiError {
     fn from(err: serde_json::Error) -> Self {
-        ZaiError::JsonError(err)
+        ZaiError::JsonError(Arc::new(err))
     }
 }
 
@@ -605,9 +596,8 @@ mod tests {
         assert_eq!(err.code(), Some(0)); // Unknown has code 0
 
         // JsonError has no code
-        let err = ZaiError::JsonError(serde_json::Error::io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "invalid JSON",
+        let err = ZaiError::JsonError(std::sync::Arc::new(serde_json::Error::io(
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid JSON"),
         )));
         assert!(err.code().is_none());
 

@@ -18,10 +18,7 @@ fn make_weather_tool() -> FunctionTool {
         }))
         .handler(|args| async move {
             // 获取参数
-            let city = args
-                .get("city")
-                .and_then(|v| v.as_str())
-                .unwrap_or_else(|| "");
+            let city = args.get("city").and_then(|v| v.as_str()).unwrap_or("");
 
             // 参数验证
             if city.trim().is_empty() {
@@ -68,7 +65,7 @@ fn make_calc_tool() -> FunctionTool {
         .property("b", json!({ "type": "number", "description": "Right operand" }))
         .required("op").required("a").required("b")
         .handler(|args| async move {
-            let op = args.get("op").and_then(|v| v.as_str()).unwrap_or_else(|| "");
+            let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("");
 
             // 使用 ErrorContext 的 with_operation 来添加上下文信息
             let a = args.get("a").and_then(|v| v.as_f64())

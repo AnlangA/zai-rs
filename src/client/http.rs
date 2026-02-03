@@ -258,7 +258,7 @@ static HTTP_CLIENTS: OnceLock<dashmap::DashMap<String, reqwest::Client>> = OnceL
 /// Get or create an HTTP client with the specified configuration
 ///
 /// Clients are cached by configuration to allow connection reuse.
-fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
+pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
     let config_key = format!(
         "timeout:{:?}|compression:{}",
         config.timeout, config.enable_compression
@@ -307,7 +307,8 @@ pub trait HttpClient {
     /// This method implements retry logic with exponential backoff and jitter.
     /// It supports configuration through `http_config` method.
     fn post(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let body_compact = serde_json::to_string(self.body()).map_err(ZaiError::JsonError);
+        let body_compact =
+            serde_json::to_string(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
 
         let config = self.http_config().clone();
         let enable_logging = config.enable_logging;

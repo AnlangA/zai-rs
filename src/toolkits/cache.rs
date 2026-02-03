@@ -166,7 +166,7 @@ impl ToolCallCache {
             .map(|entry| (entry.key().clone(), entry.value().timestamp))
             .collect();
 
-        entries.sort_by(|a, b| a.1.cmp(&b.1));
+        entries.sort_by_key(|a| a.1);
 
         let remove_count = (self.max_size / 10).max(1);
         for (key, _) in entries.into_iter().take(remove_count) {

@@ -27,7 +27,7 @@ fn create_test_tools() -> Vec<FunctionTool> {
             let input = args
                 .get("input")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| "default");
+                .unwrap_or("default");
             Ok(json!({ "result": format!("Processed: {}", input) }))
         })
         .build()

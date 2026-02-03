@@ -3,7 +3,7 @@ use std::path::Path;
 use validator::Validate;
 
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
-use crate::client::http::HttpClient;
+use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
 
 /// OCR recognition request (multipart/form-data)
 pub struct OcrRequest {
@@ -196,7 +196,9 @@ impl HttpClient for OcrRequest {
                 form = form.text("probability", prob.to_string());
             }
 
-            let resp = reqwest::Client::new()
+            // Use shared HTTP client with connection pooling
+            let client = http_client_with_config(&HttpClientConfig::default());
+            let resp = client
                 .post(url)
                 .bearer_auth(key)
                 .multipart(form)

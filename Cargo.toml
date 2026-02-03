@@ -170,6 +170,10 @@ path = "examples/translation_bot.rs"
 name = "web_chat"
 path = "examples/web_chat/server.rs"
 
+[[example]]
+name = "glm45_thinking_mode"
+path = "examples/glm45_thinking_mode.rs"
+
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
