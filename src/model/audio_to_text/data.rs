@@ -4,8 +4,10 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::AudioToTextBody};
-use crate::client::http::{HttpClient, http_client_with_config, HttpClientConfig};
-use crate::io;
+use crate::{
+    client::http::{HttpClient, HttpClientConfig, http_client_with_config},
+    io,
+};
 
 /// Audio transcription request (multipart/form-data)
 pub struct AudioToTextRequest<N>

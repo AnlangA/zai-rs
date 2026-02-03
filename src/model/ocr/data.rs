@@ -3,8 +3,10 @@ use std::path::Path;
 use validator::Validate;
 
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
-use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
-use crate::io;
+use crate::{
+    client::http::{HttpClient, HttpClientConfig, http_client_with_config},
+    io,
+};
 
 /// OCR recognition request (multipart/form-data)
 pub struct OcrRequest {
@@ -153,11 +155,12 @@ impl HttpClient for OcrRequest {
             let mut form = reqwest::multipart::Form::new();
 
             // Use unified async file reading with MIME type inference
-            let content = io::read_file(&file_path).await
-                .map_err(|e| crate::client::error::ZaiError::FileError {
+            let content = io::read_file(&file_path).await.map_err(|e| {
+                crate::client::error::ZaiError::FileError {
                     code: 0,
                     message: format!("Failed to read OCR file: {}", e),
-                })?;
+                }
+            })?;
 
             let part = reqwest::multipart::Part::bytes(content.bytes)
                 .file_name(content.file_name)

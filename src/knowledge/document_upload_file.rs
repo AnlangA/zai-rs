@@ -3,8 +3,10 @@ use std::{collections::BTreeMap, path::PathBuf};
 use validator::Validate;
 
 use super::types::UploadFileResponse;
-use crate::client::http::{HttpClient, http_client_with_config, HttpClientConfig};
-use crate::io;
+use crate::{
+    client::http::{HttpClient, HttpClientConfig, http_client_with_config},
+    io,
+};
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]

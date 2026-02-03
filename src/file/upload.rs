@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 use super::request::FilePurpose;
-use crate::client::http::{HttpClient, http_client_with_config, HttpClientConfig};
-use crate::io;
+use crate::{
+    client::http::{HttpClient, HttpClientConfig, http_client_with_config},
+    io,
+};
 
 /// File upload request (multipart/form-data)
 ///
@@ -85,8 +87,7 @@ impl HttpClient for FileUploadRequest {
                 .or_else(|| Some(content.file_name.clone()))
                 .unwrap_or_else(|| "upload.bin".to_string());
 
-            let mut part = reqwest::multipart::Part::bytes(content.bytes)
-                .file_name(fname);
+            let mut part = reqwest::multipart::Part::bytes(content.bytes).file_name(fname);
 
             // Use inferred MIME type if not explicitly provided
             if let Some(ct) = content_type {
@@ -97,12 +98,12 @@ impl HttpClient for FileUploadRequest {
                             message: format!("invalid content-type: {}", e),
                         })?;
             } else {
-                part =
-                    part.mime_str(&content.mime_type)
-                        .map_err(|e| crate::client::error::ZaiError::ApiError {
-                            code: 1200,
-                            message: format!("invalid content-type: {}", e),
-                        })?;
+                part = part.mime_str(&content.mime_type).map_err(|e| {
+                    crate::client::error::ZaiError::ApiError {
+                        code: 1200,
+                        message: format!("invalid content-type: {}", e),
+                    }
+                })?;
             }
             form = form.part("file", part);
 
