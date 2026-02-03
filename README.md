@@ -66,14 +66,6 @@ cargo run --example chat_loop
 - [x] POST 文件解析
 - [x] GET 解析结果
 
-### Agent API ✨ 新增
-- [x] POST 创建智能体
-- [x] GET 查询智能体
-- [x] PUT 更新智能体
-- [x] DELETE 删除智能体
-- [x] POST 智能体对话
-- [x] GET 对话历史
-
 ### 文件 API
 - [x] GET 文件列表
 - [x] POST 上传文件
