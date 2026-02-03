@@ -3,7 +3,8 @@ use std::{collections::BTreeMap, path::PathBuf};
 use validator::Validate;
 
 use super::types::UploadFileResponse;
-use crate::client::http::HttpClient;
+use crate::client::http::{HttpClient, http_client_with_config, HttpClientConfig};
+use crate::io;
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -193,16 +194,17 @@ impl HttpClient for DocumentUploadFileRequest {
 
             // Files: use field name "files" per API
             for path in files {
-                let fname = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "upload.bin".to_string());
-                let part = reqwest::multipart::Part::bytes(std::fs::read(&path)?).file_name(fname);
+                // Use unified async file reading
+                let content = io::read_file(&path).await?;
+                let part = reqwest::multipart::Part::bytes(content.bytes)
+                    .file_name(content.file_name)
+                    .mime_str(&content.mime_type)?;
                 form = form.part("files", part);
             }
 
-            let resp = reqwest::Client::new()
+            // Use shared HTTP client for connection pooling
+            let client = http_client_with_config(&HttpClientConfig::default());
+            let resp = client
                 .post(url)
                 .bearer_auth(key)
                 .multipart(form)

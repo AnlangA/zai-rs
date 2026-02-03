@@ -4,7 +4,8 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::AudioToTextBody};
-use crate::client::http::HttpClient;
+use crate::client::http::{HttpClient, http_client_with_config, HttpClientConfig};
+use crate::io;
 
 /// Audio transcription request (multipart/form-data)
 pub struct AudioToTextRequest<N>
@@ -133,23 +134,12 @@ where
 
             let mut form = reqwest::multipart::Form::new();
 
-            // file
-            let file_name = Path::new(&file_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("audio.wav");
-            let file_bytes = tokio::fs::read(&file_path).await?;
+            // Use unified async file reading with MIME type inference
+            let content = io::read_file(&file_path).await?;
 
-            // Basic MIME guess by extension
-            let mime = if file_name.to_ascii_lowercase().ends_with(".mp3") {
-                "audio/mpeg"
-            } else {
-                "audio/wav"
-            };
-
-            let part = reqwest::multipart::Part::bytes(file_bytes)
-                .file_name(file_name.to_string())
-                .mime_str(mime)?;
+            let part = reqwest::multipart::Part::bytes(content.bytes)
+                .file_name(content.file_name)
+                .mime_str(&content.mime_type)?;
             form = form.part("file", part);
 
             // model
@@ -170,7 +160,9 @@ where
                 form = form.text("user_id", uid);
             }
 
-            let resp = reqwest::Client::new()
+            // Use shared HTTP client for connection pooling
+            let client = http_client_with_config(&HttpClientConfig::default());
+            let resp = client
                 .post(url)
                 .bearer_auth(key)
                 .multipart(form)

@@ -4,6 +4,7 @@ use validator::Validate;
 
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
 use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
+use crate::io;
 
 /// OCR recognition request (multipart/form-data)
 pub struct OcrRequest {
@@ -151,28 +152,16 @@ impl HttpClient for OcrRequest {
 
             let mut form = reqwest::multipart::Form::new();
 
-            // file
-            let file_name = Path::new(&file_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("image.png");
-            let file_bytes = tokio::fs::read(&file_path).await?;
+            // Use unified async file reading with MIME type inference
+            let content = io::read_file(&file_path).await
+                .map_err(|e| crate::client::error::ZaiError::FileError {
+                    code: 0,
+                    message: format!("Failed to read OCR file: {}", e),
+                })?;
 
-            // Determine MIME type by extension
-            let ext = Path::new(&file_path)
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_ascii_lowercase());
-            let mime = match ext.as_deref() {
-                Some("png") => "image/png",
-                Some("jpg") | Some("jpeg") => "image/jpeg",
-                Some("bmp") => "image/bmp",
-                _ => "image/png",
-            };
-
-            let part = reqwest::multipart::Part::bytes(file_bytes)
-                .file_name(file_name.to_string())
-                .mime_str(mime)?;
+            let part = reqwest::multipart::Part::bytes(content.bytes)
+                .file_name(content.file_name)
+                .mime_str(&content.mime_type)?;
             form = form.part("file", part);
 
             // tool_type (required, default to hand_write)
