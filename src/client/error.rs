@@ -238,6 +238,18 @@ pub enum ZaiError {
     #[error("JSON error: {0}")]
     JsonError(Arc<serde_json::Error>),
 
+    /// Error with additional context information.
+    ///
+    /// This variant wraps another error with added context about where
+    /// or why the error occurred.
+    #[error("{context}: {source}")]
+    ContextError {
+        /// The underlying error source.
+        source: Box<ZaiError>,
+        /// Additional context describing where/why the error occurred.
+        context: String,
+    },
+
     /// Other errors
     #[error("Unknown error [{code}]: {message}")]
     Unknown { code: u16, message: String },
@@ -384,6 +396,9 @@ impl ZaiError {
             ZaiError::JsonError(err) => {
                 format!("JSON: {}", err)
             },
+            ZaiError::ContextError { context, source } => {
+                format!("CONTEXT: {} -> {}", context, source.compact())
+            },
             ZaiError::Unknown { code, message } => {
                 format!("UNKNOWN[{}]: {}", code, message)
             },
@@ -402,6 +417,7 @@ impl ZaiError {
             ZaiError::FileError { code, .. } => Some(*code),
             ZaiError::NetworkError(_) => None,
             ZaiError::JsonError(_) => None,
+            ZaiError::ContextError { source, .. } => source.code(),
             ZaiError::Unknown { code, .. } => Some(*code),
         }
     }
@@ -418,6 +434,7 @@ impl ZaiError {
             ZaiError::FileError { message, .. } => message.clone(),
             ZaiError::NetworkError(err) => err.to_string(),
             ZaiError::JsonError(err) => err.to_string(),
+            ZaiError::ContextError { context, .. } => context.clone(),
             ZaiError::Unknown { message, .. } => message.clone(),
         }
     }
@@ -457,6 +474,10 @@ impl Clone for ZaiError {
             // Arc-wrapped errors can now be cloned properly
             ZaiError::NetworkError(err) => ZaiError::NetworkError(Arc::clone(err)),
             ZaiError::JsonError(err) => ZaiError::JsonError(Arc::clone(err)),
+            ZaiError::ContextError { source, context } => ZaiError::ContextError {
+                source: source.clone(),
+                context: context.clone(),
+            },
             ZaiError::Unknown { code, message } => ZaiError::Unknown {
                 code: *code,
                 message: message.clone(),
@@ -467,6 +488,83 @@ impl Clone for ZaiError {
 
 /// Type alias for Result with ZaiError
 pub type ZaiResult<T> = Result<T, ZaiError>;
+
+/// Extension trait for adding context to `Result` types.
+///
+/// This trait provides ergonomic methods for adding contextual information
+/// to errors, making debugging and error reporting easier.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use zai_rs::client::error::ResultExt;
+///
+/// let result = some_operation()
+///     .context("while processing user request")?;
+/// ```
+pub trait ResultExt<T> {
+    /// Adds context to the error.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - A string describing the context where the error occurred
+    ///
+    /// # Returns
+    ///
+    /// A `ZaiResult` with the context added to any error.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let data = fetch_data()
+    ///     .context("while loading configuration")?;
+    /// ```
+    fn context<C: Into<String>>(self, context: C) -> ZaiResult<T>;
+
+    /// Adds context to the error using a closure.
+    ///
+    /// This is useful when the context computation is expensive and should
+    /// only be performed if an error actually occurred.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - A closure that returns the context string
+    ///
+    /// # Returns
+    ///
+    /// A `ZaiResult` with the context added to any error.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = process_item(id)
+    ///     .with_context(|| format!("while processing item {}", id))?;
+    /// ```
+    fn with_context<C, F>(self, f: F) -> ZaiResult<T>
+    where
+        C: Into<String>,
+        F: FnOnce() -> C;
+}
+
+impl<T> ResultExt<T> for ZaiResult<T> {
+    fn context<C: Into<String>>(self, context: C) -> ZaiResult<T> {
+        self.map_err(|e| ZaiError::ContextError {
+            source: Box::new(e),
+            context: context.into(),
+        })
+    }
+
+    fn with_context<C, F>(self, f: F) -> ZaiResult<T>
+    where
+        C: Into<String>,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|e| ZaiError::ContextError {
+            source: Box::new(e),
+            context: f().into(),
+        })
+    }
+}
 
 /// Convert from reqwest::Error to ZaiError
 impl From<reqwest::Error> for ZaiError {
