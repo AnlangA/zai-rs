@@ -197,51 +197,157 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
 
 /// Main error type for the ZAI-RS SDK.
 ///
+/// This enum represents all possible errors that can occur when using the SDK.
+/// Each variant includes relevant error codes and descriptive messages.
+///
+/// # Error Categories
+///
+/// | Category | Codes | Description |
+/// |----------|-------|-------------|
+/// | HTTP | status codes | Protocol-level errors (4xx, 5xx) |
+/// | Authentication | 1000-1100 | API key and authorization issues |
+/// | Account | 1110-1121 | Account status and quota issues |
+/// | API | 1200-1234 | Invalid parameters or request issues |
+/// | Rate Limit | 1300-1309 | Throttling and quota exceeded |
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use zai_rs::client::error::{ZaiError, ZaiResult};
+///
+/// fn handle_error(result: ZaiResult<Response>) {
+///     match result {
+///         Err(ZaiError::AuthError { code, message }) => {
+///             eprintln!("Authentication failed ({}): {}", code, message);
+///             eprintln!("Verify your API key at https://open.bigmodel.cn/api-keys");
+///         }
+///         Err(ZaiError::RateLimitError { .. }) => {
+///             eprintln!("Rate limited, please retry after some time");
+///         }
+///         Err(e) => eprintln!("Error: {}", e),
+///         Ok(response) => { /* handle success */ }
+///     }
+/// }
+/// ```
+///
+/// # Non-Exhaustive
+///
 /// This enum is marked as `#[non_exhaustive]` to allow adding new error
 /// variants in future versions without breaking changes.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ZaiError {
-    /// HTTP status errors
+    /// HTTP status errors (4xx, 5xx responses).
+    ///
+    /// These errors indicate protocol-level issues with the HTTP request.
+    /// Common causes include invalid endpoints, server errors, or malformed requests.
+    ///
+    /// # Common Status Codes
+    ///
+    /// - 400: Bad request - check your parameters
+    /// - 401: Unauthorized - check your API key
+    /// - 404: Not found - requested resource doesn't exist
+    /// - 429: Too many requests - rate limit exceeded
+    /// - 500: Internal server error - try again later
     #[error("HTTP error [{status}]: {message}")]
-    HttpError { status: u16, message: String },
+    HttpError {
+        /// HTTP status code (e.g., 400, 404, 500).
+        status: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// Authentication and authorization errors
+    /// Authentication and authorization errors.
+    ///
+    /// These errors occur when the API key is invalid, expired, or missing.
+    ///
+    /// # Resolution
+    ///
+    /// Verify your API key at: <https://open.bigmodel.cn/api-keys>
     #[error("Authentication error [{code}]: {message}")]
-    AuthError { code: u16, message: String },
+    AuthError {
+        /// API error code (1000-1004, 1100).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// Account-related errors
+    /// Account-related errors.
+    ///
+    /// These errors indicate issues with your account status,
+    /// such as insufficient balance or account suspension.
     #[error("Account error [{code}]: {message}")]
-    AccountError { code: u16, message: String },
+    AccountError {
+        /// API error code (1110-1121).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// API call errors
+    /// API call errors.
+    ///
+    /// These errors indicate invalid parameters or malformed requests.
+    /// Check the API documentation for correct parameter formats.
     #[error("API error [{code}]: {message}")]
-    ApiError { code: u16, message: String },
+    ApiError {
+        /// API error code (1200-1234).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// Rate limiting and quota errors
+    /// Rate limiting and quota errors.
+    ///
+    /// These errors occur when you've exceeded your API usage limits.
+    /// Implement exponential backoff and retry logic.
     #[error("Rate limit error [{code}]: {message}")]
-    RateLimitError { code: u16, message: String },
+    RateLimitError {
+        /// API error code (1300-1309).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// Content policy errors
+    /// Content policy errors.
+    ///
+    /// These errors occur when the request or response violates content policies.
     #[error("Content policy error [{code}]: {message}")]
-    ContentPolicyError { code: u16, message: String },
+    ContentPolicyError {
+        /// API error code.
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// File processing errors
+    /// File processing errors.
+    ///
+    /// These errors occur during file upload, download, or processing operations.
     #[error("File error [{code}]: {message}")]
-    FileError { code: u16, message: String },
+    FileError {
+        /// API error code.
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
-    /// Network/IO errors (wrapped in Arc for Clone support)
+    /// Network/IO errors.
+    ///
+    /// These errors indicate network connectivity issues.
+    /// Check your internet connection and retry.
     #[error("Network error: {0}")]
     NetworkError(Arc<reqwest::Error>),
 
-    /// JSON parsing errors (wrapped in Arc for Clone support)
+    /// JSON parsing errors.
+    ///
+    /// These errors indicate issues with JSON serialization or deserialization.
+    /// This may indicate an API response format change.
     #[error("JSON error: {0}")]
     JsonError(Arc<serde_json::Error>),
 
     /// Error with additional context information.
     ///
     /// This variant wraps another error with added context about where
-    /// or why the error occurred.
+    /// or why the error occurred. Use [`ResultExt::context`] to create.
     #[error("{context}: {source}")]
     ContextError {
         /// The underlying error source.
@@ -250,9 +356,14 @@ pub enum ZaiError {
         context: String,
     },
 
-    /// Other errors
+    /// Other uncategorized errors.
     #[error("Unknown error [{code}]: {message}")]
-    Unknown { code: u16, message: String },
+    Unknown {
+        /// Error code.
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 }
 
 impl ZaiError {
