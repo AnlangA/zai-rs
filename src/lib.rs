@@ -1,50 +1,112 @@
 //! # ZAI-RS: Zhipu AI Rust SDK
 //!
-//! `zai-rs` is a type-safe Rust SDK that provides complete support for the
-//! Zhipu AI (BigModel) APIs. It offers strongly typed API clients and models
-//! for a wide range of AI capabilities including chat, image generation,
-//! speech recognition, and text-to-speech.
+//! `zai-rs` is a type-safe, ergonomic Rust SDK for the Zhipu AI (BigModel) API.
+//! It provides strongly-typed API clients for AI capabilities including chat,
+//! image generation, speech recognition, and more.
 //!
-//! ## Capabilities
+//! ## Features
 //!
-//! - Chat completions (text, vision, and voice)
-//! - Image generation
-//! - Speech-to-text (audio transcription)
-//! - Text-to-speech (audio synthesis)
-//! - Tool/function calling integration
-//! - File management (upload, list, content, delete)
-//! - Streaming responses via Server-Sent Events (SSE)
-//!
-//! ## Module Structure
-//!
-//! - [`client`] — HTTP client and networking
-//! - [`model`] — Data models, API request/response types
-//! - [`mod@file`] — File management features
-//! - [`batches`] — Batch processing endpoints (list batches)
-//! - [`toolkits`] — Tool calling and execution framework
+//! - **Type-Safe** - Compile-time guarantees prevent invalid API calls
+//! - **Async** - Built on Tokio for efficient async I/O
+//! - **Streaming** - SSE streaming for real-time responses
+//! - **Multimodal** - Text, vision, voice, and audio support
+//! - **Tool Calling** - Function calling and web search integration
 //!
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use zai_rs::{client::http::*, model::*};
+//! use zai_rs::model::{ChatCompletion, GLM4_5_flash, TextMessage};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY").unwrap();
-//!     let client = ChatCompletion::new(model, TextMessage::user("Hello"), key);
-//!     let _resp = client.post().await?;
+//!     let response = ChatCompletion::new(
+//!         GLM4_5_flash {},
+//!         TextMessage::user("Hello, how can you help me?"),
+//!         std::env::var("ZHIPU_API_KEY")?
+//!     )
+//!     .with_temperature(0.7)
+//!     .send()
+//!     .await?;
+//!
+//!     if let Some(content) = &response.choices[0].message.content {
+//!         println!("{}", content);
+//!     }
 //!     Ok(())
 //! }
 //! ```
 //!
-//! ## Features
+//! ## Module Organization
 //!
-//! - Type safety with compile-time checks to minimize runtime errors
-//! - Async support powered by Tokio
-//! - Streaming support for real-time responses
-//! - Tool integration for function calling and external tools
-//! - Built-in validation and error handling
+//! | Module | Description |
+//! |--------|-------------|
+//! | [`model`] | AI models, messages, and request/response types |
+//! | [`client`] | HTTP client and networking utilities |
+//! | [`toolkits`] | Tool calling and execution framework |
+//! | [`batches`] | Batch processing for multiple requests |
+//! | [`file`] | File upload and management |
+//! | [`knowledge`] | Knowledge base operations |
+//! | [`tool`] | External tool APIs (web search, file parsing) |
+//! | [`io`] | Unified file I/O operations |
+//!
+//! ## Supported Models
+//!
+//! | Model | Text | Vision | Voice | Thinking | Tool Stream |
+//! |-------|------|--------|-------|----------|-------------|
+//! | GLM-5 | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.7 | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.6 | ✓ | ✗ | ✗ | ✓ | ✓ |
+//! | GLM-4.5 | ✓ | ✗ | ✗ | ✓ | ✗ |
+//! | GLM-4.5-Flash | ✓ | ✗ | ✗ | ✓ | ✗ |
+//! | GLM-4.5V | ✓ | ✓ | ✗ | ✗ | ✗ |
+//! | GLM-4-Voice | ✓ | ✗ | ✓ | ✗ | ✗ |
+//!
+//! ## Error Handling
+//!
+//! The SDK uses a comprehensive error type [`ZaiError`] that maps to
+//! Zhipu AI API error codes:
+//!
+//! [`ZaiError`]: client::error::ZaiError
+//!
+//! ```rust,ignore
+//! use zai_rs::client::error::{ZaiError, ZaiResult, ResultExt};
+//!
+//! async fn handle_error(result: ZaiResult<Response>) {
+//!     match result {
+//!         Ok(response) => { /* handle success */ },
+//!         Err(ZaiError::AuthError { code, message }) => {
+//!             eprintln!("Auth failed ({}): {}", code, message);
+//!         },
+//!         Err(ZaiError::RateLimitError { .. }) => {
+//!             eprintln!("Rate limited, please retry");
+//!         },
+//!         Err(e) => eprintln!("Error: {}", e),
+//!     }
+//! }
+//! ```
+//!
+//! ## Streaming
+//!
+//! Enable streaming for real-time response processing:
+//!
+//! ```rust,ignore
+//! use zai_rs::model::{ChatCompletion, GLM4_5_flash, TextMessage, StreamChatLikeExt};
+//!
+//! let mut stream = ChatCompletion::new(
+//!     GLM4_5_flash {},
+//!     TextMessage::user("Tell me a story"),
+//!     api_key
+//! )
+//! .enable_stream();
+//!
+//! stream.stream_sse_for_each(|data| {
+//!     println!("Received chunk: {:?}", String::from_utf8_lossy(data));
+//! }).await?;
+//! ```
+//!
+//! ## API Documentation
+//!
+//! For full Zhipu AI API documentation, visit:
+//! <https://open.bigmodel.cn/dev/api>
 
 pub mod batches;
 pub mod client;
