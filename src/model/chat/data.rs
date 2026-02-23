@@ -77,20 +77,30 @@ where
 {
     /// Creates a new non-streaming chat completion request.
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// * `model` - The AI model to use for completion
     /// * `messages` - The conversation messages
-    /// * `key` - API key for authentication
+    /// * `api_key` - API key for authentication (accepts `&str`, `String`, etc.)
     ///
-    /// ## Returns
+    /// # Returns
     ///
     /// A new `ChatCompletion` instance configured for non-streaming requests.
-    pub fn new(model: N, messages: M, key: String) -> ChatCompletion<N, M, StreamOff> {
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let request = ChatCompletion::new(
+    ///     GLM4_5_flash {},
+    ///     TextMessage::user("Hello!"),
+    ///     "your-api-key" // or env!("ZHIPU_API_KEY")
+    /// );
+    /// ```
+    pub fn new<K: Into<String>>(model: N, messages: M, api_key: K) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
         ChatCompletion {
             body,
-            key,
+            key: api_key.into(),
             url: "https://open.bigmodel.cn/api/paas/v4/chat/completions".to_string(),
             _stream: PhantomData,
         }
