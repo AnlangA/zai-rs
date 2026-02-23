@@ -139,15 +139,104 @@ where
         self
     }
 
+    /// Sets the temperature for response randomness.
+    ///
+    /// Temperature controls the randomness of the model's output.
+    /// Higher values (closer to 1.0) produce more creative but less predictable
+    /// responses, while lower values (closer to 0.0) produce more deterministic
+    /// and focused outputs.
+    ///
+    /// # Arguments
+    ///
+    /// * `temperature` - Value between 0.0 and 1.0 (inclusive)
+    ///
+    /// # Returns
+    ///
+    /// Self with the temperature set, enabling method chaining.
+    ///
+    /// # Panics
+    ///
+    /// Debug builds will panic if the value is outside the valid range [0.0, 1.0].
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let request = ChatCompletion::new(model, messages, api_key)
+    ///     .with_temperature(0.7); // Balanced creativity
+    /// ```
     pub fn with_temperature(mut self, temperature: f32) -> Self {
+        debug_assert!(
+            (0.0..=1.0).contains(&temperature),
+            "Temperature must be between 0.0 and 1.0, got {}",
+            temperature
+        );
         self.body = self.body.with_temperature(temperature);
         self
     }
+
+    /// Sets the top-p (nucleus sampling) parameter.
+    ///
+    /// Top-p sampling limits the model to consider only tokens whose
+    /// cumulative probability is below the specified threshold.
+    /// This provides an alternative to temperature for controlling output diversity.
+    ///
+    /// # Arguments
+    ///
+    /// * `top_p` - Value between 0.0 and 1.0 (inclusive)
+    ///
+    /// # Returns
+    ///
+    /// Self with top_p set, enabling method chaining.
+    ///
+    /// # Panics
+    ///
+    /// Debug builds will panic if the value is outside the valid range [0.0, 1.0].
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let request = ChatCompletion::new(model, messages, api_key)
+    ///     .with_top_p(0.9); // Consider tokens comprising top 90% probability
+    /// ```
     pub fn with_top_p(mut self, top_p: f32) -> Self {
+        debug_assert!(
+            (0.0..=1.0).contains(&top_p),
+            "Top-p must be between 0.0 and 1.0, got {}",
+            top_p
+        );
         self.body = self.body.with_top_p(top_p);
         self
     }
+
+    /// Sets the maximum number of tokens to generate.
+    ///
+    /// This limits the length of the model's response. One token is
+    /// approximately 4 characters or 0.75 words in English.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_tokens` - Maximum tokens (1 to 98,304)
+    ///
+    /// # Returns
+    ///
+    /// Self with max_tokens set, enabling method chaining.
+    ///
+    /// # Panics
+    ///
+    /// Debug builds will panic if the value is outside the valid range [1, 98304].
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let request = ChatCompletion::new(model, messages, api_key)
+    ///     .with_max_tokens(1024); // Limit to ~750 words
+    /// ```
     pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
+        debug_assert!(
+            (1..=98304).contains(&max_tokens),
+            "Max tokens must be between 1 and 98304, got {}",
+            max_tokens
+        );
         self.body = self.body.with_max_tokens(max_tokens);
         self
     }
