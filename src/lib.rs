@@ -28,8 +28,10 @@
 //!     .send()
 //!     .await?;
 //!
-//!     if let Some(content) = &response.choices[0].message.content {
-//!         println!("{}", content);
+//!     if let Some(choices) = &response.choices {
+//!         if let Some(content) = &choices[0].message.content {
+//!             println!("{}", content);
+//!         }
 //!     }
 //!     Ok(())
 //! }
