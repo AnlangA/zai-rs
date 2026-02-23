@@ -195,8 +195,12 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
     Ok(())
 }
 
-/// Main error type for the ZAI-RS SDK
+/// Main error type for the ZAI-RS SDK.
+///
+/// This enum is marked as `#[non_exhaustive]` to allow adding new error
+/// variants in future versions without breaking changes.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ZaiError {
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
