@@ -7,6 +7,11 @@
 //! ## Model Categories
 //!
 //! ### Text Models
+//! - **GLM-5** - Latest generation model with advanced reasoning and tool
+//!   streaming capabilities
+//! - **GLM-4.7** - Advanced model with thinking capabilities and tool streaming
+//!   support
+//! - **GLM-4.6** - Enhanced model with tool streaming capabilities
 //! - **GLM-4.5** - Advanced reasoning model with thinking capabilities
 //! - **GLM-4.5-Flash** - Optimized for speed and efficiency
 //! - **GLM-4.5-Air** - Lightweight model for cost-effective applications
@@ -19,15 +24,18 @@
 //!
 //! ## Model Capabilities
 //!
-//! | Model | Text | Vision | Voice | Thinking | Async |
-//! |-------|------|--------|--------|----------|--------|
-//! | GLM-4.5 | ✓ | ✗ | ✗ | ✓ | ✓ |
-//! | GLM-4.5-Flash | ✓ | ✗ | ✗ | ✓ | ✓ |
-//! | GLM-4.5-Air | ✓ | ✗ | ✗ | ✓ | ✓ |
-//! | GLM-4.5-X | ✓ | ✗ | ✗ | ✓ | ✓ |
-//! | GLM-4.5-AirX | ✓ | ✗ | ✗ | ✓ | ✓ |
-//! | GLM-4.5V | ✓ | ✓ | ✗ | ✗ | ✓ |
-//! | GLM-4-Voice | ✓ | ✗ | ✓ | ✗ | ✓ |
+//! | Model | Text | Vision | Voice | Thinking | Async | Tool Stream |
+//! |-------|------|--------|--------|----------|-------|-------------|
+//! | GLM-5 | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
+//! | GLM-4.7 | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
+//! | GLM-4.6 | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
+//! | GLM-4.5 | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+//! | GLM-4.5-Flash | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+//! | GLM-4.5-Air | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+//! | GLM-4.5-X | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+//! | GLM-4.5-AirX | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+//! | GLM-4.5V | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ |
+//! | GLM-4-Voice | ✓ | ✗ | ✓ | ✗ | ✓ | ✗ |
 //!
 //! ## Usage
 //!
@@ -49,6 +57,10 @@ use crate::{
     define_model_type, impl_message_binding, impl_model_markers,
     model::chat_message_types::{TextMessage, VisionMessage, VoiceMessage},
 };
+
+define_model_type!(GLM5, "glm-5");
+impl_message_binding!(GLM5, TextMessage);
+impl_model_markers!(GLM5: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
 
 define_model_type!(GLM4_7, "glm-4.7");
 impl_message_binding!(GLM4_7, TextMessage);

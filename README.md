@@ -50,7 +50,7 @@ cargo run --example chat_loop
 
 ### 模型 API
 - [x] POST 对话补全（同步/异步/流式）
-- [x] GLM-4.5/GLM-4.6/GLM-4.7 支持
+- [x] GLM-4.5/GLM-4.6/GLM-4.7/GLM-5 支持
 - [x] 思考模式（Thinking Mode）
 - [x] 图像生成
 - [x] 视频生成（异步）

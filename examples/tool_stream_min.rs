@@ -1,6 +1,6 @@
 //! Minimal example: streaming tool calls (tool_stream)
 //!
-//! This example shows how to enable tool_stream with GLM-4.6 and print
+//! This example shows how to enable tool_stream with GLM-4.6/4.7/5 and print
 //! incremental tool_call payloads while streaming.
 //!
 //! Run:
@@ -32,7 +32,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     };
 
-    // 3) Build a streaming chat request with tool_stream enabled (GLM-4.6 only)
+    // 3) Build a streaming chat request with tool_stream enabled (GLM-4.6/4.7/5
+    //    only)
     let model = GLM4_6 {};
     let mut client = ChatCompletion::new(
         model,

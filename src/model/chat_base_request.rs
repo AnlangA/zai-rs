@@ -71,8 +71,8 @@ where
     pub stream: Option<bool>,
 
     /// Whether to enable streaming of tool calls (streaming function call
-    /// parameters). Only supported by GLM-4.6 models. Defaults to false
-    /// when omitted.
+    /// parameters). Only supported by GLM-4.6, GLM-4.7, and GLM-5 models.
+    /// Defaults to false when omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_stream: Option<bool>,
 
@@ -231,14 +231,15 @@ where
     }
 }
 
-// Only available when the model supports streaming tool calls (GLM-4.6)
+// Only available when the model supports streaming tool calls (GLM-4.6,
+// GLM-4.7, GLM-5)
 impl<N, M> ChatBody<N, M>
 where
     N: ModelName + ToolStreamEnable,
     (N, M): Bounded,
 {
-    /// Enables streaming tool calls (GLM-4.6 only). Default is false when
-    /// omitted.
+    /// Enables streaming tool calls (GLM-4.6, GLM-4.7, and GLM-5 only).
+    /// Default is false when omitted.
     pub fn with_tool_stream(mut self, tool_stream: bool) -> Self {
         if tool_stream {
             // Enabling tool_stream implies stream=true
