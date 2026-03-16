@@ -3,6 +3,7 @@
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
 ## 快速开始
+
 1. 准备环境
    - Rust 1.74+（或更高）
    - 设置环境变量：`ZHIPU_API_KEY="<your_api_key>"`
@@ -10,6 +11,40 @@
    - `cargo build`
 3. 运行示例（examples/ 目录内）
    - `cargo run --example chat_loop`
+
+## 支持的模型
+
+### 文本模型
+
+| 模型 | 结构体 | Thinking | Async | ToolStream |
+|------|--------|----------|-------|------------|
+| glm-5 | `GLM5` | ✓ | ✓ | ✗ |
+| glm-5-turbo | `GLM5_turbo` | ✓ | ✓ | ✗ |
+| glm-4.7 | `GLM4_7` | ✓ | ✓ | ✓ |
+| glm-4.7-flash | `GLM4_7_flash` | ✓ | ✓ | ✗ |
+| glm-4.7-flashx | `GLM4_7_flashx` | ✓ | ✓ | ✗ |
+| glm-4.6 | `GLM4_6` | ✓ | ✓ | ✓ |
+| glm-4.5 | `GLM4_5` | ✓ | ✓ | ✗ |
+| glm-4.5-X | `GLM4_5_x` | ✓ | ✓ | ✗ |
+| glm-4.5-air | `GLM4_5_air` | ✓ | ✓ | ✗ |
+| glm-4.5-airx | `GLM4_5_airx` | ✓ | ✓ | ✗ |
+| glm-4.5-flash | `GLM4_5_flash` | ✓ | ✓ | ✗ |
+
+### 文本视觉模型
+
+| 模型 | 结构体 |
+|------|--------|
+| autoglm-phone | `autoglm_phone` |
+| glm-4.6v | `GLM4_6v` |
+| glm-4.6v-flash | `GLM4_6v_flash` |
+| glm-4.6v-flashx | `GLM4_6v_flashx` |
+| glm-4.5v | `GLM4_5v` |
+
+### 语音模型
+
+| 模型 | 结构体 |
+|------|--------|
+| glm-4-voice | `GLM4_voice` |
 
 ## 示例（examples/）
 
@@ -20,19 +55,26 @@
 | `chat_text` | 基础文本对话 |
 | `chat_stream` | 流式响应 |
 | `chat_loop` | 多轮对话循环 |
-| `glm45_thinking_mode` | GLM-4.5 深度思考模式 |
+| `chat_coding_plan` | 编程辅助对话 |
+| `chat_vision` | 视觉模型对话（图片/视频） |
+| `chat_voice` | 语音模型对话 |
+| `async_chat_text` | 异步对话任务提交与轮询 |
+| `glm45_thinking_mode` | 深度思考模式 |
+| `function_call` | 函数调用 |
+| `function_call_with_toolkits` | 工具集调用 |
+| `translation_bot` | 翻译机器人 |
 | `ocr` | OCR 手写文字识别 |
 | `gen_image` | 图像生成 |
 | `gen_video` | 视频生成 |
 | `text_to_audio` | 文本转语音 |
 | `audio_to_text` | 语音转文字 |
 | `voice_clone` | 音色复刻 |
-| `function_call` | 函数调用 |
 | `embedding` | 文本嵌入 |
 | `files_upload` | 文件上传 |
 | `knowledge_create` | 知识库创建 |
 | `web_search` | 网络搜索 |
-| `translation_bot` | 翻译机器人 |
+| `batches_create` | 批处理任务创建 |
+| `batches_cancel` | 批处理任务取消 |
 
 ### 运行方式
 
@@ -50,7 +92,7 @@ cargo run --example chat_loop
 
 ### 模型 API
 - [x] POST 对话补全（同步/异步/流式）
-- [x] GLM-4.5/GLM-4.6/GLM-4.7 支持
+- [x] GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
 - [x] 思考模式（Thinking Mode）
 - [x] 图像生成
 - [x] 视频生成（异步）

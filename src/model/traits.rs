@@ -213,7 +213,6 @@ pub trait SseStreamable: HttpClient {
 /// ```rust,ignore
 /// // Basic model definition
 /// define_model_type!(GLM4_5, "glm-4.5");
-///
 /// // Model with attributes
 /// define_model_type!(
 ///     #[allow(non_camel_case_types)]
@@ -254,7 +253,6 @@ macro_rules! define_model_type {
 /// ```rust,ignore
 /// // Single message type binding
 /// impl_message_binding!(GLM4_5, TextMessage);
-///
 /// // Multiple message type bindings
 /// impl_message_binding!(GLM4_5, TextMessage, VisionMessage);
 /// ```
