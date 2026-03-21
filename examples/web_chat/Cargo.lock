@@ -1839,9 +1839,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.8"
+version = "0.103.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ffdfa2f5286e2247234e03f680868ac2815974dc39e00ea15adc445d0aafe52"
+checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -2988,21 +2988,22 @@ dependencies = [
 
 [[package]]
 name = "zai-rs"
-version = "0.1.7"
+version = "0.1.13"
 dependencies = [
- "anyhow",
  "async-trait",
  "axum",
  "base64 0.22.1",
  "chrono",
  "dashmap",
  "env_logger",
+ "fastrand",
  "futures",
  "jsonschema",
  "log",
  "once_cell",
  "parking_lot",
  "rayon",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -3010,6 +3011,7 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "tower-http 0.5.2",
+ "tracing",
  "url",
  "uuid",
  "validator",
