@@ -138,3 +138,13 @@ cargo run --example chat_loop
 - [x] WebSocket 类型定义
 - [x] 会话管理框架
 - [ ] 音视频通话实现（待完善）
+
+## 统计 · Statistics
+
+<div align="center">
+
+> Statistics across public repositories
+
+<img src="https://github-readme-stats.vercel.app/api/top-langs/?username=AnlangA&layout=compact&theme=tokyonight&hide_border=true&langs_count=8&size_weight=0.5&count_weight=0.5&card_width=445&cache_seconds=86400" height="200" alt="Top Languages"/>
+
+</div>
