@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ChatCompletion::new(model, TextMessage::user(user_text), key)
         .with_temperature(0.7) // Control randomness (0.0-1.0)
         .with_top_p(0.9) // Control diversity (0.0-1.0)
-        .with_thinking(ThinkingType::Disabled); // Disable thinking for faster response
+        .with_thinking(ThinkingType::disabled()); // Disable thinking for faster response
 
     // Send the request and await response (non-stream)
     let body: ChatCompletionResponse = client.send().await?;

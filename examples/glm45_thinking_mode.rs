@@ -94,7 +94,7 @@ async fn simple_question(key: &str) -> Result<ChatCompletionResponse, Box<dyn st
     let user_text = "What is the capital of China? Please answer in one sentence.";
 
     let client = ChatCompletion::new(model, TextMessage::user(user_text), key.to_string())
-        .with_thinking(ThinkingType::Disabled)
+        .with_thinking(ThinkingType::disabled())
         .with_max_tokens(100);
 
     client.send().await.map_err(Into::into)
@@ -106,7 +106,7 @@ async fn medium_question(key: &str) -> Result<ChatCompletionResponse, Box<dyn st
     let user_text = "Why might a business choose to use Rust over Python for a new project? Consider performance, safety, and ecosystem factors.";
 
     let client = ChatCompletion::new(model, TextMessage::user(user_text), key.to_string())
-        .with_thinking(ThinkingType::Enabled)
+        .with_thinking(ThinkingType::enabled())
         .with_temperature(0.7)
         .with_max_tokens(500);
 
@@ -125,7 +125,7 @@ async fn complex_question(key: &str) -> Result<ChatCompletionResponse, Box<dyn s
 Please provide a comprehensive explanation with examples.";
 
     let client = ChatCompletion::new(model, TextMessage::user(user_text), key.to_string())
-        .with_thinking(ThinkingType::Enabled)
+        .with_thinking(ThinkingType::enabled())
         .with_temperature(0.5)
         .with_max_tokens(2000);
 

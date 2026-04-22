@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use validator::Validate;
-use zai_rs::model::{TextMessage, ThinkingType, chat_models::GLM4_6};
+use zai_rs::model::{TextMessage, ThinkingMode, ThinkingType, chat_models::GLM4_6};
 
 /// Chat request payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -205,7 +205,7 @@ impl ChatCompletionBuilder {
             api_key,
             temperature: 0.7,
             top_p: 0.9,
-            thinking: ThinkingType::Disabled,
+            thinking: ThinkingType::disabled(),
             stream: false,
         }
     }
@@ -231,9 +231,9 @@ impl ChatCompletionBuilder {
     /// Enable think mode
     pub fn with_thinking(mut self, enabled: bool) -> Self {
         self.thinking = if enabled {
-            ThinkingType::Enabled
+            ThinkingType::enabled()
         } else {
-            ThinkingType::Disabled
+            ThinkingType::disabled()
         };
         self
     }
@@ -356,7 +356,7 @@ mod tests {
 
         assert_eq!(builder.temperature, 0.8);
         assert_eq!(builder.top_p, 0.95);
-        assert!(matches!(builder.thinking, ThinkingType::Enabled));
+        assert!(matches!(builder.thinking.mode, ThinkingMode::Enabled));
         assert!(builder.stream);
     }
 

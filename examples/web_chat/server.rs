@@ -75,9 +75,9 @@ fn build_client(
             .with_top_p(0.9)
             .with_coding_plan();
         client = client.with_thinking(if think_mode {
-            ThinkingType::Enabled
+            ThinkingType::enabled()
         } else {
-            ThinkingType::Disabled
+            ThinkingType::disabled()
         });
         return client;
     }
@@ -87,9 +87,9 @@ fn build_client(
         .with_top_p(0.9)
         .with_coding_plan();
     client = client.with_thinking(if think_mode {
-        ThinkingType::Enabled
+        ThinkingType::enabled()
     } else {
-        ThinkingType::Disabled
+        ThinkingType::disabled()
     });
 
     for msg in messages.iter().skip(1) {

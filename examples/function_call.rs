@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_text = "你是谁，帮为查找深圳今天的天气";
 
     let mut client = ChatCompletion::new(model, TextMessage::user(user_text), key)
-        .with_thinking(ThinkingType::Disabled)
+        .with_thinking(ThinkingType::disabled())
         .with_temperature(0.7)
         .with_top_p(0.9)
         .with_max_tokens(512)

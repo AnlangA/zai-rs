@@ -173,7 +173,7 @@ impl TranslationBot {
             .add_messages(TextMessage::user(&prompt))
             .with_temperature(0.3)
             .with_top_p(0.9)
-            .with_thinking(ThinkingType::Disabled);
+            .with_thinking(ThinkingType::disabled());
 
         let result = Arc::new(Mutex::new(String::new()));
         let result_clone = result.clone();

@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = ChatCompletion::new(model, TextMessage::user(&user_input), key)
         .with_temperature(0.7)
         .with_top_p(0.9)
-        .with_thinking(ThinkingType::Disabled);
+        .with_thinking(ThinkingType::disabled());
 
     loop {
         // 发送当前累计的所有消息，并获取 AI 回复（非流式）

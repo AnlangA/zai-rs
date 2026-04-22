@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
 
     let mut client = ChatCompletion::new(model(), TextMessage::user(user_text), key)
-        .with_thinking(ThinkingType::Disabled)
+        .with_thinking(ThinkingType::disabled())
         .add_tools(tool_defs)
         .with_max_tokens(512);
 

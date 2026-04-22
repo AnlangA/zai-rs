@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
 
     let user_text = "Please increment the counter by 2.";
     let chat = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(user_text), key)
-        .with_thinking(ThinkingType::Disabled)
+        .with_thinking(ThinkingType::disabled())
         .add_tools(tool_defs)
         .with_max_tokens(256);
 
