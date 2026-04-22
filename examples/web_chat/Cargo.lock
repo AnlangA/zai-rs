@@ -2988,21 +2988,22 @@ dependencies = [
 
 [[package]]
 name = "zai-rs"
-version = "0.1.7"
+version = "0.1.13"
 dependencies = [
- "anyhow",
  "async-trait",
  "axum",
  "base64 0.22.1",
  "chrono",
  "dashmap",
  "env_logger",
+ "fastrand",
  "futures",
  "jsonschema",
  "log",
  "once_cell",
  "parking_lot",
  "rayon",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -3010,6 +3011,7 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "tower-http 0.5.2",
+ "tracing",
  "url",
  "uuid",
  "validator",
