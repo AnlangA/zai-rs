@@ -3,6 +3,8 @@
 //! This example shows how to enable tool_stream with GLM-4.6 and print
 //! incremental tool_call payloads while streaming.
 //!
+//! Supported models: GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7, GLM-4.6
+//!
 //! Run:
 //!   cargo run --example tool_stream_min
 

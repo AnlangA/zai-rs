@@ -7,6 +7,7 @@
 //! ## Model Categories
 //!
 //! ### Text Models
+//! - **GLM-5.1** - Flagship base model with strong coding and tool streaming
 //! - **GLM-5** - Next-generation reasoning model with thinking capabilities
 //! - **GLM-5-Turbo** - Fast variant of GLM-5 with same functionality
 //! - **GLM-4.7** - Advanced reasoning model with tool streaming support
@@ -31,8 +32,9 @@
 //!
 //! | Model | Text | Vision | Voice | Thinking | Async | ToolStream |
 //! |-------|------|--------|--------|----------|--------|------------|
-//! | GLM-5 | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
-//! | GLM-5-Turbo | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+//! | GLM-5.1 | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
+//! | GLM-5 | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
+//! | GLM-5-Turbo | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
 //! | GLM-4.7 | ✓ | ✗ | ✗ | ✓ | ✓ | ✓ |
 //! | GLM-4.7-Flash | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
 //! | GLM-4.7-FlashX | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
@@ -74,17 +76,21 @@ use crate::{
 // Text Models
 // ============================================================================
 
+define_model_type!(GLM5_1, "glm-5.1");
+impl_message_binding!(GLM5_1, TextMessage);
+impl_model_markers!(GLM5_1: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
+
 define_model_type!(
     #[allow(non_camel_case_types)]
     GLM5_turbo,
     "glm-5-turbo"
 );
 impl_message_binding!(GLM5_turbo, TextMessage);
-impl_model_markers!(GLM5_turbo: Chat, AsyncChat, ThinkEnable);
+impl_model_markers!(GLM5_turbo: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
 
 define_model_type!(GLM5, "glm-5");
 impl_message_binding!(GLM5, TextMessage);
-impl_model_markers!(GLM5: Chat, AsyncChat, ThinkEnable);
+impl_model_markers!(GLM5: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
 
 define_model_type!(GLM4_7, "glm-4.7");
 impl_message_binding!(GLM4_7, TextMessage);
