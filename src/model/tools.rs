@@ -13,41 +13,80 @@ use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyF
 
 /// Controls thinking/reasoning capabilities in AI models.
 ///
-/// This enum determines whether a model should engage in step-by-step reasoning
-/// when processing requests. Thinking mode can improve accuracy for complex
-/// tasks but may increase response time and token usage.
+/// This structure determines whether a model should engage in step-by-step
+/// reasoning when processing requests, and whether to preserve reasoning
+/// content across turns via `clear_thinking`. Thinking mode can improve
+/// accuracy for complex tasks but may increase response time and token usage.
 ///
-/// ## Variants
+/// ## Fields
 ///
-/// - `Enabled` - Model performs explicit reasoning steps before responding
-/// - `Disabled` - Model responds directly without showing reasoning process
+/// - `mode` - Whether thinking is enabled or disabled
+/// - `clear_thinking` - When `false`, preserves `reasoning_content` across
+///   turns (recommended for Coding / Agent scenarios)
 ///
 /// ## Usage
 ///
 /// ```rust,ignore
 /// let client = ChatCompletion::new(model, messages, api_key)
-///     .with_thinking(ThinkingType::Enabled);
+///     .with_thinking(ThinkingType::enabled());
+///
+/// // Preserve reasoning content across turns (Coding / Agent)
+/// let client = ChatCompletion::new(model, messages, api_key)
+///     .with_thinking(ThinkingType::enabled().with_clear_thinking(false));
 /// ```
 ///
 /// ## Model Compatibility
 ///
 /// Thinking capabilities are available only on models that implement the
-/// `ThinkEnable` trait, such as GLM-4.5 series models.
+/// `ThinkEnable` trait, such as GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5 series models.
+#[derive(Debug, Clone, Serialize)]
+pub struct ThinkingType {
+    /// Whether thinking is enabled or disabled.
+    #[serde(rename = "type")]
+    pub mode: ThinkingMode,
+
+    /// Whether to clear historical `reasoning_content`.
+    ///
+    /// - `true` (default for standard API): Clears reasoning content each turn.
+    /// - `false` (recommended for Coding / Agent): Preserves reasoning content
+    ///   across turns, enabling better context for multi-step tool calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clear_thinking: Option<bool>,
+}
+
+/// Thinking mode variants.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
-#[serde(tag = "type")]
-pub enum ThinkingType {
-    /// Enable thinking capabilities for enhanced reasoning.
-    ///
-    /// When enabled, the model will show its reasoning process step-by-step,
-    /// which can improve accuracy for complex logical or analytical tasks.
+pub enum ThinkingMode {
     Enabled,
-
-    /// Disable thinking capabilities for direct responses.
-    ///
-    /// When disabled, the model responds directly without showing intermediate
-    /// reasoning steps, resulting in faster responses and lower token usage.
     Disabled,
+}
+
+impl ThinkingType {
+    /// Create a new thinking configuration with enabled mode.
+    pub fn enabled() -> Self {
+        Self {
+            mode: ThinkingMode::Enabled,
+            clear_thinking: None,
+        }
+    }
+
+    /// Create a new thinking configuration with disabled mode.
+    pub fn disabled() -> Self {
+        Self {
+            mode: ThinkingMode::Disabled,
+            clear_thinking: None,
+        }
+    }
+
+    /// Set whether to clear historical reasoning content.
+    ///
+    /// Use `false` for Coding / Agent scenarios where reasoning content should
+    /// be preserved across turns.
+    pub fn with_clear_thinking(mut self, clear: bool) -> Self {
+        self.clear_thinking = Some(clear);
+        self
+    }
 }
 
 /// Available tools that AI assistants can invoke during conversations.
@@ -453,16 +492,34 @@ mod tests {
     // ThinkingType tests
     #[test]
     fn test_thinking_type_enabled_serialization() {
-        let thinking = ThinkingType::Enabled;
+        let thinking = ThinkingType::enabled();
         let json = serde_json::to_string(&thinking).unwrap();
         assert!(json.contains("\"type\":\"enabled\""));
+        assert!(!json.contains("clear_thinking"));
     }
 
     #[test]
     fn test_thinking_type_disabled_serialization() {
-        let thinking = ThinkingType::Disabled;
+        let thinking = ThinkingType::disabled();
         let json = serde_json::to_string(&thinking).unwrap();
         assert!(json.contains("\"type\":\"disabled\""));
+        assert!(!json.contains("clear_thinking"));
+    }
+
+    #[test]
+    fn test_thinking_type_with_clear_thinking_serialization() {
+        let thinking = ThinkingType::enabled().with_clear_thinking(false);
+        let json = serde_json::to_string(&thinking).unwrap();
+        assert!(json.contains("\"type\":\"enabled\""));
+        assert!(json.contains("\"clear_thinking\":false"));
+    }
+
+    #[test]
+    fn test_thinking_type_disabled_with_clear_thinking() {
+        let thinking = ThinkingType::disabled().with_clear_thinking(true);
+        let json = serde_json::to_string(&thinking).unwrap();
+        assert!(json.contains("\"type\":\"disabled\""));
+        assert!(json.contains("\"clear_thinking\":true"));
     }
 
     // Function tests
