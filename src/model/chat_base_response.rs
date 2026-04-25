@@ -1,7 +1,8 @@
-//! Base response types for chat API models.
+//! # Chat Response Types
 //!
-//! This module defines the standard response structures for 200
-//! application/json responses from the service.
+//! Defines the standard response structures returned by chat-completion
+//! endpoints, including choices, usage statistics, and task-status tracking
+//! for async operations.
 //!
 //! Notes:
 //! - All fields are optional unless documented otherwise; servers may omit

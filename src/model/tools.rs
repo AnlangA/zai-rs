@@ -1,7 +1,17 @@
-//! Tool definitions and configurations for the model API.
+//! # Tool Definitions & Configurations
 //!
-//! This module defines the various tools that can be used by the assistant,
-//! including function calling, retrieval systems, web search, and MCP tools.
+//! Defines the tool types that can be attached to chat requests, including
+//! function calling, web search integration, retrieval tools, and the
+//! [`ThinkingType`] configuration.
+//!
+//! # Key Types
+//!
+//! - [`ThinkingType`] — Controls reasoning mode for thinking-capable models
+//! - [`FunctionTool`] — Defines a callable function with JSON-schema parameters
+//! - [`WebSearchTool`] — Enables live web search within chat
+//! - [`Retrieval`] — Enables knowledge-base retrieval
+//! - [`ToolChoice`] — Controls tool-selection behaviour (`auto`, `none`, or
+//!   specific function)
 
 use std::collections::HashMap;
 

@@ -1,51 +1,27 @@
 //! # Real-time API Module
 //!
-//! Provides real-time audio and video communication capabilities for the Zhipu
-//! AI API. This module is designed for interactive applications that require
-//! low-latency audio and video streaming.
+//! Provides real-time audio/video communication via WebSocket for the Zhipu AI
+//! API. Designed for interactive applications requiring low-latency streaming.
 //!
-//! ## Features
+//! > **Note:** The framework is in place; audio/video call features are still
+//! > under active development.
 //!
-//! - **Audio Streaming** - Real-time audio input and output
-//! - **Video Streaming** - Real-time video input and output
-//! - **Low Latency** - Optimized for minimal communication delay
-//! - **Interactive Communication** - Support for bidirectional audio/video
-//!   calls
+//! # Core Types
 //!
-//! ## Usage
+//! - [`RealTimeClient`] — Entry point for real-time sessions
+//! - [`RealTimeModel`] — Supported model identifiers
+//! - [`RealTimeSession`] — Manages a single real-time session
+//!
+//! # Usage
 //!
 //! ```rust,ignore
 //! use zai_rs::realTime::*;
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let client = RealTimeClient::new(api_key);
-//!
-//!     // Start an audio session
-//!     let session = client
-//!         .audio_session()
-//!         .model(RealTimeModel::Glm4Voice)
-//!         .build()
-//!         .await?;
-//!
-//!     // Send audio data
-//!     session.send_audio(audio_bytes).await?;
-//!
-//!     // Receive responses
-//!     while let Some(event) = session.next_event().await? {
-//!         match event {
-//!             RealTimeEvent::Audio(data) => {
-//!                 // Handle audio response
-//!             },
-//!             RealTimeEvent::Text(text) => {
-//!                 // Handle transcription
-//!             },
-//!             _ => {},
-//!         }
-//!     }
-//!
-//!     Ok(())
-//! }
+//! let client = RealTimeClient::new(api_key);
+//! let session = client.audio_session()
+//!     .model(RealTimeModel::Glm4Voice)
+//!     .build()
+//!     .await?;
 //! ```
 
 pub mod client;

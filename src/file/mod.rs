@@ -1,64 +1,33 @@
 //! # File Management Module
 //!
-//! Provides comprehensive file management capabilities for the Zhipu AI API.
-//! This module handles file uploads, content retrieval, listing, and deletion
-//! operations with proper error handling and validation.
+//! Provides file management for the Zhipu AI API: upload, list, content
+//! retrieval, and deletion with validation and error handling.
 //!
-//! ## Module Components
+//! # Operations
 //!
-//! - [`content`] - File content retrieval operations
-//! - [`delete`] - File deletion functionality
-//! - [`list`] - File listing and enumeration
-//! - [`request`] - Request types for file operations
-//! - [`response`] - Response types for file operations
-//! - [`upload`] - File upload functionality
+//! | Operation | Module | Description |
+//! |-----------|--------|-------------|
+//! | Upload | [`upload`] | Upload files (PDF, images, etc.) |
+//! | List | [`list`] | List files with metadata |
+//! | Content | [`content`] | Retrieve file content |
+//! | Delete | [`delete`] | Delete files |
 //!
-//! ## Supported Operations
+//! # Usage
 //!
-//! ### File Upload
-//! - Upload files to the Zhipu AI storage system
-//! - Support for various file types and formats
-//! - Automatic validation and error handling
-//!
-//! ### File Management
-//! - List available files with metadata
-//! - Retrieve file content and information
-//! - Delete files when no longer needed
-//!
-//! ## Usage Examples
-//!
-//! ### Upload a file
 //! ```rust,ignore
-//! use zai_rs::file::{FileUploadRequest, ContentType};
-//! use tokio::fs::File;
+//! use zai_rs::file::*;
 //!
-//! let file = File::open("document.pdf").await?;
-//! let request = FileUploadRequest::new(file, ContentType::Pdf);
-//! let result = client.upload_file(&request).await?;
-//! ```
+//! // Upload
+//! let result = client.upload_file(&FileUploadRequest::new(file, ContentType::Pdf)).await?;
 //!
-//! ### List files
-//! ```rust,ignore
-//! use zai_rs::file::FileListRequest;
+//! // List
+//! let files = client.list_files(&FileListRequest::new().limit(10)).await?;
 //!
-//! let request = FileListRequest::new().limit(10);
-//! let files = client.list_files(&request).await?;
-//! ```
+//! // Get content
+//! let content = client.get_file_content(&FileContentRequest::new(file_id)).await?;
 //!
-//! ### Get file content
-//! ```rust,ignore
-//! use zai_rs::file::FileContentRequest;
-//!
-//! let request = FileContentRequest::new(file_id);
-//! let content = client.get_file_content(&request).await?;
-//! ```
-//!
-//! ### Delete a file
-//! ```rust,ignore
-//! use zai_rs::file::FileDeleteRequest;
-//!
-//! let request = FileDeleteRequest::new(file_id);
-//! client.delete_file(&request).await?;
+//! // Delete
+//! client.delete_file(&FileDeleteRequest::new(file_id)).await?;
 //! ```
 
 pub mod request;

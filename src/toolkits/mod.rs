@@ -1,44 +1,37 @@
 //! # Toolkits Module
 //!
-//! A comprehensive tool calling and execution framework for AI applications.
-//! This module was merged from the former `zai-tools` crate and provides
-//! a robust foundation for integrating external tools and functions with AI
-//! models.
+//! A comprehensive tool-calling and execution framework for AI applications.
+//! Supports both static tool definitions and dynamic registration at runtime.
 //!
-//! ## Overview
+//! # Core Components
 //!
-//! The toolkits module enables AI models to invoke external functions, APIs,
-//! and tools in a type-safe and extensible manner. It supports both static tool
-//! definitions and dynamic tool registration at runtime.
+//! - [`core`] — Core traits ([`DynTool`], [`FunctionTool`]) and type
+//!   conversions
+//! - [`error`] — Error types with context information
+//! - [`executor`] — Execution engine with registration, caching, and retry
+//!   logic
+//! - [`llm`] — LLM-specific parsing utilities (tool-call extraction)
+//! - [`cache`] — In-memory tool-call cache with statistics
 //!
-//! ## Core Components
+//! # Feature-gated
 //!
-//! - [`core`] - Core traits and types for tool definitions
-//! - [`error`] - Comprehensive error handling and reporting
-//! - [`executor`] - Tool execution engine with registration and management
-//! - [`llm`] - LLM-specific parsing and interaction utilities
+//! - `rmcp-kits` — RMCP protocol bridge for MCP tool calling
 //!
-//! ## Key Features
+//! # Quick Start
 //!
-//! ### Flexibility
-//! - Dynamic tool registration and discovery
-//! - JSON schema generation for tool descriptions
-//!
-//! ### Error Handling
-//! - Comprehensive error types with context information
-//! - Graceful error recovery and reporting
-//! - Validation errors with detailed messages
-//!
-//! ## Usage Example
 //! ```rust,ignore
+//! use zai_rs::toolkits::prelude::*;
+//!
 //! let tool = FunctionTool::builder("get_weather", "Get current weather")
 //!     .property("location", json!({"type": "string"}))
 //!     .required("location")
 //!     .handler(|input| async move {
-//!         // Function implementation
 //!         Ok(json!({"temperature": 22.5}))
 //!     })
 //!     .build()?;
+//!
+//! let mut executor = ToolExecutor::new();
+//! executor.register_tool(Box::new(tool))?;
 //! ```
 
 pub mod cache;

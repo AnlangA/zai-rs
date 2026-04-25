@@ -1,12 +1,49 @@
-//! Custom error types for ZAI-RS
+//! # Error Types
 //!
-//! This module defines comprehensive error types that map to the ZhipuAI API
-//! error codes as documented at https://docs.bigmodel.cn/cn/api/api-code
+//! Defines the unified error type for the ZAI-RS SDK, mapping Zhipu AI API
+//! error codes. See <https://docs.bigmodel.cn/cn/api/api-code> for the full
+//! reference.
 //!
-//! ## Sensitive Data Logging
+//! # Error Categories
 //!
-//! This module provides utilities for masking sensitive information in logs to
-//! prevent accidental exposure of API keys, tokens, and other sensitive data.
+//! | Variant | Code range | Description |
+//! |---------|------------|-------------|
+//! | [`ZaiError::AuthError`] | 1001–1099 | Authentication / authorization (invalid API key, etc.) |
+//! | [`ZaiError::AccountError`] | 1100–1199 | Account-related (insufficient balance, etc.) |
+//! | [`ZaiError::RateLimitError`] | 1200–1299 | Rate-limit / quota errors |
+//! | [`ZaiError::ContentPolicyError`] | 1300–1399 | Content-policy violations |
+//! | [`ZaiError::FileError`] | 1400–1499 | File-processing errors |
+//! | [`ZaiError::ApiError`] | other | General API errors |
+//! | [`ZaiError::NetworkError`] | — | Network / timeout errors |
+//! | [`ZaiError::JsonError`] | — | JSON serialization / deserialization errors |
+//!
+//! # Sensitive-Data Masking
+//!
+//! The [`mask_sensitive_info`] function automatically redacts API keys,
+//! passwords, tokens and other secrets from log output to prevent accidental
+//! leakage.
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use zai_rs::client::error::{ZaiError, ZaiResult};
+//!
+//! async fn call_api() -> ZaiResult<String> {
+//!     // ... API call ...
+//!     Ok("result".to_string())
+//! }
+//!
+//! match call_api().await {
+//!     Ok(data) => println!("Success: {}", data),
+//!     Err(ZaiError::AuthError { code, message }) => {
+//!         eprintln!("Auth failed ({}): {}", code, message);
+//!     },
+//!     Err(ZaiError::RateLimitError { code, message }) => {
+//!         eprintln!("Rate limited ({}): {}", code, message);
+//!     },
+//!     Err(e) => eprintln!("Error: {}", e),
+//! }
+//! ```
 
 use std::sync::{Arc, LazyLock};
 

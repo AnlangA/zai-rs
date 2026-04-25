@@ -1,7 +1,15 @@
-//! Base types and structures for chat API models.
+//! # Chat Request Body
 //!
-//! This module provides the core data structures used for chat API requests,
-//! including the main request body structure.
+//! Provides the core [`ChatBody`] structure shared by all chat-completion
+//! endpoints. The generic type parameters enforce compile-time compatibility
+//! between model and message types.
+//!
+//! # Type Parameters
+//!
+//! - `N` — Model identifier type (must implement
+//!   [`ModelName`](super::traits::ModelName))
+//! - `M` — Message type (must form a [`Bounded`](super::traits::Bounded) pair
+//!   with `N`)
 
 use serde::Serialize;
 use validator::*;

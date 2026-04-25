@@ -1,33 +1,50 @@
 //! # Core Traits for AI Model Abstractions
 //!
-//! This module defines the fundamental traits that enable type-safe
-//! interactions with different AI models and capabilities in the Zhipu AI
-//! ecosystem.
+//! Defines the fundamental traits enabling type-safe interactions with
+//! different AI models and capabilities in the Zhipu AI ecosystem.
 //!
-//! ## Trait Categories
+//! # Trait Categories
 //!
-//! ### Model Identification
-//! - [`ModelName`] - Converts model types to string identifiers
+//! ## Model Identification
 //!
-//! ### Capability Traits
-//! - [`Chat`] - Synchronous chat completion capability
-//! - [`AsyncChat`] - Asynchronous chat completion capability
-//! - [`ThinkEnable`] - Thinking/reasoning capability support
-//! - [`VideoGen`] - Video generation capability
-//! - [`ImageGen`] - Image generation capability
-//! - [`AudioToText`] - Speech recognition capability
-//! - [`TextToAudio`] - Text-to-speech capability
-//! - [`VoiceClone`] - Voice cloning capability
+//! - [`ModelName`] — Converts model types to string identifiers used in API
+//!   requests
 //!
-//! ### Type Safety
-//! - [`Bounded`] - Compile-time model-message compatibility verification
-//! - [`StreamState`] - Type-state pattern for streaming capability control
+//! ## Capability Markers
 //!
-//! ## Type-State Pattern
+//! These marker traits carry no runtime data but encode model capabilities at
+//! compile time:
 //!
-//! The `StreamState` trait and its implementations (`StreamOn`, `StreamOff`)
-//! provide compile-time guarantees about streaming capabilities, preventing
-//! runtime errors and enabling better API design.
+//! - [`Chat`] — Synchronous chat completion
+//! - [`AsyncChat`] — Asynchronous (queued) chat completion
+//! - [`ThinkEnable`] — Thinking / reasoning mode
+//! - [`ToolStreamEnable`] — Streaming tool-call output
+//! - [`VideoGen`] — Video generation
+//! - [`ImageGen`] — Image generation
+//! - [`AudioToText`] — Speech recognition
+//! - [`TextToAudio`] — Text-to-speech synthesis
+//! - [`VoiceClone`] — Voice cloning
+//! - [`Ocr`] — Optical character recognition
+//!
+//! ## Type-Safety Traits
+//!
+//! - [`Bounded`] — Compile-time model ↔ message compatibility check
+//! - [`StreamState`] — Type-state pattern for streaming control
+//!
+//! # Type-State Pattern
+//!
+//! [`StreamState`] and its implementations ([`StreamOn`], [`StreamOff`])
+//! enforce streaming vs. non-streaming semantics at the type level, preventing
+//! invalid API usage without any runtime cost.
+//!
+//! # Helper Macros
+//!
+//! - [`define_model_type!`] — Generates a model struct with `Debug`, `Clone`,
+//!   `Into<String>`, `Serialize`, and `ModelName` impls
+//! - [`impl_message_binding!`] — Binds one or more message types to a model
+//!   (implements `Bounded`)
+//! - [`impl_model_markers!`] — Implements multiple capability marker traits on
+//!   one or more models
 
 /// Trait for AI models that can be identified by name.
 ///

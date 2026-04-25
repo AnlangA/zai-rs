@@ -1,16 +1,31 @@
 //! # Agent API Module
 //!
-//! This module provides support for Zhipu AI's Agent API, which enables
-//! advanced AI agent interactions including multi-turn conversations, tool
-//! use, and persistent state management.
+//! Provides support for Zhipu AI's Agent API, enabling advanced AI agent
+//! interactions including creation, multi-turn conversations, tool use,
+//! and persistent state management.
 //!
-//! ## Features
+//! # Core Types
 //!
-//! - Agent creation and management
-//! - Multi-turn conversations
-//! - Tool and function calling
-//! - Async task management
-//! - Conversation history
+//! - [`AgentClient`] — Main client for all agent operations
+//! - [`AgentCreateRequest`] — Request body for creating an agent
+//! - [`AgentChatRequest`] — Request body for sending a chat message
+//!
+//! # Usage
+//!
+//! ```rust,ignore
+//! use zai_rs::agent::{AgentClient, AgentCreateRequest};
+//!
+//! let client = AgentClient::new(api_key);
+//!
+//! // Create an agent
+//! let agent = client.create_agent(request).await?;
+//!
+//! // Chat with the agent
+//! let response = client.chat(&agent.id, chat_request).await?;
+//!
+//! // Retrieve conversation history
+//! let history = client.get_history(&agent.id, Some(10)).await?;
+//! ```
 
 use serde::{Deserialize, Serialize};
 
