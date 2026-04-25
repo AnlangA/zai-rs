@@ -77,6 +77,7 @@ mod tests {
             "https://gd-hbimg.huaban.com/cc2601d568a72d18d90b2cc7f1065b16b2d693f7fa3f7-hDAwNq_fw1200webp",
         ];
         let video_body = VideoBody::with_multiple_images(model, image_urls, "让画面动起来")
+            .unwrap()
             .with_quality(VideoQuality::Quality)
             .with_audio(true)
             .with_size(VideoSize::Size1920x1080)

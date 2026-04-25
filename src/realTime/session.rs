@@ -10,6 +10,7 @@ use super::types::*;
 /// This represents an active real-time communication session with the API.
 pub struct RealTimeSession {
     pub(crate) session_id: String,
+    #[allow(dead_code)]
     pub(crate) config: SessionConfig,
     pub(crate) state: Arc<Mutex<SessionState>>,
     pub(crate) stats: Arc<Mutex<SessionStats>>,
@@ -65,6 +66,7 @@ impl RealTimeSession {
     }
 
     /// Record sent audio packet
+    #[allow(dead_code)]
     pub(crate) async fn record_packet_sent(&self, bytes: u64) {
         let mut stats = self.stats.lock().await;
         stats.packets_sent += 1;
@@ -72,6 +74,7 @@ impl RealTimeSession {
     }
 
     /// Record received audio packet
+    #[allow(dead_code)]
     pub(crate) async fn record_packet_received(&self, bytes: u64) {
         let mut stats = self.stats.lock().await;
         stats.packets_received += 1;
@@ -79,6 +82,7 @@ impl RealTimeSession {
     }
 
     /// Increment transcription count
+    #[allow(dead_code)]
     pub(crate) async fn increment_transcription_count(&self) {
         let mut stats = self.stats.lock().await;
         stats.transcription_count += 1;

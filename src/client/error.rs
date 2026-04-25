@@ -8,10 +8,36 @@
 //! This module provides utilities for masking sensitive information in logs to
 //! prevent accidental exposure of API keys, tokens, and other sensitive data.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
-use regex;
+use regex::Regex;
 use thiserror::Error;
+
+/// Pre-compiled regex patterns for sensitive data masking (avoids recompilation on every call)
+static API_KEY_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").expect("invalid regex")
+});
+
+static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
+    vec![
+        (Regex::new(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
+        (Regex::new(r"(?i)(password\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
+        (Regex::new(r"(?i)(token\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
+        (Regex::new(r"(?i)(secret\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
+        (Regex::new(r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)").expect("invalid regex"), "bearer [FILTERED]"),
+        (Regex::new(r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
+    ]
+});
+
+static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        Regex::new(r"(?i)api[_-]?key\s*[=:]").expect("invalid regex"),
+        Regex::new(r"(?i)password\s*[=:]").expect("invalid regex"),
+        Regex::new(r"(?i)token\s*[=:]").expect("invalid regex"),
+        Regex::new(r"(?i)secret\s*[=:]").expect("invalid regex"),
+        Regex::new(r"(?i)authorization\s*:\s*Bearer").expect("invalid regex"),
+    ]
+});
 
 /// Masks sensitive information in text for secure logging
 ///
@@ -47,33 +73,12 @@ use thiserror::Error;
 /// assert!(!filtered.contains("abc123"));
 /// ```
 pub fn mask_sensitive_info(text: &str) -> String {
-    let mut result = text.to_string();
-
-    // Mask API keys (format: id.secret where id >= 3 chars, secret >= 10 chars)
-    let api_key_pattern = regex::Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").unwrap();
-    result = api_key_pattern
-        .replace_all(&result, "[FILTERED]")
+    let mut result = API_KEY_PATTERN
+        .replace_all(text, "[FILTERED]")
         .to_string();
 
-    // Mask common sensitive patterns
-    let patterns = vec![
-        (r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
-        (r"(?i)(password\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
-        (r"(?i)(token\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
-        (r"(?i)(secret\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
-        (
-            r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)",
-            "bearer [FILTERED]",
-        ),
-        (
-            r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+",
-            "$1[FILTERED]",
-        ),
-    ];
-
-    for (pattern, replacement) in patterns {
-        let re = regex::Regex::new(pattern).unwrap();
-        result = re.replace_all(&result, replacement).to_string();
+    for (re, replacement) in SENSITIVE_PATTERNS.iter() {
+        result = re.replace_all(&result, *replacement).to_string();
     }
 
     result
@@ -84,33 +89,16 @@ pub fn mask_sensitive_info(text: &str) -> String {
 /// A specialized function that only masks API keys following the ZhipuAI
 /// format.
 pub fn mask_api_key(text: &str) -> String {
-    let pattern = regex::Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").unwrap();
-    pattern.replace_all(text, "[FILTERED]").to_string()
+    API_KEY_PATTERN.replace_all(text, "[FILTERED]").to_string()
 }
 
 /// Checks if text contains sensitive information patterns
 pub fn contains_sensitive_info(text: &str) -> bool {
-    let api_key_pattern = regex::Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").unwrap();
-
-    if api_key_pattern.is_match(text) {
+    if API_KEY_PATTERN.is_match(text) {
         return true;
     }
 
-    let patterns = vec![
-        r"(?i)api[_-]?key\s*[=:]",
-        r"(?i)password\s*[=:]",
-        r"(?i)token\s*[=:]",
-        r"(?i)secret\s*[=:]",
-        r"(?i)authorization\s*:\s*Bearer",
-    ];
-
-    for pattern in patterns {
-        if regex::Regex::new(pattern).unwrap().is_match(text) {
-            return true;
-        }
-    }
-
-    false
+    CONTAINS_SENSITIVE_PATTERNS.iter().any(|re| re.is_match(text))
 }
 
 /// Validates Zhipu AI API key format

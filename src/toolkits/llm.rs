@@ -30,10 +30,10 @@ pub fn normalize_arguments(args: &Value) -> Value {
             serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone()))
         },
         Value::Object(obj) => {
-            // Normalize object keys and values
+            // Normalize object keys: trim whitespace only, preserve case
             let mut normalized = serde_json::Map::new();
             for (k, v) in obj {
-                let normalized_key = k.trim().to_lowercase();
+                let normalized_key = k.trim().to_string();
                 normalized.insert(normalized_key, normalize_arguments(v));
             }
             Value::Object(normalized)
@@ -228,7 +228,7 @@ mod tests {
     fn test_normalize_arguments_object() {
         let args = json!({"CITY": "Shenzhen", "count": 5});
         let normalized = normalize_arguments(&args);
-        assert_eq!(normalized, json!({"city": "Shenzhen", "count": 5}));
+        assert_eq!(normalized, json!({"CITY": "Shenzhen", "count": 5}));
     }
 
     #[test]
@@ -244,11 +244,18 @@ mod tests {
             normalized,
             json!({
                 "data": {
-                    "city": "Shenzhen",
-                    "count": 5
+                    "CITY": "Shenzhen",
+                    "Count": 5
                 }
             })
         );
+    }
+
+    #[test]
+    fn test_normalize_arguments_preserves_case() {
+        let args = json!({"cityName": "Shenzhen", "UserID": 42});
+        let normalized = normalize_arguments(&args);
+        assert_eq!(normalized, json!({"cityName": "Shenzhen", "UserID": 42}));
     }
 
     #[test]

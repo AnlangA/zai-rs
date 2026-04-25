@@ -73,6 +73,7 @@ pub mod gen_video_async;
 pub mod model_validate;
 pub mod moderation;
 pub mod ocr;
+pub mod sse_parser;
 pub mod stream_ext;
 pub mod text_embedded;
 pub mod text_rerank;

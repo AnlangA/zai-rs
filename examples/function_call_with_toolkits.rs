@@ -113,7 +113,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = ToolExecutor::new();
     executor
         .add_dyn_tool(Box::new(make_weather_tool()))
-        .add_dyn_tool(Box::new(make_calc_tool()));
+        .unwrap()
+        .add_dyn_tool(Box::new(make_calc_tool()))
+        .unwrap();
 
     // Create LLM function definitions (both tools)
     let tool_defs = executor.export_all_tools_as_functions();

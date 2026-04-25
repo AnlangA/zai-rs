@@ -148,6 +148,17 @@ where
         self.messages.push(messages);
         self
     }
+    /// Add a single message to the conversation (preferred over add_messages
+    /// for clarity when adding one message).
+    pub fn add_message(mut self, message: M) -> Self {
+        self.messages.push(message);
+        self
+    }
+    /// Add multiple messages to the conversation at once.
+    pub fn extend_messages(mut self, messages: impl IntoIterator<Item = M>) -> Self {
+        self.messages.extend(messages);
+        self
+    }
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self
@@ -240,6 +251,7 @@ where
     /// Enables streaming tool calls. Supported by GLM-5.1, GLM-5, GLM-5-Turbo,
     /// GLM-4.7, and GLM-4.6 models. Default is false when omitted.
     pub fn with_tool_stream(mut self, tool_stream: bool) -> Self {
+        self.tool_stream = Some(tool_stream);
         if tool_stream {
             // Enabling tool_stream implies stream=true
             self.stream = Some(true);
@@ -252,5 +264,70 @@ where
 impl From<Tools> for Vec<Tools> {
     fn from(tool: Tools) -> Self {
         vec![tool]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::chat_models::GLM4_6;
+    use crate::model::chat_message_types::TextMessage;
+
+    #[test]
+    fn test_with_tool_stream_sets_both_fields() {
+        let body: ChatBody<GLM4_6, TextMessage> =
+            ChatBody::new(GLM4_6 {}, TextMessage::user("test"));
+        let body = body.with_tool_stream(true);
+        assert_eq!(body.tool_stream, Some(true));
+        assert_eq!(body.stream, Some(true));
+    }
+
+    #[test]
+    fn test_with_tool_stream_false_does_not_force_stream() {
+        let body: ChatBody<GLM4_6, TextMessage> =
+            ChatBody::new(GLM4_6 {}, TextMessage::user("test"));
+        let body = body.with_tool_stream(false);
+        assert_eq!(body.tool_stream, Some(false));
+        // stream should not be forced to true when tool_stream is false
+        assert_ne!(body.stream, Some(true));
+    }
+
+    #[test]
+    fn test_add_tools_accumulates() {
+        let body: ChatBody<GLM4_6, TextMessage> =
+            ChatBody::new(GLM4_6 {}, TextMessage::user("test"));
+        let tool = crate::model::tools::Function::new(
+            "test_fn",
+            "A test function",
+            serde_json::json!({"type": "object"}),
+        );
+        let body = body.add_tools(crate::model::tools::Tools::Function {
+            function: tool,
+        });
+        assert!(body.tools.is_some());
+        assert_eq!(body.tools.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_extend_messages() {
+        let body: ChatBody<GLM4_6, TextMessage> =
+            ChatBody::new(GLM4_6 {}, TextMessage::user("first"));
+        let body = body.extend_messages(vec![
+            TextMessage::assistant("second"),
+            TextMessage::user("third"),
+        ]);
+        assert_eq!(body.messages.len(), 3);
+        match &body.messages[0] {
+            TextMessage::User { content } => assert_eq!(content, "first"),
+            _ => panic!("Expected User message"),
+        }
+    }
+
+    #[test]
+    fn test_add_message() {
+        let body: ChatBody<GLM4_6, TextMessage> =
+            ChatBody::new(GLM4_6 {}, TextMessage::user("first"));
+        let body = body.add_message(TextMessage::assistant("second"));
+        assert_eq!(body.messages.len(), 2);
     }
 }

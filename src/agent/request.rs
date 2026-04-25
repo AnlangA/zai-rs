@@ -13,7 +13,7 @@ pub struct AgentCreateRequest {
     /// Agent description (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(max = 1000))]
-    pub description: Option<String>],
+    pub description: Option<String>,
 
     /// System prompt for the agent (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,17 +88,29 @@ impl AgentCreateRequestBuilder {
     }
 
     /// Build the AgentCreateRequest
-    pub fn build(self) -> Result<AgentCreateRequest, String> {
-        let name = self.name.ok_or("name is required")?;
+    pub fn build(self) -> Result<AgentCreateRequest, crate::client::error::ZaiError> {
+        let name = self.name.ok_or_else(|| crate::client::error::ZaiError::ApiError {
+            code: 1200,
+            message: "name is required".to_string(),
+        })?;
 
-        Ok(AgentCreateRequest {
+        let req = AgentCreateRequest {
             name,
             description: self.description,
             system_prompt: self.system_prompt,
             model: self.model,
             tools: self.tools,
             config: self.config,
-        })
+        };
+
+        // Run full validation (name length 1-100, description max 1000, etc.)
+        req.validate()
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: format!("Validation error: {:?}", e),
+            })?;
+
+        Ok(req)
     }
 }
 
@@ -188,4 +200,79 @@ pub struct AgentChatParameters {
     /// Enable thinking for this request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_enabled: Option<bool>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builder_success() {
+        let req = AgentCreateRequest::builder()
+            .name("TestAgent")
+            .description("A test agent")
+            .model("glm-4.5")
+            .build()
+            .unwrap();
+
+        assert_eq!(req.name, "TestAgent");
+        assert_eq!(req.description, Some("A test agent".to_string()));
+        assert_eq!(req.model, Some("glm-4.5".to_string()));
+    }
+
+    #[test]
+    fn test_builder_missing_name() {
+        let result = AgentCreateRequest::builder()
+            .description("No name")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_name_too_long() {
+        let result = AgentCreateRequest::builder()
+            .name("a".repeat(101))
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_with_config() {
+        let req = AgentCreateRequest::builder()
+            .name("ConfigAgent")
+            .config(AgentConfig {
+                temperature: Some(0.7),
+                max_tokens: Some(1000),
+                thinking_enabled: Some(false),
+            })
+            .build()
+            .unwrap();
+
+        assert_eq!(req.config.unwrap().temperature, Some(0.7));
+    }
+
+    #[test]
+    fn test_serde_roundtrip() {
+        let req = AgentCreateRequest::builder()
+            .name("SerdeAgent")
+            .description("Serde test")
+            .build()
+            .unwrap();
+
+        let json = serde_json::to_string(&req).unwrap();
+        let parsed: AgentCreateRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "SerdeAgent");
+    }
+
+    #[test]
+    fn test_chat_request_validation() {
+        let req = AgentChatRequest {
+            message: "Hello".to_string(),
+            conversation_id: None,
+            session_id: None,
+            stream: None,
+            parameters: None,
+        };
+        assert!(req.validate().is_ok());
+    }
 }

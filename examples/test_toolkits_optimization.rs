@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tools = create_test_tools();
     for tool in tools {
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
     }
 
     let registration_time = start.elapsed();
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .build()?;
 
-    retry_executor.add_dyn_tool(Box::new(failing_tool));
+    retry_executor.add_dyn_tool(Box::new(failing_tool)).unwrap();
 
     let start = Instant::now();
     let retry_result = retry_executor

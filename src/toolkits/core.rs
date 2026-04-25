@@ -40,6 +40,9 @@ pub trait DynTool: Send + Sync {
 static SCHEMA_CACHE: Lazy<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
+/// Maximum number of compiled schemas to cache
+const SCHEMA_CACHE_MAX_SIZE: usize = 256;
+
 /// Enhanced tool metadata with better type information and memory optimization
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolMetadata {
@@ -174,7 +177,7 @@ pub mod conversions {
 // -----------------------------
 
 /// Type alias for the complex handler type to reduce complexity warnings
-type ToolHandler = std::sync::Arc<
+pub(crate) type ToolHandler = std::sync::Arc<
     dyn Fn(
             serde_json::Value,
         ) -> std::pin::Pin<
@@ -295,6 +298,15 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
 
     {
         let mut cache = SCHEMA_CACHE.write();
+        // Evict oldest entries if cache is full
+        if cache.len() >= SCHEMA_CACHE_MAX_SIZE {
+            // Remove approximately 10% of entries (oldest by insertion order)
+            let remove_count = (SCHEMA_CACHE_MAX_SIZE / 10).max(1);
+            let keys: Vec<u64> = cache.keys().take(remove_count).copied().collect();
+            for k in keys {
+                cache.remove(&k);
+            }
+        }
         cache.insert(hash, Arc::clone(&validator));
     }
 
@@ -360,16 +372,26 @@ pub struct FunctionToolBuilder {
 
 impl FunctionToolBuilder {
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            metadata: ToolMetadata::new(name, description).unwrap_or_else(|_| ToolMetadata {
+        let name_str = name.into();
+        let desc_str = description.into();
+        let metadata = ToolMetadata::new(&name_str, &desc_str).unwrap_or_else(|e| {
+            tracing::warn!(
+                "Invalid tool name '{}': {}. Falling back to 'unknown'.",
+                name_str,
+                e
+            );
+            ToolMetadata {
                 name: Cow::Borrowed("unknown"),
-                description: Cow::Borrowed("unknown"),
+                description: Cow::Owned(desc_str),
                 version: Cow::Borrowed("1.0.0"),
                 author: None,
                 tags: Vec::new(),
                 enabled: true,
                 metadata: HashMap::new(),
-            }),
+            }
+        });
+        Self {
+            metadata,
             input_schema: None,
             staged_properties: None,
             staged_required: Vec::new(),

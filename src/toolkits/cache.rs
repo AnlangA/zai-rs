@@ -92,19 +92,18 @@ impl ToolCallCache {
             return None;
         }
 
-        // First check if entry exists and is expired without holding the lock
-        let expired = {
-            let entry = self.entries.get(key)?;
-            entry.is_expired()
-        };
+        // Use DashMap's remove_if for atomic check-and-remove of expired entries.
+        // If the entry exists and is expired, atomically remove it and return None.
+        // If not expired, we need to get it again for hit counting.
+        // This avoids TOCTOU issues between check and remove.
+        let expired = self.entries.remove_if(key, |_k, v| v.is_expired());
 
-        // If expired, remove it and return None
-        if expired {
-            self.entries.remove(key);
+        if expired.is_some() {
+            // Entry was expired and removed atomically
             return None;
         }
 
-        // Get mut reference for hit counting and result cloning
+        // Entry was not expired (or didn't exist) - get it for hit counting
         let mut entry = self.entries.get_mut(key)?;
         entry.hit();
         Some(entry.result.clone())
@@ -195,7 +194,7 @@ fn normalize_json(value: &Value) -> String {
         Value::Object(obj) => {
             let mut normalized = serde_json::Map::new();
             for (k, v) in obj {
-                let normalized_key = k.trim().to_lowercase();
+                let normalized_key = k.trim().to_string();
                 let normalized_value = normalize_json_value(v);
                 normalized.insert(normalized_key, normalized_value);
             }
@@ -215,7 +214,7 @@ fn normalize_json_value(value: &Value) -> Value {
         Value::Object(obj) => {
             let mut normalized = serde_json::Map::new();
             for (k, v) in obj {
-                let normalized_key = k.trim().to_lowercase();
+                let normalized_key = k.trim().to_string();
                 normalized.insert(normalized_key, normalize_json_value(v));
             }
             Value::Object(normalized)
@@ -327,13 +326,83 @@ mod tests {
         let normalized = normalize_json(&obj);
         let parsed: Value = serde_json::from_str(&normalized).unwrap();
 
-        // Keys should be lowercase, but values should be preserved
+        // Keys should preserve original case (only trim whitespace)
         if let Some(parsed_obj) = parsed.as_object() {
-            assert!(parsed_obj.contains_key("city"));
+            assert!(parsed_obj.contains_key("CITY"));
             assert!(parsed_obj.contains_key("count"));
-            assert!(parsed_obj.contains_key("data"));
-            assert_eq!(parsed_obj.get("city"), Some(&serde_json::json!("Shenzhen")));
+            assert!(parsed_obj.contains_key("Data"));
+            assert_eq!(parsed_obj.get("CITY"), Some(&serde_json::json!("Shenzhen")));
             assert_eq!(parsed_obj.get("count"), Some(&serde_json::json!(5)));
         }
+    }
+
+    #[test]
+    fn test_normalize_json_consistency_with_llm() {
+        // Verify that normalize_json preserves case consistently with
+        // llm::normalize_arguments (both only trim, no case change)
+        let obj = serde_json::json!({"CityName": "Shenzhen", " UserID ": 42});
+        let normalized = normalize_json(&obj);
+        let parsed: Value = serde_json::from_str(&normalized).unwrap();
+        assert!(parsed.as_object().unwrap().contains_key("CityName"));
+        assert!(parsed.as_object().unwrap().contains_key("UserID"));
+    }
+
+    #[test]
+    fn test_cache_concurrent_insert_and_get() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let cache = Arc::new(ToolCallCache::new().with_max_size(1000));
+        let mut handles = Vec::new();
+
+        for i in 0..10 {
+            let cache_clone = Arc::clone(&cache);
+            handles.push(thread::spawn(move || {
+                let key_name = format!("tool_{}", i);
+                let args = serde_json::json!({"input": i});
+                let result = serde_json::json!({"output": format!("result_{}", i)});
+                cache_clone.insert_with_key(key_name.clone(), args.clone(), result);
+
+                // Read it back
+                let key = CacheKey::new(key_name, args);
+                cache_clone.get(&key)
+            }));
+        }
+
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let successful_gets = results.iter().filter(|r| r.is_some()).count();
+        assert_eq!(successful_gets, 10);
+
+        let stats = cache.stats();
+        assert_eq!(stats.total_entries, 10);
+    }
+
+    #[test]
+    fn test_cache_evict_lru() {
+        // Create a cache with small max_size
+        let cache = ToolCallCache::new().with_max_size(5).with_ttl(Duration::from_secs(300));
+
+        // Insert 5 entries to fill the cache
+        for i in 0..5 {
+            let args = serde_json::json!({"input": i});
+            cache.insert_with_key(
+                format!("tool_{}", i),
+                args,
+                serde_json::json!({"result": i}),
+            );
+        }
+
+        assert_eq!(cache.stats().total_entries, 5);
+
+        // Insert one more to trigger eviction
+        let args = serde_json::json!({"input": "new"});
+        cache.insert_with_key("tool_new".to_string(), args, serde_json::json!({"result": "new"}));
+
+        let stats = cache.stats();
+        // After eviction, some entries should have been removed
+        assert!(stats.total_entries <= 5);
+        // The new entry should be present
+        let key = CacheKey::new("tool_new".to_string(), serde_json::json!({"input": "new"}));
+        assert!(cache.get(&key).is_some());
     }
 }

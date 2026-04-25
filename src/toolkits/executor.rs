@@ -9,7 +9,10 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tokio::{task::JoinSet, time::timeout};
 
-use super::cache::{CacheKey, ToolCallCache};
+use super::{
+    cache::{CacheKey, ToolCallCache},
+    core::ToolHandler,
+};
 use crate::{
     model::{
         chat_base_response::ToolCallMessage,
@@ -18,23 +21,9 @@ use crate::{
     },
     toolkits::{
         core::DynTool,
-        error::{ToolResult, error_context},
+        error::{ToolError, ToolResult, error_context},
     },
 };
-
-/// Type alias for the complex handler type to reduce complexity warnings
-type ToolHandler = std::sync::Arc<
-    dyn Fn(
-            serde_json::Value,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                    > + Send,
-            >,
-        > + Send
-        + Sync,
->;
 
 /// Enhanced retry configuration with exponential backoff
 #[derive(Debug, Clone)]
@@ -144,7 +133,7 @@ impl ExecutionResult {
 /// Enhanced tool executor with built-in registry and fluent API
 #[derive(Clone)]
 pub struct ToolExecutor {
-    tools: Arc<DashMap<String, Box<dyn DynTool>>>,
+    tools: Arc<DashMap<String, Arc<dyn DynTool>>>,
     config: ExecutionConfig,
     cache: ToolCallCache,
 }
@@ -215,20 +204,22 @@ impl ToolExecutor {
         self.cache.stats()
     }
 
-    /// Chain-friendly: add a dynamic tool (panics on error)
-    pub fn add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
+    /// Chain-friendly: add a dynamic tool, returns error if already registered
+    pub fn add_dyn_tool(&self, tool: Box<dyn DynTool>) -> ToolResult<&Self> {
         let name = tool.name().to_string();
         if self.tools.contains_key(&name) {
-            panic!("Tool '{}' is already registered", name);
+            return Err(ToolError::RegistrationError {
+                message: format!("Tool '{}' is already registered", name).into(),
+            });
         }
-        self.tools.insert(name, tool);
-        self
+        self.tools.insert(name, Arc::from(tool));
+        Ok(self)
     }
 
     /// Chain-friendly: try to add a dynamic tool (ignores error)
     pub fn try_add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
         let name = tool.name().to_string();
-        self.tools.entry(name).or_insert(tool);
+        self.tools.entry(name).or_insert_with(|| Arc::from(tool));
         self
     }
 
@@ -255,8 +246,8 @@ impl ToolExecutor {
         self.tools.iter().map(|entry| entry.key().clone()).collect()
     }
 
-    fn get_tool(&self, name: &str) -> Option<Box<dyn DynTool>> {
-        self.tools.get(name).map(|t| t.clone_box())
+    fn get_tool(&self, name: &str) -> Option<Arc<dyn DynTool>> {
+        self.tools.get(name).map(|t| Arc::clone(t.value()))
     }
 
     /// Execute a tool with detailed result and exponential backoff
@@ -298,6 +289,17 @@ impl ToolExecutor {
                     .with_metadata("cache_hit", serde_json::Value::Bool(false)));
                 },
                 Err(error) => {
+                    // Only retry on retryable errors (timeout, transient failures)
+                    if !error.is_retryable() {
+                        let duration = start_time.elapsed();
+                        return Ok(ExecutionResult::failure(
+                            tool_name.to_string(),
+                            error.to_string(),
+                            duration,
+                            retries,
+                        ));
+                    }
+
                     if retries >= retry_config.max_retries {
                         let duration = start_time.elapsed();
                         return Ok(ExecutionResult::failure(
@@ -439,7 +441,7 @@ impl ToolExecutor {
                 })
                 .build()?;
 
-            self.add_dyn_tool(Box::new(tool));
+            self.add_dyn_tool(Box::new(tool))?;
             added.push(name);
         }
         Ok(added)
@@ -872,7 +874,7 @@ mod tests {
             .unwrap();
 
         // Register the tool
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
         assert_eq!(executor.tool_names().len(), 1);
         assert!(executor.has_tool("test_tool"));
 
@@ -883,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_executor_duplicate_tool_panics() {
+    fn test_tool_executor_duplicate_tool_returns_error() {
         let executor = ToolExecutor::new();
 
         let tool1 = FunctionTool::builder("duplicate_tool", "First tool")
@@ -896,12 +898,10 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool1));
+        executor.add_dyn_tool(Box::new(tool1)).unwrap();
 
-        // Adding duplicate tool should panic
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            executor.add_dyn_tool(Box::new(tool2));
-        }));
+        // Adding duplicate tool should return error
+        let result = executor.add_dyn_tool(Box::new(tool2));
         assert!(result.is_err());
     }
 
@@ -951,7 +951,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let retrieved_schema = executor.input_schema("test_tool");
         assert!(retrieved_schema.is_some());
@@ -990,9 +990,9 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool1));
-        executor.add_dyn_tool(Box::new(tool2));
-        executor.add_dyn_tool(Box::new(tool3));
+        executor.add_dyn_tool(Box::new(tool1)).unwrap();
+        executor.add_dyn_tool(Box::new(tool2)).unwrap();
+        executor.add_dyn_tool(Box::new(tool3)).unwrap();
 
         let names = executor.tool_names();
         assert_eq!(names.len(), 3);
@@ -1016,7 +1016,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let input = serde_json::json!({"a": 5, "b": 3});
         let result = executor.execute("add_tool", input).await.unwrap();
@@ -1040,7 +1040,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let input = serde_json::json!({});
         let result = executor.execute("failing_tool", input).await.unwrap();
@@ -1070,7 +1070,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let input = serde_json::json!({"message": "hello"});
         let result = executor.execute_simple("echo_tool", input).await.unwrap();
@@ -1091,7 +1091,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let input = serde_json::json!({});
         let result = executor.execute_simple("failing_tool", input).await;
@@ -1113,7 +1113,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let input = serde_json::json!({});
         let result = executor.execute("slow_tool", input).await.unwrap();
@@ -1150,7 +1150,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let input = serde_json::json!({});
         let result = executor.execute("flaky_tool", input).await.unwrap();
@@ -1221,7 +1221,7 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool));
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
 
         let exported = executor.export_tool_as_function("greet_tool");
         assert!(exported.is_some());
@@ -1257,8 +1257,8 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool1));
-        executor.add_dyn_tool(Box::new(tool2));
+        executor.add_dyn_tool(Box::new(tool1)).unwrap();
+        executor.add_dyn_tool(Box::new(tool2)).unwrap();
 
         let exported = executor.export_all_tools_as_functions();
         assert_eq!(exported.len(), 2);
@@ -1291,8 +1291,8 @@ mod tests {
             .build()
             .unwrap();
 
-        executor.add_dyn_tool(Box::new(tool1));
-        executor.add_dyn_tool(Box::new(tool2));
+        executor.add_dyn_tool(Box::new(tool1)).unwrap();
+        executor.add_dyn_tool(Box::new(tool2)).unwrap();
 
         let exported = executor.export_tools_filtered(|meta| meta.version == "1.0.0");
         assert_eq!(exported.len(), 1);
@@ -1334,5 +1334,167 @@ mod tests {
         let after = std::time::SystemTime::now();
 
         assert!(result.timestamp >= before && result.timestamp <= after);
+    }
+
+    #[tokio::test]
+    async fn test_tool_executor_no_retry_for_non_retryable_error() {
+        let executor = ToolExecutor::builder()
+            .retries(3)
+            .timeout(Duration::from_secs(30))
+            .build();
+
+        let attempt_counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let counter_clone = attempt_counter.clone();
+
+        // ToolNotFound is not retryable, so it should fail immediately without retries
+        let tool = FunctionTool::builder("not_found_tool", "Not found tool")
+            .handler(move |_args| {
+                let counter = counter_clone.clone();
+                async move {
+                    counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Err(error_context()
+                        .with_tool("not_found_tool")
+                        .invalid_parameters("Invalid parameters"))
+                }
+            })
+            .build()
+            .unwrap();
+
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let input = serde_json::json!({});
+        let result = executor.execute("not_found_tool", input).await.unwrap();
+
+        assert!(!result.success);
+        assert_eq!(result.retries, 0); // Should not have retried
+        // Should have been called exactly once
+        assert_eq!(
+            attempt_counter.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_calls_ordered_preserves_order() {
+        use crate::model::chat_base_response::{ToolCallMessage, ToolFunction};
+
+        let executor = ToolExecutor::new();
+
+        // Register two tools that return different results
+        let tool1 = FunctionTool::builder("tool_a", "First tool")
+            .property("n", serde_json::json!({"type": "number"}))
+            .handler(|args| async move {
+                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                Ok(serde_json::json!({"tool": "a", "n": n}))
+            })
+            .build()
+            .unwrap();
+
+        let tool2 = FunctionTool::builder("tool_b", "Second tool")
+            .property("n", serde_json::json!({"type": "number"}))
+            .handler(|args| async move {
+                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                Ok(serde_json::json!({"tool": "b", "n": n}))
+            })
+            .build()
+            .unwrap();
+
+        executor.add_dyn_tool(Box::new(tool1)).unwrap();
+        executor.add_dyn_tool(Box::new(tool2)).unwrap();
+
+        let calls = vec![
+            ToolCallMessage {
+                id: Some("call_1".to_string()),
+                type_: Some("function".to_string()),
+                function: Some(ToolFunction {
+                    name: Some("tool_a".to_string()),
+                    arguments: Some(r#"{"n": 1}"#.to_string()),
+                }),
+                mcp: None,
+            },
+            ToolCallMessage {
+                id: Some("call_2".to_string()),
+                type_: Some("function".to_string()),
+                function: Some(ToolFunction {
+                    name: Some("tool_b".to_string()),
+                    arguments: Some(r#"{"n": 2}"#.to_string()),
+                }),
+                mcp: None,
+            },
+        ];
+
+        let results = executor.execute_tool_calls_ordered(&calls).await;
+        assert_eq!(results.len(), 2);
+        // Verify ordering: first result should be from tool_a, second from tool_b
+        let first = &results[0];
+        let first_content = match first {
+            crate::model::chat_message_types::TextMessage::Tool { content, .. } => content.clone(),
+            _ => panic!("Expected Tool message"),
+        };
+        let parsed1: serde_json::Value = serde_json::from_str(&first_content).unwrap();
+        // Check both tools since order in the content identifies which tool ran
+        assert!(parsed1.get("tool").is_some());
+        assert!(parsed1["n"].as_i64() == Some(1));
+
+        let second = &results[1];
+        let second_content = match second {
+            crate::model::chat_message_types::TextMessage::Tool { content, .. } => content.clone(),
+            _ => panic!("Expected Tool message"),
+        };
+        let parsed2: serde_json::Value = serde_json::from_str(&second_content).unwrap();
+        assert!(parsed2.get("tool").is_some());
+        assert!(parsed2["n"].as_i64() == Some(2));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_calls_parallel_returns_all() {
+        use crate::model::chat_base_response::{ToolCallMessage, ToolFunction};
+
+        let executor = ToolExecutor::new();
+
+        let tool1 = FunctionTool::builder("parallel_a", "First parallel tool")
+            .property("n", serde_json::json!({"type": "number"}))
+            .handler(|args| async move {
+                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                Ok(serde_json::json!({"tool": "a", "n": n}))
+            })
+            .build()
+            .unwrap();
+
+        let tool2 = FunctionTool::builder("parallel_b", "Second parallel tool")
+            .property("n", serde_json::json!({"type": "number"}))
+            .handler(|args| async move {
+                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                Ok(serde_json::json!({"tool": "b", "n": n}))
+            })
+            .build()
+            .unwrap();
+
+        executor.add_dyn_tool(Box::new(tool1)).unwrap();
+        executor.add_dyn_tool(Box::new(tool2)).unwrap();
+
+        let calls = vec![
+            ToolCallMessage {
+                id: Some("call_1".to_string()),
+                type_: Some("function".to_string()),
+                function: Some(ToolFunction {
+                    name: Some("parallel_a".to_string()),
+                    arguments: Some(r#"{"n": 1}"#.to_string()),
+                }),
+                mcp: None,
+            },
+            ToolCallMessage {
+                id: Some("call_2".to_string()),
+                type_: Some("function".to_string()),
+                function: Some(ToolFunction {
+                    name: Some("parallel_b".to_string()),
+                    arguments: Some(r#"{"n": 2}"#.to_string()),
+                }),
+                mcp: None,
+            },
+        ];
+
+        let results = executor.execute_tool_calls_parallel(&calls).await;
+        assert_eq!(results.len(), 2);
     }
 }

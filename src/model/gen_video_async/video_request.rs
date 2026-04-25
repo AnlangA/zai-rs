@@ -155,27 +155,41 @@ where
     }
 
     /// Create a video request with multiple image URLs and prompt (Format 3)
+    ///
+    /// # Errors
+    /// Returns an error if `image_urls` does not contain exactly 1 or 2 URLs.
     pub fn with_multiple_images(
         model: N,
         mut image_urls: Vec<impl Into<String>>,
         prompt: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, crate::ZaiError> {
         let image_url = if image_urls.len() == 1 {
             ImageUrl::from_url(image_urls.remove(0))
         } else if image_urls.len() == 2 {
             ImageUrl::from_two_urls(image_urls.remove(0), image_urls.remove(0))
         } else {
-            panic!("with_multiple_images requires 1 or 2 URLs");
+            return Err(crate::ZaiError::ApiError {
+                code: 1200,
+                message: "with_multiple_images requires 1 or 2 URLs".to_string(),
+            });
         };
 
-        Self::new(model)
+        Ok(Self::new(model)
             .with_image_url(image_url)
-            .with_prompt(prompt)
+            .with_prompt(prompt))
+    }
+
+    /// Validate this VideoBody before sending.
+    ///
+    /// Ensures that at least one of `prompt` or `image_url` is present,
+    /// and runs all field-level validations (prompt length, user_id length, etc.).
+    pub fn validate_body(&self) -> crate::ZaiResult<()> {
+        self.validate()
+            .map_err(crate::client::error::ZaiError::from)
     }
 }
 
 // Struct-level validation: require at least one of prompt or image_url.
-#[allow(dead_code)]
 fn validate_prompt_or_image<N>(body: &VideoBody<N>) -> Result<(), validator::ValidationError>
 where
     N: ModelName + Serialize,

@@ -3,10 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Available real-time models
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RealTimeModel {
     /// GLM-4 Voice model for audio interactions
     #[serde(rename = "glm-4-voice")]
+    #[default]
     Glm4Voice,
 
     /// GLM-4.5 with voice capabilities
@@ -31,12 +32,6 @@ impl RealTimeModel {
     /// Check if the model supports synthesis
     pub fn supports_synthesis(&self) -> bool {
         matches!(self, Self::Glm4Voice | Self::Glm45Voice)
-    }
-}
-
-impl Default for RealTimeModel {
-    fn default() -> Self {
-        Self::Glm4Voice
     }
 }
 

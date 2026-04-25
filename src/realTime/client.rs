@@ -74,6 +74,7 @@ impl Clone for RealTimeClient {
 
 /// Builder for creating audio sessions
 pub struct AudioSessionBuilder {
+    #[allow(dead_code)]
     client: RealTimeClient,
     model: Option<RealTimeModel>,
     config: Option<SessionConfig>,
@@ -97,7 +98,7 @@ impl AudioSessionBuilder {
     /// Note: This is a placeholder implementation. The actual WebSocket
     /// connection will be established when the full implementation is complete.
     pub async fn build(self) -> Result<RealTimeSession, Box<dyn std::error::Error>> {
-        let model = self.model.unwrap_or_default();
+        let _model = self.model.unwrap_or_default();
         let config = self.config.unwrap_or_default();
 
         // Generate a session ID (in real implementation, this would come from server)

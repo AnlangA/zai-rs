@@ -46,6 +46,7 @@
 //! - Tool integration for function calling and external tools
 //! - Built-in validation and error handling
 
+pub mod agent;
 pub mod batches;
 pub mod client;
 pub use client::error::*;
@@ -53,5 +54,7 @@ pub mod file;
 pub mod knowledge;
 
 pub mod model;
+#[allow(non_snake_case)]
+pub mod realTime;
 pub mod tool;
 pub mod toolkits;

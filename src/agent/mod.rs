@@ -13,7 +13,8 @@
 //! - Conversation history
 
 use serde::{Deserialize, Serialize};
-use validator::Validate;
+
+use crate::client::http::{HttpClientConfig, http_client_with_config, parse_api_error_response};
 
 pub mod request;
 pub mod response;
@@ -34,29 +35,41 @@ pub const AGENT_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/agents";
 /// let client = AgentClient::new(api_key);
 /// let request = AgentCreateRequest::builder()
 ///     .name("My Assistant")
-//!     .description("A helpful assistant")
-//!     .build();
-//!
-//! let agent = client.create_agent(request).await?;
+///     .description("A helpful assistant")
+///     .build();
+///
+/// let agent = client.create_agent(request).await?;
 /// ```
-
 pub struct AgentClient {
     api_key: String,
     base_url: String,
+    http_config: HttpClientConfig,
+    client: reqwest::Client,
 }
 
 impl AgentClient {
     /// Create a new Agent API client
     pub fn new(api_key: impl Into<String>) -> Self {
+        let config = HttpClientConfig::default();
+        let client = http_client_with_config(&config);
         Self {
             api_key: api_key.into(),
             base_url: AGENT_API_URL.to_string(),
+            http_config: config,
+            client,
         }
     }
 
     /// Create a new agent with custom base URL
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
+        self
+    }
+
+    /// Set custom HTTP client configuration (timeout, retries, etc.)
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.client = http_client_with_config(&config);
+        self.http_config = config;
         self
     }
 
@@ -87,8 +100,8 @@ impl AgentClient {
     /// Delete an agent
     pub async fn delete_agent(&self, agent_id: &str) -> crate::ZaiResult<AgentDeleteResponse> {
         let url = format!("{}/{}", self.base_url, agent_id);
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self
+            .client
             .delete(&url)
             .bearer_auth(&self.api_key)
             .send()
@@ -97,10 +110,9 @@ impl AgentClient {
         if response.status().is_success() {
             Ok(response.json().await?)
         } else {
-            Err(crate::client::error::ZaiError::HttpError {
-                status: response.status().as_u16(),
-                message: response.text().await.unwrap_or_default(),
-            })
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            Err(parse_api_error_response(status, body))
         }
     }
 
@@ -127,14 +139,14 @@ impl AgentClient {
         self.send_get_request(&url).await
     }
 
-    /// Internal method to send POST requests
+    /// Internal method to send POST requests (reuses connection pool)
     async fn send_request<T: Serialize, R: for<'de> Deserialize<'de>>(
         &self,
         url: &str,
         body: &T,
     ) -> crate::ZaiResult<R> {
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self
+            .client
             .post(url)
             .bearer_auth(&self.api_key)
             .header("Content-Type", "application/json")
@@ -145,20 +157,19 @@ impl AgentClient {
         if response.status().is_success() {
             Ok(response.json().await?)
         } else {
-            Err(crate::client::error::ZaiError::HttpError {
-                status: response.status().as_u16(),
-                message: response.text().await.unwrap_or_default(),
-            })
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            Err(parse_api_error_response(status, body))
         }
     }
 
-    /// Internal method to send GET requests
+    /// Internal method to send GET requests (reuses connection pool)
     async fn send_get_request<R: for<'de> Deserialize<'de>>(
         &self,
         url: &str,
     ) -> crate::ZaiResult<R> {
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self
+            .client
             .get(url)
             .bearer_auth(&self.api_key)
             .send()
@@ -167,16 +178,9 @@ impl AgentClient {
         if response.status().is_success() {
             Ok(response.json().await?)
         } else {
-            Err(crate::client::error::ZaiError::HttpError {
-                status: response.status().as_u16(),
-                message: response.text().await.unwrap_or_default(),
-            })
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            Err(parse_api_error_response(status, body))
         }
-    }
-}
-
-impl Default for AgentClient {
-    fn default() -> Self {
-        Self::new("")
     }
 }

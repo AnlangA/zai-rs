@@ -82,6 +82,20 @@ fn to_api_code(code: &ErrorCode) -> u16 {
     }
 }
 
+/// Parse an API error response body into a ZaiError.
+///
+/// Attempts to deserialize the body as `{"error":{"code":...,"message":...}}`
+/// and maps it to the appropriate ZaiError variant. Falls back to a generic
+/// HttpError if parsing fails.
+pub fn parse_api_error_response(status: u16, body: String) -> crate::client::error::ZaiError {
+    if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&body) {
+        let api_code = to_api_code(&parsed.error.code);
+        crate::client::error::ZaiError::from_api_response(status, api_code, parsed.error.message)
+    } else {
+        crate::client::error::ZaiError::from_api_response(status, 0, body)
+    }
+}
+
 /// Retry delay strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryDelay {
@@ -351,83 +365,13 @@ pub trait HttpClient {
             }
 
             let client = http_client_with_config(&config);
-            let mut last_error: Option<ZaiError> = None;
+            let request_builder = client
+                .post(&url)
+                .bearer_auth(&key)
+                .header("Content-Type", "application/json")
+                .body(body);
 
-            for attempt in 0..=config.max_retries {
-                let resp = client
-                    .post(&url)
-                    .bearer_auth(&key)
-                    .header("Content-Type", "application/json")
-                    .body(body.clone())
-                    .send()
-                    .await;
-
-                match resp {
-                    Ok(resp) => {
-                        let status = resp.status();
-
-                        if status.is_success() {
-                            debug!(http_status = %status, "Request succeeded");
-                            return Ok(resp);
-                        }
-
-                        // Parse error for potential retry
-                        let text = resp.text().await.unwrap_or_default();
-
-                        let error =
-                            if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&text) {
-                                let api_code = to_api_code(&parsed.error.code);
-                                ZaiError::from_api_response(
-                                    status.as_u16(),
-                                    api_code,
-                                    parsed.error.message,
-                                )
-                            } else {
-                                ZaiError::from_api_response(status.as_u16(), 0, text)
-                            };
-
-                        if should_retry(&error, attempt, config.max_retries) {
-                            last_error = Some(error.clone());
-                            let delay = calculate_retry_delay(attempt, &config.retry_delay);
-                            let delay_with_jitter = add_jitter(delay);
-                            warn!(
-                                attempt = attempt + 1,
-                                max_attempts = config.max_retries + 1,
-                                retry_delay = ?delay_with_jitter,
-                                error = %error.compact(),
-                                "Request failed, retrying"
-                            );
-                            tokio::time::sleep(delay_with_jitter).await;
-                        } else {
-                            return Err(error);
-                        }
-                    },
-                    Err(e) => {
-                        let error = ZaiError::from(e);
-
-                        if should_retry(&error, attempt, config.max_retries) {
-                            last_error = Some(error.clone());
-                            let delay = calculate_retry_delay(attempt, &config.retry_delay);
-                            let delay_with_jitter = add_jitter(delay);
-                            warn!(
-                                attempt = attempt + 1,
-                                max_attempts = config.max_retries + 1,
-                                retry_delay = ?delay_with_jitter,
-                                error = %error.compact(),
-                                "Request failed, retrying"
-                            );
-                            tokio::time::sleep(delay_with_jitter).await;
-                        } else {
-                            return Err(error);
-                        }
-                    },
-                }
-            }
-
-            Err(last_error.unwrap_or_else(|| ZaiError::HttpError {
-                status: 500,
-                message: "Unknown error after retries".to_string(),
-            }))
+            send_with_retry(request_builder, &config).await
         }
     }
 
@@ -442,79 +386,96 @@ pub trait HttpClient {
 
         async move {
             let client = http_client_with_config(&config);
-            let mut last_error: Option<ZaiError> = None;
-
-            for attempt in 0..=config.max_retries {
-                let resp = client.get(&url).bearer_auth(&key).send().await;
-
-                match resp {
-                    Ok(resp) => {
-                        let status = resp.status();
-
-                        if status.is_success() {
-                            debug!(http_status = %status, "Request succeeded");
-                            return Ok(resp);
-                        }
-
-                        // Parse error for potential retry
-                        let text = resp.text().await.unwrap_or_default();
-
-                        let error =
-                            if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&text) {
-                                let api_code = to_api_code(&parsed.error.code);
-                                ZaiError::from_api_response(
-                                    status.as_u16(),
-                                    api_code,
-                                    parsed.error.message,
-                                )
-                            } else {
-                                ZaiError::from_api_response(status.as_u16(), 0, text)
-                            };
-
-                        if should_retry(&error, attempt, config.max_retries) {
-                            last_error = Some(error.clone());
-                            let delay = calculate_retry_delay(attempt, &config.retry_delay);
-                            let delay_with_jitter = add_jitter(delay);
-                            warn!(
-                                attempt = attempt + 1,
-                                max_attempts = config.max_retries + 1,
-                                retry_delay = ?delay_with_jitter,
-                                error = %error.compact(),
-                                "Request failed, retrying"
-                            );
-                            tokio::time::sleep(delay_with_jitter).await;
-                        } else {
-                            return Err(error);
-                        }
-                    },
-                    Err(e) => {
-                        let error = ZaiError::from(e);
-
-                        if should_retry(&error, attempt, config.max_retries) {
-                            last_error = Some(error.clone());
-                            let delay = calculate_retry_delay(attempt, &config.retry_delay);
-                            let delay_with_jitter = add_jitter(delay);
-                            warn!(
-                                attempt = attempt + 1,
-                                max_attempts = config.max_retries + 1,
-                                retry_delay = ?delay_with_jitter,
-                                error = %error.compact(),
-                                "Request failed, retrying"
-                            );
-                            tokio::time::sleep(delay_with_jitter).await;
-                        } else {
-                            return Err(error);
-                        }
-                    },
-                }
-            }
-
-            Err(last_error.unwrap_or_else(|| ZaiError::HttpError {
-                status: 500,
-                message: "Unknown error after retries".to_string(),
-            }))
+            let request_builder = client.get(&url).bearer_auth(&key);
+            send_with_retry(request_builder, &config).await
         }
     }
+}
+
+/// Internal helper: executes a request with retry logic.
+///
+/// This function encapsulates the common retry loop shared by both POST and
+/// GET methods, avoiding code duplication.
+async fn send_with_retry(
+    request_builder: reqwest::RequestBuilder,
+    config: &HttpClientConfig,
+) -> ZaiResult<reqwest::Response> {
+    let mut last_error: Option<ZaiError> = None;
+
+    // Extract request parts so we can rebuild for each retry attempt.
+    let req = request_builder.build()?;
+    let url = req.url().clone();
+    let method = req.method().clone();
+    let headers = req.headers().clone();
+    let body_bytes = req.body().and_then(|b| b.as_bytes().map(|b| b.to_vec()));
+    // Reuse a client built from the same config (preserves timeout, TLS, etc.)
+    let client = http_client_with_config(config);
+
+    for attempt in 0..=config.max_retries {
+        let mut builder = client
+            .request(method.clone(), url.clone())
+            .headers(headers.clone());
+
+        if let Some(ref body) = body_bytes {
+            builder = builder.body(body.clone());
+        }
+
+        let resp = builder.send().await;
+
+        match resp {
+            Ok(resp) => {
+                let status = resp.status();
+
+                if status.is_success() {
+                    debug!(http_status = %status, "Request succeeded");
+                    return Ok(resp);
+                }
+
+                let text = resp.text().await.unwrap_or_default();
+                let error = parse_api_error_response(status.as_u16(), text);
+
+                if should_retry(&error, attempt, config.max_retries) {
+                    last_error = Some(error.clone());
+                    let delay = calculate_retry_delay(attempt, &config.retry_delay);
+                    let delay_with_jitter = add_jitter(delay);
+                    warn!(
+                        attempt = attempt + 1,
+                        max_attempts = config.max_retries + 1,
+                        retry_delay = ?delay_with_jitter,
+                        error = %error.compact(),
+                        "Request failed, retrying"
+                    );
+                    tokio::time::sleep(delay_with_jitter).await;
+                } else {
+                    return Err(error);
+                }
+            },
+            Err(e) => {
+                let error = ZaiError::from(e);
+
+                if should_retry(&error, attempt, config.max_retries) {
+                    last_error = Some(error.clone());
+                    let delay = calculate_retry_delay(attempt, &config.retry_delay);
+                    let delay_with_jitter = add_jitter(delay);
+                    warn!(
+                        attempt = attempt + 1,
+                        max_attempts = config.max_retries + 1,
+                        retry_delay = ?delay_with_jitter,
+                        error = %error.compact(),
+                        "Request failed, retrying"
+                    );
+                    tokio::time::sleep(delay_with_jitter).await;
+                } else {
+                    return Err(error);
+                }
+            },
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| ZaiError::HttpError {
+        status: 500,
+        message: "Unknown error after retries".to_string(),
+    }))
 }
 
 /// Calculate delay for a retry attempt based on retry delay strategy.

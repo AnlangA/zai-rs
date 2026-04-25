@@ -260,6 +260,8 @@ where
     {
         self.validate()?;
 
+        // post() handles non-2xx responses internally (returns Err), so here we
+        // only receive a successful response with valid HTTP status.
         let resp: reqwest::Response = self.post().await?;
 
         let parsed = resp

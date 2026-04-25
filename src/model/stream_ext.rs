@@ -35,7 +35,7 @@
 use std::pin::Pin;
 
 use futures::{Stream, StreamExt, stream};
-use log::info;
+use tracing::info;
 
 use crate::{
     client::http::HttpClient,
@@ -94,35 +94,19 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                 let bytes = match next {
                     Ok(b) => b,
                     Err(e) => {
-                        return Err(crate::client::error::ZaiError::Unknown {
-                            code: 0,
-                            message: format!("Stream error: {}", e),
-                        });
+                        return Err(crate::client::error::ZaiError::NetworkError(
+                            std::sync::Arc::new(e),
+                        ));
                     },
                 };
-                buf.extend_from_slice(&bytes);
-                while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-                    let line_vec: Vec<u8> = buf.drain(..=pos).collect();
-                    let mut line = &line_vec[..];
-                    if line.ends_with(b"\n") {
-                        line = &line[..line.len() - 1];
+                let lines = crate::model::sse_parser::extract_sse_data_lines(&mut buf, &bytes);
+                for rest in lines {
+                    info!("SSE data: {}", String::from_utf8_lossy(&rest));
+                    if rest == b"[DONE]" {
+                        return Ok(());
                     }
-                    if line.ends_with(b"\r") {
-                        line = &line[..line.len() - 1];
-                    }
-                    if line.is_empty() {
-                        continue;
-                    }
-                    const PREFIX: &[u8] = b"data: ";
-                    if line.starts_with(PREFIX) {
-                        let rest = &line[PREFIX.len()..];
-                        info!("SSE data: {}", String::from_utf8_lossy(rest));
-                        if rest == b"[DONE]" {
-                            return Ok(());
-                        }
-                        if let Ok(chunk) = serde_json::from_slice::<ChatStreamResponse>(rest) {
-                            on_chunk(chunk).await?;
-                        }
+                    if let Ok(chunk) = serde_json::from_slice::<ChatStreamResponse>(&rest) {
+                        on_chunk(chunk).await?;
                     }
                 }
             }
@@ -161,46 +145,35 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
             let resp = self.post().await?;
             let byte_stream = resp.bytes_stream();
 
-            // State: (byte_stream, buffer)
             let s = byte_stream;
 
             let out = stream::unfold((s, Vec::<u8>::new()), |(mut s, mut buf)| async move {
                 loop {
-                    // Process all complete lines currently in buffer
-                    while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-                        let line_vec: Vec<u8> = buf.drain(..=pos).collect();
-                        let mut line = &line_vec[..];
-                        if line.ends_with(b"\n") {
-                            line = &line[..line.len() - 1];
-                        }
-                        if line.ends_with(b"\r") {
-                            line = &line[..line.len() - 1];
-                        }
-                        if line.is_empty() {
-                            continue;
-                        }
-                        const PREFIX: &[u8] = b"data: ";
-                        if line.starts_with(PREFIX) {
-                            let rest = &line[PREFIX.len()..];
-                            info!("SSE data: {}", String::from_utf8_lossy(rest));
-                            if rest == b"[DONE]" {
-                                return None; // end stream gracefully
-                            }
-                            match serde_json::from_slice::<ChatStreamResponse>(rest) {
-                                Ok(item) => return Some((Ok(item), (s, buf))),
-                                Err(_) => { /* skip invalid json line */ },
-                            }
-                        }
-                    }
-                    // Need more bytes
+                    // Need more bytes first to populate buffer
                     match s.next().await {
-                        Some(Ok(bytes)) => buf.extend_from_slice(&bytes),
+                        Some(Ok(bytes)) => {
+                            let lines =
+                                crate::model::sse_parser::extract_sse_data_lines(&mut buf, &bytes);
+                            for rest in lines {
+                                info!("SSE data: {}", String::from_utf8_lossy(&rest));
+                                if rest == b"[DONE]" {
+                                    return None; // end stream gracefully
+                                }
+                                if let Ok(item) =
+                                    serde_json::from_slice::<ChatStreamResponse>(&rest)
+                                {
+                                    return Some((Ok(item), (s, buf)));
+                                }
+                                // skip invalid json line, continue processing remaining lines
+                            }
+                            // All lines processed but no valid ChatStreamResponse yielded,
+                            // loop back to get more bytes
+                        },
                         Some(Err(e)) => {
                             return Some((
-                                Err(crate::client::error::ZaiError::Unknown {
-                                    code: 0,
-                                    message: format!("Stream error: {}", e),
-                                }),
+                                Err(crate::client::error::ZaiError::NetworkError(
+                                    std::sync::Arc::new(e),
+                                )),
                                 (s, buf),
                             ));
                         },

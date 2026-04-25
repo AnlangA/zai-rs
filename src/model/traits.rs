@@ -124,7 +124,7 @@ impl StreamState for StreamOn {}
 impl StreamState for StreamOff {}
 
 use futures::StreamExt;
-use log::info;
+use tracing::info;
 
 use crate::client::http::HttpClient;
 
@@ -164,28 +164,14 @@ pub trait SseStreamable: HttpClient {
             while let Some(next) = stream.next().await {
                 match next {
                     Ok(bytes) => {
-                        buf.extend_from_slice(&bytes);
-                        while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-                            let line_vec: Vec<u8> = buf.drain(..=pos).collect();
-                            let mut line = &line_vec[..];
-                            if line.ends_with(b"\n") {
-                                line = &line[..line.len() - 1];
+                        let lines =
+                            crate::model::sse_parser::extract_sse_data_lines(&mut buf, &bytes);
+                        for rest in lines {
+                            info!("SSE data: {}", String::from_utf8_lossy(&rest));
+                            if rest == b"[DONE]" {
+                                return Ok(());
                             }
-                            if line.ends_with(b"\r") {
-                                line = &line[..line.len() - 1];
-                            }
-                            if line.is_empty() {
-                                continue;
-                            }
-                            const PREFIX: &[u8] = b"data: ";
-                            if line.starts_with(PREFIX) {
-                                let rest = &line[PREFIX.len()..];
-                                info!("SSE data: {}", String::from_utf8_lossy(rest));
-                                if rest == b"[DONE]" {
-                                    return Ok(());
-                                }
-                                on_data(rest);
-                            }
+                            on_data(&rest);
                         }
                     },
                     Err(e) => {
