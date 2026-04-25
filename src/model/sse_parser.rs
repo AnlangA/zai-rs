@@ -21,15 +21,11 @@ pub fn extract_sse_data_lines(buf: &mut Vec<u8>, new_bytes: &[u8]) -> Vec<Vec<u8
     let mut results = Vec::new();
 
     while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-        // Use split_off to avoid allocating a new Vec for each line.
-        // Everything up to and including '\n' goes into `line_buf`.
-        let mut line_buf = buf.split_off(pos);
-        // buf now contains everything after '\n'; swap to restore order
-        std::mem::swap(buf, &mut line_buf);
-        // line_buf now has [..=pos] including the '\n'
+        // Extract line including the '\n', leaving remaining bytes in buf
+        let line_with_nl = buf.drain(..=pos).collect::<Vec<u8>>();
 
         // Trim trailing \n and \r
-        let mut line = &line_buf[..];
+        let mut line = &line_with_nl[..];
         if line.ends_with(b"\n") {
             line = &line[..line.len() - 1];
         }
