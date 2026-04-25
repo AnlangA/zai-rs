@@ -270,8 +270,7 @@ impl From<Tools> for Vec<Tools> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::chat_models::GLM4_6;
-    use crate::model::chat_message_types::TextMessage;
+    use crate::model::{chat_message_types::TextMessage, chat_models::GLM4_6};
 
     #[test]
     fn test_with_tool_stream_sets_both_fields() {
@@ -301,9 +300,7 @@ mod tests {
             "A test function",
             serde_json::json!({"type": "object"}),
         );
-        let body = body.add_tools(crate::model::tools::Tools::Function {
-            function: tool,
-        });
+        let body = body.add_tools(crate::model::tools::Tools::Function { function: tool });
         assert!(body.tools.is_some());
         assert_eq!(body.tools.unwrap().len(), 1);
     }

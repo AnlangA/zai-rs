@@ -1,15 +1,16 @@
 //! # Real-time API Module
 //!
-//! Provides real-time audio and video communication capabilities for the Zhipu AI API.
-//! This module is designed for interactive applications that require low-latency
-//! audio and video streaming.
+//! Provides real-time audio and video communication capabilities for the Zhipu
+//! AI API. This module is designed for interactive applications that require
+//! low-latency audio and video streaming.
 //!
 //! ## Features
 //!
 //! - **Audio Streaming** - Real-time audio input and output
 //! - **Video Streaming** - Real-time video input and output
 //! - **Low Latency** - Optimized for minimal communication delay
-//! - **Interactive Communication** - Support for bidirectional audio/video calls
+//! - **Interactive Communication** - Support for bidirectional audio/video
+//!   calls
 //!
 //! ## Usage
 //!

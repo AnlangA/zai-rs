@@ -89,10 +89,12 @@ impl AgentCreateRequestBuilder {
 
     /// Build the AgentCreateRequest
     pub fn build(self) -> Result<AgentCreateRequest, crate::client::error::ZaiError> {
-        let name = self.name.ok_or_else(|| crate::client::error::ZaiError::ApiError {
-            code: 1200,
-            message: "name is required".to_string(),
-        })?;
+        let name = self
+            .name
+            .ok_or_else(|| crate::client::error::ZaiError::ApiError {
+                code: 1200,
+                message: "name is required".to_string(),
+            })?;
 
         let req = AgentCreateRequest {
             name,
@@ -222,17 +224,13 @@ mod tests {
 
     #[test]
     fn test_builder_missing_name() {
-        let result = AgentCreateRequest::builder()
-            .description("No name")
-            .build();
+        let result = AgentCreateRequest::builder().description("No name").build();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_builder_name_too_long() {
-        let result = AgentCreateRequest::builder()
-            .name("a".repeat(101))
-            .build();
+        let result = AgentCreateRequest::builder().name("a".repeat(101)).build();
         assert!(result.is_err());
     }
 

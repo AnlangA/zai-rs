@@ -38,7 +38,8 @@ use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyF
 /// ## Model Compatibility
 ///
 /// Thinking capabilities are available only on models that implement the
-/// `ThinkEnable` trait, such as GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5 series models.
+/// `ThinkEnable` trait, such as GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5 series
+/// models.
 #[derive(Debug, Clone, Serialize)]
 pub struct ThinkingType {
     /// Whether thinking is enabled or disabled.

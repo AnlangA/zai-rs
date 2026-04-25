@@ -164,9 +164,11 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                                 {
                                     return Some((Ok(item), (s, buf)));
                                 }
-                                // skip invalid json line, continue processing remaining lines
+                                // skip invalid json line, continue processing
+                                // remaining lines
                             }
-                            // All lines processed but no valid ChatStreamResponse yielded,
+                            // All lines processed but no valid
+                            // ChatStreamResponse yielded,
                             // loop back to get more bytes
                         },
                         Some(Err(e)) => {

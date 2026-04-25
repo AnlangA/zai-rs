@@ -13,19 +13,38 @@ use std::sync::{Arc, LazyLock};
 use regex::Regex;
 use thiserror::Error;
 
-/// Pre-compiled regex patterns for sensitive data masking (avoids recompilation on every call)
+/// Pre-compiled regex patterns for sensitive data masking (avoids recompilation
+/// on every call)
 static API_KEY_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").expect("invalid regex")
 });
 
 static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     vec![
-        (Regex::new(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
-        (Regex::new(r"(?i)(password\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
-        (Regex::new(r"(?i)(token\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
-        (Regex::new(r"(?i)(secret\s*[=:]\s*)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
-        (Regex::new(r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)").expect("invalid regex"), "bearer [FILTERED]"),
-        (Regex::new(r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+").expect("invalid regex"), "$1[FILTERED]"),
+        (
+            Regex::new(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
+            "$1[FILTERED]",
+        ),
+        (
+            Regex::new(r"(?i)(password\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
+            "$1[FILTERED]",
+        ),
+        (
+            Regex::new(r"(?i)(token\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
+            "$1[FILTERED]",
+        ),
+        (
+            Regex::new(r"(?i)(secret\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
+            "$1[FILTERED]",
+        ),
+        (
+            Regex::new(r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)").expect("invalid regex"),
+            "bearer [FILTERED]",
+        ),
+        (
+            Regex::new(r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+").expect("invalid regex"),
+            "$1[FILTERED]",
+        ),
     ]
 });
 
@@ -73,9 +92,7 @@ static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 /// assert!(!filtered.contains("abc123"));
 /// ```
 pub fn mask_sensitive_info(text: &str) -> String {
-    let mut result = API_KEY_PATTERN
-        .replace_all(text, "[FILTERED]")
-        .to_string();
+    let mut result = API_KEY_PATTERN.replace_all(text, "[FILTERED]").to_string();
 
     for (re, replacement) in SENSITIVE_PATTERNS.iter() {
         result = re.replace_all(&result, *replacement).to_string();
@@ -98,7 +115,9 @@ pub fn contains_sensitive_info(text: &str) -> bool {
         return true;
     }
 
-    CONTAINS_SENSITIVE_PATTERNS.iter().any(|re| re.is_match(text))
+    CONTAINS_SENSITIVE_PATTERNS
+        .iter()
+        .any(|re| re.is_match(text))
 }
 
 /// Validates Zhipu AI API key format

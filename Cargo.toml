@@ -177,34 +177,34 @@ path = "examples/glm45_thinking_mode.rs"
 
 
 [dependencies]
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1.47.1", features = ["full"] }
-jsonschema = "0.33.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.52.1", features = ["full"] }
+jsonschema = "0.46.2"
 validator = { version = "0.20.0", features = ["derive"] }
-url = "2.5.4"
-reqwest = { version = "0.12.23", features = ["json", "multipart", "stream"] }
+url = "2.5.8"
+reqwest = { version = "0.13.2", features = ["json", "multipart", "stream"] }
 
-fastrand = "2.1"
+fastrand = "2.4.1"
 
-regex = "1"
+regex = "1.12.3"
 
-tracing = "0.1"
+tracing = "0.1.44"
 
 base64 = "0.22.1"
-chrono = "0.4"
-async-trait = "0.1"
-thiserror = "2.0.16"
-futures = "0.3.31"
+chrono = "0.4.44"
+async-trait = "0.1.89"
+thiserror = "2.0.18"
+futures = "0.3.32"
 dashmap = "6.1"
-rayon = "1.8"
-once_cell = "1.19"
-parking_lot = "0.12"
-rmcp = { version = "0.6.4", features = ["client"], optional = true }
-axum = { version = "0.7", optional = true }
-tower = { version = "0.4", optional = true }
-tower-http = { version = "0.5", features = ["fs", "cors"], optional = true }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+rayon = "1.12.0"
+once_cell = "1.21.4"
+parking_lot = "0.12.5"
+rmcp = { version = "1.5.0", features = ["client"], optional = true }
+axum = { version = "0.8.9", optional = true }
+tower = { version = "0.5.3", optional = true }
+tower-http = { version = "0.6.8", features = ["fs", "cors"], optional = true }
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
 
 [features]
 default = []
@@ -212,7 +212,11 @@ rmcp-kits = ["dep:rmcp"]
 web-example = ["dep:axum", "dep:tower", "dep:tower-http"]
 
 [dev-dependencies]
-toml = "0.9.5"
-hyper = { version = "0.14", features = ["full"] }
-env_logger = "0.11.8"
-log = "0.4"
+toml = "1.1.2"
+hyper = { version = "1.9.0", features = ["full"] }
+hyper-util = { version = "0.1.20", features = ["full"] }
+http-body-util = "0.1.3"
+http = "1.3"
+bytes = "1.10"
+env_logger = "0.11.10"
+log = "0.4.29"

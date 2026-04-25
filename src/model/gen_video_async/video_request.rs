@@ -182,7 +182,8 @@ where
     /// Validate this VideoBody before sending.
     ///
     /// Ensures that at least one of `prompt` or `image_url` is present,
-    /// and runs all field-level validations (prompt length, user_id length, etc.).
+    /// and runs all field-level validations (prompt length, user_id length,
+    /// etc.).
     pub fn validate_body(&self) -> crate::ZaiResult<()> {
         self.validate()
             .map_err(crate::client::error::ZaiError::from)

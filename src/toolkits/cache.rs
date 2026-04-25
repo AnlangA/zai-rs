@@ -349,8 +349,7 @@ mod tests {
 
     #[test]
     fn test_cache_concurrent_insert_and_get() {
-        use std::sync::Arc;
-        use std::thread;
+        use std::{sync::Arc, thread};
 
         let cache = Arc::new(ToolCallCache::new().with_max_size(1000));
         let mut handles = Vec::new();
@@ -380,7 +379,9 @@ mod tests {
     #[test]
     fn test_cache_evict_lru() {
         // Create a cache with small max_size
-        let cache = ToolCallCache::new().with_max_size(5).with_ttl(Duration::from_secs(300));
+        let cache = ToolCallCache::new()
+            .with_max_size(5)
+            .with_ttl(Duration::from_secs(300));
 
         // Insert 5 entries to fill the cache
         for i in 0..5 {
@@ -396,7 +397,11 @@ mod tests {
 
         // Insert one more to trigger eviction
         let args = serde_json::json!({"input": "new"});
-        cache.insert_with_key("tool_new".to_string(), args, serde_json::json!({"result": "new"}));
+        cache.insert_with_key(
+            "tool_new".to_string(),
+            args,
+            serde_json::json!({"result": "new"}),
+        );
 
         let stats = cache.stats();
         // After eviction, some entries should have been removed

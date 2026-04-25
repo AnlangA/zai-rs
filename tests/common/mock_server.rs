@@ -5,15 +5,21 @@
 
 use std::{
     collections::HashMap,
+    convert::Infallible,
+    net::SocketAddr,
     sync::{Arc, Mutex},
 };
 
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
 use hyper::{
-    Body, Request, Response, Server, StatusCode,
-    header::AUTHORIZATION,
-    service::{make_service_fn, service_fn},
+    body::Incoming,
+    http::{Request, Response, StatusCode},
+    service::service_fn,
 };
+use hyper_util::{rt::TokioIo, server::conn::auto::Builder as ConnBuilder};
 use serde_json::json;
+use tokio::net::TcpListener;
 
 /// Mock server configuration
 #[derive(Debug, Clone)]
@@ -66,37 +72,45 @@ impl MockServerState {
 #[allow(dead_code)]
 pub async fn start_mock_server(config: MockServerConfig) -> Result<(), Box<dyn std::error::Error>> {
     let state = MockServerState::new(config.clone());
-    let addr = ([127, 0, 0, 1], 9876).into();
+    let addr: SocketAddr = ([127, 0, 0, 1], 9876).into();
 
-    let make_svc = make_service_fn(move |_| {
+    let listener = TcpListener::bind(addr).await?;
+    println!("Mock server running on http://127.0.0.1:9876");
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let io = TokioIo::new(stream);
         let state = state.clone();
-        async move {
-            Ok::<_, hyper::Error>(service_fn(move |req| {
+
+        tokio::task::spawn(async move {
+            let service = service_fn(move |req| {
                 let state = state.clone();
                 async move { handle_request(req, state).await }
-            }))
-        }
-    });
+            });
 
-    let server = Server::bind(&addr).serve(make_svc);
-    println!("Mock server running on http://127.0.0.1:9876");
-    server.await?;
-    Ok(())
+            if let Err(err) = ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await
+            {
+                eprintln!("Error serving connection: {:?}", err);
+            }
+        });
+    }
 }
 
 /// Handle incoming requests
 #[allow(dead_code)]
 async fn handle_request(
-    req: Request<Body>,
+    req: Request<Incoming>,
     state: MockServerState,
-) -> Result<Response<Body>, hyper::Error> {
+) -> Result<Response<Full<Bytes>>, Infallible> {
     let path = req.uri().path();
     let method = req.method().as_str();
 
     // Verify authentication
     let auth_header = req
         .headers()
-        .get(AUTHORIZATION)
+        .get(hyper::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok());
 
     if let Some(auth) = auth_header {
@@ -136,10 +150,10 @@ async fn handle_request(
 /// Handle chat completion requests
 #[allow(dead_code)]
 async fn handle_chat_completion(
-    req: Request<Body>,
+    req: Request<Incoming>,
     state: &MockServerState,
-) -> Result<Response<Body>, hyper::Error> {
-    let body = hyper::body::to_bytes(req.into_body()).await.unwrap();
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    let body = req.collect().await.unwrap().to_bytes();
     let _request_body: serde_json::Value = serde_json::from_slice(&body).unwrap_or(json!({}));
 
     let response_body =
@@ -167,18 +181,18 @@ async fn handle_chat_completion(
             })
         };
 
-    Ok(Response::new(Body::from(
+    Ok(Response::new(Full::new(Bytes::from(
         serde_json::to_string(&response_body).unwrap(),
-    )))
+    ))))
 }
 
 /// Handle embedding requests
 #[allow(dead_code)]
 async fn handle_embeddings(
-    req: Request<Body>,
+    req: Request<Incoming>,
     state: &MockServerState,
-) -> Result<Response<Body>, hyper::Error> {
-    let _body = hyper::body::to_bytes(req.into_body()).await.unwrap();
+) -> Result<Response<Full<Bytes>>, Infallible> {
+    let _body = req.collect().await.unwrap().to_bytes();
 
     let response_body = if let Some(custom_response) = state.get_response("/api/paas/v4/embeddings")
     {
@@ -199,9 +213,9 @@ async fn handle_embeddings(
         })
     };
 
-    Ok(Response::new(Body::from(
+    Ok(Response::new(Full::new(Bytes::from(
         serde_json::to_string(&response_body).unwrap(),
-    )))
+    ))))
 }
 
 /// Handle file retrieval requests
@@ -209,7 +223,7 @@ async fn handle_embeddings(
 async fn handle_file_retrieval(
     path: &str,
     state: &MockServerState,
-) -> Result<Response<Body>, hyper::Error> {
+) -> Result<Response<Full<Bytes>>, Infallible> {
     let response_body = if let Some(custom_response) = state.get_response(path) {
         custom_response
     } else {
@@ -223,14 +237,14 @@ async fn handle_file_retrieval(
         })
     };
 
-    Ok(Response::new(Body::from(
+    Ok(Response::new(Full::new(Bytes::from(
         serde_json::to_string(&response_body).unwrap(),
-    )))
+    ))))
 }
 
 /// Create an error response
 #[allow(dead_code)]
-fn create_error_response(status: StatusCode, code: u16, message: &str) -> Response<Body> {
+fn create_error_response(status: StatusCode, code: u16, message: &str) -> Response<Full<Bytes>> {
     let error_body = json!({
         "error": {
             "code": code,
@@ -238,7 +252,9 @@ fn create_error_response(status: StatusCode, code: u16, message: &str) -> Respon
         }
     });
 
-    let mut response = Response::new(Body::from(serde_json::to_string(&error_body).unwrap()));
+    let mut response = Response::new(Full::new(Bytes::from(
+        serde_json::to_string(&error_body).unwrap(),
+    )));
     *response.status_mut() = status;
     response
 }

@@ -1368,10 +1368,7 @@ mod tests {
         assert!(!result.success);
         assert_eq!(result.retries, 0); // Should not have retried
         // Should have been called exactly once
-        assert_eq!(
-            attempt_counter.load(std::sync::atomic::Ordering::SeqCst),
-            1
-        );
+        assert_eq!(attempt_counter.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

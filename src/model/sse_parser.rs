@@ -83,10 +83,7 @@ mod tests {
     #[test]
     fn test_multiple_events_in_one_chunk() {
         let mut buf = Vec::new();
-        let lines = extract_sse_data_lines(
-            &mut buf,
-            b"data: first\n\ndata: second\n",
-        );
+        let lines = extract_sse_data_lines(&mut buf, b"data: first\n\ndata: second\n");
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], b"first");
         assert_eq!(lines[1], b"second");
@@ -103,10 +100,7 @@ mod tests {
     #[test]
     fn test_non_data_lines_skipped() {
         let mut buf = Vec::new();
-        let lines = extract_sse_data_lines(
-            &mut buf,
-            b": comment\nid: 123\ndata: payload\n",
-        );
+        let lines = extract_sse_data_lines(&mut buf, b": comment\nid: 123\ndata: payload\n");
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0], b"payload");
     }
@@ -114,10 +108,7 @@ mod tests {
     #[test]
     fn test_empty_lines_ignored() {
         let mut buf = Vec::new();
-        let lines = extract_sse_data_lines(
-            &mut buf,
-            b"\n\n\ndata: hello\n\n",
-        );
+        let lines = extract_sse_data_lines(&mut buf, b"\n\n\ndata: hello\n\n");
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0], b"hello");
     }
