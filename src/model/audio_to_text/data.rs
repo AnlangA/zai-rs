@@ -4,7 +4,7 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::AudioToTextBody};
-use crate::client::http::HttpClient;
+use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
 
 /// Audio transcription request (multipart/form-data)
 pub struct AudioToTextRequest<N>
@@ -170,7 +170,8 @@ where
                 form = form.text("user_id", uid);
             }
 
-            let resp = reqwest::Client::new()
+            let client = http_client_with_config(&HttpClientConfig::default());
+            let resp = client
                 .post(url)
                 .bearer_auth(key)
                 .multipart(form)

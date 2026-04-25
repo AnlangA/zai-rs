@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 use validator::Validate;
 
 use super::types::UploadFileResponse;
-use crate::client::http::HttpClient;
+use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -168,7 +168,7 @@ impl HttpClient for DocumentUploadFileRequest {
                 form = form.text("knowledge_type", t.as_i64().to_string());
             }
             if let Some(seps) = opts.custom_separator.as_ref() {
-                let s = serde_json::to_string(seps).unwrap_or("[]".to_string());
+                let s = serde_json::to_string(seps).unwrap_or_else(|_| "[]".to_string());
                 form = form.text("custom_separator", s);
             }
             if let Some(sz) = opts.sentence_size {
@@ -181,7 +181,7 @@ impl HttpClient for DocumentUploadFileRequest {
                 form = form.text("callback_url", u.clone());
             }
             if let Some(h) = opts.callback_header.as_ref() {
-                let s = serde_json::to_string(h).unwrap_or("{}".to_string());
+                let s = serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string());
                 form = form.text("callback_header", s);
             }
             if let Some(w) = opts.word_num_limit.as_ref() {
@@ -202,7 +202,8 @@ impl HttpClient for DocumentUploadFileRequest {
                 form = form.part("files", part);
             }
 
-            let resp = reqwest::Client::new()
+            let client = http_client_with_config(&HttpClientConfig::default());
+            let resp = client
                 .post(url)
                 .bearer_auth(key)
                 .multipart(form)

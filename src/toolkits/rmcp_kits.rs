@@ -38,7 +38,7 @@
 use std::collections::HashMap;
 
 use rmcp::{
-    model::{CallToolRequestParam, CallToolResult, Tool},
+    model::{CallToolRequestParams, CallToolResult, Tool},
     service::ServerSink,
 };
 use serde::{Deserialize, Serialize};
@@ -130,16 +130,19 @@ pub async fn call_mcp_tool(
         None => None,
     };
 
-    let res = server
-        .call_tool(CallToolRequestParam {
-            name: name.clone().into(),
-            arguments,
-        })
-        .await
-        .map_err(|e| crate::client::error::ZaiError::Unknown {
-            code: 0,
-            message: format!("RMCP service error: {}", e),
-        })?;
+    let mut request = CallToolRequestParams::new(name.clone());
+    if let Some(arguments) = arguments {
+        request = request.with_arguments(arguments);
+    }
+
+    let res =
+        server
+            .call_tool(request)
+            .await
+            .map_err(|e| crate::client::error::ZaiError::Unknown {
+                code: 0,
+                message: format!("RMCP service error: {}", e),
+            })?;
     Ok((name, call_tool_result_to_json(&res)))
 }
 

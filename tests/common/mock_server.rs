@@ -131,7 +131,7 @@ async fn handle_request(
     }
 
     // Route to appropriate handler
-    let response = match (method, path) {
+    match (method, path) {
         ("POST", "/api/paas/v4/chat/completions") => handle_chat_completion(req, &state).await,
         ("POST", "/api/paas/v4/embeddings") => handle_embeddings(req, &state).await,
         ("GET", _) if path.starts_with("/api/paas/v4/files/") => {
@@ -142,9 +142,7 @@ async fn handle_request(
             0,
             "Endpoint not found",
         )),
-    };
-
-    response
+    }
 }
 
 /// Handle chat completion requests

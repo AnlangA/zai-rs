@@ -20,27 +20,29 @@ pub fn extract_sse_data_lines(buf: &mut Vec<u8>, new_bytes: &[u8]) -> Vec<Vec<u8
     buf.extend_from_slice(new_bytes);
     let mut results = Vec::new();
 
-    while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
-        // Extract line including the '\n', leaving remaining bytes in buf
-        let line_with_nl = buf.drain(..=pos).collect::<Vec<u8>>();
+    let Some(last_newline) = buf.iter().rposition(|&b| b == b'\n') else {
+        return results;
+    };
 
-        // Trim trailing \n and \r
-        let mut line = &line_with_nl[..];
-        if line.ends_with(b"\n") {
-            line = &line[..line.len() - 1];
+    let completed = &buf[..=last_newline];
+    for line_with_nl in completed.split_inclusive(|&b| b == b'\n') {
+        let mut line = line_with_nl;
+        if let Some(line_without_nl) = line.strip_suffix(b"\n") {
+            line = line_without_nl;
         }
-        if line.ends_with(b"\r") {
-            line = &line[..line.len() - 1];
+        if let Some(line_without_cr) = line.strip_suffix(b"\r") {
+            line = line_without_cr;
         }
         if line.is_empty() {
             continue;
         }
         const PREFIX: &[u8] = b"data: ";
-        if line.starts_with(PREFIX) {
-            let rest = &line[PREFIX.len()..];
+        if let Some(rest) = line.strip_prefix(PREFIX) {
             results.push(rest.to_vec());
         }
     }
+
+    buf.drain(..=last_newline);
 
     results
 }

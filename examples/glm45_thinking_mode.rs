@@ -19,15 +19,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let response = simple_question(&key).await?;
 
-    if let Some(choices) = response.choices.as_ref() {
-        if let Some(choice) = choices.first() {
-            if let Some(reasoning) = choice.message().reasoning_content() {
-                println!("🤔 Thinking Process:\n{}", reasoning);
-                println!("\n---\n");
-            }
-            if let Some(content) = choice.message().content() {
-                println!("💡 Answer: {}\n", content);
-            }
+    if let Some(choices) = response.choices.as_ref()
+        && let Some(choice) = choices.first()
+    {
+        if let Some(reasoning) = choice.message().reasoning_content() {
+            println!("🤔 Thinking Process:\n{}", reasoning);
+            println!("\n---\n");
+        }
+        if let Some(content) = choice.message().content() {
+            println!("💡 Answer: {}\n", content);
         }
     }
 
@@ -37,15 +37,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let response = medium_question(&key).await?;
 
-    if let Some(choices) = response.choices.as_ref() {
-        if let Some(choice) = choices.first() {
-            if let Some(reasoning) = choice.message().reasoning_content() {
-                println!("🤔 Thinking Process:\n{}", reasoning);
-                println!("\n---\n");
-            }
-            if let Some(content) = choice.message().content() {
-                println!("💡 Answer: {}\n", content);
-            }
+    if let Some(choices) = response.choices.as_ref()
+        && let Some(choice) = choices.first()
+    {
+        if let Some(reasoning) = choice.message().reasoning_content() {
+            println!("🤔 Thinking Process:\n{}", reasoning);
+            println!("\n---\n");
+        }
+        if let Some(content) = choice.message().content() {
+            println!("💡 Answer: {}\n", content);
         }
     }
 
@@ -57,15 +57,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let response = complex_question(&key).await?;
 
-    if let Some(choices) = response.choices.as_ref() {
-        if let Some(choice) = choices.first() {
-            if let Some(reasoning) = choice.message().reasoning_content() {
-                println!("🤔 Thinking Process:\n{}", reasoning);
-                println!("\n---\n");
-            }
-            if let Some(content) = choice.message().content() {
-                println!("💡 Answer: {}\n", content);
-            }
+    if let Some(choices) = response.choices.as_ref()
+        && let Some(choice) = choices.first()
+    {
+        if let Some(reasoning) = choice.message().reasoning_content() {
+            println!("🤔 Thinking Process:\n{}", reasoning);
+            println!("\n---\n");
+        }
+        if let Some(content) = choice.message().content() {
+            println!("💡 Answer: {}\n", content);
         }
     }
 

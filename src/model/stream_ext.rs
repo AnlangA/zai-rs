@@ -32,7 +32,7 @@
 //! }
 //! ```
 
-use std::pin::Pin;
+use std::{collections::VecDeque, pin::Pin};
 
 use futures::{Stream, StreamExt, stream};
 use tracing::info;
@@ -147,42 +147,54 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
 
             let s = byte_stream;
 
-            let out = stream::unfold((s, Vec::<u8>::new()), |(mut s, mut buf)| async move {
-                loop {
-                    // Need more bytes first to populate buffer
-                    match s.next().await {
-                        Some(Ok(bytes)) => {
-                            let lines =
-                                crate::model::sse_parser::extract_sse_data_lines(&mut buf, &bytes);
-                            for rest in lines {
-                                info!("SSE data: {}", String::from_utf8_lossy(&rest));
-                                if rest == b"[DONE]" {
-                                    return None; // end stream gracefully
-                                }
-                                if let Ok(item) =
-                                    serde_json::from_slice::<ChatStreamResponse>(&rest)
-                                {
-                                    return Some((Ok(item), (s, buf)));
-                                }
-                                // skip invalid json line, continue processing
-                                // remaining lines
-                            }
-                            // All lines processed but no valid
-                            // ChatStreamResponse yielded,
-                            // loop back to get more bytes
-                        },
-                        Some(Err(e)) => {
-                            return Some((
-                                Err(crate::client::error::ZaiError::NetworkError(
-                                    std::sync::Arc::new(e),
-                                )),
-                                (s, buf),
-                            ));
-                        },
-                        None => return None,
+            let out = stream::unfold(
+                (s, Vec::<u8>::new(), VecDeque::<ChatStreamResponse>::new()),
+                |(mut s, mut buf, mut pending)| async move {
+                    if let Some(item) = pending.pop_front() {
+                        return Some((Ok(item), (s, buf, pending)));
                     }
-                }
-            })
+
+                    loop {
+                        // Need more bytes first to populate buffer
+                        match s.next().await {
+                            Some(Ok(bytes)) => {
+                                let lines = crate::model::sse_parser::extract_sse_data_lines(
+                                    &mut buf, &bytes,
+                                );
+                                for rest in lines {
+                                    info!("SSE data: {}", String::from_utf8_lossy(&rest));
+                                    if rest == b"[DONE]" {
+                                        return None; // end stream gracefully
+                                    }
+                                    if let Ok(item) =
+                                        serde_json::from_slice::<ChatStreamResponse>(&rest)
+                                    {
+                                        pending.push_back(item);
+                                    }
+                                    // skip invalid json line, continue
+                                    // processing
+                                    // remaining lines
+                                }
+                                if let Some(item) = pending.pop_front() {
+                                    return Some((Ok(item), (s, buf, pending)));
+                                }
+                                // All lines processed but no valid
+                                // ChatStreamResponse yielded,
+                                // loop back to get more bytes
+                            },
+                            Some(Err(e)) => {
+                                return Some((
+                                    Err(crate::client::error::ZaiError::NetworkError(
+                                        std::sync::Arc::new(e),
+                                    )),
+                                    (s, buf, pending),
+                                ));
+                            },
+                            None => return None,
+                        }
+                    }
+                },
+            )
             .boxed();
 
             Ok(out)
