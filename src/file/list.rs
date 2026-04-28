@@ -24,7 +24,9 @@ impl FileListRequest {
     }
 
     fn rebuild_url(&mut self, q: &FileListQuery) {
-        let mut url = Url::parse("https://open.bigmodel.cn/api/paas/v4/files").unwrap();
+        // SAFETY: This URL is a constant and guaranteed to be valid
+        let mut url = Url::parse("https://open.bigmodel.cn/api/paas/v4/files")
+            .expect("hardcoded URL should be valid");
         {
             let mut pairs = url.query_pairs_mut();
             if let Some(after) = q.after.as_ref() {
