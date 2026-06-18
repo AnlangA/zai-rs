@@ -193,7 +193,7 @@ pub trait SseStreamable: HttpClient {
                             // Per-chunk payload logging is verbose at high
                             // token rates; keep it at `trace` so production
                             // streams stay quiet by default.
-                            trace!(bytes = event.len(), "SSE event received");
+                            trace!(parser = "sse", bytes = event.len(), "SSE chunk received");
                             if event == b"[DONE]" {
                                 return Ok(());
                             }

@@ -40,7 +40,7 @@ use std::{
 
 use reqwest::Method;
 use serde::{Deserialize, de::DeserializeOwned};
-use tracing::{debug, info, warn};
+use tracing::{trace, warn};
 
 use crate::client::error::{ZaiError, ZaiResult, mask_sensitive_info};
 
@@ -175,7 +175,13 @@ pub struct HttpClientConfig {
     /// Retry delay strategy
     pub retry_delay: RetryDelay,
 
-    /// Enable detailed logging (default: false)
+    /// Enable detailed logging (default: false).
+    ///
+    /// **Note:** This field is retained for API stability but is now a no-op.
+    /// The transport pipeline always emits a masked `trace!` line for the
+    /// outbound/inbound body (observable with `RUST_LOG=trace`), and `warn!`
+    /// on retries — per the library-silent logging policy, the success path
+    /// produces no `info!` output.
     pub enable_logging: bool,
 
     /// Enable sensitive data masking in logs (default: true)
@@ -253,7 +259,8 @@ impl HttpClientConfigBuilder {
         self
     }
 
-    /// Enable or disable detailed logging
+    /// Enable or disable detailed logging (retained for API stability; no-op —
+    /// see [`HttpClientConfig::enable_logging`]).
     pub fn logging(mut self, enable: bool) -> Self {
         self.config.enable_logging = enable;
         self
@@ -339,11 +346,13 @@ where
 
 /// Send a JSON request through the shared transport pipeline.
 ///
-/// Two log surfaces exist:
-/// - **`trace`** (always on): the raw sent JSON body (masked), so the wire
-///   payload is observable with `RUST_LOG=trace`.
-/// - **`info`** (gated by [`HttpClientConfig::enable_logging`]): a pretty
-///   human-readable request dump for ad-hoc debugging.
+/// Emits a single always-on **`trace`** line carrying the raw sent JSON body
+/// (masked via [`mask_sensitive_info`]), so the wire payload is observable
+/// with `RUST_LOG=trace`. Per the library-silent logging policy, the success
+/// path produces no higher-level output; only retries are surfaced (`warn!`).
+///
+/// `enable_logging` on [`HttpClientConfig`] is retained for API stability but
+/// no longer adds output — the `trace` line already covers that need.
 pub async fn send_json_request<T>(
     method: Method,
     url: impl Into<String>,
@@ -369,31 +378,15 @@ where
         "Sending HTTP request body"
     );
 
-    if enable_logging {
-        match serde_json::to_string_pretty(body) {
-            Ok(pretty) => {
-                let log_pretty = if mask_sensitive {
-                    mask_sensitive_info(&pretty)
-                } else {
-                    pretty
-                };
-                info!(method = %method, url = %url_value, request_body = %log_pretty, "Sending JSON request");
-            },
-            Err(e) => warn!("Failed to pretty-print request body: {}", e),
-        }
-    }
-
     let key = api_key.as_ref().to_string();
+    let _ = enable_logging;
+    let _ = mask_sensitive;
     send_with_retry_factory(&config, move |client| {
         let builder = client
             .request(method.clone(), &url_value)
             .bearer_auth(&key)
             .header("Content-Type", "application/json")
             .body(body_compact.clone());
-
-        if enable_logging && !mask_sensitive {
-            debug!(url = %url_value, "Built JSON request");
-        }
 
         Ok(builder)
     })
@@ -549,9 +542,10 @@ where
         match resp {
             Ok(resp) => {
                 let status = resp.status();
+                let url = resp.url().to_string();
 
                 if status.is_success() {
-                    debug!(http_status = %status, "Request succeeded");
+                    trace!(http_status = %status, url = %url, "Request succeeded");
                     return Ok(resp);
                 }
 
@@ -563,6 +557,8 @@ where
                     let delay = calculate_retry_delay(attempt, &config.retry_delay);
                     let delay_with_jitter = add_jitter(delay);
                     warn!(
+                        url = %url,
+                        http_status = %status,
                         attempt = attempt + 1,
                         max_attempts = config.max_retries + 1,
                         retry_delay = ?delay_with_jitter,
@@ -575,6 +571,7 @@ where
                 }
             },
             Err(e) => {
+                let url = e.url().map(|u| u.to_string()).unwrap_or_default();
                 let error = ZaiError::from(e);
 
                 if should_retry(&error, attempt, config.max_retries) {
@@ -582,6 +579,7 @@ where
                     let delay = calculate_retry_delay(attempt, &config.retry_delay);
                     let delay_with_jitter = add_jitter(delay);
                     warn!(
+                        url = %url,
                         attempt = attempt + 1,
                         max_attempts = config.max_retries + 1,
                         retry_delay = ?delay_with_jitter,

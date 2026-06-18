@@ -16,6 +16,7 @@ use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async,
     tungstenite::{client::IntoClientRequest, protocol::Message},
 };
+use tracing::{debug, warn};
 
 use crate::{ZaiResult, client::error::RealtimeErrorKind};
 
@@ -57,6 +58,7 @@ impl TungsteniteTransport {
         req.headers_mut().insert(AUTHORIZATION, auth_value);
 
         let (stream, _response) = connect_async(req).await?;
+        debug!(url = %url, "Realtime WebSocket connected");
         Ok(Self { inner: stream })
     }
 }
@@ -67,14 +69,21 @@ impl RealtimeTransport for TungsteniteTransport {
         self.inner
             .send(Message::text(msg))
             .await
-            .map_err(|e| RealtimeErrorKind::WebSocket(e.to_string()).into())
+            .map_err(|e| {
+                warn!(error = %e, "WebSocket send error");
+                RealtimeErrorKind::WebSocket(e.to_string()).into()
+            })
     }
 
     async fn recv(&mut self) -> ZaiResult<Option<WsMessage>> {
         loop {
             match self.inner.next().await {
-                None => return Ok(None),
+                None => {
+                    debug!("WebSocket peer closed connection");
+                    return Ok(None);
+                },
                 Some(Err(e)) => {
+                    warn!(error = %e, "WebSocket recv error");
                     return Err(RealtimeErrorKind::WebSocket(e.to_string()).into());
                 },
                 Some(Ok(message)) => match message {
@@ -86,7 +95,10 @@ impl RealtimeTransport for TungsteniteTransport {
                         continue;
                     },
                     Message::Pong(_) | Message::Frame(_) => continue,
-                    Message::Close(_) => return Ok(None),
+                    Message::Close(_) => {
+                        debug!("WebSocket peer closed connection");
+                        return Ok(None);
+                    },
                 },
             }
         }
@@ -96,6 +108,9 @@ impl RealtimeTransport for TungsteniteTransport {
         self.inner
             .close(None)
             .await
-            .map_err(|e| RealtimeErrorKind::WebSocket(e.to_string()).into())
+            .map_err(|e| {
+                warn!(error = %e, "WebSocket close error");
+                RealtimeErrorKind::WebSocket(e.to_string()).into()
+            })
     }
 }

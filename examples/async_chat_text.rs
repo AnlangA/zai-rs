@@ -1,10 +1,8 @@
 use zai_rs::{
     client::http::*,
     model::{
-        async_chat::AsyncChatCompletion,
-        async_chat_get::AsyncChatGetRequest,
-        chat_base_response::{ChatCompletionResponse, TaskStatus},
-        *,
+        async_chat::AsyncChatCompletion, async_chat_get::AsyncChatGetRequest,
+        chat_base_response::TaskStatus, *,
     },
 };
 
@@ -56,58 +54,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // 等待并获取结果
+    // 等待并获取结果。
+    //
+    // 并发轮询所有任务：每个任务在一个独立的 spawned task 里各自轮询到终态，
+    // 多个任务并行推进（服务端也是并行处理的）。总耗时 ≈ max(单任务)，
+    // 而非串行场景下的 Σ(单任务)。
     tracing::trace!("\n=== 获取异步聊天结果 ===");
+    use tokio::task::JoinSet;
+
+    let mut set: JoinSet<(&'static str, Result<String, String>)> = JoinSet::new();
     for (message, task_id) in task_ids {
-        tracing::trace!("问题: {}", message);
-
-        // 轮询直到完成
-        let request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key.clone());
-        loop {
-            let result = async {
-                let resp = request
-                    .get()
-                    .await
-                    .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
-                resp.json::<ChatCompletionResponse>()
-                    .await
-                    .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))
+        let key = key.clone();
+        set.spawn(async move {
+            let request = AsyncChatGetRequest::new(GLM4_5 {}, task_id, key);
+            loop {
+                // 用 request.send()（内部经 parse_typed_response），与 POST 路径走同一条
+                // `trace!` 管道，GET 响应体同样会被记录。
+                match request.send().await {
+                    Ok(body) => match body.task_status() {
+                        Some(TaskStatus::Success) => {
+                            // content 是 JSON Value，常见为 {"content": "..."} 或字符串。
+                            let content = body
+                                .choices()
+                                .and_then(|choices| choices.first())
+                                .and_then(|choice| choice.message.content())
+                                .map(|v| match v {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    other => other.to_string(),
+                                })
+                                .unwrap_or_default();
+                            break (message, Ok(content));
+                        },
+                        Some(TaskStatus::Fail) => {
+                            break (message, Err("任务失败".to_string()));
+                        },
+                        Some(TaskStatus::Processing) => {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        },
+                        None => break (message, Err("未知状态".to_string())),
+                    },
+                    Err(e) => break (message, Err(format!("获取结果失败: {e}"))),
+                }
             }
-            .await;
+        });
+    }
 
-            match result {
-                Ok(body) => match body.task_status() {
-                    Some(TaskStatus::Success) => {
-                        tracing::trace!("状态: 完成");
-                        if let Some(content) = body
-                            .choices()
-                            .and_then(|choices| choices.first())
-                            .and_then(|choice| choice.message.content())
-                        {
-                            tracing::trace!("回复: {}", content)
-                        }
-                        break;
-                    },
-                    Some(TaskStatus::Fail) => {
-                        tracing::trace!("状态: 失败");
-                        break;
-                    },
-                    Some(TaskStatus::Processing) => {
-                        tracing::trace!("状态: 处理中...");
-                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    },
-                    None => {
-                        tracing::trace!("状态: 未知");
-                        break;
-                    },
-                },
-                Err(e) => {
-                    tracing::trace!("获取结果失败: {}", e);
-                    break;
-                },
-            }
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok((message, Ok(content))) => {
+                tracing::trace!("问题: {message}");
+                tracing::trace!("回复: {content}");
+                tracing::trace!("---");
+            },
+            Ok((message, Err(e))) => {
+                tracing::trace!("问题: {message}");
+                tracing::trace!("{e}");
+                tracing::trace!("---");
+            },
+            Err(e) => tracing::trace!("轮询任务异常: {e}"),
         }
-        tracing::trace!("---");
     }
 
     Ok(())

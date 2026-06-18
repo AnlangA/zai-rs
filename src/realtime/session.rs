@@ -15,6 +15,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_stream::wrappers::BroadcastStream;
+use tracing::{debug, warn};
 
 use super::{
     audio::{OutputAudioFormat, decode_base64, encode_wav_pcm_base64},
@@ -131,6 +132,7 @@ impl SessionBuilder {
             session: session_config,
         };
         transport.send(serde_json::to_string(&init)?).await?;
+        debug!(model = %model_name, "Realtime session opened");
 
         let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(64);
         let (events_tx, _) = broadcast::channel::<ServerEvent>(256);
@@ -178,6 +180,7 @@ async fn run_loop<T: RealtimeTransport>(
                 },
                 Some(Command::Close) | None => {
                     let _ = transport.close().await;
+                    debug!("Realtime session closed (client requested)");
                     break;
                 },
             },
@@ -188,15 +191,35 @@ async fn run_loop<T: RealtimeTransport>(
                             let _ = audio_tx.send(Bytes::from(bytes));
                         }
                     },
+                    Ok(ServerEvent::Error { error }) => {
+                        warn!(
+                            code = ?error.code,
+                            message = ?error.message,
+                            "Realtime server error event"
+                        );
+                        let _ = events_tx.send(ServerEvent::Error { error });
+                    },
                     Ok(event) => {
                         let _ = events_tx.send(event);
                     },
                     // Ignore unparseable/unknown frames; the session stays open.
-                    Err(_) => {},
+                    Err(_) => {
+                        warn!(
+                            bytes = text.len(),
+                            "Dropping unparseable realtime frame"
+                        );
+                    },
                 },
                 Ok(Some(WsMessage::Binary(_))) => {},
-                Ok(None) => break, // peer closed
-                Err(_) => break,
+                Ok(None) => {
+                    // peer closed cleanly
+                    debug!("Realtime session closed (peer disconnected)");
+                    break;
+                },
+                Err(_) => {
+                    warn!("Realtime event loop terminated due to transport error");
+                    break;
+                },
             },
         }
     }

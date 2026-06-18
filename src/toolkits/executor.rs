@@ -313,9 +313,7 @@ impl ToolExecutor {
 
                     retries += 1;
 
-                    if self.config.enable_logging {
-                        warn!(attempt = retries, error = %error, "Tool execution failed");
-                    }
+                    warn!(attempt = retries, error = %error, "Tool execution failed, retrying");
 
                     // Use exponential backoff
                     let delay = retry_config.calculate_delay(retries);

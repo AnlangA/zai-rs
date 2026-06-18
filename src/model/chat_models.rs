@@ -25,14 +25,14 @@
 //!
 //! ## Vision Models
 //!
-//! | Model | Struct | Message Type |
-//! |-------|--------|--------------|
-//! | autoglm-phone | [`autoglm_phone`] | [`VisionMessage`](super::chat_message_types::VisionMessage) |
-//! | glm-4.6v | [`GLM4_6v`] | [`VisionMessage`] |
-//! | glm-4.6v-flash | [`GLM4_6v_flash`] | [`VisionMessage`] |
-//! | glm-4.6v-flashx | [`GLM4_6v_flashx`] | [`VisionMessage`] |
-//! | glm-4.5v | [`GLM4_5v`] | [`VisionMessage`] |
-//! | glm-5v-turbo | [`GLM5V_turbo`] | [`VisionMessage`] |
+//! | Model | Struct | Thinking | Message Type |
+//! |-------|--------|----------|--------------|
+//! | autoglm-phone | [`autoglm_phone`] | no | [`VisionMessage`](super::chat_message_types::VisionMessage) |
+//! | glm-4.6v | [`GLM4_6v`] | no | [`VisionMessage`] |
+//! | glm-4.6v-flash | [`GLM4_6v_flash`] | no | [`VisionMessage`] |
+//! | glm-4.6v-flashx | [`GLM4_6v_flashx`] | no | [`VisionMessage`] |
+//! | glm-4.5v | [`GLM4_5v`] | no | [`VisionMessage`] |
+//! | glm-5v-turbo | [`GLM5V_turbo`] | yes | [`VisionMessage`] |
 //!
 //! ## Voice Models
 //!
@@ -91,6 +91,18 @@ impl_model_markers!(GLM5_turbo: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
 define_model_type!(GLM5, "glm-5");
 impl_message_binding!(GLM5, TextMessage);
 impl_model_markers!(GLM5: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
+
+// GLM-5V-Turbo — multimodal coding base model (vision). Natively handles
+// image / video / text input; ideal for design-to-code and visual programming.
+// Supports thinking mode.
+// See <https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5v-turbo>.
+define_model_type!(
+    #[allow(non_camel_case_types)]
+    GLM5V_turbo,
+    "glm-5v-turbo"
+);
+impl_message_binding!(GLM5V_turbo, VisionMessage);
+impl_model_markers!(GLM5V_turbo: Chat, AsyncChat, ThinkEnable);
 
 define_model_type!(GLM4_7, "glm-4.7");
 impl_message_binding!(GLM4_7, TextMessage);
@@ -196,17 +208,6 @@ define_model_type!(
 );
 impl_message_binding!(GLM4_5v, VisionMessage);
 impl_model_markers!(GLM4_5v: Chat, AsyncChat);
-
-// GLM-5V-Turbo — multimodal coding base model (vision). Natively handles
-// image / video / text input; ideal for design-to-code and visual programming.
-// See <https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5v-turbo>.
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM5V_turbo,
-    "glm-5v-turbo"
-);
-impl_message_binding!(GLM5V_turbo, VisionMessage);
-impl_model_markers!(GLM5V_turbo: Chat, AsyncChat);
 
 // ============================================================================
 // Multimodal Models - Voice

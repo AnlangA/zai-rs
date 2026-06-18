@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use tracing::{debug, info};
+use tracing::{debug, trace};
 
 use super::{request::*, response::*};
 use crate::{
@@ -101,7 +101,7 @@ impl FileParserResultRequest {
     /// A `FileParserResultResponse` containing the parsing result.
     pub async fn get_result(&self, format_type: FormatType) -> ZaiResult<FileParserResultResponse> {
         let url = self.result_url(&format_type);
-        debug!(url = %url, "Fetching file parser result");
+        trace!(url = %url, "Fetching file parser result");
         let response = send_empty_request(
             reqwest::Method::GET,
             url,
@@ -129,19 +129,19 @@ impl FileParserResultRequest {
         timeout_seconds: u64,
         poll_interval_seconds: u64,
     ) -> ZaiResult<FileParserResultResponse> {
-        info!(
+        debug!(
             timeout_seconds,
             poll_interval_seconds, "Polling file parser result"
         );
         let start_time = std::time::Instant::now();
 
         loop {
-            debug!("Checking file parser result status");
+            trace!("Checking file parser result status");
             let result = self.get_result(format_type.clone()).await?;
 
             match result.status {
                 ParserStatus::Succeeded => {
-                    info!("File parsing completed successfully");
+                    debug!("File parsing completed successfully");
                     return Ok(result);
                 },
                 ParserStatus::Failed => {
@@ -152,7 +152,7 @@ impl FileParserResultRequest {
                 },
                 ParserStatus::Processing => {
                     let elapsed = start_time.elapsed().as_secs();
-                    debug!(elapsed, "File parser result still processing");
+                    trace!(elapsed, "File parser result still processing");
                     if elapsed > timeout_seconds {
                         return Err(crate::client::error::ZaiError::RateLimitError {
                             code: 0,

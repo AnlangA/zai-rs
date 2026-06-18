@@ -5,7 +5,7 @@
 
 use std::{path::Path, sync::Arc};
 
-use tracing::{debug, info};
+use tracing::{debug, trace};
 
 use super::{request::*, response::*};
 use crate::{
@@ -165,7 +165,7 @@ impl FileParserCreateRequest {
     ///
     /// A `FileParserCreateResponse` containing the task ID and status.
     pub async fn send(&self) -> ZaiResult<FileParserCreateResponse> {
-        info!(file = %self.file_path.display(), "Creating file parser task");
+        debug!(file = %self.file_path.display(), "Creating file parser task");
 
         let file_bytes = tokio::fs::read(&self.file_path).await?;
         let file_name = self
@@ -175,7 +175,7 @@ impl FileParserCreateRequest {
             .to_string_lossy()
             .to_string();
 
-        debug!(bytes = file_bytes.len(), file_name = %file_name, "Prepared parser upload");
+        trace!(bytes = file_bytes.len(), file_name = %file_name, "Prepared parser upload");
 
         let url = self.url.clone();
         let key = self.key.clone();
@@ -195,7 +195,7 @@ impl FileParserCreateRequest {
 
         let create_response = parse_typed_response::<FileParserCreateResponse>(response).await?;
 
-        info!(task_id = %create_response.task_id, "File parser task created");
+        debug!(task_id = %create_response.task_id, "File parser task created");
 
         if !create_response.is_success() {
             return Err(crate::client::error::ZaiError::ApiError {

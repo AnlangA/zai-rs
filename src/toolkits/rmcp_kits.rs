@@ -223,14 +223,14 @@ pub async fn execute_tool_calls_as_messages(
         .and_then(|c| c.message().tool_calls());
 
     let Some(calls) = calls else { return Ok(out) };
-    tracing::info!("AI requested tool calls: {}", calls.len());
+    tracing::debug!(tool_calls = calls.len(), "Dispatching tool calls");
 
     for tc in calls {
         // Extract tool call id
         let id = match tc.id() {
             Some(id) => id.to_string(),
             None => {
-                tracing::warn!("Tool call without id, skipping");
+                tracing::warn!(reason = "missing_id", "Skipping tool call");
                 continue;
             },
         };
@@ -239,7 +239,7 @@ pub async fn execute_tool_calls_as_messages(
         let func = match tc.function() {
             Some(f) => f,
             None => {
-                tracing::warn!("Tool call missing function payload, skipping");
+                tracing::warn!(reason = "missing_function", "Skipping tool call");
                 continue;
             },
         };
@@ -248,7 +248,7 @@ pub async fn execute_tool_calls_as_messages(
         let name = match func.name() {
             Some(n) => n.to_string(),
             None => {
-                tracing::warn!("Tool call missing function name, skipping");
+                tracing::warn!(reason = "missing_function_name", "Skipping tool call");
                 continue;
             },
         };
@@ -258,11 +258,11 @@ pub async fn execute_tool_calls_as_messages(
             Some(arg_str) => match serde_json::from_str::<serde_json::Value>(arg_str) {
                 Ok(serde_json::Value::Object(map)) => Some(serde_json::Value::Object(map)),
                 Ok(_) => {
-                    tracing::warn!("Function arguments are not an object; passing None");
+                    tracing::warn!(reason = "non_object_arguments", "Function arguments are not an object; passing None");
                     None
                 },
                 Err(e) => {
-                    tracing::warn!("Failed to parse function arguments JSON: {}", e);
+                    tracing::warn!(reason = "invalid_arguments_json", error = %e, "Failed to parse function arguments JSON");
                     None
                 },
             },
@@ -310,8 +310,6 @@ where
     use crate::model::chat_message_types::TextMessage;
 
     let first_resp = chat.send().await?;
-
-    tracing::info!("AI response: {:#?}", first_resp);
 
     let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> =
         execute_tool_calls_as_messages(caller, &first_resp).await?;
