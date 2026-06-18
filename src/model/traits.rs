@@ -18,6 +18,7 @@
 //! - [`Chat`] — Synchronous chat completion
 //! - [`AsyncChat`] — Asynchronous (queued) chat completion
 //! - [`ThinkEnable`] — Thinking / reasoning mode
+//! - [`ReasoningEffortEnable`] — `reasoning_effort` depth control (GLM-5.2+)
 //! - [`ToolStreamEnable`] — Streaming tool-call output
 //! - [`VideoGen`] — Video generation
 //! - [`ImageGen`] — Image generation
@@ -76,6 +77,13 @@ pub trait AsyncChat {}
 /// Models implementing this trait can utilize advanced reasoning modes
 /// that show step-by-step thinking processes for complex problem solving.
 pub trait ThinkEnable {}
+
+/// Indicates that a model supports the `reasoning_effort` parameter, which
+/// controls the depth of reasoning when thinking mode is enabled.
+///
+/// Currently supported only by GLM-5.2 and above. See
+/// [`ReasoningEffort`](super::tools::ReasoningEffort) for the available levels.
+pub trait ReasoningEffortEnable {}
 
 /// Indicates that a model supports streaming tool calls (tool_stream
 /// parameter). Only models implementing this marker can enable tool_stream in

@@ -212,6 +212,15 @@ where
         self
     }
 
+    // Optional: only available for GLM-5.2+ (reasoning_effort support)
+    pub fn with_reasoning_effort(mut self, effort: ReasoningEffort) -> Self
+    where
+        N: ReasoningEffortEnable,
+    {
+        self.body = self.body.with_reasoning_effort(effort);
+        self
+    }
+
     /// Enables streaming for this chat completion request.
     ///
     /// This method transitions the request to streaming mode, allowing

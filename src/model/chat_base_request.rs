@@ -67,6 +67,13 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingType>,
 
+    /// Controls the depth of reasoning when thinking mode is enabled. Only
+    /// available for GLM-5.2 and above (models that implement
+    /// [`ReasoningEffortEnable`]). See [`ReasoningEffort`] for the available
+    /// levels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
+
     /// Whether to use sampling during generation. When `true`, the model will
     /// use probabilistic sampling; when `false`, it will use deterministic
     /// generation.
@@ -79,8 +86,8 @@ where
     pub stream: Option<bool>,
 
     /// Whether to enable streaming of tool calls (streaming function call
-    /// parameters). Supported by GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7, and
-    /// GLM-4.6 models. Defaults to false when omitted.
+    /// parameters). Supported by GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7,
+    /// and GLM-4.6 models. Defaults to false when omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_stream: Option<bool>,
 
@@ -139,6 +146,7 @@ where
             messages: vec![messages],
             request_id: None,
             thinking: None,
+            reasoning_effort: None,
             do_sample: None,
             stream: None,
             tool_stream: None,
@@ -250,14 +258,43 @@ where
     }
 }
 
+// Only available for models that support the reasoning_effort parameter
+// (GLM-5.2 and above).
+impl<N, M> ChatBody<N, M>
+where
+    N: ModelName + ReasoningEffortEnable,
+    (N, M): Bounded,
+{
+    /// Sets the `reasoning_effort` level that controls how much reasoning the
+    /// model performs when thinking mode is enabled.
+    ///
+    /// Only available on GLM-5.2 and above (models implementing
+    /// [`ReasoningEffortEnable`]). Typically combined with
+    /// [`with_thinking`](Self::with_thinking) to enable thinking first.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use zai_rs::model::tools::ReasoningEffort;
+    ///
+    /// let chat_body = ChatBody::new(GLM5_2 {}, messages)
+    ///     .with_thinking(ThinkingType::enabled())
+    ///     .with_reasoning_effort(ReasoningEffort::Max);
+    /// ```
+    pub fn with_reasoning_effort(mut self, effort: ReasoningEffort) -> Self {
+        self.reasoning_effort = Some(effort);
+        self
+    }
+}
+
 // Only available when the model supports streaming tool calls (GLM-4.6)
 impl<N, M> ChatBody<N, M>
 where
     N: ModelName + ToolStreamEnable,
     (N, M): Bounded,
 {
-    /// Enables streaming tool calls. Supported by GLM-5.1, GLM-5, GLM-5-Turbo,
-    /// GLM-4.7, and GLM-4.6 models. Default is false when omitted.
+    /// Enables streaming tool calls. Supported by GLM-5.2, GLM-5.1, GLM-5,
+    /// GLM-5-Turbo, GLM-4.7, and GLM-4.6 models. Default is false when omitted.
     pub fn with_tool_stream(mut self, tool_stream: bool) -> Self {
         self.tool_stream = Some(tool_stream);
         if tool_stream {
@@ -278,7 +315,10 @@ impl From<Tools> for Vec<Tools> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{chat_message_types::TextMessage, chat_models::GLM4_6};
+    use crate::model::{
+        chat_message_types::TextMessage,
+        chat_models::{GLM4_6, GLM5_2, GLM5_2_1m},
+    };
 
     #[test]
     fn test_with_tool_stream_sets_both_fields() {
@@ -334,5 +374,43 @@ mod tests {
             ChatBody::new(GLM4_6 {}, TextMessage::user("first"));
         let body = body.add_message(TextMessage::assistant("second"));
         assert_eq!(body.messages.len(), 2);
+    }
+
+    #[test]
+    fn test_glm52_reasoning_effort_builder() {
+        // reasoning_effort is only available on GLM-5.2+ (ReasoningEffortEnable)
+        let body: ChatBody<GLM5_2, TextMessage> =
+            ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
+                .with_thinking(ThinkingType::enabled())
+                .with_reasoning_effort(ReasoningEffort::Max);
+        assert_eq!(body.reasoning_effort, Some(ReasoningEffort::Max));
+        assert!(body.thinking.is_some());
+    }
+
+    #[test]
+    fn test_glm52_serializes_model_name() {
+        let body: ChatBody<GLM5_2, TextMessage> =
+            ChatBody::new(GLM5_2 {}, TextMessage::user("hi"));
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["model"], "glm-5.2");
+        // reasoning_effort must be omitted when not set
+        assert!(json.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn test_glm52_1m_serializes_bracket_suffix() {
+        let body: ChatBody<GLM5_2_1m, TextMessage> =
+            ChatBody::new(GLM5_2_1m {}, TextMessage::user("hi"));
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["model"], "glm-5.2[1m]");
+    }
+
+    #[test]
+    fn test_reasoning_effort_serializes_level() {
+        let body: ChatBody<GLM5_2, TextMessage> =
+            ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
+                .with_reasoning_effort(ReasoningEffort::Xhigh);
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["reasoning_effort"], "xhigh");
     }
 }

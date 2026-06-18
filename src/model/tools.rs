@@ -7,6 +7,7 @@
 //! # Key Types
 //!
 //! - [`ThinkingType`] — Controls reasoning mode for thinking-capable models
+//! - [`ReasoningEffort`] — Controls reasoning depth for GLM-5.2+ models
 //! - [`FunctionTool`] — Defines a callable function with JSON-schema parameters
 //! - [`WebSearchTool`] — Enables live web search within chat
 //! - [`Retrieval`] — Enables knowledge-base retrieval
@@ -48,8 +49,8 @@ use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyF
 /// ## Model Compatibility
 ///
 /// Thinking capabilities are available only on models that implement the
-/// `ThinkEnable` trait, such as GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5 series
-/// models.
+/// `ThinkEnable` trait, such as GLM-5.2, GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5
+/// series models.
 #[derive(Debug, Clone, Serialize)]
 pub struct ThinkingType {
     /// Whether thinking is enabled or disabled.
@@ -98,6 +99,61 @@ impl ThinkingType {
         self.clear_thinking = Some(clear);
         self
     }
+}
+
+/// Reasoning depth level for the `reasoning_effort` parameter (GLM-5.2+).
+///
+/// Controls how much reasoning the model invests when thinking mode is
+/// enabled. Higher levels yield deeper reasoning at the cost of latency and
+/// token usage; lower levels are faster and cheaper. Available only on
+/// GLM-5.2 and above (models implementing
+/// [`ReasoningEffortEnable`](super::traits::ReasoningEffortEnable)).
+///
+/// Levels, from highest to lowest reasoning depth:
+///
+/// | Variant | Description |
+/// |---------|-------------|
+/// | [`Max`](Self::Max) | Maximum reasoning depth; recommended for coding / architecture-level tasks |
+/// | [`Xhigh`](Self::Xhigh) | Extra-high reasoning |
+/// | [`High`](Self::High) | High reasoning (default mapping in many clients) |
+/// | [`Medium`](Self::Medium) | Balanced reasoning |
+/// | [`Low`](Self::Low) | Light reasoning |
+/// | [`Minimal`](Self::Minimal) | Minimal reasoning |
+/// | [`None`](Self::None) | No extra reasoning beyond base behaviour |
+///
+/// ## Usage
+///
+/// ```rust,ignore
+/// use zai_rs::model::tools::ReasoningEffort;
+///
+/// let client = ChatCompletion::new(GLM5_2 {}, messages, api_key)
+///     .with_thinking(ThinkingType::enabled())
+///     .with_reasoning_effort(ReasoningEffort::Max);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReasoningEffort {
+    /// Maximum reasoning depth. Recommended for coding and architecture-level
+    /// tasks where correctness matters most.
+    #[serde(rename = "max")]
+    Max,
+    /// Extra-high reasoning depth.
+    #[serde(rename = "xhigh")]
+    Xhigh,
+    /// High reasoning depth.
+    #[serde(rename = "high")]
+    High,
+    /// Balanced reasoning depth.
+    #[serde(rename = "medium")]
+    Medium,
+    /// Light reasoning depth.
+    #[serde(rename = "low")]
+    Low,
+    /// Minimal reasoning depth.
+    #[serde(rename = "minimal")]
+    Minimal,
+    /// No extra reasoning beyond base behaviour.
+    #[serde(rename = "none")]
+    None,
 }
 
 /// Available tools that AI assistants can invoke during conversations.

@@ -16,11 +16,13 @@
 
 ### 文本模型
 
-| 模型 | 结构体 | Thinking | Async | ToolStream |
-|------|--------|----------|-------|------------|
-| glm-5.1 | `GLM5_1` | ✓ | ✓ | ✓ |
-| glm-5 | `GLM5` | ✓ | ✓ | ✓ |
-| glm-5-turbo | `GLM5_turbo` | ✓ | ✓ | ✓ |
+| 模型 | 结构体 | Thinking | ReasoningEffort | Async | ToolStream |
+|------|--------|----------|-----------------|-------|------------|
+| glm-5.2 | `GLM5_2` | ✓ | ✓ | ✓ | ✓ |
+| glm-5.2[1m] | `GLM5_2_1m` | ✓ | ✓ | ✓ | ✓ |
+| glm-5.1 | `GLM5_1` | ✓ | ✗ | ✓ | ✓ |
+| glm-5 | `GLM5` | ✓ | ✗ | ✓ | ✓ |
+| glm-5-turbo | `GLM5_turbo` | ✓ | ✗ | ✓ | ✓ |
 | glm-4.7 | `GLM4_7` | ✓ | ✓ | ✓ |
 | glm-4.7-flash | `GLM4_7_flash` | ✓ | ✓ | ✗ |
 | glm-4.7-flashx | `GLM4_7_flashx` | ✓ | ✓ | ✗ |
@@ -61,6 +63,7 @@
 | `chat_voice` | 语音模型对话 |
 | `async_chat_text` | 异步对话任务提交与轮询 |
 | `glm45_thinking_mode` | 深度思考模式 |
+| `glm52_reasoning_effort` | GLM-5.2 推理深度控制（reasoning_effort） |
 | `tool_stream_min` | 流式工具调用 |
 | `function_call` | 函数调用 |
 | `function_call_with_toolkits` | 工具集调用 |
@@ -94,8 +97,10 @@ cargo run --example chat_loop
 
 ### 模型 API
 - [x] POST 对话补全（同步/异步/流式）
-- [x] GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
+- [x] GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
 - [x] 思考模式（Thinking Mode），支持 clear_thinking 保留式思考
+- [x] 推理深度控制（Reasoning Effort，GLM-5.2+：max/xhigh/high/medium/low/minimal/none）
+- [x] 1M 上下文（`glm-5.2[1m]`，`GLM5_2_1m`）
 - [x] 流式工具调用（Tool Stream）
 - [x] 图像生成
 - [x] 视频生成（异步）
