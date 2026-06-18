@@ -50,6 +50,7 @@ pub struct TungsteniteTransport {
 
 impl TungsteniteTransport {
     /// Open a WebSocket to `url` with the given `Authorization` header value.
+    #[tracing::instrument(name = "realtime.connect", skip_all, fields(url = %url))]
     pub async fn connect(url: &str, authorization: &str) -> ZaiResult<Self> {
         let mut req = url.into_client_request()?;
         let auth_value = HeaderValue::from_str(authorization).map_err(|e| {
@@ -65,16 +66,18 @@ impl TungsteniteTransport {
 
 #[async_trait]
 impl RealtimeTransport for TungsteniteTransport {
+    #[tracing::instrument(name = "realtime.send", skip(self, msg))]
     async fn send(&mut self, msg: String) -> ZaiResult<()> {
         self.inner
             .send(Message::text(msg))
             .await
             .map_err(|e| {
                 warn!(error = %e, "WebSocket send error");
-                RealtimeErrorKind::WebSocket(e.to_string()).into()
+                RealtimeErrorKind::WebSocket { source: e }.into()
             })
     }
 
+    #[tracing::instrument(name = "realtime.recv", skip(self))]
     async fn recv(&mut self) -> ZaiResult<Option<WsMessage>> {
         loop {
             match self.inner.next().await {
@@ -84,7 +87,7 @@ impl RealtimeTransport for TungsteniteTransport {
                 },
                 Some(Err(e)) => {
                     warn!(error = %e, "WebSocket recv error");
-                    return Err(RealtimeErrorKind::WebSocket(e.to_string()).into());
+                    return Err(RealtimeErrorKind::WebSocket { source: e }.into());
                 },
                 Some(Ok(message)) => match message {
                     Message::Text(text) => return Ok(Some(WsMessage::Text(text.to_string()))),
@@ -104,13 +107,14 @@ impl RealtimeTransport for TungsteniteTransport {
         }
     }
 
+    #[tracing::instrument(name = "realtime.close", skip(self))]
     async fn close(&mut self) -> ZaiResult<()> {
         self.inner
             .close(None)
             .await
             .map_err(|e| {
                 warn!(error = %e, "WebSocket close error");
-                RealtimeErrorKind::WebSocket(e.to_string()).into()
+                RealtimeErrorKind::WebSocket { source: e }.into()
             })
     }
 }

@@ -6,6 +6,7 @@ use validator::Validate;
 use super::{super::traits::*, request::AudioToTextBody};
 use crate::client::{
     endpoints::{ApiBase, EndpointConfig, paths},
+    error::codes,
     http::{HttpClient, HttpClientConfig, parse_typed_response, send_multipart_request},
 };
 
@@ -106,7 +107,7 @@ where
 
         if !Path::new(p).exists() {
             return Err(crate::client::error::ZaiError::FileError {
-                code: 0,
+                code: codes::SDK_FILE_NOT_FOUND,
                 message: format!("file_path not found: {}", p),
             });
         }

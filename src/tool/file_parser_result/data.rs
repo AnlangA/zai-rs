@@ -5,13 +5,14 @@
 
 use std::sync::Arc;
 
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use super::{request::*, response::*};
 use crate::{
     ZaiResult,
     client::{
         endpoints::{ApiBase, EndpointConfig, join_url, paths},
+        error::codes,
         http::{HttpClientConfig, parse_typed_response, send_empty_request},
     },
 };
@@ -145,8 +146,13 @@ impl FileParserResultRequest {
                     return Ok(result);
                 },
                 ParserStatus::Failed => {
+                    warn!(
+                        task_id = %self.task_id,
+                        message = %result.message,
+                        "File parsing task reported failure"
+                    );
                     return Err(crate::client::error::ZaiError::ApiError {
-                        code: 0,
+                        code: codes::SDK_EXTERNAL_TOOL,
                         message: format!("Parsing failed: {}", result.message),
                     });
                 },
@@ -154,8 +160,14 @@ impl FileParserResultRequest {
                     let elapsed = start_time.elapsed().as_secs();
                     trace!(elapsed, "File parser result still processing");
                     if elapsed > timeout_seconds {
-                        return Err(crate::client::error::ZaiError::RateLimitError {
-                            code: 0,
+                        warn!(
+                            task_id = %self.task_id,
+                            elapsed,
+                            timeout_seconds,
+                            "Polling timed out waiting for parsing result"
+                        );
+                        return Err(crate::client::error::ZaiError::ApiError {
+                            code: codes::SDK_TIMEOUT,
                             message: "Timeout waiting for parsing result".to_string(),
                         });
                     }

@@ -325,15 +325,29 @@ pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
 ///
 /// The body is run through [`mask_sensitive_info`] before logging so secrets
 /// (API keys, bearer tokens, …) never leak into logs even at `trace` level.
+#[tracing::instrument(
+    name = "http.response",
+    skip_all,
+    fields(
+        otel.name = "http.parse_response",
+        http.url = tracing::field::Empty,
+        http.status_code = tracing::field::Empty,
+    )
+)]
 pub async fn parse_typed_response<T>(resp: reqwest::Response) -> ZaiResult<T>
 where
     T: DeserializeOwned,
 {
     let status = resp.status();
     let url = resp.url().to_string();
+
+    let span = tracing::Span::current();
+    span.record("http.url", url.as_str());
+    span.record("http.status_code", status.as_u16());
+
     let body = resp.text().await.map_err(ZaiError::from)?;
 
-    tracing::trace!(
+    trace!(
         url = %url,
         http_status = %status,
         bytes = body.len(),
@@ -353,6 +367,15 @@ where
 ///
 /// `enable_logging` on [`HttpClientConfig`] is retained for API stability but
 /// no longer adds output — the `trace` line already covers that need.
+#[tracing::instrument(
+    name = "http.request",
+    skip_all,
+    fields(
+        otel.name = "http.send_json",
+        http.method = %method,
+        http.url = tracing::field::Empty,
+    )
+)]
 pub async fn send_json_request<T>(
     method: Method,
     url: impl Into<String>,
@@ -364,13 +387,13 @@ where
     T: serde::Serialize + ?Sized,
 {
     let body_compact = serde_json::to_string(body).map_err(|e| ZaiError::JsonError(Arc::new(e)))?;
-    let enable_logging = config.enable_logging;
-    let mask_sensitive = config.mask_sensitive_data;
     let url_value: String = url.into();
+
+    tracing::Span::current().record("http.url", url_value.as_str());
 
     // Always-on `trace` line for the raw outbound body (masked). This is what
     // `RUST_LOG=trace` surfaces so developers can see exactly what is sent.
-    tracing::trace!(
+    trace!(
         method = %method,
         url = %url_value,
         bytes = body_compact.len(),
@@ -379,8 +402,6 @@ where
     );
 
     let key = api_key.as_ref().to_string();
-    let _ = enable_logging;
-    let _ = mask_sensitive;
     send_with_retry_factory(&config, move |client| {
         let builder = client
             .request(method.clone(), &url_value)
@@ -397,6 +418,15 @@ where
 ///
 /// Always emits a `trace` line for the outbound request line (no body to log),
 /// so GET/DELETE traffic is observable with `RUST_LOG=trace`.
+#[tracing::instrument(
+    name = "http.request",
+    skip_all,
+    fields(
+        otel.name = "http.send_empty",
+        http.method = %method,
+        http.url = tracing::field::Empty,
+    )
+)]
 pub async fn send_empty_request(
     method: Method,
     url: impl Into<String>,
@@ -404,7 +434,8 @@ pub async fn send_empty_request(
     config: Arc<HttpClientConfig>,
 ) -> ZaiResult<reqwest::Response> {
     let url_value: String = url.into();
-    tracing::trace!(
+    tracing::Span::current().record("http.url", url_value.as_str());
+    trace!(
         method = %method,
         url = %url_value,
         request_body = %"",
@@ -423,6 +454,15 @@ pub async fn send_empty_request(
 ///
 /// Always emits a `trace` line for the outbound request metadata (multipart
 /// bodies are not serialized as JSON, so only the request line is logged).
+#[tracing::instrument(
+    name = "http.request",
+    skip_all,
+    fields(
+        otel.name = "http.send_multipart",
+        http.method = %method,
+        http.url = tracing::field::Empty,
+    )
+)]
 pub async fn send_multipart_request<F>(
     method: Method,
     url: impl Into<String>,
@@ -434,7 +474,8 @@ where
     F: FnMut() -> ZaiResult<reqwest::multipart::Form> + Send,
 {
     let url_value: String = url.into();
-    tracing::trace!(
+    tracing::Span::current().record("http.url", url_value.as_str());
+    trace!(
         method = %method,
         url = %url_value,
         "Sending multipart HTTP request"
@@ -523,6 +564,10 @@ pub trait HttpClient {
 }
 
 /// Internal helper: executes retryable request builders.
+#[tracing::instrument(
+    skip(config, build_request),
+    fields(max_retries = config.max_retries, attempt = tracing::field::Empty)
+)]
 async fn send_with_retry_factory<F>(
     config: &HttpClientConfig,
     mut build_request: F,
@@ -534,6 +579,7 @@ where
     let client = http_client_with_config(config);
 
     for attempt in 0..=config.max_retries {
+        tracing::Span::current().record("attempt", attempt);
         let resp = match build_request(client.clone()) {
             Ok(builder) => builder.send().await,
             Err(error) => return Err(error),
@@ -594,10 +640,16 @@ where
         }
     }
 
-    Err(last_error.unwrap_or_else(|| ZaiError::HttpError {
+    let final_err = last_error.unwrap_or_else(|| ZaiError::HttpError {
         status: 500,
         message: "Unknown error after retries".to_string(),
-    }))
+    });
+    warn!(
+        code = ?final_err.code(),
+        error = %final_err.compact(),
+        "Request failed after all retries"
+    );
+    Err(final_err)
 }
 
 /// Calculate delay for a retry attempt based on retry delay strategy.
@@ -860,6 +912,18 @@ mod tests {
         let error = ZaiError::HttpError {
             status: 404,
             message: "Resource not found".to_string(),
+        };
+        assert!(!should_retry(&error, 0, 3));
+    }
+
+    #[test]
+    fn test_should_not_retry_sdk_timeout() {
+        // Regression guard: a client-side polling timeout (SDK_TIMEOUT) must NOT
+        // be auto-retried. Previously this surfaced as RateLimitError{code:0},
+        // which should_retry treats as retryable.
+        let error = ZaiError::ApiError {
+            code: crate::client::error::codes::SDK_TIMEOUT,
+            message: "Timeout waiting for parsing result".to_string(),
         };
         assert!(!should_retry(&error, 0, 3));
     }

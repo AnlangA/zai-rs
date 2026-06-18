@@ -12,6 +12,7 @@ use jsonschema;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use crate::toolkits::error::{ToolResult, error_context};
 
@@ -375,7 +376,7 @@ impl FunctionToolBuilder {
         let name_str = name.into();
         let desc_str = description.into();
         let metadata = ToolMetadata::new(&name_str, &desc_str).unwrap_or_else(|e| {
-            tracing::warn!(
+            warn!(
                 "Invalid tool name '{}': {}. Falling back to 'unknown'.",
                 name_str,
                 e

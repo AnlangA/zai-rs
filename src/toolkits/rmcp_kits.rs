@@ -43,8 +43,10 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::{debug, warn};
 use validator::Validate;
 
+use crate::client::error::codes;
 use crate::model::{Function, Tools};
 
 /// Convert a single RMCP tool to a zai-rs function-call definition.
@@ -113,8 +115,12 @@ pub async fn call_mcp_tool(
     // Validate name and normalize args
     let name: String = name.into();
     if name.trim().is_empty() {
+        warn!(
+            code = codes::SDK_VALIDATION,
+            "MCP tool call rejected: empty tool name"
+        );
         return Err(crate::client::error::ZaiError::Unknown {
-            code: 0,
+            code: codes::SDK_VALIDATION,
             message: "tool name cannot be empty".to_string(),
         });
     }
@@ -139,9 +145,17 @@ pub async fn call_mcp_tool(
         server
             .call_tool(request)
             .await
-            .map_err(|e| crate::client::error::ZaiError::Unknown {
-                code: 0,
-                message: format!("RMCP service error: {}", e),
+            .map_err(|e| {
+                warn!(
+                    code = codes::SDK_EXTERNAL_TOOL,
+                    tool = %name,
+                    error = %e,
+                    "RMCP call_tool failed"
+                );
+                crate::client::error::ZaiError::Unknown {
+                    code: codes::SDK_EXTERNAL_TOOL,
+                    message: format!("RMCP service error: {}", e),
+                }
             })?;
     Ok((name, call_tool_result_to_json(&res)))
 }
@@ -223,14 +237,14 @@ pub async fn execute_tool_calls_as_messages(
         .and_then(|c| c.message().tool_calls());
 
     let Some(calls) = calls else { return Ok(out) };
-    tracing::debug!(tool_calls = calls.len(), "Dispatching tool calls");
+    debug!(tool_calls = calls.len(), "Dispatching tool calls");
 
     for tc in calls {
         // Extract tool call id
         let id = match tc.id() {
             Some(id) => id.to_string(),
             None => {
-                tracing::warn!(reason = "missing_id", "Skipping tool call");
+                warn!(reason = "missing_id", "Skipping tool call");
                 continue;
             },
         };
@@ -239,7 +253,7 @@ pub async fn execute_tool_calls_as_messages(
         let func = match tc.function() {
             Some(f) => f,
             None => {
-                tracing::warn!(reason = "missing_function", "Skipping tool call");
+                warn!(reason = "missing_function", "Skipping tool call");
                 continue;
             },
         };
@@ -248,7 +262,7 @@ pub async fn execute_tool_calls_as_messages(
         let name = match func.name() {
             Some(n) => n.to_string(),
             None => {
-                tracing::warn!(reason = "missing_function_name", "Skipping tool call");
+                warn!(reason = "missing_function_name", "Skipping tool call");
                 continue;
             },
         };
@@ -258,11 +272,11 @@ pub async fn execute_tool_calls_as_messages(
             Some(arg_str) => match serde_json::from_str::<serde_json::Value>(arg_str) {
                 Ok(serde_json::Value::Object(map)) => Some(serde_json::Value::Object(map)),
                 Ok(_) => {
-                    tracing::warn!(reason = "non_object_arguments", "Function arguments are not an object; passing None");
+                    warn!(reason = "non_object_arguments", "Function arguments are not an object; passing None");
                     None
                 },
                 Err(e) => {
-                    tracing::warn!(reason = "invalid_arguments_json", error = %e, "Failed to parse function arguments JSON");
+                    warn!(reason = "invalid_arguments_json", error = %e, "Failed to parse function arguments JSON");
                     None
                 },
             },
@@ -273,7 +287,7 @@ pub async fn execute_tool_calls_as_messages(
         let (_tool, payload): (String, Value) =
             caller.call(name, args_value).await.map_err(|e| {
                 crate::client::error::ZaiError::Unknown {
-                    code: 0,
+                    code: codes::SDK_EXTERNAL_TOOL,
                     message: format!("RMCP call_tool failed: {}", e),
                 }
             })?;

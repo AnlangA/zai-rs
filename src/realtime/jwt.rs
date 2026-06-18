@@ -17,6 +17,7 @@ use chrono::Utc;
 use hmac::{Hmac, Mac};
 use serde_json::json;
 use sha2::Sha256;
+use tracing::warn;
 
 use crate::{ZaiResult, client::error::ZaiError};
 
@@ -36,11 +37,18 @@ pub fn authorization_header(api_key: &str, jwt_seconds: Option<i64>) -> ZaiResul
 
 /// Sign a GLM-Realtime JWT for the given `{id}.{secret}` API key.
 pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
-    let (id, secret) = api_key
-        .split_once('.')
-        .ok_or_else(|| ZaiError::RealtimeAuthError("API key must be '<id>.<secret>'".into()))?;
+    let (id, secret) = match api_key.split_once('.') {
+        Some(parts) => parts,
+        None => {
+            warn!("Realtime JWT auth error: API key must be '<id>.<secret>'");
+            return Err(ZaiError::RealtimeAuthError(
+                "API key must be '<id>.<secret>'".into(),
+            ));
+        }
+    };
 
     if id.is_empty() || secret.is_empty() {
+        warn!("Realtime JWT auth error: API key id and secret must be non-empty");
         return Err(ZaiError::RealtimeAuthError(
             "API key id and secret must be non-empty".into(),
         ));
@@ -61,8 +69,10 @@ pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
     let payload_b64 = base64url(serde_json::to_string(&payload)?.as_bytes());
     let signing_input = format!("{header_b64}.{payload_b64}");
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .map_err(|e| ZaiError::RealtimeAuthError(format!("HMAC key error: {e}")))?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| {
+        warn!("Realtime JWT auth error: HMAC key error");
+        ZaiError::RealtimeAuthError(format!("HMAC key error: {e}"))
+    })?;
     mac.update(signing_input.as_bytes());
     let sig = mac.finalize().into_bytes();
     let sig_b64 = base64url(sig.as_slice());

@@ -108,6 +108,7 @@ impl SessionBuilder {
     }
 
     /// Open the WebSocket, send `session.update`, and spawn the event loop.
+    #[tracing::instrument(name = "realtime.session.build", skip_all, fields(model = %self.model_name))]
     pub async fn build(self) -> ZaiResult<RealtimeSession> {
         let Self {
             api_key,
@@ -216,8 +217,8 @@ async fn run_loop<T: RealtimeTransport>(
                     debug!("Realtime session closed (peer disconnected)");
                     break;
                 },
-                Err(_) => {
-                    warn!("Realtime event loop terminated due to transport error");
+                Err(e) => {
+                    warn!(error = %e, "Realtime event loop terminated due to transport error");
                     break;
                 },
             },
@@ -320,6 +321,7 @@ impl RealtimeSession {
         &self.model_name
     }
 
+    #[tracing::instrument(name = "realtime.dispatch", skip(self, event))]
     async fn dispatch(&self, event: ClientEvent) -> ZaiResult<()> {
         self.cmd_tx
             .send(Command::ClientEvent(Box::new(event)))

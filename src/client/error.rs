@@ -239,6 +239,40 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
     Ok(())
 }
 
+/// Reserved error-code constants for failures originating inside the SDK
+/// itself (client-side validation, I/O, timeouts, external/toolkit calls).
+///
+/// These never overlap with codes emitted by the Zhipu AI API (documented
+/// range `1000`–`1499`). Every value lives in the reserved `9000`–`9999`
+/// band, so a caller can distinguish "the server rejected this"
+/// (`1000`–`1499`) from "the SDK failed before/after the server replied"
+/// (`9000`–`9999`) via [`ZaiError::code`] / [`ZaiError::is_sdk_error`].
+pub mod codes {
+    /// Generic client-side validation failure (bad argument shape, …).
+    pub const SDK_VALIDATION: u16 = 9001;
+
+    /// Client-side configuration error (bad base URL, missing value, …).
+    pub const SDK_CONFIG: u16 = 9600;
+
+    /// A local file referenced by the request does not exist.
+    pub const SDK_FILE_NOT_FOUND: u16 = 9100;
+
+    /// A local file exceeds the SDK/enforced size limit.
+    pub const SDK_FILE_TOO_LARGE: u16 = 9101;
+
+    /// The file type/extension is not supported by the target tool.
+    pub const SDK_FILE_TYPE_UNSUPPORTED: u16 = 9102;
+
+    /// Generic local I/O failure (read/write/permission, …).
+    pub const SDK_IO: u16 = 9400;
+
+    /// A client-side timeout (e.g. polling an async task for too long).
+    pub const SDK_TIMEOUT: u16 = 9300;
+
+    /// A failure reported by an external/toolkit source (RMCP, function tool).
+    pub const SDK_EXTERNAL_TOOL: u16 = 9500;
+}
+
 /// Main error type for the ZAI-RS SDK
 #[derive(Error, Debug)]
 pub enum ZaiError {
@@ -300,13 +334,22 @@ pub enum ZaiError {
 /// rich errors without touching HTTP-specific machinery.
 #[derive(Debug, thiserror::Error)]
 pub enum RealtimeErrorKind {
-    /// Low-level WebSocket error (connect/handshake/read/write).
-    #[error("websocket: {0}")]
-    WebSocket(String),
+    /// Low-level WebSocket error (connect/handshake/read/write). The original
+    /// `tungstenite` error is kept as the `#[source]` so the full chain
+    /// survives propagation.
+    #[error("websocket: {source}")]
+    WebSocket {
+        /// The underlying tungstenite error.
+        #[source]
+        source: tokio_tungstenite::tungstenite::Error,
+    },
 
     /// (De)serialization of a realtime event failed.
-    #[error("serialize: {0}")]
-    Serialize(serde_json::Error),
+    #[error("serialize: {source}")]
+    Serialize {
+        #[source]
+        source: serde_json::Error,
+    },
 
     /// Protocol violation — unexpected or malformed server event.
     #[error("protocol: {0}")]
@@ -441,9 +484,9 @@ impl ZaiError {
                 // Protocol/serialize/server-event failures are client-caused;
                 // transport/closure are not necessarily so.
                 RealtimeErrorKind::Protocol(_)
-                | RealtimeErrorKind::Serialize(_)
+                | RealtimeErrorKind::Serialize { .. }
                 | RealtimeErrorKind::ServerEvent { .. } => true,
-                RealtimeErrorKind::WebSocket(_) | RealtimeErrorKind::Closed => false,
+                RealtimeErrorKind::WebSocket { .. } | RealtimeErrorKind::Closed => false,
             },
             _ => false,
         }
@@ -456,6 +499,16 @@ impl ZaiError {
             ZaiError::Unknown { code, .. } => *code >= 500,
             _ => false,
         }
+    }
+
+    /// Whether this error originates from the SDK itself rather than the API.
+    ///
+    /// True iff [`code`](Self::code) is in the reserved `9000`–`9999` band
+    /// (see [`codes`]). Variants without a numeric code
+    /// ([`NetworkError`](Self::NetworkError), [`JsonError`](Self::JsonError),
+    /// [`RealtimeError`](Self::RealtimeError)) return `false`.
+    pub fn is_sdk_error(&self) -> bool {
+        self.code().is_some_and(|c| (9000..=9999).contains(&c))
     }
 
     /// Get a compact representation of error suitable for logging
@@ -532,6 +585,73 @@ impl ZaiError {
             ZaiError::RealtimeError(kind) => kind.to_string(),
             ZaiError::RealtimeAuthError(msg) => msg.clone(),
             ZaiError::Unknown { message, .. } => message.clone(),
+        }
+    }
+
+    /// Attach an operational context to this error without losing its code or
+    /// category.
+    ///
+    /// Prepends `"{context}: "` to the human-readable message of every variant
+    /// that carries one. Variants whose payload is a wrapped source error with
+    /// no message slot ([`NetworkError`](Self::NetworkError),
+    /// [`JsonError`](Self::JsonError), [`RealtimeError`](Self::RealtimeError))
+    /// are returned unchanged — record their context in a `tracing` span
+    /// instead.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zai_rs::client::error::ZaiError;
+    ///
+    /// let err = ZaiError::ApiError {
+    ///     code: 1200,
+    ///     message: "bad model".to_string(),
+    /// };
+    /// let ctx = err.context("file parser create");
+    /// assert_eq!(ctx.code(), Some(1200));
+    /// assert_eq!(ctx.message(), "file parser create: bad model");
+    /// ```
+    pub fn context(self, context: &str) -> Self {
+        let with_context = |message: String| format!("{context}: {message}");
+        match self {
+            Self::HttpError { status, message } => Self::HttpError {
+                status,
+                message: with_context(message),
+            },
+            Self::AuthError { code, message } => Self::AuthError {
+                code,
+                message: with_context(message),
+            },
+            Self::AccountError { code, message } => Self::AccountError {
+                code,
+                message: with_context(message),
+            },
+            Self::ApiError { code, message } => Self::ApiError {
+                code,
+                message: with_context(message),
+            },
+            Self::RateLimitError { code, message } => Self::RateLimitError {
+                code,
+                message: with_context(message),
+            },
+            Self::ContentPolicyError { code, message } => Self::ContentPolicyError {
+                code,
+                message: with_context(message),
+            },
+            Self::FileError { code, message } => Self::FileError {
+                code,
+                message: with_context(message),
+            },
+            // No message slot: keep the wrapped source as-is (context belongs
+            // in a tracing span, not by flattening the source to a string).
+            Self::NetworkError(err) => Self::NetworkError(err),
+            Self::JsonError(err) => Self::JsonError(err),
+            Self::RealtimeError(kind) => Self::RealtimeError(kind),
+            Self::RealtimeAuthError(message) => Self::RealtimeAuthError(with_context(message)),
+            Self::Unknown { code, message } => Self::Unknown {
+                code,
+                message: with_context(message),
+            },
         }
     }
 }
@@ -611,12 +731,33 @@ impl From<validator::ValidationErrors> for ZaiError {
     }
 }
 
-/// Convert from std::io::Error to ZaiError
+/// Convert from std::io::Error to ZaiError.
+///
+/// Maps by [`std::io::ErrorKind`] so the category (file vs. timeout vs.
+/// generic I/O) survives propagation instead of collapsing to a single
+/// opaque `Unknown{0}`. A `NetworkError` cannot be built from an
+/// `io::Error` (it wraps `reqwest::Error`), so `TimedOut` is reported as an
+/// [`ApiError`](Self::ApiError) carrying [`codes::SDK_TIMEOUT`].
 impl From<std::io::Error> for ZaiError {
     fn from(err: std::io::Error) -> Self {
-        ZaiError::Unknown {
-            code: 0,
-            message: err.to_string(),
+        use std::io::ErrorKind;
+        match err.kind() {
+            ErrorKind::NotFound => ZaiError::FileError {
+                code: codes::SDK_FILE_NOT_FOUND,
+                message: err.to_string(),
+            },
+            ErrorKind::PermissionDenied => ZaiError::FileError {
+                code: codes::SDK_IO,
+                message: err.to_string(),
+            },
+            ErrorKind::TimedOut => ZaiError::ApiError {
+                code: codes::SDK_TIMEOUT,
+                message: err.to_string(),
+            },
+            _ => ZaiError::Unknown {
+                code: codes::SDK_IO,
+                message: err.to_string(),
+            },
         }
     }
 }
@@ -629,10 +770,11 @@ impl From<RealtimeErrorKind> for ZaiError {
 }
 
 /// Convert from a low-level WebSocket (`tungstenite`) error into a
-/// [`ZaiError`].
+/// [`ZaiError`]. The original error is preserved as the `#[source]` of
+/// [`RealtimeErrorKind::WebSocket`].
 impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
     fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        ZaiError::RealtimeError(Arc::new(RealtimeErrorKind::WebSocket(err.to_string())))
+        ZaiError::RealtimeError(Arc::new(RealtimeErrorKind::WebSocket { source: err }))
     }
 }
 
@@ -733,11 +875,13 @@ mod tests {
 
     #[test]
     fn test_code() {
-        // Using From trait implementation for io::Error returns Unknown with code 0
+        // Using From trait implementation for io::Error: ErrorKind::ConnectionRefused
+        // is not NotFound/PermissionDenied/TimedOut, so it falls through to
+        // Unknown carrying the SDK I/O code.
         let io_err =
             std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
         let err = ZaiError::from(io_err);
-        assert_eq!(err.code(), Some(0)); // Unknown has code 0
+        assert_eq!(err.code(), Some(codes::SDK_IO));
 
         // JsonError has no code
         let err = ZaiError::JsonError(std::sync::Arc::new(serde_json::Error::io(
@@ -770,6 +914,122 @@ mod tests {
             ZaiError::Unknown { .. } => {},
             _ => panic!("Expected Unknown error for io::Error"),
         }
+    }
+
+    #[test]
+    fn test_sdk_code_constants_in_reserved_range() {
+        for code in [
+            codes::SDK_VALIDATION,
+            codes::SDK_CONFIG,
+            codes::SDK_FILE_NOT_FOUND,
+            codes::SDK_FILE_TOO_LARGE,
+            codes::SDK_FILE_TYPE_UNSUPPORTED,
+            codes::SDK_IO,
+            codes::SDK_TIMEOUT,
+            codes::SDK_EXTERNAL_TOOL,
+        ] {
+            assert!((9000..=9999).contains(&code), "code {code} outside 9000-9999");
+        }
+    }
+
+    #[test]
+    fn test_is_sdk_error_classification() {
+        // SDK codes → true.
+        assert!(ZaiError::FileError {
+            code: codes::SDK_FILE_NOT_FOUND,
+            message: "x".into(),
+        }
+        .is_sdk_error());
+        assert!(ZaiError::ApiError {
+            code: codes::SDK_TIMEOUT,
+            message: "x".into(),
+        }
+        .is_sdk_error());
+
+        // API / HTTP codes → false.
+        assert!(!ZaiError::AuthError {
+            code: 1001,
+            message: "x".into(),
+        }
+        .is_sdk_error());
+        assert!(!ZaiError::RateLimitError {
+            code: 1301,
+            message: "x".into(),
+        }
+        .is_sdk_error());
+        assert!(!ZaiError::HttpError {
+            status: 500,
+            message: "x".into(),
+        }
+        .is_sdk_error());
+
+        // Code-less variants → false.
+        assert!(!ZaiError::RealtimeAuthError("x".into()).is_sdk_error());
+    }
+
+    #[test]
+    fn test_from_io_maps_by_kind() {
+        use std::io::{Error, ErrorKind};
+
+        let err = ZaiError::from(Error::from(ErrorKind::NotFound));
+        assert!(matches!(
+            err,
+            ZaiError::FileError { code, .. } if code == codes::SDK_FILE_NOT_FOUND
+        ));
+
+        let err = ZaiError::from(Error::from(ErrorKind::TimedOut));
+        assert!(matches!(
+            err,
+            ZaiError::ApiError { code, .. } if code == codes::SDK_TIMEOUT
+        ));
+
+        let err = ZaiError::from(Error::from(ErrorKind::PermissionDenied));
+        assert!(matches!(
+            err,
+            ZaiError::FileError { code, .. } if code == codes::SDK_IO
+        ));
+
+        // Unmapped kind → Unknown with SDK_IO code (no longer code 0).
+        let err = ZaiError::from(Error::other("boom"));
+        assert!(matches!(
+            err,
+            ZaiError::Unknown { code, .. } if code == codes::SDK_IO
+        ));
+    }
+
+    #[test]
+    fn test_context_preserves_code_and_variant() {
+        let err = ZaiError::ApiError {
+            code: 1200,
+            message: "bad model".into(),
+        }
+        .context("file parser create");
+        assert!(matches!(
+            err,
+            ZaiError::ApiError { code, .. } if code == 1200
+        ));
+        assert_eq!(err.message(), "file parser create: bad model");
+
+        let err = ZaiError::Unknown {
+            code: codes::SDK_IO,
+            message: "boom".into(),
+        }
+        .context("read");
+        assert_eq!(err.code(), Some(codes::SDK_IO));
+        assert_eq!(err.message(), "read: boom");
+    }
+
+    #[test]
+    fn test_sdk_timeout_is_not_rate_limit() {
+        // Regression guard: a client-side polling timeout must NOT masquerade
+        // as a rate-limit error (the previous implementation returned
+        // RateLimitError{code:0}).
+        let err = ZaiError::ApiError {
+            code: codes::SDK_TIMEOUT,
+            message: "Timeout waiting for parsing result".into(),
+        };
+        assert!(!err.is_rate_limit());
+        assert!(err.is_sdk_error());
     }
 
     #[test]

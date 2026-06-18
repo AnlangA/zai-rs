@@ -5,13 +5,14 @@
 
 use std::{path::Path, sync::Arc};
 
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use super::{request::*, response::*};
 use crate::{
     ZaiResult,
     client::{
         endpoints::{ApiBase, EndpointConfig, paths},
+        error::codes,
         http::{HttpClientConfig, parse_typed_response, send_multipart_request},
     },
 };
@@ -75,7 +76,7 @@ impl FileParserCreateRequest {
         // Validate that file exists
         if !file_path.exists() {
             return Err(crate::client::error::ZaiError::FileError {
-                code: 0,
+                code: codes::SDK_FILE_NOT_FOUND,
                 message: format!("File does not exist: {}", file_path.display()),
             });
         }
@@ -127,7 +128,7 @@ impl FileParserCreateRequest {
     ) -> crate::ZaiResult<Self> {
         let file_type = FileType::from_path(file_path).ok_or_else(|| {
             crate::client::error::ZaiError::FileError {
-                code: 0,
+                code: codes::SDK_FILE_TYPE_UNSUPPORTED,
                 message: format!(
                     "Could not determine file type from path: {}",
                     file_path.display()
@@ -191,15 +192,23 @@ impl FileParserCreateRequest {
                 .text("tool_type", format!("{:?}", tool_type).to_lowercase())
                 .text("file_type", format!("{:?}", file_type)))
         })
-        .await?;
+        .await
+        .map_err(|e| e.context("file parser create"))?;
 
-        let create_response = parse_typed_response::<FileParserCreateResponse>(response).await?;
+        let create_response =
+            parse_typed_response::<FileParserCreateResponse>(response)
+                .await
+                .map_err(|e| e.context("file parser create"))?;
 
         debug!(task_id = %create_response.task_id, "File parser task created");
 
         if !create_response.is_success() {
+            warn!(
+                message = %create_response.message,
+                "File parser task creation rejected by server"
+            );
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 0,
+                code: codes::SDK_EXTERNAL_TOOL,
                 message: format!("Task creation failed: {}", create_response.message),
             });
         }

@@ -252,6 +252,7 @@ impl ToolExecutor {
     }
 
     /// Execute a tool with detailed result and exponential backoff
+    #[tracing::instrument(skip(self, input))]
     pub async fn execute(
         &self,
         tool_name: &str,
@@ -592,6 +593,7 @@ impl ToolExecutor {
             .collect()
     }
 
+    #[tracing::instrument(skip(self, input))]
     async fn execute_once(
         &self,
         tool_name: &str,

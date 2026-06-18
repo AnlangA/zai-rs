@@ -5,6 +5,7 @@ use validator::Validate;
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
 use crate::client::{
     endpoints::{ApiBase, EndpointConfig, paths},
+    error::codes,
     http::{HttpClient, HttpClientConfig, parse_typed_response, send_multipart_request},
 };
 
@@ -99,7 +100,7 @@ impl OcrRequest {
 
         if !Path::new(p).exists() {
             return Err(crate::client::error::ZaiError::FileError {
-                code: 0,
+                code: codes::SDK_FILE_NOT_FOUND,
                 message: format!("file_path not found: {}", p),
             });
         }
@@ -110,7 +111,7 @@ impl OcrRequest {
         const MAX_SIZE: u64 = 8 * 1024 * 1024; // 8MB
         if file_size > MAX_SIZE {
             return Err(crate::client::error::ZaiError::FileError {
-                code: 0,
+                code: codes::SDK_FILE_TOO_LARGE,
                 message: format!("file_size exceeds 8MB limit: {} bytes", file_size),
             });
         }
@@ -126,7 +127,7 @@ impl OcrRequest {
         );
         if !valid_ext {
             return Err(crate::client::error::ZaiError::FileError {
-                code: 0,
+                code: codes::SDK_FILE_TYPE_UNSUPPORTED,
                 message: format!(
                     "invalid file format: {:?}. Only PNG, JPG, JPEG, BMP are supported",
                     ext
