@@ -1,19 +1,59 @@
+use std::sync::Arc;
+
 use super::{
     request::{EmbeddingBody, EmbeddingDimensions, EmbeddingInput, EmbeddingModel},
     response::EmbeddingResponse,
 };
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 /// Text Embedding request client (JSON POST)
 pub struct EmbeddingRequest {
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     body: EmbeddingBody,
 }
 
 impl EmbeddingRequest {
     pub fn new(key: String, model: EmbeddingModel, input: EmbeddingInput) -> Self {
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::EMBEDDINGS);
         let body = EmbeddingBody::new(model, input);
-        Self { key, body }
+        Self {
+            key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            body,
+        }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self.endpoint_config.url(&self.api_base, paths::EMBEDDINGS);
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     pub fn with_dimensions(mut self, dims: EmbeddingDimensions) -> Self {
@@ -41,7 +81,7 @@ impl EmbeddingRequest {
             });
         }
         let resp: reqwest::Response = self.post().await?;
-        let parsed = resp.json::<EmbeddingResponse>().await?;
+        let parsed = parse_typed_response::<EmbeddingResponse>(resp).await?;
         Ok(parsed)
     }
 
@@ -54,16 +94,19 @@ impl EmbeddingRequest {
 
 impl HttpClient for EmbeddingRequest {
     type Body = EmbeddingBody;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/embeddings"
+        &self.url
     }
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

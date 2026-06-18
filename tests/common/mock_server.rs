@@ -75,7 +75,7 @@ pub async fn start_mock_server(config: MockServerConfig) -> Result<(), Box<dyn s
     let addr: SocketAddr = ([127, 0, 0, 1], 9876).into();
 
     let listener = TcpListener::bind(addr).await?;
-    println!("Mock server running on http://127.0.0.1:9876");
+    tracing::info!("Mock server running on http://127.0.0.1:9876");
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -92,7 +92,7 @@ pub async fn start_mock_server(config: MockServerConfig) -> Result<(), Box<dyn s
                 .serve_connection(io, service)
                 .await
             {
-                eprintln!("Error serving connection: {:?}", err);
+                tracing::error!(error = ?err, "Error serving connection");
             }
         });
     }

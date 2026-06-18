@@ -71,7 +71,7 @@ match result {
     },
     Err(e) => {
         // 其他错误
-        eprintln!("Unexpected error: {}", e);
+        tracing::error!("Unexpected error: {}", e);
     },
 }
 ```
@@ -215,7 +215,7 @@ let results = join_all(tasks).await;
 for result in results {
     match result {
         Ok(content) => println!("{}", content),
-        Err(e) => eprintln!("Error: {}", e),
+        Err(e) => tracing::error!("Error: {}", e),
     }
 }
 ```

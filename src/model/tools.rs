@@ -888,7 +888,6 @@ mod tests {
         let mcp = MCP::new("server_label");
         let tools = Tools::MCP { mcp };
         let json = serde_json::to_string(&tools).unwrap();
-        eprintln!("JSON: {}", json);
         assert!(json.contains("\"type\":\"mcp\""));
         assert!(json.contains("\"server_label\":\"server_label\""));
     }

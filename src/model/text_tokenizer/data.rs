@@ -1,19 +1,59 @@
+use std::sync::Arc;
+
 use super::{
     request::{TokenizerBody, TokenizerMessage, TokenizerModel},
     response::TokenizerResponse,
 };
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 /// Text Tokenizer request client (JSON POST)
 pub struct TokenizerRequest {
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     body: TokenizerBody,
 }
 
 impl TokenizerRequest {
     pub fn new(key: String, model: TokenizerModel, messages: Vec<TokenizerMessage>) -> Self {
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::TOKENIZER);
         let body = TokenizerBody::new(model, messages);
-        Self { key, body }
+        Self {
+            key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            body,
+        }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self.endpoint_config.url(&self.api_base, paths::TOKENIZER);
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     pub fn with_request_id(mut self, v: impl Into<String>) -> Self {
@@ -41,7 +81,7 @@ impl TokenizerRequest {
     pub async fn send(&self) -> crate::ZaiResult<TokenizerResponse> {
         self.validate()?;
         let resp: reqwest::Response = self.post().await?;
-        let parsed = resp.json::<TokenizerResponse>().await?;
+        let parsed = parse_typed_response::<TokenizerResponse>(resp).await?;
         Ok(parsed)
     }
 
@@ -54,16 +94,19 @@ impl TokenizerRequest {
 
 impl HttpClient for TokenizerRequest {
     type Body = TokenizerBody;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/tokenizer"
+        &self.url
     }
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

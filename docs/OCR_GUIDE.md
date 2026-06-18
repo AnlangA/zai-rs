@@ -20,7 +20,7 @@ use zai_rs::model::ocr::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    let _ = tracing_subscriber::fmt::try_init();
 
     // 设置 API Key
     let key = std::env::var("ZHIPU_API_KEY")?;
@@ -46,7 +46,7 @@ use zai_rs::model::ocr::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    let _ = tracing_subscriber::fmt::try_init();
 
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY");
     let file_path = "data/ocr_example.png";
@@ -246,16 +246,16 @@ match OcrRequest::new(key)
         println!("识别成功: {:?}", response);
     },
     Err(e) => {
-        eprintln!("识别失败: {:?}", e);
+        tracing::error!("识别失败: {:?}", e);
         match e {
             ZaiError::FileError { code, message } => {
-                eprintln!("文件错误 [{}]: {}", code, message);
+                tracing::error!("文件错误 [{}]: {}", code, message);
             },
             ZaiError::ApiError { code, message } => {
-                eprintln!("API 错误 [{}]: {}", code, message);
+                tracing::error!("API 错误 [{}]: {}", code, message);
             },
             _ => {
-                eprintln!("其他错误: {:?}", e);
+                tracing::error!("其他错误: {:?}", e);
             }
         }
     }

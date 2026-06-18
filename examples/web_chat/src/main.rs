@@ -3,18 +3,19 @@
 //! A production-quality web chat interface with streaming capabilities,
 //! perfect markdown rendering, and industry-leading user experience.
 
-use axum::{
-    Router,
-    routing::{get, post},
-};
 use std::net::SocketAddr;
+
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use tower::ServiceBuilder;
 use tower_http::{
-    LatencyUnit,
     cors::CorsLayer,
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
+    LatencyUnit,
 };
-use tracing::{Level, info};
+use tracing::{info, Level};
 
 mod client;
 mod server;
@@ -22,14 +23,16 @@ use server::{config::Config, routes, state::AppState};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_target(false)
-        .with_level(true)
-        .with_thread_ids(true)
-        .with_file(true)
-        .with_line_number(true)
-        .init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_target(false)
+            .with_level(true)
+            .with_thread_ids(true)
+            .with_file(true)
+            .with_line_number(true)
+            .init();
+    }
 
     info!("🚀 Starting Modern AI Chat Application");
 
@@ -41,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new(config.clone());
 
     // Build the application router
-    let app = create_app(state, config);
+    let app = create_app(state, config.clone());
 
     // Create socket address
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
@@ -91,5 +94,5 @@ fn create_app(state: AppState, config: Config) -> Router {
         .route("/", get(routes::index::index_handler))
         // Add state and middleware
         .with_state(state)
-        .layer(ServiceBuilder::new().layer(cors_layer).layer(trace_layer))
+        .layer(ServiceBuilder::new().layer(trace_layer).layer(cors_layer))
 }

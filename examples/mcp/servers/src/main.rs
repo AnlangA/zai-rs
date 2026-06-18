@@ -11,13 +11,12 @@ const BIND_ADDRESS: &str = "127.0.0.1:8000";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "debug".to_string().into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
 
     let config = SseServerConfig {
         bind: BIND_ADDRESS.parse()?,

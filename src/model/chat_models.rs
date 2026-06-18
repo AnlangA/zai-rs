@@ -13,15 +13,15 @@
 //! | glm-5.1 | [`GLM5_1`] | yes | no | yes | yes |
 //! | glm-5 | [`GLM5`] | yes | no | yes | yes |
 //! | glm-5-turbo | [`GLM5_turbo`] | yes | no | yes | yes |
-//! | glm-4.7 | [`GLM4_7`] | yes | yes | yes |
-//! | glm-4.7-flash | [`GLM4_7_flash`] | yes | yes | no |
-//! | glm-4.7-flashx | [`GLM4_7_flashx`] | yes | yes | no |
-//! | glm-4.6 | [`GLM4_6`] | yes | yes | yes |
-//! | glm-4.5 | [`GLM4_5`] | yes | yes | no |
-//! | glm-4.5-X | [`GLM4_5_x`] | yes | yes | no |
-//! | glm-4.5-flash | [`GLM4_5_flash`] | yes | yes | no |
-//! | glm-4.5-air | [`GLM4_5_air`] | yes | yes | no |
-//! | glm-4.5-airx | [`GLM4_5_airx`] | yes | yes | no |
+//! | glm-4.7 | [`GLM4_7`] | yes | no | yes | yes |
+//! | glm-4.7-flash | [`GLM4_7_flash`] | yes | no | yes | no |
+//! | glm-4.7-flashx | [`GLM4_7_flashx`] | yes | no | yes | no |
+//! | glm-4.6 | [`GLM4_6`] | yes | no | yes | yes |
+//! | glm-4.5 | [`GLM4_5`] | yes | no | yes | no |
+//! | glm-4.5-X | [`GLM4_5_x`] | yes | no | yes | no |
+//! | glm-4.5-flash | [`GLM4_5_flash`] | yes | no | yes | no |
+//! | glm-4.5-air | [`GLM4_5_air`] | yes | no | yes | no |
+//! | glm-4.5-airx | [`GLM4_5_airx`] | yes | no | yes | no |
 //!
 //! ## Vision Models
 //!
@@ -207,3 +207,38 @@ define_model_type!(
 );
 impl_message_binding!(GLM4_voice, VoiceMessage);
 impl_model_markers!(GLM4_voice: Chat, AsyncChat);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn official_chat_model_names_match_snapshot() {
+        let models = [
+            String::from(GLM5_2 {}),
+            String::from(GLM5_1 {}),
+            String::from(GLM5_turbo {}),
+            String::from(GLM5 {}),
+            String::from(GLM4_7 {}),
+            String::from(GLM4_6 {}),
+            String::from(GLM4_5_air {}),
+            String::from(GLM4_5_airx {}),
+            String::from(GLM4_5_flash {}),
+        ];
+
+        assert_eq!(
+            models,
+            [
+                "glm-5.2",
+                "glm-5.1",
+                "glm-5-turbo",
+                "glm-5",
+                "glm-4.7",
+                "glm-4.6",
+                "glm-4.5-air",
+                "glm-4.5-airx",
+                "glm-4.5-flash",
+            ]
+        );
+    }
+}

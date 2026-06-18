@@ -40,12 +40,12 @@ async fn main() {
     match client.post().await {
         Ok(resp) => println!("Success: {}", resp.choices().first().unwrap().message.content()),
         Err(ZaiError::AuthError { code, message }) => {
-            eprintln!("认证失败 [{}]: {}", code, message);
+            tracing::error!("认证失败 [{}]: {}", code, message);
         }
         Err(ZaiError::RateLimitError { code, message }) => {
-            eprintln!("速率限制 [{}]: {}", code, message);
+            tracing::error!("速率限制 [{}]: {}", code, message);
         }
-        Err(e) => eprintln!("错误: {}", e),
+        Err(e) => tracing::error!("错误: {}", e),
     }
 }
 ```
@@ -59,13 +59,13 @@ use zai_rs::client::error::ZaiError;
 
 fn handle_error(error: &ZaiError) {
     if error.is_rate_limit() {
-        eprintln!("触发速率限制，请稍后重试");
+        tracing::error!("触发速率限制，请稍后重试");
     } else if error.is_auth_error() {
-        eprintln!("认证失败，请检查 API 密钥");
+        tracing::error!("认证失败，请检查 API 密钥");
     } else if error.is_client_error() {
-        eprintln!("客户端错误: {}", error.compact());
+        tracing::error!("客户端错误: {}", error.compact());
     } else if error.is_server_error() {
-        eprintln!("服务器错误，请稍后重试");
+        tracing::error!("服务器错误，请稍后重试");
     }
 }
 ```
@@ -124,7 +124,7 @@ where
                 last_error = Some(e.clone());
                 if attempt < max_retries {
                     let delay = base_delay * 2_u32.pow(attempt);
-                    eprintln!("尝试 {}/{} 失败，等待 {:?}", attempt + 1, max_retries + 1, delay);
+                    tracing::error!("尝试 {}/{} 失败，等待 {:?}", attempt + 1, max_retries + 1, delay);
                     sleep(delay).await;
                 }
             }
@@ -270,7 +270,7 @@ async fn get_weather(city: &str) -> ZaiResult<String> {
 async fn main() {
     match get_weather("北京").await {
         Ok(weather) => println!("天气: {}", weather),
-        Err(e) => eprintln!("获取天气失败: {}", e),
+        Err(e) => tracing::error!("获取天气失败: {}", e),
     }
 }
 ```
@@ -278,7 +278,7 @@ async fn main() {
 ### 4. 使用结构化日志
 
 ```rust,ignore
-use log::{error, info, warn};
+use tracing::{error, info, warn};
 
 async fn process_request() -> ZaiResult<String> {
     info!("开始处理请求");
@@ -291,7 +291,7 @@ async fn process_request() -> ZaiResult<String> {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    let _ = tracing_subscriber::fmt::try_init();
     
     match process_request().await {
         Ok(content) => println!("{}", content),
@@ -309,8 +309,8 @@ fn main() {
     let key = std::env::var("ZHIPU_API_KEY").unwrap();
     
     if let Err(e) = validate_api_key(&key) {
-        eprintln!("API 密钥格式错误: {}", e);
-        std::process::1);
+        tracing::error!("API 密钥格式错误: {}", e);
+        std::process::exit(1);
     }
     
     // 继续正常流程
@@ -324,8 +324,9 @@ fn main() {
 ```rust,ignore
 fn main() {
     // 设置日志级别为 DEBUG
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
-        .init();
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("debug"));
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
     
     // 运行应用...
 }

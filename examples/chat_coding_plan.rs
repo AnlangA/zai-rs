@@ -29,7 +29,11 @@ use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging for debugging
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     // Select the AI model - GLM-4.5-Flash for fast, efficient responses
     let model = GLM4_6 {};

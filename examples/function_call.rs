@@ -1,9 +1,13 @@
-use log::info;
+use tracing::{info, warn};
 use zai_rs::model::{chat::data::ChatCompletion, chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     let model = GLM4_5_flash {};
 
@@ -106,7 +110,7 @@ fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
             let parsed: serde_json::Value = match serde_json::from_str(arguments) {
                 Ok(v) => v,
                 Err(err) => {
-                    log::warn!("解析 arguments 失败: {} | 原始: {}", err, arguments);
+                    warn!(error = %err, arguments, "解析 arguments 失败");
                     return Some(serde_json::json!({
                         "ok": false,
                         "error": "invalid_arguments",

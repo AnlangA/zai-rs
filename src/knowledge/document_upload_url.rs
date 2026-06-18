@@ -1,8 +1,16 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::types::UploadUrlResponse;
-use crate::{ZaiResult, client::http::HttpClient};
+use crate::{
+    ZaiResult,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, paths},
+        http::{HttpClient, HttpClientConfig, parse_typed_response},
+    },
+};
 
 /// Single URL upload detail
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -98,14 +106,48 @@ pub struct DocumentUploadUrlRequest {
     /// Bearer API key
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     body: UploadUrlBody,
 }
 
 impl DocumentUploadUrlRequest {
     pub fn new(key: String, body: UploadUrlBody) -> Self {
-        let url =
-            "https://open.bigmodel.cn/api/llm-application/open/document/upload_url".to_string();
-        Self { key, url, body }
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::LlmApplication;
+        let url = endpoint_config.url(&api_base, paths::DOCUMENT_UPLOAD_URL);
+        Self {
+            key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            body,
+        }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::DOCUMENT_UPLOAD_URL);
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     pub fn body_mut(&mut self) -> &mut UploadUrlBody {
@@ -116,7 +158,7 @@ impl DocumentUploadUrlRequest {
     pub async fn send(&self) -> ZaiResult<UploadUrlResponse> {
         self.body.validate()?;
         let resp = self.post().await?;
-        let parsed = resp.json::<UploadUrlResponse>().await?;
+        let parsed = parse_typed_response::<UploadUrlResponse>(resp).await?;
         Ok(parsed)
     }
 }
@@ -134,5 +176,9 @@ impl HttpClient for DocumentUploadUrlRequest {
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

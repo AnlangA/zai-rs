@@ -27,20 +27,108 @@
 //! while let Some(result) = stream.next().await {
 //!     match result {
 //!         Ok(chunk) => println!("Chunk: {:?}", chunk),
-//!         Err(e) => eprintln!("Error: {}", e),
+//!         Err(e) => tracing::error!("Error: {}", e),
 //!     }
 //! }
 //! ```
 
-use std::{collections::VecDeque, pin::Pin};
+use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
 use futures::{Stream, StreamExt, stream};
 use tracing::info;
 
 use crate::{
-    client::http::HttpClient,
-    model::{chat_stream_response::ChatStreamResponse, traits::SseStreamable},
+    client::{
+        error::{ZaiError, ZaiResult},
+        http::HttpClient,
+    },
+    model::{
+        chat_base_response::ToolCallMessage, chat_stream_response::ChatStreamResponse,
+        sse_parser::SseEventParser, traits::SseStreamable,
+    },
 };
+
+/// Parse one completed chat SSE event.
+///
+/// Returns `Ok(None)` for the terminal `[DONE]` marker and a JSON error for
+/// malformed event payloads.
+pub fn parse_chat_stream_event(event: &[u8]) -> ZaiResult<Option<ChatStreamResponse>> {
+    if event == b"[DONE]" {
+        return Ok(None);
+    }
+
+    serde_json::from_slice::<ChatStreamResponse>(event)
+        .map(Some)
+        .map_err(|e| ZaiError::JsonError(Arc::new(e)))
+}
+
+/// Accumulates streaming chat deltas into convenient final buffers.
+#[derive(Debug, Clone, Default)]
+pub struct ChatStreamAccumulator {
+    pub content: String,
+    pub reasoning_content: String,
+    pub tool_calls: Vec<ToolCallMessage>,
+}
+
+impl ChatStreamAccumulator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push_chunk(&mut self, chunk: &ChatStreamResponse) {
+        for choice in &chunk.choices {
+            let Some(delta) = &choice.delta else {
+                continue;
+            };
+
+            if let Some(content) = &delta.content {
+                self.content.push_str(content);
+            }
+            if let Some(reasoning_content) = &delta.reasoning_content {
+                self.reasoning_content.push_str(reasoning_content);
+            }
+            if let Some(tool_calls) = &delta.tool_calls {
+                merge_tool_calls(&mut self.tool_calls, tool_calls);
+            }
+        }
+    }
+}
+
+fn merge_tool_calls(accumulated: &mut Vec<ToolCallMessage>, deltas: &[ToolCallMessage]) {
+    for (index, delta) in deltas.iter().enumerate() {
+        if accumulated.len() <= index {
+            accumulated.push(delta.clone());
+            continue;
+        }
+
+        let current = &mut accumulated[index];
+        if delta.id.is_some() {
+            current.id = delta.id.clone();
+        }
+        if delta.type_.is_some() {
+            current.type_ = delta.type_.clone();
+        }
+        if let Some(delta_function) = &delta.function {
+            match &mut current.function {
+                Some(current_function) => {
+                    if delta_function.name.is_some() {
+                        current_function.name = delta_function.name.clone();
+                    }
+                    if let Some(arguments) = &delta_function.arguments {
+                        current_function
+                            .arguments
+                            .get_or_insert_with(String::new)
+                            .push_str(arguments);
+                    }
+                },
+                None => current.function = Some(delta_function.clone()),
+            }
+        }
+        if delta.mcp.is_some() {
+            current.mcp = delta.mcp.clone();
+        }
+    }
+}
 
 /// Streaming extension trait for chat-like endpoints.
 ///
@@ -88,7 +176,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
         async move {
             let resp = self.post().await?;
             let mut stream = resp.bytes_stream();
-            let mut buf: Vec<u8> = Vec::new();
+            let mut parser = SseEventParser::new();
 
             while let Some(next) = stream.next().await {
                 let bytes = match next {
@@ -99,14 +187,11 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                         ));
                     },
                 };
-                let lines = crate::model::sse_parser::extract_sse_data_lines(&mut buf, &bytes);
-                for rest in lines {
-                    info!("SSE data: {}", String::from_utf8_lossy(&rest));
-                    if rest == b"[DONE]" {
-                        return Ok(());
-                    }
-                    if let Ok(chunk) = serde_json::from_slice::<ChatStreamResponse>(&rest) {
-                        on_chunk(chunk).await?;
+                for event in parser.push(&bytes) {
+                    info!("SSE data: {}", String::from_utf8_lossy(&event));
+                    match parse_chat_stream_event(&event)? {
+                        Some(chunk) => on_chunk(chunk).await?,
+                        None => return Ok(()),
                     }
                 }
             }
@@ -148,35 +233,41 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
             let s = byte_stream;
 
             let out = stream::unfold(
-                (s, Vec::<u8>::new(), VecDeque::<ChatStreamResponse>::new()),
-                |(mut s, mut buf, mut pending)| async move {
+                (
+                    s,
+                    SseEventParser::new(),
+                    VecDeque::<ZaiResult<ChatStreamResponse>>::new(),
+                    false,
+                ),
+                |(mut s, mut parser, mut pending, done)| async move {
                     if let Some(item) = pending.pop_front() {
-                        return Some((Ok(item), (s, buf, pending)));
+                        return Some((item, (s, parser, pending, done)));
+                    }
+                    if done {
+                        return None;
                     }
 
                     loop {
                         // Need more bytes first to populate buffer
                         match s.next().await {
                             Some(Ok(bytes)) => {
-                                let lines = crate::model::sse_parser::extract_sse_data_lines(
-                                    &mut buf, &bytes,
-                                );
-                                for rest in lines {
-                                    info!("SSE data: {}", String::from_utf8_lossy(&rest));
-                                    if rest == b"[DONE]" {
-                                        return None; // end stream gracefully
+                                let mut saw_done = done;
+                                for event in parser.push(&bytes) {
+                                    info!("SSE data: {}", String::from_utf8_lossy(&event));
+                                    match parse_chat_stream_event(&event) {
+                                        Ok(Some(item)) => pending.push_back(Ok(item)),
+                                        Ok(None) => {
+                                            saw_done = true;
+                                            break;
+                                        },
+                                        Err(e) => pending.push_back(Err(e)),
                                     }
-                                    if let Ok(item) =
-                                        serde_json::from_slice::<ChatStreamResponse>(&rest)
-                                    {
-                                        pending.push_back(item);
-                                    }
-                                    // skip invalid json line, continue
-                                    // processing
-                                    // remaining lines
                                 }
                                 if let Some(item) = pending.pop_front() {
-                                    return Some((Ok(item), (s, buf, pending)));
+                                    return Some((item, (s, parser, pending, saw_done)));
+                                }
+                                if saw_done {
+                                    return None;
                                 }
                                 // All lines processed but no valid
                                 // ChatStreamResponse yielded,
@@ -187,7 +278,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                                     Err(crate::client::error::ZaiError::NetworkError(
                                         std::sync::Arc::new(e),
                                     )),
-                                    (s, buf, pending),
+                                    (s, parser, pending, done),
                                 ));
                             },
                             None => return None,
@@ -199,5 +290,84 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
 
             Ok(out)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{
+        chat_base_response::{ToolCallMessage, ToolFunction},
+        chat_stream_response::{ChatStreamResponse, Delta, StreamChoice},
+    };
+
+    fn chunk_with_delta(delta: Delta) -> ChatStreamResponse {
+        ChatStreamResponse {
+            id: Some("test".to_string()),
+            created: Some(1),
+            model: Some("glm-test".to_string()),
+            choices: vec![StreamChoice {
+                index: Some(0),
+                delta: Some(delta),
+                finish_reason: None,
+            }],
+            usage: None,
+        }
+    }
+
+    #[test]
+    fn parse_done_event() {
+        assert!(parse_chat_stream_event(b"[DONE]").unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_invalid_event_returns_json_error() {
+        let err = parse_chat_stream_event(b"{not-json").unwrap_err();
+        assert!(matches!(err, ZaiError::JsonError(_)));
+    }
+
+    #[test]
+    fn accumulator_appends_content_reasoning_and_tool_arguments() {
+        let mut acc = ChatStreamAccumulator::new();
+
+        acc.push_chunk(&chunk_with_delta(Delta {
+            role: Some("assistant".to_string()),
+            content: Some("hel".to_string()),
+            reasoning_content: Some("think ".to_string()),
+            tool_calls: Some(vec![ToolCallMessage {
+                id: Some("call_1".to_string()),
+                type_: Some("function".to_string()),
+                function: Some(ToolFunction {
+                    name: Some("search".to_string()),
+                    arguments: Some("{\"q\":\"ru".to_string()),
+                }),
+                mcp: None,
+            }]),
+        }));
+
+        acc.push_chunk(&chunk_with_delta(Delta {
+            role: None,
+            content: Some("lo".to_string()),
+            reasoning_content: Some("done".to_string()),
+            tool_calls: Some(vec![ToolCallMessage {
+                id: None,
+                type_: None,
+                function: Some(ToolFunction {
+                    name: None,
+                    arguments: Some("st\"}".to_string()),
+                }),
+                mcp: None,
+            }]),
+        }));
+
+        assert_eq!(acc.content, "hello");
+        assert_eq!(acc.reasoning_content, "think done");
+        assert_eq!(
+            acc.tool_calls[0]
+                .function
+                .as_ref()
+                .and_then(|function| function.arguments.as_deref()),
+            Some("{\"q\":\"rust\"}")
+        );
     }
 }

@@ -1,73 +1,71 @@
-use crate::client::http::HttpClient;
+use std::sync::Arc;
+
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, join_url, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 /// File delete request (DELETE /paas/v4/files/{file_id})
 pub struct FileDeleteRequest {
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    file_id: String,
+    http_config: Arc<HttpClientConfig>,
     _body: (),
 }
 
 impl FileDeleteRequest {
     pub fn new(key: String, file_id: impl Into<String>) -> Self {
-        let url = format!(
-            "https://open.bigmodel.cn/api/paas/v4/files/{}",
-            file_id.into()
-        );
+        let file_id = file_id.into();
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, &join_url(paths::FILES, &file_id));
         Self {
             key,
             url,
+            endpoint_config,
+            api_base,
+            file_id,
+            http_config: Arc::new(HttpClientConfig::default()),
             _body: (),
         }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, &join_url(paths::FILES, &self.file_id));
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     pub fn delete(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
-        let url = self.url.clone();
-        let key = self.key.clone();
-        async move {
-            let resp = reqwest::Client::new()
-                .delete(url)
-                .bearer_auth(key)
-                .send()
-                .await?;
-
-            let status = resp.status();
-            if status.is_success() {
-                return Ok(resp);
-            }
-            let text = resp.text().await.unwrap_or_default();
-            #[derive(serde::Deserialize)]
-            struct ErrEnv {
-                error: ErrObj,
-            }
-            #[derive(serde::Deserialize)]
-            struct ErrObj {
-                _code: serde_json::Value,
-                message: String,
-            }
-
-            if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    parsed.error.message,
-                ))
-            } else {
-                Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    text,
-                ))
-            }
-        }
+        HttpClient::delete(self)
     }
 
     /// Send delete request and parse typed response.
     pub async fn send(&self) -> crate::ZaiResult<super::response::FileDeleteResponse> {
         let resp = self.delete().await?;
-        let parsed = resp.json::<super::response::FileDeleteResponse>().await?;
-        Ok(parsed)
+        parse_typed_response::<super::response::FileDeleteResponse>(resp).await
     }
 }
 
@@ -84,5 +82,9 @@ impl HttpClient for FileDeleteRequest {
     }
     fn body(&self) -> &Self::Body {
         &self._body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }

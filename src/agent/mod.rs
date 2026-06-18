@@ -29,7 +29,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::client::http::{HttpClientConfig, http_client_with_config, parse_api_error_response};
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, join_url, paths},
+    http::{HttpClientConfig, parse_typed_response, send_empty_request, send_json_request},
+};
 
 pub mod request;
 pub mod response;
@@ -37,8 +40,8 @@ pub mod response;
 pub use request::*;
 pub use response::*;
 
-/// Agent API endpoint for creating and managing AI agents
-pub const AGENT_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/agents";
+/// Agent API path for creating and managing AI agents.
+pub const AGENT_API_PATH: &str = paths::AGENTS;
 
 /// Agent client for managing AI agent interactions
 ///
@@ -57,35 +60,42 @@ pub const AGENT_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/agents";
 /// ```
 pub struct AgentClient {
     api_key: String,
-    base_url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
     http_config: HttpClientConfig,
-    client: reqwest::Client,
 }
 
 impl AgentClient {
     /// Create a new Agent API client
     pub fn new(api_key: impl Into<String>) -> Self {
         let config = HttpClientConfig::default();
-        let client = http_client_with_config(&config);
         Self {
             api_key: api_key.into(),
-            base_url: AGENT_API_URL.to_string(),
+            endpoint_config: EndpointConfig::default(),
+            api_base: ApiBase::PaasV4,
             http_config: config,
-            client,
         }
     }
 
     /// Create a new agent with custom base URL
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = base_url.into();
+        self.api_base = ApiBase::Custom(base_url.into());
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
         self
     }
 
     /// Set custom HTTP client configuration (timeout, retries, etc.)
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.client = http_client_with_config(&config);
         self.http_config = config;
         self
+    }
+
+    fn url(&self, path: &str) -> String {
+        self.endpoint_config.url(&self.api_base, path)
     }
 
     /// Create a new AI agent
@@ -93,12 +103,12 @@ impl AgentClient {
         &self,
         request: AgentCreateRequest,
     ) -> crate::ZaiResult<AgentCreateResponse> {
-        self.send_request(&self.base_url, &request).await
+        self.send_request(&self.url(paths::AGENTS), &request).await
     }
 
     /// Get agent details by ID
     pub async fn get_agent(&self, agent_id: &str) -> crate::ZaiResult<AgentDetails> {
-        let url = format!("{}/{}", self.base_url, agent_id);
+        let url = self.url(&join_url(paths::AGENTS, agent_id));
         self.send_get_request(&url).await
     }
 
@@ -108,27 +118,21 @@ impl AgentClient {
         agent_id: &str,
         request: AgentUpdateRequest,
     ) -> crate::ZaiResult<AgentUpdateResponse> {
-        let url = format!("{}/{}", self.base_url, agent_id);
+        let url = self.url(&join_url(paths::AGENTS, agent_id));
         self.send_request(&url, &request).await
     }
 
     /// Delete an agent
     pub async fn delete_agent(&self, agent_id: &str) -> crate::ZaiResult<AgentDeleteResponse> {
-        let url = format!("{}/{}", self.base_url, agent_id);
-        let response = self
-            .client
-            .delete(&url)
-            .bearer_auth(&self.api_key)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            Ok(response.json().await?)
-        } else {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            Err(parse_api_error_response(status, body))
-        }
+        let url = self.url(&join_url(paths::AGENTS, agent_id));
+        let response = send_empty_request(
+            reqwest::Method::DELETE,
+            url,
+            &self.api_key,
+            std::sync::Arc::new(self.http_config.clone()),
+        )
+        .await?;
+        parse_typed_response::<AgentDeleteResponse>(response).await
     }
 
     /// Send a chat message to an agent
@@ -137,7 +141,7 @@ impl AgentClient {
         agent_id: &str,
         request: AgentChatRequest,
     ) -> crate::ZaiResult<AgentChatResponse> {
-        let url = format!("{}/{}/chat", self.base_url, agent_id);
+        let url = self.url(&join_url(&join_url(paths::AGENTS, agent_id), "chat"));
         self.send_request(&url, &request).await
     }
 
@@ -147,7 +151,7 @@ impl AgentClient {
         agent_id: &str,
         limit: Option<u32>,
     ) -> crate::ZaiResult<ConversationHistory> {
-        let mut url = format!("{}/{}/history", self.base_url, agent_id);
+        let mut url = self.url(&join_url(&join_url(paths::AGENTS, agent_id), "history"));
         if let Some(l) = limit {
             url.push_str(&format!("?limit={}", l));
         }
@@ -160,22 +164,15 @@ impl AgentClient {
         url: &str,
         body: &T,
     ) -> crate::ZaiResult<R> {
-        let response = self
-            .client
-            .post(url)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .json(body)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            Ok(response.json().await?)
-        } else {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            Err(parse_api_error_response(status, body))
-        }
+        let response = send_json_request(
+            reqwest::Method::POST,
+            url.to_string(),
+            &self.api_key,
+            body,
+            std::sync::Arc::new(self.http_config.clone()),
+        )
+        .await?;
+        parse_typed_response::<R>(response).await
     }
 
     /// Internal method to send GET requests (reuses connection pool)
@@ -183,19 +180,13 @@ impl AgentClient {
         &self,
         url: &str,
     ) -> crate::ZaiResult<R> {
-        let response = self
-            .client
-            .get(url)
-            .bearer_auth(&self.api_key)
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            Ok(response.json().await?)
-        } else {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            Err(parse_api_error_response(status, body))
-        }
+        let response = send_empty_request(
+            reqwest::Method::GET,
+            url.to_string(),
+            &self.api_key,
+            std::sync::Arc::new(self.http_config.clone()),
+        )
+        .await?;
+        parse_typed_response::<R>(response).await
     }
 }

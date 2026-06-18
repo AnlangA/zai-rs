@@ -1,8 +1,13 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use crate::{
     ZaiResult,
-    client::http::HttpClient,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, paths},
+        http::{HttpClient, HttpClientConfig, parse_typed_response},
+    },
     tool::web_search::{request::*, response::*},
 };
 
@@ -10,6 +15,10 @@ use crate::{
 pub struct WebSearchRequest {
     /// API key for authentication
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     /// Request body
     body: WebSearchBody,
 }
@@ -22,15 +31,44 @@ impl WebSearchRequest {
     /// * `search_query` - Search query content (max 70 characters)
     /// * `search_engine` - Search engine to use
     pub fn new(key: String, search_query: String, search_engine: SearchEngine) -> Self {
-        Self {
-            key,
-            body: WebSearchBody::new(search_query, search_engine),
-        }
+        let body = WebSearchBody::new(search_query, search_engine);
+        Self::with_body(key, body)
     }
 
     /// Create a web search request with a pre-configured body
     pub fn with_body(key: String, body: WebSearchBody) -> Self {
-        Self { key, body }
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::WEB_SEARCH);
+        Self {
+            key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            body,
+        }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self.endpoint_config.url(&self.api_base, paths::WEB_SEARCH);
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     /// Enable search intent recognition
@@ -84,7 +122,7 @@ impl WebSearchRequest {
     pub async fn send(&self) -> ZaiResult<WebSearchResponse> {
         self.validate()?;
         let resp: reqwest::Response = self.post().await?;
-        let parsed = resp.json::<WebSearchResponse>().await?;
+        let parsed = parse_typed_response::<WebSearchResponse>(resp).await?;
         Ok(parsed)
     }
 }
@@ -92,11 +130,11 @@ impl WebSearchRequest {
 #[async_trait]
 impl HttpClient for WebSearchRequest {
     type Body = WebSearchBody;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/web_search"
+        &self.url
     }
 
     fn api_key(&self) -> &Self::ApiKey {
@@ -105,5 +143,9 @@ impl HttpClient for WebSearchRequest {
 
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

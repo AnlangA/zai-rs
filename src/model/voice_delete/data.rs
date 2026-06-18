@@ -1,18 +1,60 @@
+use std::sync::Arc;
+
 use validator::Validate;
 
 use super::request::VoiceDeleteBody;
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 /// Voice delete request using JSON body
 pub struct VoiceDeleteRequest {
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     body: VoiceDeleteBody,
 }
 
 impl VoiceDeleteRequest {
     pub fn new(key: String, voice: impl Into<String>) -> Self {
         let body = VoiceDeleteBody::new(voice);
-        Self { key, body }
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::VOICE_DELETE);
+        Self {
+            key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            body,
+        }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::VOICE_DELETE);
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
@@ -33,23 +75,27 @@ impl VoiceDeleteRequest {
     pub async fn send(&self) -> crate::ZaiResult<super::response::VoiceDeleteResponse> {
         self.validate()?;
         let resp = self.post().await?;
-        let parsed = resp.json::<super::response::VoiceDeleteResponse>().await?;
+        let parsed = parse_typed_response::<super::response::VoiceDeleteResponse>(resp).await?;
         Ok(parsed)
     }
 }
 
 impl HttpClient for VoiceDeleteRequest {
     type Body = VoiceDeleteBody;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/voice/delete"
+        &self.url
     }
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

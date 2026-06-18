@@ -8,6 +8,7 @@ use std::{
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tokio::{task::JoinSet, time::timeout};
+use tracing::warn;
 
 use super::{
     cache::{CacheKey, ToolCallCache},
@@ -313,7 +314,7 @@ impl ToolExecutor {
                     retries += 1;
 
                     if self.config.enable_logging {
-                        eprintln!("Tool execution failed (attempt {}): {}", retries, error);
+                        warn!(attempt = retries, error = %error, "Tool execution failed");
                     }
 
                     // Use exponential backoff

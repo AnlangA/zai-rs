@@ -22,15 +22,15 @@
 | glm-5.1 | `GLM5_1` | ✓ | ✗ | ✓ | ✓ |
 | glm-5 | `GLM5` | ✓ | ✗ | ✓ | ✓ |
 | glm-5-turbo | `GLM5_turbo` | ✓ | ✗ | ✓ | ✓ |
-| glm-4.7 | `GLM4_7` | ✓ | ✓ | ✓ |
-| glm-4.7-flash | `GLM4_7_flash` | ✓ | ✓ | ✗ |
-| glm-4.7-flashx | `GLM4_7_flashx` | ✓ | ✓ | ✗ |
-| glm-4.6 | `GLM4_6` | ✓ | ✓ | ✓ |
-| glm-4.5 | `GLM4_5` | ✓ | ✓ | ✗ |
-| glm-4.5-X | `GLM4_5_x` | ✓ | ✓ | ✗ |
-| glm-4.5-air | `GLM4_5_air` | ✓ | ✓ | ✗ |
-| glm-4.5-airx | `GLM4_5_airx` | ✓ | ✓ | ✗ |
-| glm-4.5-flash | `GLM4_5_flash` | ✓ | ✓ | ✗ |
+| glm-4.7 | `GLM4_7` | ✓ | ✗ | ✓ | ✓ |
+| glm-4.7-flash | `GLM4_7_flash` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.7-flashx | `GLM4_7_flashx` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.6 | `GLM4_6` | ✓ | ✗ | ✓ | ✓ |
+| glm-4.5 | `GLM4_5` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.5-X | `GLM4_5_x` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.5-air | `GLM4_5_air` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.5-airx | `GLM4_5_airx` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.5-flash | `GLM4_5_flash` | ✓ | ✗ | ✓ | ✗ |
 
 ### 文本视觉模型
 

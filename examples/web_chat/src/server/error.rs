@@ -1,12 +1,13 @@
 //! Error types and handling for the web chat application
 
+use std::fmt;
+
 use axum::{
-    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use thiserror::Error;
 
 /// Main application error type
@@ -130,6 +131,13 @@ pub type AppResult<T> = Result<T, AppError>;
 /// Convert from local ClientError to AppError
 impl From<crate::client::error_handler::ClientError> for AppError {
     fn from(error: crate::client::error_handler::ClientError) -> Self {
+        AppError::ChatApi(error.to_string())
+    }
+}
+
+/// Convert from SDK errors to AppError
+impl From<zai_rs::ZaiError> for AppError {
+    fn from(error: zai_rs::ZaiError) -> Self {
         AppError::ChatApi(error.to_string())
     }
 }

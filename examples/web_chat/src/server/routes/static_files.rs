@@ -1,11 +1,12 @@
 //! Static file serving routes
 
+use std::path::PathBuf;
+
 use axum::{
     extract::Path,
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
-use std::path::PathBuf;
 use tower_http::services::ServeDir;
 
 /// Serve static files from the static directory
@@ -35,9 +36,13 @@ pub async fn static_files(Path(file_path): Path<PathBuf>) -> impl IntoResponse {
                 .body(axum::body::Body::from(content))
             {
                 Ok(response) => response.into_response(),
-                Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to build response").into_response(),
+                Err(_) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to build response",
+                )
+                    .into_response(),
             }
-        }
+        },
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file").into_response(),
     }
 }

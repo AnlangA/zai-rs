@@ -9,7 +9,8 @@ pub async fn index_handler() -> Html<&'static str> {
 
 /// Serve a minimal HTML page for testing
 pub async fn minimal_handler() -> Html<&'static str> {
-    Html(r#"
+    Html(
+        r#"
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -32,5 +33,6 @@ pub async fn minimal_handler() -> Html<&'static str> {
     </script>
 </body>
 </html>
-    "#)
+    "#,
+    )
 }

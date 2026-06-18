@@ -1,7 +1,15 @@
+use std::sync::Arc;
+
 use url::Url;
 
 use super::types::DocumentListResponse;
-use crate::{ZaiResult, client::http::HttpClient};
+use crate::{
+    ZaiResult,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, paths},
+        http::{HttpClient, HttpClientConfig, parse_typed_response},
+    },
+};
 
 /// Query parameters for listing documents under a knowledge base
 #[derive(Debug, Clone, serde::Serialize, validator::Validate)]
@@ -51,41 +59,71 @@ pub struct DocumentListRequest {
     /// Bearer API key
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
+    query: Option<DocumentListQuery>,
     _body: (),
 }
 
 impl DocumentListRequest {
     pub fn new(key: String) -> Self {
-        let url = "https://open.bigmodel.cn/api/llm-application/open/document".to_string();
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::LlmApplication;
+        let url = endpoint_config.url(&api_base, paths::DOCUMENT);
         Self {
             key,
             url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            query: None,
             _body: (),
         }
     }
 
-    fn rebuild_url(&mut self, q: &DocumentListQuery) {
-        let mut url =
-            Url::parse("https://open.bigmodel.cn/api/llm-application/open/document").unwrap();
-        {
-            let mut pairs = url.query_pairs_mut();
-            pairs.append_pair("knowledge_id", &q.knowledge_id);
-            if let Some(page) = q.page.as_ref() {
-                pairs.append_pair("page", &page.to_string());
-            }
-            if let Some(size) = q.size.as_ref() {
-                pairs.append_pair("size", &size.to_string());
-            }
-            if let Some(word) = q.word.as_ref() {
-                pairs.append_pair("word", word);
+    fn rebuild_url(&mut self) {
+        let endpoint = self.endpoint_config.url(&self.api_base, paths::DOCUMENT);
+        let mut url = Url::parse(&endpoint).unwrap();
+        if let Some(q) = &self.query {
+            {
+                let mut pairs = url.query_pairs_mut();
+                pairs.append_pair("knowledge_id", &q.knowledge_id);
+                if let Some(page) = q.page.as_ref() {
+                    pairs.append_pair("page", &page.to_string());
+                }
+                if let Some(size) = q.size.as_ref() {
+                    pairs.append_pair("size", &size.to_string());
+                }
+                if let Some(word) = q.word.as_ref() {
+                    pairs.append_pair("word", word);
+                }
             }
         }
         self.url = url.to_string();
     }
 
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
+    }
+
     /// Apply query by rebuilding internal URL
     pub fn with_query(mut self, q: DocumentListQuery) -> Self {
-        self.rebuild_url(&q);
+        self.query = Some(q);
+        self.rebuild_url();
         self
     }
 
@@ -96,14 +134,15 @@ impl DocumentListRequest {
     ) -> ZaiResult<DocumentListResponse> {
         use validator::Validate;
         q.validate()?;
-        self.rebuild_url(q);
+        self.query = Some(q.clone());
+        self.rebuild_url();
         self.send().await
     }
 
     /// Send and parse typed response
     pub async fn send(&self) -> ZaiResult<DocumentListResponse> {
         let resp = self.get().await?;
-        let parsed = resp.json::<DocumentListResponse>().await?;
+        let parsed = parse_typed_response::<DocumentListResponse>(resp).await?;
         Ok(parsed)
     }
 }
@@ -121,5 +160,9 @@ impl HttpClient for DocumentListRequest {
     }
     fn body(&self) -> &Self::Body {
         &self._body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

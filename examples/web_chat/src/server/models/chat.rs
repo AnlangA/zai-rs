@@ -2,7 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 use validator::Validate;
-use zai_rs::model::{TextMessage, ThinkingMode, ThinkingType, chat_models::GLM4_6};
+use zai_rs::model::{
+    chat_base_response::ChatCompletionResponse, chat_models::GLM4_6, TextMessage, ThinkingMode,
+    ThinkingType,
+};
+
+use crate::server::error::AppResult;
 
 /// Chat request payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -30,11 +35,11 @@ pub struct ChatRequest {
         max = 2.0,
         message = "Temperature must be between 0.0 and 2.0"
     ))]
-    pub temperature: Option<f32>,
+    pub temperature: Option<f64>,
 
     /// Top-p sampling parameter (0.0 - 1.0)
     #[validate(range(min = 0.0, max = 1.0, message = "Top-p must be between 0.0 and 1.0"))]
-    pub top_p: Option<f32>,
+    pub top_p: Option<f64>,
 
     /// Maximum tokens to generate
     #[validate(range(min = 1, max = 8192, message = "Max tokens must be between 1 and 8192"))]
@@ -69,12 +74,12 @@ impl ChatRequest {
     }
 
     /// Get the effective temperature
-    pub fn get_temperature(&self) -> f32 {
+    pub fn get_temperature(&self) -> f64 {
         self.temperature.unwrap_or(0.7)
     }
 
     /// Get the effective top-p
-    pub fn get_top_p(&self) -> f32 {
+    pub fn get_top_p(&self) -> f64 {
         self.top_p.unwrap_or(0.9)
     }
 
@@ -132,8 +137,8 @@ pub struct ResponseMetadata {
 /// Generation parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenerationParameters {
-    pub temperature: f32,
-    pub top_p: f32,
+    pub temperature: f64,
+    pub top_p: f64,
     pub max_tokens: u32,
 }
 
@@ -190,8 +195,8 @@ pub struct ChatCompletionBuilder {
     model: GLM4_6,
     messages: Vec<TextMessage>,
     api_key: String,
-    temperature: f32,
-    top_p: f32,
+    temperature: f64,
+    top_p: f64,
     thinking: ThinkingType,
     stream: bool,
 }
@@ -217,13 +222,13 @@ impl ChatCompletionBuilder {
     }
 
     /// Set temperature
-    pub fn temperature(mut self, temperature: f32) -> Self {
+    pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = temperature.clamp(0.0, 2.0);
         self
     }
 
     /// Set top-p
-    pub fn top_p(mut self, top_p: f32) -> Self {
+    pub fn top_p(mut self, top_p: f64) -> Self {
         self.top_p = top_p.clamp(0.0, 1.0);
         self
     }
@@ -245,11 +250,12 @@ impl ChatCompletionBuilder {
     }
 
     /// Build the chat completion client
-    pub fn build(self) -> zai_rs::AppResult<zai_rs::model::ChatCompletion<GLM4_6, TextMessage>> {
+    pub fn build(self) -> AppResult<zai_rs::model::ChatCompletion<GLM4_6, TextMessage>> {
         if self.messages.is_empty() {
             return Err(crate::client::error_handler::ClientError::InvalidRequest(
                 "No messages provided".to_string(),
-            ));
+            )
+            .into());
         }
 
         let mut client =
@@ -271,6 +277,31 @@ impl ChatCompletionBuilder {
 pub mod chat_utils {
     use super::*;
 
+    /// Return the API role for a text message.
+    pub fn text_message_role(message: &TextMessage) -> &'static str {
+        match message {
+            TextMessage::User { .. } => "user",
+            TextMessage::Assistant { .. } => "assistant",
+            TextMessage::System { .. } => "system",
+            TextMessage::Tool { .. } => "tool",
+        }
+    }
+
+    /// Return text content for display/export. Tool call metadata is omitted.
+    pub fn text_message_content(message: &TextMessage) -> String {
+        match message {
+            TextMessage::User { content }
+            | TextMessage::System { content }
+            | TextMessage::Tool { content, .. } => content.clone(),
+            TextMessage::Assistant { content, .. } => content.clone().unwrap_or_default(),
+        }
+    }
+
+    /// Return JSON content for history responses.
+    pub fn text_message_content_value(message: &TextMessage) -> serde_json::Value {
+        serde_json::Value::String(text_message_content(message))
+    }
+
     /// Create a system message
     pub fn system_message(content: impl Into<String>) -> TextMessage {
         TextMessage::system(content.into())
@@ -287,12 +318,10 @@ pub mod chat_utils {
     }
 
     /// Extract text content from AI response
-    pub fn extract_text_from_response(
-        response: &zai_rs::model::ChatBaseResponse,
-    ) -> Option<String> {
+    pub fn extract_text_from_response(response: &ChatCompletionResponse) -> Option<String> {
         response
             .choices()
-            .and_then(|choices| choices.get(0))
+            .and_then(|choices| choices.first())
             .and_then(|choice| choice.message().content())
             .and_then(|content| content.as_str())
             .map(|s| s.to_string())
@@ -300,7 +329,7 @@ pub mod chat_utils {
 
     /// Extract text from streaming chunk
     pub fn extract_text_from_chunk(chunk: &zai_rs::model::ChatStreamResponse) -> Option<String> {
-        chunk.choices.get(0)?.delta.as_ref()?.content.clone()
+        chunk.choices.first()?.delta.as_ref()?.content.clone()
     }
 
     /// Extract reasoning content from streaming chunk
@@ -309,7 +338,7 @@ pub mod chat_utils {
     ) -> Option<String> {
         chunk
             .choices
-            .get(0)?
+            .first()?
             .delta
             .as_ref()?
             .reasoning_content
@@ -363,18 +392,18 @@ mod tests {
     #[test]
     fn test_chat_utils() {
         let sys_msg = chat_utils::system_message("System message");
-        assert_eq!(sys_msg.role, "system");
-        assert_eq!(sys_msg.content, serde_json::json!("System message"));
+        assert_eq!(chat_utils::text_message_role(&sys_msg), "system");
+        assert_eq!(chat_utils::text_message_content(&sys_msg), "System message");
 
         let user_msg = chat_utils::user_message("User message");
-        assert_eq!(user_msg.role, "user");
-        assert_eq!(user_msg.content, serde_json::json!("User message"));
+        assert_eq!(chat_utils::text_message_role(&user_msg), "user");
+        assert_eq!(chat_utils::text_message_content(&user_msg), "User message");
 
         let assistant_msg = chat_utils::assistant_message("Assistant message");
-        assert_eq!(assistant_msg.role, "assistant");
+        assert_eq!(chat_utils::text_message_role(&assistant_msg), "assistant");
         assert_eq!(
-            assistant_msg.content,
-            serde_json::json!("Assistant message")
+            chat_utils::text_message_content(&assistant_msg),
+            "Assistant message"
         );
     }
 }

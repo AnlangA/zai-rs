@@ -24,7 +24,7 @@
 //! | Tool calling | Function calling, web search, file parsing | [`tool`] |
 //! | Agent | Agent creation & management | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
-//! | Real-time | WebSocket audio/video (framework ready) | [`realTime`] |
+//! | Real-time | WebSocket audio/video (framework ready) | [`realtime`] |
 //!
 //! # Module Structure
 //!
@@ -39,7 +39,8 @@
 //! - [`agent`] — Agent API (creation, chat, history)
 //! - [`toolkits`] — Tool execution framework (registration, execution, caching,
 //!   RMCP bridge)
-//! - [`realTime`] — Real-time audio/video communication (WebSocket)
+//! - [`realtime`] — Real-time audio/video communication (WebSocket,
+//!   experimental)
 //!
 //! # Quick Start
 //!
@@ -118,7 +119,16 @@ pub mod file;
 pub mod knowledge;
 
 pub mod model;
+pub mod realtime {
+    //! Canonical realtime API module.
+    //!
+    //! Re-exports the experimental realtime framework while the legacy
+    //! [`crate::realTime`] module remains available for transition.
+    #[allow(deprecated)]
+    pub use crate::realTime::*;
+}
 #[allow(non_snake_case)]
+#[deprecated(note = "use realtime instead; realtime support is experimental")]
 pub mod realTime;
 pub mod tool;
 pub mod toolkits;

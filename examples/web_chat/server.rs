@@ -15,6 +15,7 @@ use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tower_http::{cors::CorsLayer, services::ServeDir};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 use zai_rs::model::*;
 
@@ -140,7 +141,7 @@ async fn chat_handler(
             }))
         },
         Err(e) => {
-            eprintln!("Chat API error: {:?}", e);
+            error!(error = ?e, "Chat API error");
             Ok(Json(ChatResponse {
                 reply: "服务器内部错误，请稍后重试。".to_string(),
                 session_id,
@@ -177,7 +178,7 @@ async fn chat_stream_handler(
 
     // Spawn streaming task
     let sessions_clone = sessions.clone();
-    eprintln!("🚀 开始流式响应，会话ID: {}", session_id_clone);
+    info!(session_id = %session_id_clone, "开始流式响应");
 
     tokio::spawn(async move {
         let accumulated_response = Arc::new(RwLock::new(String::new()));
@@ -197,7 +198,7 @@ async fn chat_stream_handler(
                         {
                             let mut acc = acc_ref.write().await;
                             acc.push_str(content);
-                            eprintln!("📝 收到流式数据块 ({} chars): {:?}", content.len(), content);
+                            info!(chars = content.len(), content = %content, "收到流式数据块");
                         }
 
                         let stream_chunk = StreamChunk {
@@ -206,9 +207,9 @@ async fn chat_stream_handler(
                             done: false,
                         };
                         if (tx.send(stream_chunk).await).is_err() {
-                            eprintln!("❌ 发送流式数据块失败");
+                            warn!("发送流式数据块失败");
                         } else {
-                            eprintln!("✅ 流式数据块已发送");
+                            info!("流式数据块已发送");
                         }
                     }
                     Ok(())
@@ -253,11 +254,11 @@ async fn chat_stream_handler(
         match rx.recv().await {
             Some(chunk) => {
                 let json = serde_json::to_string(&chunk).unwrap_or_default();
-                eprintln!("📤 发送SSE事件: {} chars, done: {}", json.len(), chunk.done);
+                info!(chars = json.len(), done = chunk.done, "发送SSE事件");
                 Some((Ok(Event::default().data(json)), rx))
             },
             None => {
-                eprintln!("🔚 SSE流结束");
+                info!("SSE流结束");
                 None
             },
         }
@@ -274,7 +275,11 @@ async fn index_handler() -> Html<&'static str> {
 /// Start the web server
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     // Check for API key
     std::env::var("ZHIPU_API_KEY").expect("请先在环境变量中设置 ZHIPU_API_KEY");

@@ -1,12 +1,13 @@
 //! Middleware for the web_chat application
 
+use std::time::Instant;
+
 use axum::{
     extract::Request,
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use std::time::Instant;
 use tracing::{info, warn};
 
 /// Request logging middleware
@@ -49,15 +50,21 @@ pub async fn cors_middleware(req: Request, next: Next) -> Result<Response, Statu
 
     response.headers_mut().insert(
         "Access-Control-Allow-Origin",
-        "http://localhost:3000".parse().expect("Invalid CORS origin value"),
+        "http://localhost:3000"
+            .parse()
+            .expect("Invalid CORS origin value"),
     );
     response.headers_mut().insert(
         "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS".parse().expect("Invalid CORS methods value"),
+        "GET, POST, PUT, DELETE, OPTIONS"
+            .parse()
+            .expect("Invalid CORS methods value"),
     );
     response.headers_mut().insert(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization".parse().expect("Invalid CORS headers value"),
+        "Content-Type, Authorization"
+            .parse()
+            .expect("Invalid CORS headers value"),
     );
 
     Ok(response)

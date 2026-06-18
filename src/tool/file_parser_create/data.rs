@@ -3,12 +3,18 @@
 //! This module provides the file parser creation client for creating file
 //! parsing tasks.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
-use serde_json;
+use tracing::{debug, info};
 
 use super::{request::*, response::*};
-use crate::ZaiResult;
+use crate::{
+    ZaiResult,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, paths},
+        http::{HttpClientConfig, parse_typed_response, send_multipart_request},
+    },
+};
 
 /// File parser creation client.
 ///
@@ -34,6 +40,10 @@ use crate::ZaiResult;
 pub struct FileParserCreateRequest {
     /// API key for authentication
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     /// Path to the file to parse
     pub file_path: std::path::PathBuf,
     /// Parsing tool type to use
@@ -81,8 +91,16 @@ impl FileParserCreateRequest {
             });
         }
 
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::FILE_PARSER_CREATE);
+
         Ok(Self {
             key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
             file_path: file_path.to_path_buf(),
             tool_type,
             file_type,
@@ -120,17 +138,34 @@ impl FileParserCreateRequest {
         Self::new(key, file_path, tool_type, file_type)
     }
 
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::FILE_PARSER_CREATE);
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::FILE_PARSER_CREATE);
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
+    }
+
     /// Sends the file parser task creation request.
     ///
     /// ## Returns
     ///
     /// A `FileParserCreateResponse` containing the task ID and status.
     pub async fn send(&self) -> ZaiResult<FileParserCreateResponse> {
-        println!("📤 Creating file parser task...");
-        println!("📁 File: {}", self.file_path.display());
-        println!("🛠️  Tool type: {:?}", self.tool_type);
-        println!("📄 File type: {:?}", self.file_type);
-        println!("🔑 API key: {}...", &self.key[..10]);
+        info!(file = %self.file_path.display(), "Creating file parser task");
 
         let file_bytes = tokio::fs::read(&self.file_path).await?;
         let file_name = self
@@ -140,51 +175,27 @@ impl FileParserCreateRequest {
             .to_string_lossy()
             .to_string();
 
-        println!("📊 File size: {} bytes", file_bytes.len());
-        println!("📝 File name: {}", file_name);
+        debug!(bytes = file_bytes.len(), file_name = %file_name, "Prepared parser upload");
 
-        let file_part = reqwest::multipart::Part::bytes(file_bytes)
-            .file_name(file_name)
-            .mime_str("application/octet-stream")?;
+        let url = self.url.clone();
+        let key = self.key.clone();
+        let config = self.http_config.clone();
+        let tool_type = self.tool_type.clone();
+        let file_type = self.file_type.clone();
+        let response = send_multipart_request(reqwest::Method::POST, url, key, config, move || {
+            let file_part = reqwest::multipart::Part::bytes(file_bytes.clone())
+                .file_name(file_name.clone())
+                .mime_str("application/octet-stream")?;
+            Ok(reqwest::multipart::Form::new()
+                .part("file", file_part)
+                .text("tool_type", format!("{:?}", tool_type).to_lowercase())
+                .text("file_type", format!("{:?}", file_type)))
+        })
+        .await?;
 
-        let form = reqwest::multipart::Form::new()
-            .part("file", file_part)
-            .text("tool_type", format!("{:?}", self.tool_type).to_lowercase())
-            .text("file_type", format!("{:?}", self.file_type));
+        let create_response = parse_typed_response::<FileParserCreateResponse>(response).await?;
 
-        let client = reqwest::Client::new();
-        println!("🌐 Sending request to: https://open.bigmodel.cn/api/paas/v4/files/parser/create");
-
-        let response = client
-            .post("https://open.bigmodel.cn/api/paas/v4/files/parser/create")
-            .bearer_auth(&self.key)
-            .multipart(form)
-            .send()
-            .await?;
-
-        let status = response.status();
-        println!("📡 Response status: {}", status);
-
-        let response_text = response.text().await.unwrap_or_default();
-        println!("📄 Raw response: {}", response_text);
-
-        if !status.is_success() {
-            return Err(crate::client::error::ZaiError::HttpError {
-                status: status.as_u16(),
-                message: response_text,
-            });
-        }
-
-        let create_response: FileParserCreateResponse = serde_json::from_str(&response_text)
-            .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
-                message: format!(
-                    "Failed to decode response: {} - Response was: {}",
-                    e, response_text
-                ),
-            })?;
-
-        println!("✅ Task created successfully: {:?}", create_response);
+        info!(task_id = %create_response.task_id, "File parser task created");
 
         if !create_response.is_success() {
             return Err(crate::client::error::ZaiError::ApiError {

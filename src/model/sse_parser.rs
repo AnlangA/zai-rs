@@ -3,6 +3,71 @@
 //! Extracts the common logic of buffering raw byte chunks, splitting on `\n`,
 //! trimming `\r\n`, and yielding `data: ` prefixed payload lines.
 
+/// Incremental SSE event parser.
+///
+/// Unlike [`extract_sse_data_lines`], this parser follows event boundaries and
+/// joins multiple `data:` lines in the same event with `\n`.
+#[derive(Debug, Default)]
+pub struct SseEventParser {
+    buf: Vec<u8>,
+    event_data: Vec<Vec<u8>>,
+}
+
+impl SseEventParser {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Push a transport byte chunk and return completed SSE event payloads.
+    pub fn push(&mut self, new_bytes: &[u8]) -> Vec<Vec<u8>> {
+        self.buf.extend_from_slice(new_bytes);
+        let mut events = Vec::new();
+
+        while let Some(newline_index) = self.buf.iter().position(|&b| b == b'\n') {
+            let mut line = self.buf.drain(..=newline_index).collect::<Vec<_>>();
+            if line.ends_with(b"\n") {
+                line.pop();
+            }
+            if line.ends_with(b"\r") {
+                line.pop();
+            }
+
+            if line.is_empty() {
+                if !self.event_data.is_empty() {
+                    events.push(join_event_data(&self.event_data));
+                    self.event_data.clear();
+                }
+                continue;
+            }
+
+            if line.starts_with(b":") {
+                continue;
+            }
+
+            if let Some(rest) = line.strip_prefix(b"data:") {
+                self.event_data.push(trim_one_leading_space(rest).to_vec());
+            }
+        }
+
+        events
+    }
+}
+
+fn trim_one_leading_space(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b" ").unwrap_or(bytes)
+}
+
+fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
+    let mut event = Vec::new();
+    for (idx, line) in lines.iter().enumerate() {
+        if idx > 0 {
+            event.push(b'\n');
+        }
+        event.extend_from_slice(line);
+    }
+    event
+}
+
 /// Process a new chunk of bytes, extract completed SSE data lines.
 ///
 /// Appends `new_bytes` to `buf`, then extracts all complete lines (delimited
@@ -109,5 +174,26 @@ mod tests {
         let lines = extract_sse_data_lines(&mut buf, b"\n\n\ndata: hello\n\n");
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0], b"hello");
+    }
+
+    #[test]
+    fn event_parser_yields_complete_events() {
+        let mut parser = SseEventParser::new();
+        assert!(parser.push(b"data: hel").is_empty());
+        assert_eq!(parser.push(b"lo\r\n\r\n"), vec![b"hello".to_vec()]);
+    }
+
+    #[test]
+    fn event_parser_joins_multi_data_lines() {
+        let mut parser = SseEventParser::new();
+        let events = parser.push(b"data: {\"a\":\ndata: 1}\n\n");
+        assert_eq!(events, vec![b"{\"a\":\n1}".to_vec()]);
+    }
+
+    #[test]
+    fn event_parser_ignores_comments_and_non_data_fields() {
+        let mut parser = SseEventParser::new();
+        let events = parser.push(b": keepalive\nid: 1\ndata: payload\n\n");
+        assert_eq!(events, vec![b"payload".to_vec()]);
     }
 }

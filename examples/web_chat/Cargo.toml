@@ -58,6 +58,9 @@ futures = "0.3.31"
 # Configuration
 config = "0.14"
 
+# Static file MIME type detection
+mime_guess = "2.0"
+
 [dev-dependencies]
 tokio-test = "0.4"
 

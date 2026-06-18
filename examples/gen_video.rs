@@ -9,7 +9,11 @@ use zai_rs::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
     let model = CogVideoX3 {};
     let key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");

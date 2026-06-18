@@ -1,10 +1,13 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::AudioToTextBody};
-use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response, send_multipart_request},
+};
 
 /// Audio transcription request (multipart/form-data)
 pub struct AudioToTextRequest<N>
@@ -12,6 +15,10 @@ where
     N: ModelName + AudioToText + Serialize,
 {
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     pub body: AudioToTextBody<N>,
     file_path: Option<String>,
 }
@@ -21,8 +28,15 @@ where
     N: ModelName + AudioToText + Serialize + Clone,
 {
     pub fn new(model: N, key: String) -> Self {
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::AUDIO_TRANSCRIPTIONS);
         Self {
             key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
             body: AudioToTextBody::new(model),
             file_path: None,
         }
@@ -50,6 +64,27 @@ where
 
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
+        self
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::AUDIO_TRANSCRIPTIONS);
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::AUDIO_TRANSCRIPTIONS);
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
         self
     }
 
@@ -87,9 +122,7 @@ where
 
         let resp = self.post().await?;
 
-        let parsed = resp.json::<super::response::AudioToTextResponse>().await?;
-
-        Ok(parsed)
+        parse_typed_response::<super::response::AudioToTextResponse>(resp).await
     }
 }
 
@@ -98,11 +131,11 @@ where
     N: ModelName + AudioToText + Serialize + Clone + Send + Sync + 'static,
 {
     type Body = AudioToTextBody<N>;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
+        &self.url
     }
 
     fn api_key(&self) -> &Self::ApiKey {
@@ -118,7 +151,8 @@ where
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let key = self.key.clone();
 
-        let url = (*self.api_url()).to_string();
+        let url = self.url.clone();
+        let config = self.http_config.clone();
 
         let body = self.body.clone();
 
@@ -131,13 +165,11 @@ where
                     message: "file_path is required".to_string(),
                 })?;
 
-            let mut form = reqwest::multipart::Form::new();
-
-            // file
             let file_name = Path::new(&file_path)
                 .file_name()
                 .and_then(|s| s.to_str())
-                .unwrap_or("audio.wav");
+                .unwrap_or("audio.wav")
+                .to_string();
             let file_bytes = tokio::fs::read(&file_path).await?;
 
             // Basic MIME guess by extension
@@ -147,38 +179,37 @@ where
                 "audio/wav"
             };
 
-            let part = reqwest::multipart::Part::bytes(file_bytes)
-                .file_name(file_name.to_string())
-                .mime_str(mime)?;
-            form = form.part("file", part);
-
-            // model
+            let temperature = body.temperature;
+            let stream = body.stream;
+            let request_id = body.request_id.clone();
+            let user_id = body.user_id.clone();
             let model_name: String = body.model.into();
-            form = form.text("model", model_name);
-
-            // Optional fields
-            if let Some(t) = body.temperature {
-                form = form.text("temperature", t.to_string());
-            }
-            if let Some(s) = body.stream {
-                form = form.text("stream", s.to_string());
-            }
-            if let Some(rid) = body.request_id {
-                form = form.text("request_id", rid);
-            }
-            if let Some(uid) = body.user_id {
-                form = form.text("user_id", uid);
-            }
-
-            let client = http_client_with_config(&HttpClientConfig::default());
-            let resp = client
-                .post(url)
-                .bearer_auth(key)
-                .multipart(form)
-                .send()
-                .await?;
-
-            Ok(resp)
+            send_multipart_request(reqwest::Method::POST, url, key, config, move || {
+                let part = reqwest::multipart::Part::bytes(file_bytes.clone())
+                    .file_name(file_name.clone())
+                    .mime_str(mime)?;
+                let mut form = reqwest::multipart::Form::new()
+                    .part("file", part)
+                    .text("model", model_name.clone());
+                if let Some(t) = temperature {
+                    form = form.text("temperature", t.to_string());
+                }
+                if let Some(s) = stream {
+                    form = form.text("stream", s.to_string());
+                }
+                if let Some(rid) = request_id.as_ref() {
+                    form = form.text("request_id", rid.clone());
+                }
+                if let Some(uid) = user_id.as_ref() {
+                    form = form.text("user_id", uid.clone());
+                }
+                Ok(form)
+            })
+            .await
         }
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }

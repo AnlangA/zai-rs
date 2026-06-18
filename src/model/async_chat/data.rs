@@ -1,10 +1,13 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use serde::Serialize;
 use validator::Validate;
 
 use super::super::{chat_base_request::*, tools::*, traits::*};
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 pub struct AsyncChatCompletion<N, M, S = StreamOff>
 where
@@ -14,6 +17,10 @@ where
     S: StreamState,
 {
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     body: ChatBody<N, M>,
     _stream: PhantomData<S>,
 }
@@ -26,9 +33,16 @@ where
 {
     pub fn new(model: N, messages: M, key: String) -> Self {
         let body = ChatBody::new(model, messages);
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::ASYNC_CHAT_COMPLETIONS);
         Self {
             body,
             key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
             _stream: PhantomData,
         }
     }
@@ -64,11 +78,11 @@ where
         self
     }
 
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.body = self.body.with_temperature(temperature);
         self
     }
-    pub fn with_top_p(mut self, top_p: f32) -> Self {
+    pub fn with_top_p(mut self, top_p: f64) -> Self {
         self.body = self.body.with_top_p(top_p);
         self
     }
@@ -90,6 +104,27 @@ where
     }
     pub fn with_stop(mut self, stop: String) -> Self {
         self.body = self.body.with_stop(stop);
+        self
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::ASYNC_CHAT_COMPLETIONS);
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::ASYNC_CHAT_COMPLETIONS);
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
         self
     }
 
@@ -116,6 +151,10 @@ where
         self.body.stream = Some(true);
         AsyncChatCompletion {
             key: self.key,
+            url: self.url,
+            endpoint_config: self.endpoint_config,
+            api_base: self.api_base,
+            http_config: self.http_config,
             body: self.body,
             _stream: PhantomData,
         }
@@ -148,9 +187,9 @@ where
 
         let resp: reqwest::Response = self.post().await?;
 
-        let parsed = resp
-            .json::<crate::model::chat_base_response::ChatCompletionResponse>()
-            .await?;
+        let parsed =
+            parse_typed_response::<crate::model::chat_base_response::ChatCompletionResponse>(resp)
+                .await?;
         Ok(parsed)
     }
 }
@@ -176,6 +215,10 @@ where
         self.body.tool_stream = None;
         AsyncChatCompletion {
             key: self.key,
+            url: self.url,
+            endpoint_config: self.endpoint_config,
+            api_base: self.api_base,
+            http_config: self.http_config,
             body: self.body,
             _stream: PhantomData,
         }
@@ -190,17 +233,21 @@ where
     S: StreamState,
 {
     type Body = ChatBody<N, M>;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/async/chat/completions"
+        &self.url
     }
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }
 

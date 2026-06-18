@@ -3129,6 +3129,7 @@ dependencies = [
  "dashmap",
  "dotenv",
  "futures",
+ "mime_guess",
  "reqwest 0.12.25",
  "serde",
  "serde_json",

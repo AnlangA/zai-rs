@@ -5,7 +5,11 @@ use zai_rs::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
@@ -26,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let status = resp.status();
     if !status.is_success() {
         let txt = resp.text().await.unwrap_or_default();
-        eprintln!("Request failed: {}\n{}", status, txt);
+        tracing::error!(%status, response = %txt, "Request failed");
         return Ok(());
     }
 

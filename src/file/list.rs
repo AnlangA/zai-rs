@@ -1,7 +1,15 @@
+use std::sync::Arc;
+
 use url::Url;
 
 use super::request::FileListQuery;
-use crate::{ZaiResult, client::http::HttpClient};
+use crate::{
+    ZaiResult,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, paths},
+        http::{HttpClient, HttpClientConfig, parse_typed_response},
+    },
+};
 
 /// Files list request (GET /paas/v4/files)
 ///
@@ -10,50 +18,76 @@ use crate::{ZaiResult, client::http::HttpClient};
 pub struct FileListRequest {
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    query: FileListQuery,
     _body: (),
+    http_config: Arc<HttpClientConfig>,
 }
 
 impl FileListRequest {
     pub fn new(key: String) -> Self {
-        let url = "https://open.bigmodel.cn/api/paas/v4/files".to_string();
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::FILES);
         Self {
             key,
             url,
+            endpoint_config,
+            api_base,
+            query: FileListQuery::new(),
             _body: (),
+            http_config: Arc::new(HttpClientConfig::default()),
         }
     }
 
-    fn rebuild_url(&mut self, q: &FileListQuery) {
-        // SAFETY: This URL is a constant and guaranteed to be valid
-        let mut url = Url::parse("https://open.bigmodel.cn/api/paas/v4/files")
-            .expect("hardcoded URL should be valid");
+    fn rebuild_url(&mut self) {
+        let mut url = Url::parse(&self.endpoint_config.url(&self.api_base, paths::FILES))
+            .expect("endpoint config URL should be valid");
         {
             let mut pairs = url.query_pairs_mut();
-            if let Some(after) = q.after.as_ref() {
+            if let Some(after) = self.query.after.as_ref() {
                 pairs.append_pair("after", after);
             }
-            if let Some(purpose) = q.purpose.as_ref() {
+            if let Some(purpose) = self.query.purpose.as_ref() {
                 pairs.append_pair("purpose", purpose.as_str());
             }
-            if let Some(order) = q.order.as_ref() {
+            if let Some(order) = self.query.order.as_ref() {
                 pairs.append_pair("order", order.as_str());
             }
-            if let Some(limit) = q.limit.as_ref() {
+            if let Some(limit) = self.query.limit.as_ref() {
                 pairs.append_pair("limit", &limit.to_string());
             }
         }
         self.url = url.to_string();
     }
 
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
+    }
+
     pub fn with_query(mut self, q: FileListQuery) -> Self {
-        self.rebuild_url(&q);
+        self.query = q;
+        self.rebuild_url();
         self
     }
     /// Send request and parse typed response.
     pub async fn send(&self) -> ZaiResult<super::response::FileListResponse> {
         let resp = self.get().await?;
-        let parsed = resp.json::<super::response::FileListResponse>().await?;
-        Ok(parsed)
+        parse_typed_response::<super::response::FileListResponse>(resp).await
     }
 
     /// Validate query, rebuild URL and send in one call.
@@ -63,7 +97,8 @@ impl FileListRequest {
     ) -> ZaiResult<super::response::FileListResponse> {
         use validator::Validate;
         q.validate()?;
-        self.rebuild_url(q);
+        self.query = q.clone();
+        self.rebuild_url();
         self.send().await
     }
 }
@@ -81,5 +116,45 @@ impl HttpClient for FileListRequest {
     }
     fn body(&self) -> &Self::Body {
         &self._body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::http::HttpClient;
+
+    #[test]
+    fn query_survives_base_rebuild() {
+        let request = FileListRequest::new("test.12345678901234567890".to_string())
+            .with_query(
+                FileListQuery::new()
+                    .with_purpose(crate::file::request::FilePurpose::Batch)
+                    .with_limit(2),
+            )
+            .with_base_url("http://127.0.0.1:12345/api/paas/v4");
+
+        assert_eq!(
+            request.api_url(),
+            "http://127.0.0.1:12345/api/paas/v4/files?purpose=batch&limit=2"
+        );
+    }
+
+    #[test]
+    fn query_survives_endpoint_config_rebuild() {
+        let endpoint_config =
+            EndpointConfig::default().with_paas_v4_base("http://127.0.0.1:12345/api/paas/v4");
+        let request = FileListRequest::new("test.12345678901234567890".to_string())
+            .with_query(FileListQuery::new().with_after("cursor").with_limit(10))
+            .with_endpoint_config(endpoint_config);
+
+        assert_eq!(
+            request.api_url(),
+            "http://127.0.0.1:12345/api/paas/v4/files?after=cursor&limit=10"
+        );
     }
 }

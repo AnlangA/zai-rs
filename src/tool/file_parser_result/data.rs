@@ -3,10 +3,18 @@
 //! This module provides the file parser result client for retrieving file
 //! parsing results.
 
-use serde_json;
+use std::sync::Arc;
+
+use tracing::{debug, info};
 
 use super::{request::*, response::*};
-use crate::ZaiResult;
+use crate::{
+    ZaiResult,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, join_url, paths},
+        http::{HttpClientConfig, parse_typed_response, send_empty_request},
+    },
+};
 
 /// File parser result client.
 ///
@@ -31,6 +39,9 @@ use crate::ZaiResult;
 pub struct FileParserResultRequest {
     /// API key for authentication
     pub key: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     /// Task ID for the parsing job
     pub task_id: String,
 }
@@ -49,8 +60,34 @@ impl FileParserResultRequest {
     pub fn new(key: String, task_id: impl Into<String>) -> Self {
         Self {
             key,
+            endpoint_config: EndpointConfig::default(),
+            api_base: ApiBase::PaasV4,
+            http_config: Arc::new(HttpClientConfig::default()),
             task_id: task_id.into(),
         }
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
+    }
+
+    fn result_url(&self, format_type: &FormatType) -> String {
+        let path = join_url(
+            paths::FILE_PARSER_RESULT,
+            &join_url(&self.task_id, &format_type.to_string()),
+        );
+        self.endpoint_config.url(&self.api_base, &path)
     }
 
     /// Gets the parsing result for the given format type.
@@ -63,35 +100,16 @@ impl FileParserResultRequest {
     ///
     /// A `FileParserResultResponse` containing the parsing result.
     pub async fn get_result(&self, format_type: FormatType) -> ZaiResult<FileParserResultResponse> {
-        let url = format!(
-            "https://open.bigmodel.cn/api/paas/v4/files/parser/result/{}/{}",
-            self.task_id, format_type
-        );
-
-        println!("📤 Sending request to: {}", url);
-        println!("🔑 Using API key: {}...", &self.key[..10]);
-
-        let client = reqwest::Client::new();
-        let response = client.get(&url).bearer_auth(&self.key).send().await?;
-
-        let status = response.status();
-        println!("📡 Response status: {}", status);
-
-        if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            println!("❌ Error response: {}", error_text);
-            return Err(crate::client::error::ZaiError::HttpError {
-                status: status.as_u16(),
-                message: error_text,
-            });
-        }
-
-        let response_body = response.text().await?;
-        println!("📄 Raw response body: {}", response_body);
-
-        let result_response: FileParserResultResponse = serde_json::from_str(&response_body)?;
-        println!("✅ Parsed response: {:?}", result_response);
-        Ok(result_response)
+        let url = self.result_url(&format_type);
+        debug!(url = %url, "Fetching file parser result");
+        let response = send_empty_request(
+            reqwest::Method::GET,
+            url,
+            self.key.clone(),
+            self.http_config.clone(),
+        )
+        .await?;
+        parse_typed_response::<FileParserResultResponse>(response).await
     }
 
     /// Polls for the result until it's completed or timeout is reached.
@@ -111,23 +129,22 @@ impl FileParserResultRequest {
         timeout_seconds: u64,
         poll_interval_seconds: u64,
     ) -> ZaiResult<FileParserResultResponse> {
-        println!(
-            "⏳ Starting polling for result (timeout: {}s, interval: {}s)",
-            timeout_seconds, poll_interval_seconds
+        info!(
+            timeout_seconds,
+            poll_interval_seconds, "Polling file parser result"
         );
         let start_time = std::time::Instant::now();
 
         loop {
-            println!("⏰ Checking result status...");
+            debug!("Checking file parser result status");
             let result = self.get_result(format_type.clone()).await?;
 
             match result.status {
                 ParserStatus::Succeeded => {
-                    println!("🎉 Parsing completed successfully!");
+                    info!("File parsing completed successfully");
                     return Ok(result);
                 },
                 ParserStatus::Failed => {
-                    println!("💥 Parsing failed: {}", result.message);
                     return Err(crate::client::error::ZaiError::ApiError {
                         code: 0,
                         message: format!("Parsing failed: {}", result.message),
@@ -135,18 +152,13 @@ impl FileParserResultRequest {
                 },
                 ParserStatus::Processing => {
                     let elapsed = start_time.elapsed().as_secs();
-                    println!("⏳ Still processing... ({}s elapsed)", elapsed);
+                    debug!(elapsed, "File parser result still processing");
                     if elapsed > timeout_seconds {
-                        println!("⏰ Timeout reached!");
                         return Err(crate::client::error::ZaiError::RateLimitError {
                             code: 0,
                             message: "Timeout waiting for parsing result".to_string(),
                         });
                     }
-                    println!(
-                        "⏱️  Waiting {} seconds before next check...",
-                        poll_interval_seconds
-                    );
                     tokio::time::sleep(tokio::time::Duration::from_secs(poll_interval_seconds))
                         .await;
                 },

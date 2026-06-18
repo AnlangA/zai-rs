@@ -1,8 +1,9 @@
 //! Health check endpoints
 
-use axum::{Json, http::StatusCode};
-use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use axum::{http::StatusCode, Json};
+use serde::{Deserialize, Serialize};
 
 /// Health check response
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,12 +50,13 @@ pub async fn health_check(
             api: "healthy".to_string(),
             sessions: SessionHealth {
                 total_sessions: session_stats.total_sessions,
-                activeSessions: session_stats.active_sessions,
+                active_sessions: session_stats.active_sessions,
                 status: if session_stats.total_sessions > 0 {
                     "operational"
                 } else {
                     "no_sessions"
-                }.to_string(),
+                }
+                .to_string(),
             },
         },
     };

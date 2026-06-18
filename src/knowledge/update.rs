@@ -1,10 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::create::{BackgroundColor, EmbeddingId, KnowledgeIcon};
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, join_url, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 /// Update body for editing a knowledge base
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
@@ -51,21 +54,52 @@ pub struct KnowledgeUpdateRequest {
     /// Bearer API key
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    id: String,
+    http_config: Arc<HttpClientConfig>,
     body: UpdateKnowledgeBody,
 }
 
 impl KnowledgeUpdateRequest {
     /// Build update request targeting a specific id with empty body
     pub fn new(key: String, id: impl AsRef<str>) -> Self {
-        let url = format!(
-            "https://open.bigmodel.cn/api/llm-application/open/knowledge/{}",
-            id.as_ref()
-        );
+        let id = id.as_ref().to_string();
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::LlmApplication;
+        let url = endpoint_config.url(&api_base, &join_url(paths::KNOWLEDGE, &id));
         Self {
             key,
             url,
+            endpoint_config,
+            api_base,
+            id,
+            http_config: Arc::new(HttpClientConfig::default()),
             body: UpdateKnowledgeBody::default(),
         }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, &join_url(paths::KNOWLEDGE, &self.id));
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     /// Setters to update individual fields
@@ -108,55 +142,13 @@ impl KnowledgeUpdateRequest {
 
         self.body.validate()?;
         let resp = self.put().await?;
-        let parsed = resp.json::<KnowledgeUpdateResponse>().await?;
-        Ok(parsed)
+        parse_typed_response::<KnowledgeUpdateResponse>(resp).await
     }
 
     pub fn put(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
-        let url = self.url.clone();
-        let key = self.key.clone();
-        let body = self.body.clone();
-        async move {
-            let body_str = serde_json::to_string(&body)?;
-            let resp = reqwest::Client::new()
-                .put(url)
-                .bearer_auth(key)
-                .header("Content-Type", "application/json")
-                .body(body_str)
-                .send()
-                .await?;
-            let status = resp.status();
-            if status.is_success() {
-                return Ok(resp);
-            }
-            // Non-success: try parse standard error envelope {"error": {code, message}}
-            let text = resp.text().await.unwrap_or_default();
-            #[derive(serde::Deserialize)]
-            struct ErrEnv {
-                error: ErrObj,
-            }
-            #[derive(serde::Deserialize)]
-            struct ErrObj {
-                _code: serde_json::Value,
-                message: String,
-            }
-
-            if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                return Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    parsed.error.message,
-                ));
-            }
-
-            Err(crate::client::error::ZaiError::from_api_response(
-                status.as_u16(),
-                0,
-                text,
-            ))
-        }
+        HttpClient::put(self)
     }
 }
 
@@ -173,6 +165,10 @@ impl HttpClient for KnowledgeUpdateRequest {
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }
 

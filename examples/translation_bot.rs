@@ -261,7 +261,7 @@ impl TranslationBot {
                             println!(); // Add spacing
                         },
                         Err(e) => {
-                            eprintln!("❌ 翻译出错: {}", e);
+                            tracing::error!(error = %e, "翻译出错");
                             println!();
                         },
                     }
@@ -296,7 +296,11 @@ impl TranslationBot {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     // Get API key from environment variable
     let api_key = std::env::var("ZHIPU_API_KEY").expect("请设置环境变量 ZHIPU_API_KEY");

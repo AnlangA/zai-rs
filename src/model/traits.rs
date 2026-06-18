@@ -184,19 +184,17 @@ pub trait SseStreamable: HttpClient {
         async move {
             let resp = self.post().await?;
             let mut stream = resp.bytes_stream();
-            let mut buf: Vec<u8> = Vec::new();
+            let mut parser = crate::model::sse_parser::SseEventParser::new();
 
             while let Some(next) = stream.next().await {
                 match next {
                     Ok(bytes) => {
-                        let lines =
-                            crate::model::sse_parser::extract_sse_data_lines(&mut buf, &bytes);
-                        for rest in lines {
-                            info!("SSE data: {}", String::from_utf8_lossy(&rest));
-                            if rest == b"[DONE]" {
+                        for event in parser.push(&bytes) {
+                            info!("SSE data: {}", String::from_utf8_lossy(&event));
+                            if event == b"[DONE]" {
                                 return Ok(());
                             }
-                            on_data(&rest);
+                            on_data(&event);
                         }
                     },
                     Err(e) => {

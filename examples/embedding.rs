@@ -4,7 +4,11 @@ use zai_rs::model::text_embedded::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = env_logger::try_init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     // Read API key
     let key = std::env::var("ZHIPU_API_KEY").expect("Set ZHIPU_API_KEY in your environment");
@@ -17,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Optional: explicit validation (send() will validate automatically)
     if let Err(e) = req.validate() {
-        eprintln!("Validation warning: {:?}", e);
+        tracing::warn!(error = ?e, "Validation warning");
     }
 
     // Send and print summary

@@ -1,9 +1,12 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use validator::Validate;
 
 use super::types::UploadFileResponse;
-use crate::client::http::{HttpClient, HttpClientConfig, http_client_with_config};
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, join_url, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response, send_multipart_request},
+};
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -56,23 +59,60 @@ pub struct DocumentUploadFileRequest {
     /// Bearer API key
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    knowledge_id: String,
+    http_config: Arc<HttpClientConfig>,
     files: Vec<PathBuf>,
     options: UploadFileOptions,
+    _body: (),
 }
 
 impl DocumentUploadFileRequest {
     /// Create a new request for a specific knowledge base id
     pub fn new(key: String, knowledge_id: impl AsRef<str>) -> Self {
-        let url = format!(
-            "https://open.bigmodel.cn/api/llm-application/open/document/upload_document/{}",
-            knowledge_id.as_ref()
+        let knowledge_id = knowledge_id.as_ref().to_string();
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::LlmApplication;
+        let url = endpoint_config.url(
+            &api_base,
+            &join_url(paths::DOCUMENT_UPLOAD_DOCUMENT, &knowledge_id),
         );
         Self {
             key,
             url,
+            endpoint_config,
+            api_base,
+            knowledge_id,
+            http_config: Arc::new(HttpClientConfig::default()),
             files: Vec::new(),
             options: UploadFileOptions::default(),
+            _body: (),
         }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self.endpoint_config.url(
+            &self.api_base,
+            &join_url(paths::DOCUMENT_UPLOAD_DOCUMENT, &self.knowledge_id),
+        );
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     /// Add a local file path to upload
@@ -131,8 +171,7 @@ impl DocumentUploadFileRequest {
         self.validate_cross()?;
 
         let resp = self.post().await?;
-        let parsed = resp.json::<UploadFileResponse>().await?;
-        Ok(parsed)
+        parse_typed_response::<UploadFileResponse>(resp).await
     }
 }
 
@@ -148,7 +187,7 @@ impl HttpClient for DocumentUploadFileRequest {
         &self.key
     }
     fn body(&self) -> &Self::Body {
-        &()
+        &self._body
     }
 
     // Override POST to send multipart/form-data
@@ -158,88 +197,61 @@ impl HttpClient for DocumentUploadFileRequest {
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
         let url = self.url.clone();
         let key = self.key.clone();
+        let config = self.http_config.clone();
         let files = self.files.clone();
         let opts = self.options.clone();
         async move {
-            let mut form = reqwest::multipart::Form::new();
-
-            // Optional fields
-            if let Some(t) = opts.knowledge_type {
-                form = form.text("knowledge_type", t.as_i64().to_string());
-            }
-            if let Some(seps) = opts.custom_separator.as_ref() {
-                let s = serde_json::to_string(seps).unwrap_or_else(|_| "[]".to_string());
-                form = form.text("custom_separator", s);
-            }
-            if let Some(sz) = opts.sentence_size {
-                form = form.text("sentence_size", sz.to_string());
-            }
-            if let Some(pi) = opts.parse_image {
-                form = form.text("parse_image", if pi { "true" } else { "false" }.to_string());
-            }
-            if let Some(u) = opts.callback_url.as_ref() {
-                form = form.text("callback_url", u.clone());
-            }
-            if let Some(h) = opts.callback_header.as_ref() {
-                let s = serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string());
-                form = form.text("callback_header", s);
-            }
-            if let Some(w) = opts.word_num_limit.as_ref() {
-                form = form.text("word_num_limit", w.clone());
-            }
-            if let Some(r) = opts.req_id.as_ref() {
-                form = form.text("req_id", r.clone());
-            }
-
-            // Files: use field name "files" per API
-            for path in files {
+            let mut file_parts = Vec::new();
+            for path in files.iter() {
                 let fname = path
                     .file_name()
                     .and_then(|s| s.to_str())
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "upload.bin".to_string());
-                let part = reqwest::multipart::Part::bytes(std::fs::read(&path)?).file_name(fname);
-                form = form.part("files", part);
+                file_parts.push((fname, std::fs::read(path)?));
             }
+            send_multipart_request(reqwest::Method::POST, url, key, config, move || {
+                let mut form = reqwest::multipart::Form::new();
 
-            let client = http_client_with_config(&HttpClientConfig::default());
-            let resp = client
-                .post(url)
-                .bearer_auth(key)
-                .multipart(form)
-                .send()
-                .await?;
+                if let Some(t) = opts.knowledge_type {
+                    form = form.text("knowledge_type", t.as_i64().to_string());
+                }
+                if let Some(seps) = opts.custom_separator.as_ref() {
+                    let s = serde_json::to_string(seps).unwrap_or_else(|_| "[]".to_string());
+                    form = form.text("custom_separator", s);
+                }
+                if let Some(sz) = opts.sentence_size {
+                    form = form.text("sentence_size", sz.to_string());
+                }
+                if let Some(pi) = opts.parse_image {
+                    form = form.text("parse_image", if pi { "true" } else { "false" }.to_string());
+                }
+                if let Some(u) = opts.callback_url.as_ref() {
+                    form = form.text("callback_url", u.clone());
+                }
+                if let Some(h) = opts.callback_header.as_ref() {
+                    let s = serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string());
+                    form = form.text("callback_header", s);
+                }
+                if let Some(w) = opts.word_num_limit.as_ref() {
+                    form = form.text("word_num_limit", w.clone());
+                }
+                if let Some(r) = opts.req_id.as_ref() {
+                    form = form.text("req_id", r.clone());
+                }
 
-            let status = resp.status();
-            if status.is_success() {
-                return Ok(resp);
-            }
-
-            // Standard error envelope {"error": { code, message }}
-            let text = resp.text().await.unwrap_or_default();
-            #[derive(serde::Deserialize)]
-            struct ErrEnv {
-                error: ErrObj,
-            }
-            #[derive(serde::Deserialize)]
-            struct ErrObj {
-                _code: serde_json::Value,
-                message: String,
-            }
-
-            if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    parsed.error.message,
-                ))
-            } else {
-                Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    text,
-                ))
-            }
+                for (fname, bytes) in file_parts.iter() {
+                    let part =
+                        reqwest::multipart::Part::bytes(bytes.clone()).file_name(fname.clone());
+                    form = form.part("files", part);
+                }
+                Ok(form)
+            })
+            .await
         }
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }

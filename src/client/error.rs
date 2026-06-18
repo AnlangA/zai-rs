@@ -8,12 +8,12 @@
 //!
 //! | Variant | Code range | Description |
 //! |---------|------------|-------------|
-//! | [`ZaiError::AuthError`] | 1001–1099 | Authentication / authorization (invalid API key, etc.) |
-//! | [`ZaiError::AccountError`] | 1100–1199 | Account-related (insufficient balance, etc.) |
-//! | [`ZaiError::RateLimitError`] | 1200–1299 | Rate-limit / quota errors |
-//! | [`ZaiError::ContentPolicyError`] | 1300–1399 | Content-policy violations |
+//! | [`ZaiError::AuthError`] | 1000–1004, 1100 | Authentication / authorization (invalid API key, etc.) |
+//! | [`ZaiError::AccountError`] | 1110–1121 | Account/package-related errors |
+//! | [`ZaiError::ApiError`] | 1200–1234 | Request validation / API call errors |
+//! | [`ZaiError::RateLimitError`] | 1300–1313 | Rate-limit, quota, package pressure or fair-use errors |
 //! | [`ZaiError::FileError`] | 1400–1499 | File-processing errors |
-//! | [`ZaiError::ApiError`] | other | General API errors |
+//! | [`ZaiError::Unknown`] | other | Unrecognized business or HTTP errors |
 //! | [`ZaiError::NetworkError`] | — | Network / timeout errors |
 //! | [`ZaiError::JsonError`] | — | JSON serialization / deserialization errors |
 //!
@@ -36,12 +36,12 @@
 //! match call_api().await {
 //!     Ok(data) => println!("Success: {}", data),
 //!     Err(ZaiError::AuthError { code, message }) => {
-//!         eprintln!("Auth failed ({}): {}", code, message);
+//!         tracing::error!("Auth failed ({}): {}", code, message);
 //!     },
 //!     Err(ZaiError::RateLimitError { code, message }) => {
-//!         eprintln!("Rate limited ({}): {}", code, message);
+//!         tracing::error!("Rate limited ({}): {}", code, message);
 //!     },
-//!     Err(e) => eprintln!("Error: {}", e),
+//!     Err(e) => tracing::error!("Error: {}", e),
 //! }
 //! ```
 
@@ -286,7 +286,45 @@ pub enum ZaiError {
 impl ZaiError {
     /// Convert an HTTP status code and API error response to a ZaiError
     pub fn from_api_response(status: u16, api_code: u16, api_message: String) -> Self {
-        // First check for HTTP status errors
+        if api_code != 0 {
+            return match api_code {
+                // Authentication errors
+                1000..=1004 | 1100 => ZaiError::AuthError {
+                    code: api_code,
+                    message: api_message,
+                },
+                // Account/package/balance errors
+                1110..=1121 => ZaiError::AccountError {
+                    code: api_code,
+                    message: api_message,
+                },
+                // API call/validation errors
+                1200..=1234 => ZaiError::ApiError {
+                    code: api_code,
+                    message: api_message,
+                },
+                // Rate limiting and package access pressure/fair-use errors
+                1300..=1313 => ZaiError::RateLimitError {
+                    code: api_code,
+                    message: api_message,
+                },
+                // File processing errors
+                1400..=1499 => ZaiError::FileError {
+                    code: api_code,
+                    message: api_message,
+                },
+                _ => ZaiError::Unknown {
+                    code: api_code,
+                    message: if api_message.is_empty() {
+                        "Unknown error".to_string()
+                    } else {
+                        api_message
+                    },
+                },
+            };
+        }
+
+        // Fall back to HTTP status when no business code is present.
         match status {
             400 => ZaiError::HttpError {
                 status,
@@ -324,39 +362,13 @@ impl ZaiError {
                 status,
                 message: "Internal server error - try again later".to_string(),
             },
-            _ => {
-                // For non-HTTP errors, check API business error codes
-                match api_code {
-                    // Authentication errors (1000-1004, 1100)
-                    1000..=1004 | 1100 => ZaiError::AuthError {
-                        code: api_code,
-                        message: api_message,
-                    },
-                    // Account errors (1110-1121)
-                    1110..=1121 => ZaiError::AccountError {
-                        code: api_code,
-                        message: api_message,
-                    },
-                    // API call errors (1200-1234)
-                    1200..=1234 => ZaiError::ApiError {
-                        code: api_code,
-                        message: api_message,
-                    },
-                    // Rate limiting errors (1300-1309)
-                    1300..=1309 => ZaiError::RateLimitError {
-                        code: api_code,
-                        message: api_message,
-                    },
-                    // Other codes
-                    _ => ZaiError::Unknown {
-                        code: api_code,
-                        message: if api_message.is_empty() {
-                            "Unknown error".to_string()
-                        } else {
-                            api_message
-                        },
-                    },
-                }
+            _ => ZaiError::Unknown {
+                code: status,
+                message: if api_message.is_empty() {
+                    "Unknown error".to_string()
+                } else {
+                    api_message
+                },
             },
         }
     }
@@ -567,17 +579,27 @@ mod tests {
 
     #[test]
     fn test_from_api_response_rate_limit() {
-        // HTTP 429 returns HttpError, not RateLimitError
+        // Business code takes precedence over HTTP status.
         let err = ZaiError::from_api_response(429, 1301, "Too many requests".to_string());
         assert!(err.is_client_error());
-        assert!(!err.is_rate_limit()); // 429 returns HttpError, not RateLimitError
-        assert_eq!(err.code(), Some(429));
+        assert!(err.is_rate_limit());
+        assert_eq!(err.code(), Some(1301));
 
-        // API code 1301 (with HTTP 200) returns RateLimitError
+        // API code 1301 returns RateLimitError even with a non-error HTTP
+        // status.
         let err = ZaiError::from_api_response(200, 1301, "Too many requests".to_string());
         assert!(err.is_client_error());
         assert!(err.is_rate_limit());
         assert_eq!(err.code(), Some(1301));
+    }
+
+    #[test]
+    fn test_from_api_response_package_limit_codes() {
+        for code in [1300, 1312, 1313] {
+            let err = ZaiError::from_api_response(429, code, "Limited".to_string());
+            assert!(err.is_rate_limit());
+            assert_eq!(err.code(), Some(code));
+        }
     }
 
     #[test]

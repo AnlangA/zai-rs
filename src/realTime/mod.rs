@@ -15,7 +15,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zai_rs::realTime::*;
+//! use zai_rs::realtime::*;
 //!
 //! let client = RealTimeClient::new(api_key);
 //! let session = client.audio_session()

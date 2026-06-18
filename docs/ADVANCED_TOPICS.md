@@ -132,7 +132,7 @@ loop {
             // 处理正常的流式数据
         }
         Some(Err(e)) => {
-            eprintln!("流式错误: {}", e);
+            tracing::error!("流式错误: {}", e);
             // 可以选择继续或终止
             break;
         }
@@ -292,11 +292,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
             Some(TaskStatus::Fail) => {
-                eprintln!("任务失败");
+                tracing::error!("任务失败");
                 break;
             }
             _ => {
-                eprintln!("未知状态");
+                tracing::error!("未知状态");
                 break;
             }
         }

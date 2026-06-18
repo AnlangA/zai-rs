@@ -3,8 +3,13 @@
 //! This module provides the content moderation client for analyzing text,
 //! image, audio, and video content for safety risks.
 
+use std::sync::Arc;
+
 use super::models::*;
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 /// Content moderation client.
 ///
@@ -21,6 +26,10 @@ use crate::client::http::HttpClient;
 pub struct Moderation {
     /// API key for authentication
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     /// Moderation request body
     body: ModerationRequest,
 }
@@ -37,8 +46,18 @@ impl Moderation {
     ///
     /// A new `Moderation` instance configured for text moderation.
     pub fn new_text(text: impl Into<String>, key: String) -> Self {
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::MODERATIONS);
         let body = ModerationRequest::new_text(text);
-        Self { body, key }
+        Self {
+            body,
+            key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+        }
     }
 
     /// Creates a new moderation request with multimedia content.
@@ -53,8 +72,39 @@ impl Moderation {
     ///
     /// A new `Moderation` instance configured for multimedia moderation.
     pub fn new_multimedia(content_type: MediaType, url: impl Into<String>, key: String) -> Self {
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let endpoint_url = endpoint_config.url(&api_base, paths::MODERATIONS);
         let body = ModerationRequest::new_multimedia(content_type, url);
-        Self { body, key }
+        Self {
+            body,
+            key,
+            url: endpoint_url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+        }
+    }
+
+    fn rebuild_url(&mut self) {
+        self.url = self.endpoint_config.url(&self.api_base, paths::MODERATIONS);
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     /// Gets mutable access to the request body for further customization.
@@ -82,7 +132,7 @@ impl Moderation {
 
         let resp: reqwest::Response = self.post().await?;
 
-        let parsed = resp.json::<ModerationResponse>().await?;
+        let parsed = parse_typed_response::<ModerationResponse>(resp).await?;
 
         Ok(parsed)
     }
@@ -90,12 +140,12 @@ impl Moderation {
 
 impl HttpClient for Moderation {
     type Body = ModerationRequest;
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     /// Returns the Zhipu AI moderation API endpoint URL.
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/moderations"
+        &self.url
     }
 
     fn api_key(&self) -> &Self::ApiKey {
@@ -104,5 +154,9 @@ impl HttpClient for Moderation {
 
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

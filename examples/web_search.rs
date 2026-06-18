@@ -14,7 +14,11 @@ use zai_rs::tool::web_search::{SearchEngine, WebSearchRequest};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger
-    let _ = env_logger::try_init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     // Get API key from environment
     let api_key =

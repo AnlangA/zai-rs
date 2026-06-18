@@ -39,9 +39,11 @@
 //! - Structured logging of requests/responses through `tracing`
 //! - Bearer token authentication on every request
 
+pub mod endpoints;
 pub mod error;
 pub mod http;
 pub mod wss;
 
+pub use endpoints::*;
 pub use error::*;
 pub use http::*;

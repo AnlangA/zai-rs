@@ -19,13 +19,16 @@
 //! - **Parameter control** - Temperature, top-p, max tokens, and other
 //!   generation parameters
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use serde::Serialize;
 use validator::Validate;
 
 use super::super::{chat_base_request::*, tools::*, traits::*};
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response},
+};
 
 // Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
 
@@ -57,10 +60,12 @@ where
     /// API key for authentication with the Zhipu AI service.
     pub key: String,
 
-    /// API endpoint URL for chat completions.
-    /// Defaults to "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-    /// but can be customized using the `with_url()` method.
+    /// Final API endpoint URL for chat completions.
     pub url: String,
+
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
 
     /// The request body containing model, messages, and parameters.
     body: ChatBody<N, M>,
@@ -88,10 +93,16 @@ where
     /// A new `ChatCompletion` instance configured for non-streaming requests.
     pub fn new(model: N, messages: M, key: String) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::CHAT_COMPLETIONS);
         ChatCompletion {
             body,
             key,
-            url: "https://open.bigmodel.cn/api/paas/v4/chat/completions".to_string(),
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
             _stream: PhantomData,
         }
     }
@@ -129,11 +140,11 @@ where
         self
     }
 
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.body = self.body.with_temperature(temperature);
         self
     }
-    pub fn with_top_p(mut self, top_p: f32) -> Self {
+    pub fn with_top_p(mut self, top_p: f64) -> Self {
         self.body = self.body.with_top_p(top_p);
         self
     }
@@ -183,6 +194,27 @@ where
         self
     }
 
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::CHAT_COMPLETIONS);
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::CHAT_COMPLETIONS);
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
+    }
+
     /// Sets the URL to the coding plan endpoint.
     ///
     /// This method configures the chat completion request to use the
@@ -199,7 +231,10 @@ where
     ///     .with_coding_plan();
     /// ```
     pub fn with_coding_plan(mut self) -> Self {
-        self.url = "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".to_string();
+        self.api_base = ApiBase::CodingPaasV4;
+        self.url = self
+            .endpoint_config
+            .url(&self.api_base, paths::CHAT_COMPLETIONS);
         self
     }
 
@@ -235,6 +270,9 @@ where
             key: self.key,
             url: self.url,
             body: self.body,
+            endpoint_config: self.endpoint_config,
+            api_base: self.api_base,
+            http_config: self.http_config,
             _stream: PhantomData,
         }
     }
@@ -273,9 +311,9 @@ where
         // only receive a successful response with valid HTTP status.
         let resp: reqwest::Response = self.post().await?;
 
-        let parsed = resp
-            .json::<crate::model::chat_base_response::ChatCompletionResponse>()
-            .await?;
+        let parsed =
+            parse_typed_response::<crate::model::chat_base_response::ChatCompletionResponse>(resp)
+                .await?;
 
         Ok(parsed)
     }
@@ -312,6 +350,9 @@ where
             key: self.key,
             url: self.url,
             body: self.body,
+            endpoint_config: self.endpoint_config,
+            api_base: self.api_base,
+            http_config: self.http_config,
             _stream: PhantomData,
         }
     }
@@ -337,6 +378,10 @@ where
     }
     fn body(&self) -> &Self::Body {
         &self.body
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }
 

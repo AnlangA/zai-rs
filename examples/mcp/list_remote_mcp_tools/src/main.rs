@@ -1,21 +1,19 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde_json::Value;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".to_string().into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::from_default_env())
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
 
-    let api_key = std::env::var("ZHIPU_API_KEY").map_err(|_| {
-        anyhow!("ZHIPU_API_KEY is not set. Please export your API key.")
-    })?;
+    let api_key = std::env::var("ZHIPU_API_KEY")
+        .map_err(|_| anyhow!("ZHIPU_API_KEY is not set. Please export your API key."))?;
 
     let client = reqwest::Client::default();
     let url = "https://open.bigmodel.cn/api/mcp/web_search_prime/mcp";
@@ -69,10 +67,10 @@ async fn main() -> Result<()> {
 
 fn parse_sse_response(text: &str) -> Result<Value> {
     for line in text.lines() {
-        if let Some(data) = line.strip_prefix("data:") {
-            if let Ok(json) = serde_json::from_str::<Value>(data.trim()) {
-                return Ok(json);
-            }
+        if let Some(data) = line.strip_prefix("data:")
+            && let Ok(json) = serde_json::from_str::<Value>(data.trim())
+        {
+            return Ok(json);
         }
     }
     anyhow::bail!("No valid data found in SSE response")

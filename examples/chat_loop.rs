@@ -9,7 +9,11 @@ fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    if std::env::var_os("RUST_LOG").is_some() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     let model = GLM4_5_airx {};
     let key = std::env::var("ZHIPU_API_KEY").expect("请先在环境变量中设置 ZHIPU_API_KEY");

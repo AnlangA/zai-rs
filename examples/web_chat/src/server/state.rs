@@ -1,12 +1,15 @@
 //! Application state management
 
-use crate::server::{config::Config, error::AppResult};
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use std::sync::Arc;
+use serde::Serialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use zai_rs::model::{TextMessage, chat_models::GLM4_6};
+use zai_rs::model::{chat_models::GLM4_6, TextMessage};
+
+use crate::server::{config::Config, error::AppResult};
 
 /// Application state shared across all requests
 #[derive(Clone)]
@@ -55,7 +58,8 @@ impl SessionStore {
         let session_id = session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
 
         if !self.sessions.contains_key(&session_id) {
-            let session = ChatSession::new();
+            let mut session = ChatSession::new();
+            session.id = session_id.clone();
             self.sessions.insert(session_id.clone(), session);
         }
 
@@ -73,6 +77,15 @@ impl SessionStore {
     /// Update a session
     pub fn update(&self, session_id: &str, session: ChatSession) -> AppResult<()> {
         self.sessions.insert(session_id.to_string(), session);
+        Ok(())
+    }
+
+    /// Add a message to an existing session.
+    pub fn add_message(&self, session_id: &str, message: TextMessage) -> AppResult<()> {
+        let mut session = self.sessions.get_mut(session_id).ok_or_else(|| {
+            crate::server::error::AppError::SessionNotFound(session_id.to_string())
+        })?;
+        session.add_message(message);
         Ok(())
     }
 
@@ -100,7 +113,7 @@ impl SessionStore {
     pub fn stats(&self) -> SessionStats {
         SessionStats {
             total_sessions: self.sessions.len(),
-            activeSessions: self
+            active_sessions: self
                 .sessions
                 .iter()
                 .filter(|entry| {
@@ -200,7 +213,7 @@ impl ChatSession {
 #[derive(Debug, Serialize)]
 pub struct SessionStats {
     pub total_sessions: usize,
-    pub activeSessions: usize,
+    pub active_sessions: usize,
 }
 
 /// Rate limiter for API requests

@@ -38,15 +38,26 @@ use std::{
     time::Duration,
 };
 
-use serde::Deserialize;
+use reqwest::Method;
+use serde::{Deserialize, de::DeserializeOwned};
 use tracing::{debug, info, warn};
 
 use crate::client::error::{ZaiError, ZaiResult, mask_sensitive_info};
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ApiErrorEnvelope {
+    Nested { error: ApiError },
+    Flat { code: ErrorCode, message: String },
+}
 
-struct ApiErrorEnvelope {
-    error: ApiError,
+impl ApiErrorEnvelope {
+    fn into_parts(self) -> (ErrorCode, String) {
+        match self {
+            ApiErrorEnvelope::Nested { error } => (error.code, error.message),
+            ApiErrorEnvelope::Flat { code, message } => (code, message),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,8 +100,9 @@ fn to_api_code(code: &ErrorCode) -> u16 {
 /// HttpError if parsing fails.
 pub fn parse_api_error_response(status: u16, body: String) -> crate::client::error::ZaiError {
     if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&body) {
-        let api_code = to_api_code(&parsed.error.code);
-        crate::client::error::ZaiError::from_api_response(status, api_code, parsed.error.message)
+        let (code, message) = parsed.into_parts();
+        let api_code = to_api_code(&code);
+        crate::client::error::ZaiError::from_api_response(status, api_code, message)
     } else {
         crate::client::error::ZaiError::from_api_response(status, 0, body)
     }
@@ -295,6 +307,101 @@ pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
         .clone()
 }
 
+/// Parse a successful HTTP response into a typed value.
+pub async fn parse_typed_response<T>(resp: reqwest::Response) -> ZaiResult<T>
+where
+    T: DeserializeOwned,
+{
+    resp.json::<T>().await.map_err(ZaiError::from)
+}
+
+/// Send a JSON request through the shared transport pipeline.
+pub async fn send_json_request<T>(
+    method: Method,
+    url: impl Into<String>,
+    api_key: impl AsRef<str>,
+    body: &T,
+    config: Arc<HttpClientConfig>,
+) -> ZaiResult<reqwest::Response>
+where
+    T: serde::Serialize + ?Sized,
+{
+    let body_compact = serde_json::to_string(body).map_err(|e| ZaiError::JsonError(Arc::new(e)))?;
+    let enable_logging = config.enable_logging;
+    let mask_sensitive = config.mask_sensitive_data;
+
+    if enable_logging {
+        match serde_json::to_string_pretty(body) {
+            Ok(pretty) => {
+                let log_pretty = if mask_sensitive {
+                    mask_sensitive_info(&pretty)
+                } else {
+                    pretty
+                };
+                info!(method = %method, request_body = %log_pretty, "Sending JSON request");
+            },
+            Err(e) => warn!("Failed to pretty-print request body: {}", e),
+        }
+    }
+
+    let url = url.into();
+    let key = api_key.as_ref().to_string();
+    send_with_retry_factory(&config, move |client| {
+        let builder = client
+            .request(method.clone(), &url)
+            .bearer_auth(&key)
+            .header("Content-Type", "application/json")
+            .body(body_compact.clone());
+
+        if enable_logging && !mask_sensitive {
+            debug!(url = %url, "Built JSON request");
+        }
+
+        Ok(builder)
+    })
+    .await
+}
+
+/// Send a request without a JSON body through the shared transport pipeline.
+pub async fn send_empty_request(
+    method: Method,
+    url: impl Into<String>,
+    api_key: impl AsRef<str>,
+    config: Arc<HttpClientConfig>,
+) -> ZaiResult<reqwest::Response> {
+    let url = url.into();
+    let key = api_key.as_ref().to_string();
+    send_with_retry_factory(&config, move |client| {
+        Ok(client.request(method.clone(), &url).bearer_auth(&key))
+    })
+    .await
+}
+
+/// Send a multipart/form-data request through the shared transport pipeline.
+///
+/// The form is built per attempt so retry can safely recreate multipart bodies.
+pub async fn send_multipart_request<F>(
+    method: Method,
+    url: impl Into<String>,
+    api_key: impl AsRef<str>,
+    config: Arc<HttpClientConfig>,
+    mut build_form: F,
+) -> ZaiResult<reqwest::Response>
+where
+    F: FnMut() -> ZaiResult<reqwest::multipart::Form> + Send,
+{
+    let url = url.into();
+    let key = api_key.as_ref().to_string();
+    send_with_retry_factory(&config, move |client| {
+        let form = build_form()?;
+        Ok(client
+            .request(method.clone(), &url)
+            .bearer_auth(&key)
+            .multipart(form))
+    })
+    .await
+}
+
 /// Trait for HTTP clients that communicate with the Zhipu AI API.
 pub trait HttpClient {
     type Body: serde::Serialize;
@@ -321,57 +428,14 @@ pub trait HttpClient {
     /// This method implements retry logic with exponential backoff and jitter.
     /// It supports configuration through `http_config` method.
     fn post(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let body_compact =
-            serde_json::to_string(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
-
         let config = self.http_config().clone();
-        let enable_logging = config.enable_logging;
-        let mask_sensitive = config.mask_sensitive_data;
-
-        let body_pretty_opt = if enable_logging {
-            match serde_json::to_string_pretty(self.body()) {
-                Ok(pretty) => Some(pretty),
-                Err(e) => {
-                    warn!("Failed to pretty-print request body: {}", e);
-                    None
-                },
-            }
-        } else {
-            None
-        };
-
         let url = self.api_url().as_ref().to_owned();
         let key = self.api_key().as_ref().to_owned();
+        let body = serde_json::to_value(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
 
         async move {
-            let body = body_compact?;
-
-            if enable_logging {
-                let log_body = if mask_sensitive {
-                    mask_sensitive_info(body.as_str())
-                } else {
-                    body.clone()
-                };
-                if let Some(pretty) = body_pretty_opt {
-                    let log_pretty = if mask_sensitive {
-                        mask_sensitive_info(&pretty)
-                    } else {
-                        pretty
-                    };
-                    info!(request_body = %log_pretty, "Sending POST request");
-                } else {
-                    debug!(request_body = %log_body, "Sending POST request");
-                }
-            }
-
-            let client = http_client_with_config(&config);
-            let request_builder = client
-                .post(&url)
-                .bearer_auth(&key)
-                .header("Content-Type", "application/json")
-                .body(body);
-
-            send_with_retry(request_builder, &config).await
+            let body = body?;
+            send_json_request(Method::POST, url, key, &body, config).await
         }
     }
 
@@ -384,43 +448,48 @@ pub trait HttpClient {
         let url = self.api_url().as_ref().to_owned();
         let key = self.api_key().as_ref().to_owned();
 
+        async move { send_empty_request(Method::GET, url, key, config).await }
+    }
+
+    /// Sends a PUT request with a JSON body to the API endpoint.
+    fn put(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
+        let config = self.http_config().clone();
+        let url = self.api_url().as_ref().to_owned();
+        let key = self.api_key().as_ref().to_owned();
+        let body = serde_json::to_value(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
+
         async move {
-            let client = http_client_with_config(&config);
-            let request_builder = client.get(&url).bearer_auth(&key);
-            send_with_retry(request_builder, &config).await
+            let body = body?;
+            send_json_request(Method::PUT, url, key, &body, config).await
         }
+    }
+
+    /// Sends a DELETE request without a body to the API endpoint.
+    fn delete(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
+        let config = self.http_config().clone();
+        let url = self.api_url().as_ref().to_owned();
+        let key = self.api_key().as_ref().to_owned();
+
+        async move { send_empty_request(Method::DELETE, url, key, config).await }
     }
 }
 
-/// Internal helper: executes a request with retry logic.
-///
-/// This function encapsulates the common retry loop shared by both POST and
-/// GET methods, avoiding code duplication.
-async fn send_with_retry(
-    request_builder: reqwest::RequestBuilder,
+/// Internal helper: executes retryable request builders.
+async fn send_with_retry_factory<F>(
     config: &HttpClientConfig,
-) -> ZaiResult<reqwest::Response> {
+    mut build_request: F,
+) -> ZaiResult<reqwest::Response>
+where
+    F: FnMut(reqwest::Client) -> ZaiResult<reqwest::RequestBuilder>,
+{
     let mut last_error: Option<ZaiError> = None;
-
-    // Extract request parts so we can rebuild for each retry attempt.
-    let req = request_builder.build()?;
-    let url = req.url().clone();
-    let method = req.method().clone();
-    let headers = req.headers().clone();
-    let body_bytes = req.body().and_then(|b| b.as_bytes().map(|b| b.to_vec()));
-    // Reuse a client built from the same config (preserves timeout, TLS, etc.)
     let client = http_client_with_config(config);
 
     for attempt in 0..=config.max_retries {
-        let mut builder = client
-            .request(method.clone(), url.clone())
-            .headers(headers.clone());
-
-        if let Some(ref body) = body_bytes {
-            builder = builder.body(body.clone());
-        }
-
-        let resp = builder.send().await;
+        let resp = match build_request(client.clone()) {
+            Ok(builder) => builder.send().await,
+            Err(error) => return Err(error),
+        };
 
         match resp {
             Ok(resp) => {
@@ -497,9 +566,9 @@ fn should_retry(error: &ZaiError, attempt: u32, max_retries: u32) -> bool {
     }
 
     match error {
-        // Retry on server errors (5xx)
-        ZaiError::HttpError { status, .. } => (500..600).contains(status),
-        // Retry on rate limit errors (API code 1301)
+        // Retry on server errors (5xx) and HTTP-level rate limiting.
+        ZaiError::HttpError { status, .. } => *status == 429 || (500..600).contains(status),
+        // Retry on rate limit errors (business codes 1300-1313)
         ZaiError::RateLimitError { .. } => true,
         // Retry on network errors
         ZaiError::NetworkError(_) => true,
@@ -558,15 +627,51 @@ mod tests {
     fn test_api_error_envelope_deserialize() {
         let json = r#"{"error":{"code":401,"message":"Unauthorized"}}"#;
         let envelope: ApiErrorEnvelope = serde_json::from_str(json).unwrap();
-        assert_eq!(envelope.error.message, "Unauthorized");
+        let (_code, message) = envelope.into_parts();
+        assert_eq!(message, "Unauthorized");
     }
 
     #[test]
     fn test_api_error_envelope_deserialize_str_code() {
         let json = r#"{"error":{"code":"1300","message":"Rate limit exceeded"}}"#;
         let envelope: ApiErrorEnvelope = serde_json::from_str(json).unwrap();
-        assert_eq!(envelope.error.message, "Rate limit exceeded");
-        assert_eq!(to_api_code(&envelope.error.code), 1300);
+        let (code, message) = envelope.into_parts();
+        assert_eq!(message, "Rate limit exceeded");
+        assert_eq!(to_api_code(&code), 1300);
+    }
+
+    #[test]
+    fn test_api_error_envelope_deserialize_flat() {
+        let json = r#"{"code":1312,"message":"Quota exhausted"}"#;
+        let envelope: ApiErrorEnvelope = serde_json::from_str(json).unwrap();
+        let (code, message) = envelope.into_parts();
+        assert_eq!(message, "Quota exhausted");
+        assert_eq!(to_api_code(&code), 1312);
+    }
+
+    #[test]
+    fn test_parse_api_error_response_prefers_business_code() {
+        let error =
+            parse_api_error_response(429, r#"{"code":1312,"message":"Quota exhausted"}"#.into());
+        assert!(matches!(
+            error,
+            ZaiError::RateLimitError {
+                code: 1312,
+                message
+            } if message == "Quota exhausted"
+        ));
+    }
+
+    #[test]
+    fn test_parse_api_error_response_unparseable_body() {
+        let error = parse_api_error_response(500, "not json".to_string());
+        assert!(matches!(
+            error,
+            ZaiError::HttpError {
+                status: 500,
+                message
+            } if message == "Internal server error - try again later"
+        ));
     }
 
     #[test]
@@ -646,6 +751,15 @@ mod tests {
         let error = ZaiError::RateLimitError {
             code: 1301,
             message: "Rate limit exceeded".to_string(),
+        };
+        assert!(should_retry(&error, 0, 3));
+    }
+
+    #[test]
+    fn test_should_retry_http_429() {
+        let error = ZaiError::HttpError {
+            status: 429,
+            message: "Too many requests".to_string(),
         };
         assert!(should_retry(&error, 0, 3));
     }

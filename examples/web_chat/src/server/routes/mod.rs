@@ -17,7 +17,7 @@ pub fn api_routes() -> Router<crate::server::state::AppState> {
 /// Session routes
 pub mod sessions {
     use axum::Router;
-    
+
     pub fn routes() -> Router<crate::server::state::AppState> {
         Router::new()
     }

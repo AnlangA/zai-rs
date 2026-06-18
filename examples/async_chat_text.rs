@@ -10,7 +10,12 @@ use zai_rs::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::init();
+    let enable_logging = std::env::var_os("RUST_LOG").is_some();
+    if enable_logging {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
+    }
 
     // 获取API密钥
     let key =
@@ -28,9 +33,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for message in messages {
         let key_clone = key.clone();
+        let http_config = HttpClientConfigBuilder::default()
+            .logging(enable_logging)
+            .mask_sensitive_data(false)
+            .build();
         let client = AsyncChatCompletion::new(GLM4_5 {}, TextMessage::user(message), key_clone)
             .with_temperature(0.7)
-            .with_top_p(0.9);
+            .with_top_p(0.9)
+            .with_http_config(http_config);
 
         match client.send().await {
             Ok(body) => {

@@ -3,13 +3,92 @@
 //! These tests use a mock server to simulate the Zhipu AI API,
 //! allowing for end-to-end testing without making actual API calls.
 
-use std::time::Duration;
+use std::{
+    convert::Infallible,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::{Request, Response, body::Incoming, http::StatusCode, service::service_fn};
+use hyper_util::{rt::TokioIo, server::conn::auto::Builder as ConnBuilder};
 use serde_json::json;
-use tokio::time::sleep;
+use tokio::{net::TcpListener, sync::oneshot, time::sleep};
+use zai_rs::{
+    file::{FileListQuery, FileListRequest, FilePurpose, FileUploadRequest},
+    model::{ChatCompletion, GLM5_2, TextMessage},
+};
 
 mod common;
 use common::mock_server::{MockServerClient, MockServerConfig};
+
+#[derive(Debug)]
+struct CapturedHttpRequest {
+    method: String,
+    path: String,
+    query: Option<String>,
+    authorization: Option<String>,
+    content_type: Option<String>,
+    body: Vec<u8>,
+}
+
+async fn capture_one_sdk_request(
+    response_body: serde_json::Value,
+) -> (String, oneshot::Receiver<CapturedHttpRequest>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = oneshot::channel::<CapturedHttpRequest>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let io = TokioIo::new(stream);
+        let response_body = response_body.clone();
+
+        let service = service_fn(move |req: Request<Incoming>| {
+            let tx = Arc::clone(&tx);
+            let response_body = response_body.clone();
+            async move {
+                let method = req.method().as_str().to_string();
+                let uri = req.uri().clone();
+                let authorization = req
+                    .headers()
+                    .get(hyper::header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+                let content_type = req
+                    .headers()
+                    .get(hyper::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+                let body = req.collect().await.unwrap().to_bytes().to_vec();
+
+                if let Some(tx) = tx.lock().unwrap().take() {
+                    let _ = tx.send(CapturedHttpRequest {
+                        method,
+                        path: uri.path().to_string(),
+                        query: uri.query().map(str::to_string),
+                        authorization,
+                        content_type,
+                        body,
+                    });
+                }
+
+                let mut response = Response::new(Full::new(Bytes::from(response_body.to_string())));
+                *response.status_mut() = StatusCode::OK;
+                Ok::<_, Infallible>(response)
+            }
+        });
+
+        ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
+            .serve_connection(io, service)
+            .await
+            .unwrap();
+    });
+
+    (format!("http://{addr}/api/paas/v4"), rx)
+}
 
 /// Integration test for chat completion
 #[tokio::test]
@@ -23,6 +102,140 @@ async fn test_chat_completion_integration() {
         expected_url,
         "http://127.0.0.1:9876/api/paas/v4/chat/completions"
     );
+}
+
+#[tokio::test]
+async fn test_sdk_json_post_uses_dynamic_mock_base() {
+    let key = "test.12345678901234567890".to_string();
+    let (base_url, captured) = capture_one_sdk_request(json!({
+        "id": "chatcmpl-test",
+        "created": 1,
+        "model": "glm-5.2",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "ok"},
+            "finish_reason": "stop"
+        }],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+    }))
+    .await;
+
+    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"), key.clone())
+        .with_base_url(base_url)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.model.as_deref(), Some("glm-5.2"));
+    let request = captured.await.unwrap();
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.path, "/api/paas/v4/chat/completions");
+    assert_eq!(
+        request.authorization.as_deref(),
+        Some(format!("Bearer {key}").as_str())
+    );
+    assert_eq!(request.content_type.as_deref(), Some("application/json"));
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    assert_eq!(body["model"], "glm-5.2");
+    assert_eq!(body["messages"][0]["content"], "hello");
+}
+
+#[tokio::test]
+async fn test_sdk_get_uses_dynamic_mock_base_and_query() {
+    let key = "test.12345678901234567890".to_string();
+    let (base_url, captured) = capture_one_sdk_request(json!({
+        "object": "list",
+        "data": [],
+        "has_more": false
+    }))
+    .await;
+
+    let response = FileListRequest::new(key.clone())
+        .with_query(
+            FileListQuery::new()
+                .with_purpose(FilePurpose::Batch)
+                .with_limit(2),
+        )
+        .with_base_url(base_url)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.has_more, Some(false));
+    let request = captured.await.unwrap();
+    assert_eq!(request.method, "GET");
+    assert_eq!(request.path, "/api/paas/v4/files");
+    assert!(
+        request
+            .query
+            .as_deref()
+            .unwrap_or_default()
+            .contains("limit=2")
+    );
+    assert!(
+        request
+            .query
+            .as_deref()
+            .unwrap_or_default()
+            .contains("purpose=batch")
+    );
+    assert_eq!(
+        request.authorization.as_deref(),
+        Some(format!("Bearer {key}").as_str())
+    );
+    assert!(request.body.is_empty());
+}
+
+#[tokio::test]
+async fn test_sdk_multipart_uses_dynamic_mock_base() {
+    let key = "test.12345678901234567890".to_string();
+    let temp_path = std::env::temp_dir().join(format!(
+        "zai-rs-upload-{}-{}.txt",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap()
+    ));
+    std::fs::write(&temp_path, b"hello upload").unwrap();
+
+    let (base_url, captured) = capture_one_sdk_request(json!({
+        "id": "file-test",
+        "object": "file",
+        "bytes": 12,
+        "created_at": 1,
+        "filename": "sample.txt",
+        "purpose": "batch"
+    }))
+    .await;
+
+    let response = FileUploadRequest::new(key.clone(), FilePurpose::Batch, &temp_path)
+        .with_base_url(base_url)
+        .with_file_name("sample.txt")
+        .with_content_type("text/plain")
+        .send()
+        .await
+        .unwrap();
+
+    std::fs::remove_file(&temp_path).unwrap();
+
+    assert_eq!(response.id.as_deref(), Some("file-test"));
+    let request = captured.await.unwrap();
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.path, "/api/paas/v4/files");
+    assert_eq!(
+        request.authorization.as_deref(),
+        Some(format!("Bearer {key}").as_str())
+    );
+    assert!(
+        request
+            .content_type
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("multipart/form-data; boundary=")
+    );
+    let body = String::from_utf8_lossy(&request.body);
+    assert!(body.contains("name=\"purpose\""));
+    assert!(body.contains("batch"));
+    assert!(body.contains("filename=\"sample.txt\""));
+    assert!(body.contains("hello upload"));
 }
 
 /// Integration test for error handling

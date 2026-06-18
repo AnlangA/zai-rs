@@ -17,6 +17,6 @@ tower = "0.5"
 axum = "0.8"
 reqwest = "0.12"
 clap = { version = "4.0", features = ["derive"] }
-rmcp = { version = "0.6.4", features = ["client", "transport-sse-client-reqwest", "reqwest", "transport-streamable-http-client-reqwest", "transport-child-process", "tower", "auth"] }
+rmcp = { version = "1.5.0", features = ["client", "client-side-sse", "reqwest", "transport-streamable-http-client-reqwest", "transport-child-process", "tower", "auth"] }
 # Use local zai-rs with rmcp-kits feature for this example
 zai-rs = { path = "../../../", features = ["rmcp-kits"] }

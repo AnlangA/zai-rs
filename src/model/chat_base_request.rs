@@ -96,14 +96,14 @@ where
     /// more deterministic. Must be between 0.0 and 1.0.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 0.0, max = 1.0))]
-    pub temperature: Option<f32>,
+    pub temperature: Option<f64>,
 
     /// Controls diversity via nucleus sampling. Only tokens with cumulative
     /// probability up to `top_p` are considered. Must be between 0.0 and
     /// 1.0.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 0.0, max = 1.0))]
-    pub top_p: Option<f32>,
+    pub top_p: Option<f64>,
 
     /// The maximum number of tokens to generate in the completion.
     /// Must be between 1 and 98304.
@@ -187,11 +187,11 @@ where
         self.stream = Some(stream);
         self
     }
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
         self
     }
-    pub fn with_top_p(mut self, top_p: f32) -> Self {
+    pub fn with_top_p(mut self, top_p: f64) -> Self {
         self.top_p = Some(top_p);
         self
     }
@@ -317,7 +317,7 @@ mod tests {
     use super::*;
     use crate::model::{
         chat_message_types::TextMessage,
-        chat_models::{GLM4_6, GLM5_2},
+        chat_models::{GLM4_5, GLM4_6, GLM5_2},
     };
 
     #[test]
@@ -379,18 +379,16 @@ mod tests {
     #[test]
     fn test_glm52_reasoning_effort_builder() {
         // reasoning_effort is only available on GLM-5.2+ (ReasoningEffortEnable)
-        let body: ChatBody<GLM5_2, TextMessage> =
-            ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
-                .with_thinking(ThinkingType::enabled())
-                .with_reasoning_effort(ReasoningEffort::Max);
+        let body: ChatBody<GLM5_2, TextMessage> = ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
+            .with_thinking(ThinkingType::enabled())
+            .with_reasoning_effort(ReasoningEffort::Max);
         assert_eq!(body.reasoning_effort, Some(ReasoningEffort::Max));
         assert!(body.thinking.is_some());
     }
 
     #[test]
     fn test_glm52_serializes_model_name() {
-        let body: ChatBody<GLM5_2, TextMessage> =
-            ChatBody::new(GLM5_2 {}, TextMessage::user("hi"));
+        let body: ChatBody<GLM5_2, TextMessage> = ChatBody::new(GLM5_2 {}, TextMessage::user("hi"));
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["model"], "glm-5.2");
         // reasoning_effort must be omitted when not set
@@ -398,10 +396,26 @@ mod tests {
     }
 
     #[test]
+    fn test_sampling_parameters_serialize_without_f32_expansion() {
+        let body: ChatBody<GLM4_5, TextMessage> = ChatBody::new(GLM4_5 {}, TextMessage::user("hi"))
+            .with_temperature(0.7)
+            .with_top_p(0.9);
+
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["temperature"], serde_json::json!(0.7));
+        assert_eq!(json["top_p"], serde_json::json!(0.9));
+
+        let serialized = serde_json::to_string(&body).unwrap();
+        assert!(serialized.contains("\"temperature\":0.7"));
+        assert!(serialized.contains("\"top_p\":0.9"));
+        assert!(!serialized.contains("0.699999"));
+        assert!(!serialized.contains("0.899999"));
+    }
+
+    #[test]
     fn test_reasoning_effort_serializes_level() {
-        let body: ChatBody<GLM5_2, TextMessage> =
-            ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
-                .with_reasoning_effort(ReasoningEffort::Xhigh);
+        let body: ChatBody<GLM5_2, TextMessage> = ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
+            .with_reasoning_effort(ReasoningEffort::Xhigh);
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["reasoning_effort"], "xhigh");
     }

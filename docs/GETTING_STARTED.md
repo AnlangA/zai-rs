@@ -187,13 +187,13 @@ async fn main() {
     match chat().await {
         Ok(content) => println!("Response: {}", content),
         Err(ZaiError::AuthError { code, message }) => {
-            eprintln!("认证错误 [{}]: {}", code, message);
+            tracing::error!("认证错误 [{}]: {}", code, message);
         }
         Err(ZaiError::RateLimitError { code, message }) => {
-            eprintln!("速率限制 [{}]: {}", code, message);
+            tracing::error!("速率限制 [{}]: {}", code, message);
         }
         Err(e) => {
-            eprintln!("发生错误: {}", e);
+            tracing::error!("发生错误: {}", e);
         }
     }
 }
@@ -211,7 +211,7 @@ fn main() {
     
     match validate_api_key(api_key) {
         Ok(()) => println!("API 密钥格式正确"),
-        Err(e) => eprintln!("API 密钥格式错误: {}", e),
+        Err(e) => tracing::error!("API 密钥格式错误: {}", e),
     }
 }
 ```

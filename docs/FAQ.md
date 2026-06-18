@@ -50,7 +50,7 @@ A: 智谱 AI API 密钥格式为 `<id>.<secret>`，例如 `abc123.abcdefghijklmn
 use zai_rs::client::error::validate_api_key;
 
 if let Err(e) = validate_api_key(&api_key) {
-    eprintln!("Invalid API key: {}", e);
+    tracing::error!("Invalid API key: {}", e);
 }
 ```
 
@@ -83,12 +83,12 @@ A: 所有 API 调用返回 `ZaiResult<T>`。使用 `?` 操作符或 `match` 处�
 match client.chat_completions(&request).await {
     Ok(response) => println!("{:?}", response),
     Err(ZaiError::AuthError { code, message }) => {
-        eprintln!("Authentication failed [{}]: {}", code, message);
+        tracing::error!("Authentication failed [{}]: {}", code, message);
     },
     Err(ZaiError::RateLimitError { .. }) => {
-        eprintln!("Rate limit exceeded, please retry later");
+        tracing::error!("Rate limit exceeded, please retry later");
     },
-    Err(e) => eprintln!("Error: {}", e),
+    Err(e) => tracing::error!("Error: {}", e),
 }
 ```
 
@@ -136,9 +136,9 @@ A: 使用 `is_client_error()` 和 `is_server_error()` 方法：
 
 ```rust
 if error.is_client_error() {
-    eprintln!("Client error - check your request parameters");
+    tracing::error!("Client error - check your request parameters");
 } else if error.is_server_error() {
-    eprintln!("Server error - please try again later");
+    tracing::error!("Server error - please try again later");
 }
 ```
 

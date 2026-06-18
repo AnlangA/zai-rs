@@ -127,7 +127,7 @@ pub async fn handle_api_error(resp: Response) -> ApiErrorInfo {
                 } else {
                     error!("Client error: {}", error_info);
                 }
-            }
+            },
             500..=599 => error!("Server error: {}", error_info),
             _ => error!("Unknown API error: {}", error_info),
         }

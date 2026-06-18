@@ -1,38 +1,74 @@
+use std::sync::Arc;
+
 use url::Url;
 
 use super::request::VoiceListQuery;
-use crate::{ZaiResult, client::http::HttpClient};
+use crate::{
+    ZaiResult,
+    client::{
+        endpoints::{ApiBase, EndpointConfig, paths},
+        http::{HttpClient, HttpClientConfig, parse_typed_response},
+    },
+};
 
 /// GET voice list request
 pub struct VoiceListRequest {
     pub key: String,
     url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
+    query: VoiceListQuery,
     // Empty body placeholder to satisfy HttpClient::Body
     _body: (),
 }
 
 impl VoiceListRequest {
     pub fn new(key: String) -> Self {
-        let url = "https://open.bigmodel.cn/api/paas/v4/voice/list".to_string();
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::VOICE_LIST);
         Self {
             key,
             url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
+            query: VoiceListQuery::new(),
             _body: (),
         }
     }
 
-    fn rebuild_url(&mut self, q: &VoiceListQuery) {
-        let mut url = Url::parse("https://open.bigmodel.cn/api/paas/v4/voice/list").unwrap();
+    fn rebuild_url(&mut self) {
+        let endpoint = self.endpoint_config.url(&self.api_base, paths::VOICE_LIST);
+        let mut url = Url::parse(&endpoint).unwrap();
         {
             let mut pairs = url.query_pairs_mut();
-            if let Some(ref n) = q.voice_name {
+            if let Some(ref n) = self.query.voice_name {
                 pairs.append_pair("voiceName", n);
             }
-            if let Some(ref t) = q.voice_type {
+            if let Some(ref t) = self.query.voice_type {
                 pairs.append_pair("voiceType", t.as_str());
             }
         }
         self.url = url.to_string();
+    }
+
+    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base.into());
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.rebuild_url();
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
     }
 
     pub fn validate(&self) -> ZaiResult<()> {
@@ -44,12 +80,13 @@ impl VoiceListRequest {
     pub async fn send(&self) -> ZaiResult<super::response::VoiceListResponse> {
         self.validate()?;
         let resp = self.get().await?;
-        let parsed = resp.json::<super::response::VoiceListResponse>().await?;
+        let parsed = parse_typed_response::<super::response::VoiceListResponse>(resp).await?;
         Ok(parsed)
     }
 
     pub fn with_query(mut self, q: VoiceListQuery) -> Self {
-        self.rebuild_url(&q);
+        self.query = q;
+        self.rebuild_url();
         self
     }
 }
@@ -67,5 +104,8 @@ impl HttpClient for VoiceListRequest {
     }
     fn body(&self) -> &Self::Body {
         &self._body
+    }
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        Arc::clone(&self.http_config)
     }
 }

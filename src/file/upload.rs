@@ -1,7 +1,10 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use super::request::FilePurpose;
-use crate::client::http::HttpClient;
+use crate::client::{
+    endpoints::{ApiBase, EndpointConfig, paths},
+    http::{HttpClient, HttpClientConfig, parse_typed_response, send_multipart_request},
+};
 
 /// File upload request (multipart/form-data)
 ///
@@ -10,20 +13,33 @@ use crate::client::http::HttpClient;
 /// - file: file content
 pub struct FileUploadRequest {
     pub key: String,
+    url: String,
+    endpoint_config: EndpointConfig,
+    api_base: ApiBase,
+    http_config: Arc<HttpClientConfig>,
     purpose: FilePurpose,
     file_path: PathBuf,
     file_name: Option<String>,
     content_type: Option<String>,
+    _body: (),
 }
 
 impl FileUploadRequest {
     pub fn new(key: String, purpose: FilePurpose, file_path: impl Into<PathBuf>) -> Self {
+        let endpoint_config = EndpointConfig::default();
+        let api_base = ApiBase::PaasV4;
+        let url = endpoint_config.url(&api_base, paths::FILES);
         Self {
             key,
+            url,
+            endpoint_config,
+            api_base,
+            http_config: Arc::new(HttpClientConfig::default()),
             purpose,
             file_path: file_path.into(),
             file_name: None,
             content_type: None,
+            _body: (),
         }
     }
 
@@ -38,27 +54,43 @@ impl FileUploadRequest {
         self
     }
 
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.api_base = ApiBase::Custom(base_url.into());
+        self.url = self.endpoint_config.url(&self.api_base, paths::FILES);
+        self
+    }
+
+    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
+        self.endpoint_config = endpoint_config;
+        self.url = self.endpoint_config.url(&self.api_base, paths::FILES);
+        self
+    }
+
+    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
+        self.http_config = Arc::new(config);
+        self
+    }
+
     /// Send the upload request and parse typed response (`FileObject`)
     pub async fn send(&self) -> crate::ZaiResult<super::response::FileObject> {
         let resp: reqwest::Response = self.post().await?;
-        let parsed = resp.json::<super::response::FileObject>().await?;
-        Ok(parsed)
+        parse_typed_response::<super::response::FileObject>(resp).await
     }
 }
 
 impl HttpClient for FileUploadRequest {
     type Body = (); // unused
-    type ApiUrl = &'static str;
+    type ApiUrl = String;
     type ApiKey = String;
 
     fn api_url(&self) -> &Self::ApiUrl {
-        &"https://open.bigmodel.cn/api/paas/v4/files"
+        &self.url
     }
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
     fn body(&self) -> &Self::Body {
-        &()
+        &self._body
     }
 
     // Override POST to send multipart/form-data
@@ -66,18 +98,14 @@ impl HttpClient for FileUploadRequest {
     fn post(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
-        let url: String = "https://open.bigmodel.cn/api/paas/v4/files".to_string();
-
+        let url = self.url.clone();
         let key: String = self.key.clone();
-
+        let config = self.http_config.clone();
         let purpose = self.purpose.clone();
         let path = self.file_path.clone();
         let file_name = self.file_name.clone();
         let content_type = self.content_type.clone();
         async move {
-            let mut form =
-                reqwest::multipart::Form::new().text("purpose", purpose.as_str().to_string());
-
             let fname = file_name
                 .or_else(|| {
                     path.file_name()
@@ -86,54 +114,27 @@ impl HttpClient for FileUploadRequest {
                 })
                 .unwrap_or_else(|| "upload.bin".to_string());
 
-            let mut part = reqwest::multipart::Part::bytes(std::fs::read(&path)?).file_name(fname);
-            if let Some(ct) = content_type {
-                part =
-                    part.mime_str(&ct)
-                        .map_err(|e| crate::client::error::ZaiError::ApiError {
+            let bytes = std::fs::read(&path)?;
+            send_multipart_request(reqwest::Method::POST, url, key, config, move || {
+                let mut part =
+                    reqwest::multipart::Part::bytes(bytes.clone()).file_name(fname.clone());
+                if let Some(ct) = content_type.as_ref() {
+                    part = part.mime_str(ct).map_err(|e| {
+                        crate::client::error::ZaiError::ApiError {
                             code: 1200,
                             message: format!("invalid content-type: {}", e),
-                        })?;
-            }
-            form = form.part("file", part);
-
-            let resp = reqwest::Client::new()
-                .post(url)
-                .bearer_auth(key)
-                .multipart(form)
-                .send()
-                .await?;
-
-            let status = resp.status();
-            if status.is_success() {
-                return Ok(resp);
-            }
-
-            // Parse standard error envelope {"error": { code, message }}
-            let text = resp.text().await.unwrap_or_default();
-            #[derive(serde::Deserialize)]
-            struct ErrEnv {
-                error: ErrObj,
-            }
-            #[derive(serde::Deserialize)]
-            struct ErrObj {
-                _code: serde_json::Value,
-                message: String,
-            }
-
-            if let Ok(parsed) = serde_json::from_str::<ErrEnv>(&text) {
-                Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    parsed.error.message,
-                ))
-            } else {
-                Err(crate::client::error::ZaiError::from_api_response(
-                    status.as_u16(),
-                    0,
-                    text,
-                ))
-            }
+                        }
+                    })?;
+                }
+                Ok(reqwest::multipart::Form::new()
+                    .text("purpose", purpose.as_str().to_string())
+                    .part("file", part))
+            })
+            .await
         }
+    }
+
+    fn http_config(&self) -> Arc<HttpClientConfig> {
+        self.http_config.clone()
     }
 }
