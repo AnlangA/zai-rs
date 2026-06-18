@@ -10,7 +10,6 @@
 //! | Model | Struct | Thinking | ReasoningEffort | Async | ToolStream |
 //! |-------|--------|----------|-----------------|-------|------------|
 //! | glm-5.2 | [`GLM5_2`] | yes | yes | yes | yes |
-//! | glm-5.2[1m] | [`GLM5_2_1m`] | yes | yes | yes | yes |
 //! | glm-5.1 | [`GLM5_1`] | yes | no | yes | yes |
 //! | glm-5 | [`GLM5`] | yes | no | yes | yes |
 //! | glm-5-turbo | [`GLM5_turbo`] | yes | no | yes | yes |
@@ -69,25 +68,12 @@ use crate::{
 // Text Models
 // ============================================================================
 
-// GLM-5.2 — flagship model for the long-task era. Supports a usable 1M-token
-// context (via the `glm-5.2[1m]` variant, see [`GLM5_2_1m`]), thinking mode,
-// and the new `reasoning_effort` parameter for controlling reasoning depth.
+// GLM-5.2 — flagship model for the long-task era. Supports thinking mode and
+// the new `reasoning_effort` parameter for controlling reasoning depth.
 define_model_type!(GLM5_2, "glm-5.2");
 impl_message_binding!(GLM5_2, TextMessage);
 impl_model_markers!(GLM5_2: Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable);
 impl ToolStreamEnable for GLM5_2 {}
-
-// GLM-5.2 with the 1M-context window enabled (`glm-5.2[1m]`). Same
-// capabilities as [`GLM5_2`] but trades quota/rate-limits for a vastly larger
-// context window, suitable for project-level engineering context.
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM5_2_1m,
-    "glm-5.2[1m]"
-);
-impl_message_binding!(GLM5_2_1m, TextMessage);
-impl_model_markers!(GLM5_2_1m: Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable);
-impl ToolStreamEnable for GLM5_2_1m {}
 
 define_model_type!(GLM5_1, "glm-5.1");
 impl_message_binding!(GLM5_1, TextMessage);

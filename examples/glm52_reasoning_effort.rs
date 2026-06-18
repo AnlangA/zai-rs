@@ -9,7 +9,6 @@
 //! - Model selection (GLM-5.2)
 //! - Thinking mode (`ThinkingType::enabled()`)
 //! - Reasoning depth control (`ReasoningEffort`)
-//! - 1M-context variant (`GLM5_2_1m`)
 //!
 //! ## Prerequisites
 //!
@@ -35,10 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== GLM-5.2 Reasoning Effort Demo ===\n");
 
     // GLM-5.2 is the flagship model with thinking + reasoning_effort support.
-    // For project-level engineering context, use the GLM5_2_1m variant (1M
-    // context window) by swapping the model below.
     let model = GLM5_2 {};
-    // let model = GLM5_2_1m {}; // 1M-context variant
 
     let user_text = "Explain how mixture-of-experts (MoE) models work, and why \
                      they might be more efficient than dense models.";

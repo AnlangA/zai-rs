@@ -317,7 +317,7 @@ mod tests {
     use super::*;
     use crate::model::{
         chat_message_types::TextMessage,
-        chat_models::{GLM4_6, GLM5_2, GLM5_2_1m},
+        chat_models::{GLM4_6, GLM5_2},
     };
 
     #[test]
@@ -395,14 +395,6 @@ mod tests {
         assert_eq!(json["model"], "glm-5.2");
         // reasoning_effort must be omitted when not set
         assert!(json.get("reasoning_effort").is_none());
-    }
-
-    #[test]
-    fn test_glm52_1m_serializes_bracket_suffix() {
-        let body: ChatBody<GLM5_2_1m, TextMessage> =
-            ChatBody::new(GLM5_2_1m {}, TextMessage::user("hi"));
-        let json = serde_json::to_value(&body).unwrap();
-        assert_eq!(json["model"], "glm-5.2[1m]");
     }
 
     #[test]
