@@ -20,13 +20,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = BatchesListRequest::new(key).with_query(query);
     let body: BatchesListResponse = client.send().await?;
 
-    println!("object: {:?}", body.object);
-    println!("has_more: {:?}", body.has_more);
+    tracing::trace!("object: {:?}", body.object);
+    tracing::trace!("has_more: {:?}", body.has_more);
 
     if let Some(items) = body.data.as_ref() {
-        println!("batches: {}", items.len());
+        tracing::trace!("batches: {}", items.len());
         for (i, b) in items.iter().enumerate() {
-            println!(
+            tracing::trace!(
                 "#{} id={:?} status={:?} endpoint={:?}",
                 i + 1,
                 b.id,

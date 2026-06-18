@@ -16,12 +16,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let list = FileListRequest::new(key.clone()).with_query(query);
     let body: FileListResponse = list.send().await?;
 
-    println!("object: {:?}", body.object);
-    println!("has_more: {:?}", body.has_more);
+    tracing::trace!("object: {:?}", body.object);
+    tracing::trace!("has_more: {:?}", body.has_more);
     if let Some(data) = &body.data {
-        println!("files: {}", data.len());
+        tracing::trace!("files: {}", data.len());
         for (i, f) in data.iter().enumerate() {
-            println!(
+            tracing::trace!(
                 "#{}: id={:?} filename={:?} bytes={:?} purpose={:?}",
                 i + 1,
                 f.id,

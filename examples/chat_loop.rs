@@ -18,12 +18,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_airx {};
     let key = std::env::var("ZHIPU_API_KEY").expect("请先在环境变量中设置 ZHIPU_API_KEY");
 
-    println!("可持续对话示例 (输入 exit 或 quit 退出)\n");
+    tracing::trace!("可持续对话示例 (输入 exit 或 quit 退出)\n");
 
     let mut line = String::new();
 
     // 读取首条用户输入并创建会话
-    print!("你> ");
+    tracing::trace!("你> ");
     io::stdout().flush().ok();
     line.clear();
     io::stdin().read_line(&mut line)?;
@@ -49,13 +49,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(extract_text_from_content)
             .unwrap_or_else(|| "<empty>".to_string());
 
-        println!("AI> {}\n", ai_text);
+        tracing::trace!("AI> {}\n", ai_text);
 
         // 将 AI 回复也追加进对话上下文
         client = client.add_messages(TextMessage::assistant(ai_text));
 
         // 读取下一轮用户输入
-        print!("你> ");
+        tracing::trace!("你> ");
         io::stdout().flush().ok();
         line.clear();
         io::stdin().read_line(&mut line)?;

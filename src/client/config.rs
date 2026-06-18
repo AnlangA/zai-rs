@@ -67,6 +67,12 @@ impl ZaiConfig {
     pub fn llm_application_url(&self, path: &str) -> String {
         self.endpoints.url(&ApiBase::LlmApplication, path)
     }
+
+    /// Resolve a monitor / usage-statistics URL for the given path
+    /// (e.g. Coding Plan quota query).
+    pub fn monitor_url(&self, path: &str) -> String {
+        self.endpoints.url(&ApiBase::Monitor, path)
+    }
 }
 
 /// Builder for [`ZaiConfig`].
@@ -91,6 +97,12 @@ impl ZaiConfigBuilder {
     /// Override the realtime base URL.
     pub fn realtime_base(mut self, base: impl Into<String>) -> Self {
         self.config.endpoints = self.config.endpoints.with_realtime_base(base);
+        self
+    }
+
+    /// Override the monitor / usage-statistics base URL.
+    pub fn monitor_base(mut self, base: impl Into<String>) -> Self {
+        self.config.endpoints = self.config.endpoints.with_monitor_base(base);
         self
     }
 

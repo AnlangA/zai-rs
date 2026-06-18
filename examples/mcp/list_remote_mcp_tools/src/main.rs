@@ -44,20 +44,20 @@ async fn main() -> Result<()> {
 
     if let Some(result) = json_obj.get("result").and_then(|r| r.get("tools")) {
         let tools: Vec<Value> = serde_json::from_value(result.clone())?;
-        println!("\n=== MCP Server Tools ===\n");
+        tracing::trace!("\n=== MCP Server Tools ===\n");
         for tool in &tools {
             let name = tool["name"].as_str().unwrap_or("unknown");
-            println!("Tool: {}", name);
+            tracing::trace!("Tool: {}", name);
             if let Some(desc) = tool.get("description").and_then(|v| v.as_str()) {
-                println!("  Description: {}", desc);
+                tracing::trace!("  Description: {}", desc);
             }
             // Check both "inputSchema" (from response) and "input_schema" (common alias)
             if let Some(schema) = tool.get("inputSchema").or_else(|| tool.get("input_schema")) {
-                println!("  Input Schema: {}", serde_json::to_string_pretty(schema)?);
+                tracing::trace!("  Input Schema: {}", serde_json::to_string_pretty(schema)?);
             }
-            println!();
+            tracing::trace!("");
         }
-        println!("Total: {} tools", tools.len());
+        tracing::trace!("Total: {} tools", tools.len());
     } else {
         anyhow::bail!("Failed to get tools from response");
     }

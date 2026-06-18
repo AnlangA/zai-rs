@@ -24,19 +24,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = KnowledgeListRequest::new(key).with_query(query);
     let resp: KnowledgeListResponse = req.send().await?;
 
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
     if let Some(data) = &resp.data {
-        println!(
+        tracing::trace!(
             "total={:?} list_len={}",
             data.total,
             data.list.as_ref().map(|v| v.len()).unwrap_or(0)
         );
         if let Some(list) = &data.list {
             for (i, item) in list.iter().enumerate().take(5) {
-                println!(
+                tracing::trace!(
                     "#{} id={:?} name={:?} docs={:?}",
                     i + 1,
                     item.id,

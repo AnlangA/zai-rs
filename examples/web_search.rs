@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
 
-    println!("=== Web Search Example ===\n");
+    tracing::trace!("=== Web Search Example ===\n");
 
     // Create a simple web search request
     let request = WebSearchRequest::new(
@@ -35,30 +35,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_count(3) // Limit results for cleaner output
     .with_search_intent(true);
 
-    println!("Searching for 'rust programming language'...");
+    tracing::trace!("Searching for 'rust programming language'...");
 
     match request.send().await {
         Ok(response) => {
-            println!("✓ Search successful!");
-            println!("Found {} results", response.result_count());
+            tracing::trace!("✓ Search successful!");
+            tracing::trace!("Found {} results", response.result_count());
 
             if !response.intents().is_empty() {
-                println!("Detected intent: {}", response.intents()[0].intent);
+                tracing::trace!("Detected intent: {}", response.intents()[0].intent);
             }
 
             // Show first result
             if let Some(first_result) = response.results().first() {
-                println!("\nFirst result:");
-                println!("  Title: {}", first_result.title);
-                println!("  URL: {}", first_result.link);
-                println!("  Source: {}", first_result.media);
+                tracing::trace!("\nFirst result:");
+                tracing::trace!("  Title: {}", first_result.title);
+                tracing::trace!("  URL: {}", first_result.link);
+                tracing::trace!("  Source: {}", first_result.media);
             }
         },
         Err(e) => {
-            println!("✗ Search failed: {}", e);
+            tracing::trace!("✗ Search failed: {}", e);
         },
     }
 
-    println!("\n=== Example Complete ===");
+    tracing::trace!("\n=== Example Complete ===");
     Ok(())
 }

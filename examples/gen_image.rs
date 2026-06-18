@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body: ImageResponse = client.send().await?;
 
     // Display the response containing image information
-    println!("{:#?}", body);
+    tracing::trace!("{:#?}", body);
 
     Ok(())
 }

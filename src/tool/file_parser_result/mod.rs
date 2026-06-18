@@ -13,7 +13,7 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,no_run
 //! use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
 //!
 //! #[tokio::main]

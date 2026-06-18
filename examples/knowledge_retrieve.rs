@@ -16,14 +16,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = KnowledgeRetrieveRequest::new(key, id);
     let resp: KnowledgeRetrieveResponse = req.send().await?;
 
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
     if let Some(item) = &resp.data {
-        println!(
+        tracing::trace!(
             "id={:?} name={:?} emb={:?} docs={:?} length={:?} words={:?}",
-            item.id, item.name, item.embedding_id, item.document_size, item.length, item.word_num
+            item.id,
+            item.name,
+            item.embedding_id,
+            item.document_size,
+            item.length,
+            item.word_num
         );
     }
     Ok(())

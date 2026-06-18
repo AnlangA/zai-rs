@@ -11,16 +11,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let resp: KnowledgeCapacityResponse = KnowledgeCapacityRequest::new(key).send().await?;
 
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
     if let Some(data) = &resp.data {
         if let Some(used) = &data.used {
-            println!("used: words={:?} bytes={:?}", used.word_num, used.length);
+            tracing::trace!("used: words={:?} bytes={:?}", used.word_num, used.length);
         }
         if let Some(total) = &data.total {
-            println!("total: words={:?} bytes={:?}", total.word_num, total.length);
+            tracing::trace!("total: words={:?} bytes={:?}", total.word_num, total.length);
         }
     }
     Ok(())

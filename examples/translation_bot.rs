@@ -150,7 +150,7 @@ impl TranslationBot {
         let detection = self.detect_language_and_extract_text(text);
         let prompt = self.create_translation_prompt(&detection);
 
-        println!(
+        tracing::trace!(
             "🎯 目标语言: {} ({})",
             detection.target_language,
             if detection.is_explicit {
@@ -159,7 +159,7 @@ impl TranslationBot {
                 "自动检测"
             }
         );
-        print!("🔄 翻译中: ");
+        tracing::trace!("🔄 翻译中: ");
         io::stdout().flush().ok();
 
         // Create client with system message and user prompt
@@ -195,7 +195,7 @@ impl TranslationBot {
                         .and_then(|c| c.delta.as_ref())
                         .and_then(|d| d.content.as_deref())
                     {
-                        print!("{}", content);
+                        tracing::trace!("{}", content);
                         let _ = std::io::stdout().flush();
 
                         // Store the result
@@ -214,7 +214,7 @@ impl TranslationBot {
             })
             .await?;
 
-        println!(); // New line after streaming
+        tracing::trace!(""); // New line after streaming
 
         let translation_result = result.lock().await.clone();
 
@@ -223,18 +223,18 @@ impl TranslationBot {
 
     /// Start the interactive translation loop
     async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("🤖 智能翻译机器人已启动！");
-        println!("💡 使用方法：");
-        println!("   - 直接输入文本进行翻译（默认翻译为英文）");
-        println!("   - 使用 '翻译成[语言]' 或 'translate to [language]' 指定目标语言");
-        println!("   - 输入 'exit' 或 'quit' 退出程序");
-        println!("   - 输入 'help' 查看帮助");
-        println!();
+        tracing::trace!("🤖 智能翻译机器人已启动！");
+        tracing::trace!("💡 使用方法：");
+        tracing::trace!("   - 直接输入文本进行翻译（默认翻译为英文）");
+        tracing::trace!("   - 使用 '翻译成[语言]' 或 'translate to [language]' 指定目标语言");
+        tracing::trace!("   - 输入 'exit' 或 'quit' 退出程序");
+        tracing::trace!("   - 输入 'help' 查看帮助");
+        tracing::trace!("");
 
         let mut input = String::new();
 
         loop {
-            print!("📝 请输入要翻译的文本> ");
+            tracing::trace!("📝 请输入要翻译的文本> ");
             io::stdout().flush().ok();
 
             input.clear();
@@ -247,7 +247,7 @@ impl TranslationBot {
 
             match user_input.to_lowercase().as_str() {
                 "exit" | "quit" | "退出" => {
-                    println!("👋 再见！");
+                    tracing::trace!("👋 再见！");
                     break;
                 },
                 "help" | "帮助" => {
@@ -258,11 +258,11 @@ impl TranslationBot {
                     // Perform translation
                     match self.translate_stream(&user_input).await {
                         Ok(_) => {
-                            println!(); // Add spacing
+                            tracing::trace!(""); // Add spacing
                         },
                         Err(e) => {
                             tracing::error!(error = %e, "翻译出错");
-                            println!();
+                            tracing::trace!("");
                         },
                     }
                 },
@@ -274,22 +274,22 @@ impl TranslationBot {
 
     /// Display help information
     fn show_help(&self) {
-        println!("📖 帮助信息：");
-        println!();
-        println!("🔧 支持的命令：");
-        println!("   • 直接输入文本：自动翻译（默认为英文）");
-        println!("   • '翻译成英文' / 'translate to English'：指定目标语言");
-        println!("   • 'help' / '帮助'：显示此帮助信息");
-        println!("   • 'exit' / 'quit' / '退出'：退出程序");
-        println!();
-        println!("🌍 支持的语言：");
-        println!("   • 中文、英文、日文、韩文、法文、德文、西班牙文");
-        println!();
-        println!("💡 示例：");
-        println!("   • '你好，翻译成英文' → 'Hello'");
-        println!("   • 'How are you? 翻译成中文' → '你好吗？'");
-        println!("   • 'Bonjour' → 'Hello'（自动检测为非英文）");
-        println!();
+        tracing::trace!("📖 帮助信息：");
+        tracing::trace!("");
+        tracing::trace!("🔧 支持的命令：");
+        tracing::trace!("   • 直接输入文本：自动翻译（默认为英文）");
+        tracing::trace!("   • '翻译成英文' / 'translate to English'：指定目标语言");
+        tracing::trace!("   • 'help' / '帮助'：显示此帮助信息");
+        tracing::trace!("   • 'exit' / 'quit' / '退出'：退出程序");
+        tracing::trace!("");
+        tracing::trace!("🌍 支持的语言：");
+        tracing::trace!("   • 中文、英文、日文、韩文、法文、德文、西班牙文");
+        tracing::trace!("");
+        tracing::trace!("💡 示例：");
+        tracing::trace!("   • '你好，翻译成英文' → 'Hello'");
+        tracing::trace!("   • 'How are you? 翻译成中文' → '你好吗？'");
+        tracing::trace!("   • 'Bonjour' → 'Hello'（自动检测为非英文）");
+        tracing::trace!("");
     }
 }
 

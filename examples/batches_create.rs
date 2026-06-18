@@ -59,9 +59,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_auto_delete_input_file(true);
     let batch: CreateBatchResponse = create.send().await?;
 
-    println!(
+    tracing::trace!(
         "created batch: id={:?} status={:?} input_file_id={:?}",
-        batch.id, batch.status, batch.input_file_id
+        batch.id,
+        batch.status,
+        batch.input_file_id
     );
 
     // Next steps:

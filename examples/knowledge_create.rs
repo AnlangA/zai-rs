@@ -50,9 +50,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let resp: CreateKnowledgeResponse = req.send().await?;
-    println!("code={:?} message={:?}", resp.code, resp.message);
+    tracing::trace!("code={:?} message={:?}", resp.code, resp.message);
     if let Some(data) = resp.data {
-        println!("created id={:?}", data.id);
+        tracing::trace!("created id={:?}", data.id);
     }
 
     Ok(())

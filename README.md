@@ -5,7 +5,7 @@
 ## 快速开始
 
 1. 准备环境
-   - Rust 1.74+（或更高）
+   - Rust 1.85+（edition 2024）
    - 设置环境变量：`ZHIPU_API_KEY="<your_api_key>"`
 2. 构建
    - `cargo build`
@@ -37,6 +37,7 @@
 | 模型 | 结构体 |
 |------|--------|
 | autoglm-phone | `autoglm_phone` |
+| glm-5v-turbo | `GLM5V_turbo` |
 | glm-4.6v | `GLM4_6v` |
 | glm-4.6v-flash | `GLM4_6v_flash` |
 | glm-4.6v-flashx | `GLM4_6v_flashx` |
@@ -57,7 +58,8 @@
 | `chat_text` | 基础文本对话 |
 | `chat_stream` | 流式响应 |
 | `chat_loop` | 多轮对话循环 |
-| `chat_coding_plan` | 编程辅助对话 |
+| `chat_coding_plan` | 编程辅助对话（coding 专属端点） |
+| `coding_plan_usage` | Coding Plan 余量 / 额度查询 |
 | `chat_vision` | 视觉模型对话（图片/视频） |
 | `chat_voice` | 语音模型对话 |
 | `async_chat_text` | 异步对话任务提交与轮询 |
@@ -140,7 +142,25 @@ cargo run --example chat_loop
 - [x] DELETE 删除文档
 - [x] POST 重新向量化
 
-### 实时 API 🚧 框架就绪
+### Coding Plan API
+- [x] POST 编程辅助对话（`/api/coding/paas/v4`，专属端点）
+- [x] GET 余量 / 额度查询（`/api/monitor/usage/quota/limit`，5 小时窗口 + 每周窗口）
+
+```rust,no_run
+use zai_rs::usage::CodingPlanUsageRequest;
+
+# async fn go(key: String) -> zai_rs::ZaiResult<()> {
+let resp = CodingPlanUsageRequest::new(key).send().await?;
+if let Some(window) = resp.time_limit() {
+    println!("5h 余量: {}/{}", window.remaining(), window.number);
+}
+# Ok(())
+# }
+```
+
+### 实时 API
 - [x] WebSocket 类型定义
-- [x] 会话管理框架
-- [ ] 音视频通话实现（待完善）
+- [x] 会话管理框架（`RealtimeClient` / `SessionBuilder`）
+- [x] Bearer / JWT 双鉴权
+- [x] 完整 client/server 事件（`ClientEvent` / `ServerEvent`）
+- [ ] 音视频通话高级封装（待完善）

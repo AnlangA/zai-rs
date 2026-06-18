@@ -18,6 +18,7 @@ use tokio::{net::TcpListener, sync::oneshot, time::sleep};
 use zai_rs::{
     file::{FileListQuery, FileListRequest, FilePurpose, FileUploadRequest},
     model::{ChatCompletion, GLM5_2, TextMessage},
+    usage::CodingPlanUsageRequest,
 };
 
 mod common;
@@ -481,4 +482,152 @@ fn test_empty_response_handling() {
     });
 
     assert!(empty_response["choices"].as_array().unwrap().is_empty());
+}
+
+/// Capture a single SDK request against a mock server bound to `base_path`
+/// (e.g. `/api/monitor`). Returns the full base URL the SDK should be
+/// configured with and a receiver yielding the captured request.
+async fn capture_one_request_under(
+    base_path: &str,
+    response_body: serde_json::Value,
+) -> (String, oneshot::Receiver<CapturedHttpRequest>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = oneshot::channel::<CapturedHttpRequest>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let io = TokioIo::new(stream);
+        let response_body = response_body.clone();
+
+        let service = service_fn(move |req: Request<Incoming>| {
+            let tx = Arc::clone(&tx);
+            let response_body = response_body.clone();
+            async move {
+                let method = req.method().as_str().to_string();
+                let uri = req.uri().clone();
+                let authorization = req
+                    .headers()
+                    .get(hyper::header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+                let body = req.collect().await.unwrap().to_bytes().to_vec();
+
+                if let Some(tx) = tx.lock().unwrap().take() {
+                    let _ = tx.send(CapturedHttpRequest {
+                        method,
+                        path: uri.path().to_string(),
+                        query: uri.query().map(str::to_string),
+                        authorization,
+                        content_type: None,
+                        body,
+                    });
+                }
+
+                let mut response = Response::new(Full::new(Bytes::from(response_body.to_string())));
+                *response.status_mut() = StatusCode::OK;
+                Ok::<_, Infallible>(response)
+            }
+        });
+
+        ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
+            .serve_connection(io, service)
+            .await
+            .unwrap();
+    });
+
+    (format!("http://{addr}{base_path}"), rx)
+}
+
+/// Coding Plan usage query (GET /api/monitor/usage/quota/limit) hits the
+/// monitor endpoint, sends a Bearer token, carries no body, and parses the
+/// `{code,msg,success,data}` envelope into typed quota windows.
+#[tokio::test]
+async fn test_sdk_coding_plan_usage_query() {
+    let key = "test.12345678901234567890".to_string();
+    let (base_url, captured) = capture_one_request_under(
+        "/api/monitor",
+        json!({
+            "code": 200,
+            "msg": "ok",
+            "success": true,
+            "data": {
+                "level": 3,
+                "limits": [
+                    {
+                        "type": "TIME_LIMIT",
+                        "unit": 5,
+                        "number": 600,
+                        "percentage": 25.0,
+                        "usage": 4000,
+                        "currentValue": 54,
+                        "remaining": 3946,
+                        "nextResetTime": 1781778751996_i64,
+                        "usageDetails": [
+                            {"modelCode": "search-prime", "usage": 40},
+                            {"modelCode": "web-reader", "usage": 14}
+                        ]
+                    },
+                    {
+                        "type": "TOKENS_LIMIT",
+                        "unit": 3,
+                        "number": 1000000,
+                        "percentage": 50.0,
+                        "nextResetTime": 1784339999983_i64
+                    }
+                ]
+            }
+        }),
+    )
+    .await;
+
+    let response = CodingPlanUsageRequest::new(key.clone())
+        .with_base_url(base_url)
+        .send()
+        .await
+        .unwrap();
+
+    assert!(response.success);
+    assert_eq!(response.level(), Some("3"));
+
+    let five_hour = response.time_limit().expect("time limit window present");
+    assert!(five_hour.is_time_limit());
+    assert_eq!(five_hour.unit.as_deref(), Some("5"));
+    assert_eq!(five_hour.quota(), 4000);
+    assert_eq!(five_hour.consumed(), 54);
+    assert_eq!(five_hour.remaining(), 3946);
+    assert_eq!(five_hour.usage_details.len(), 2);
+    assert_eq!(five_hour.next_reset_time.as_deref(), Some("1781778751996"));
+
+    let summary = response.summary();
+    assert_eq!(summary.code, 200);
+    assert_eq!(summary.msg.as_deref(), Some("ok"));
+    assert!(summary.success);
+    let summarized_time = summary.time_limit().expect("time limit summary present");
+    assert_eq!(summarized_time.number, 600);
+    assert_eq!(summarized_time.reported_usage, Some(4000));
+    assert_eq!(summarized_time.current_value, Some(54));
+    assert_eq!(summarized_time.reported_remaining, Some(3946));
+    assert_eq!(summarized_time.used, 54);
+    assert_eq!(summarized_time.remaining, 3946);
+    assert_eq!(
+        summarized_time.next_reset_at.as_ref().unwrap().to_rfc3339(),
+        "2026-06-18T10:32:31.996+00:00"
+    );
+
+    let weekly = response
+        .tokens_limit()
+        .expect("tokens limit window present");
+    assert!(weekly.is_tokens_limit());
+    assert_eq!(weekly.remaining(), 500_000);
+
+    let request = captured.await.unwrap();
+    assert_eq!(request.method, "GET");
+    assert_eq!(request.path, "/api/monitor/usage/quota/limit");
+    assert!(request.body.is_empty());
+    assert_eq!(
+        request.authorization.as_deref(),
+        Some(format!("Bearer {key}").as_str())
+    );
 }

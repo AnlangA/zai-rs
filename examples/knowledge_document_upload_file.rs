@@ -26,19 +26,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Minimal example: dynamic parse, no extra options
     let resp: UploadFileResponse = req.send().await?;
 
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
     if let Some(data) = &resp.data {
         if let Some(ok) = &data.success_infos {
             for s in ok.iter() {
-                println!("success: doc_id={:?} file={:?}", s.document_id, s.file_name);
+                tracing::trace!("success: doc_id={:?} file={:?}", s.document_id, s.file_name);
             }
         }
         if let Some(fails) = &data.failed_infos {
             for f in fails.iter() {
-                println!("failed: file={:?} reason={:?}", f.file_name, f.fail_reason);
+                tracing::trace!("failed: file={:?} reason={:?}", f.file_name, f.fail_reason);
             }
         }
     }

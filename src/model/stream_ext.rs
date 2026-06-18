@@ -35,7 +35,7 @@
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
 use futures::{Stream, StreamExt, stream};
-use tracing::info;
+use tracing::trace;
 
 use crate::{
     client::{
@@ -188,7 +188,9 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                     },
                 };
                 for event in parser.push(&bytes) {
-                    info!("SSE data: {}", String::from_utf8_lossy(&event));
+                    // Per-chunk SSE payload logging is noisy at high token
+                    // rates; keep it at `trace`.
+                    trace!(bytes = event.len(), "SSE event received");
                     match parse_chat_stream_event(&event)? {
                         Some(chunk) => on_chunk(chunk).await?,
                         None => return Ok(()),
@@ -253,7 +255,7 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                             Some(Ok(bytes)) => {
                                 let mut saw_done = done;
                                 for event in parser.push(&bytes) {
-                                    info!("SSE data: {}", String::from_utf8_lossy(&event));
+                                    trace!(bytes = event.len(), "SSE event received");
                                     match parse_chat_stream_event(&event) {
                                         Ok(Some(item)) => pending.push_back(Ok(item)),
                                         Ok(None) => {

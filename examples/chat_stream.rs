@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .and_then(|c| c.delta.as_ref())
                     .and_then(|d| d.content.as_deref())
                 {
-                    print!("{}", content);
+                    tracing::trace!("{}", content);
                     let _ = std::io::stdout().flush();
                 }
 
@@ -90,8 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let last_finish_reason = finish.lock().await.clone();
-    println!();
-    println!(
+    tracing::trace!("");
+    tracing::trace!(
         "{}",
         last_finish_reason
             .as_deref()

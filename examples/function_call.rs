@@ -85,7 +85,7 @@ fn get_key() -> Result<String, Box<dyn std::error::Error>> {
     } else {
         // 从输入中读取
         let mut key = String::new();
-        println!("请输入 ZHIPU_API_KEY: ");
+        tracing::trace!("请输入 ZHIPU_API_KEY: ");
         std::io::stdin().read_line(&mut key)?;
         Ok(key.trim().to_string())
     }

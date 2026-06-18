@@ -23,6 +23,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ChatCompletion::new(model, vision_message, key);
 
     let body: ChatCompletionResponse = client.send().await?;
-    println!("{:#?}", body);
+    tracing::trace!("{:#?}", body);
     Ok(())
 }

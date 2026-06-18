@@ -17,9 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let req = KnowledgeUpdateRequest::new(key, id).with_description(description);
     let resp: KnowledgeUpdateResponse = req.send().await?;
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
 
     Ok(())

@@ -25,6 +25,7 @@
 //! | Agent | Agent creation & management | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
 //! | Real-time | WebSocket audio/video (GLM-Realtime) | [`realtime`] |
+//! | Coding Plan usage | GLM Coding Plan quota / 余量查询 | [`usage`] |
 //!
 //! # Module Structure
 //!
@@ -41,6 +42,7 @@
 //!   RMCP bridge)
 //! - [`realtime`] — Real-time audio/video communication (WebSocket,
 //!   experimental)
+//! - [`usage`] — Coding Plan usage / quota query (GLM Coding Plan 余量查询)
 //!
 //! # Quick Start
 //!
@@ -122,3 +124,9 @@ pub mod model;
 pub mod realtime;
 pub mod tool;
 pub mod toolkits;
+pub mod usage;
+pub use usage::{
+    CodingPlanQuotaKind, CodingPlanQuotaLimit, CodingPlanQuotaSummary, CodingPlanUsageData,
+    CodingPlanUsageDetail, CodingPlanUsageRequest, CodingPlanUsageResponse, CodingPlanUsageSummary,
+    query as query_coding_plan_usage, query_summary as query_coding_plan_usage_summary,
+};

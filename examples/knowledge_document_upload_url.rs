@@ -26,19 +26,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = DocumentUploadUrlRequest::new(key, body);
     let resp: UploadUrlResponse = req.send().await?;
 
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
     if let Some(data) = &resp.data {
         if let Some(ok) = &data.success_infos {
             for s in ok.iter() {
-                println!("success: doc_id={:?} url={:?}", s.document_id, s.url);
+                tracing::trace!("success: doc_id={:?} url={:?}", s.document_id, s.url);
             }
         }
         if let Some(fails) = &data.failed_infos {
             for f in fails.iter() {
-                println!("failed: url={:?} reason={:?}", f.url, f.fail_reason);
+                tracing::trace!("failed: url={:?} reason={:?}", f.url, f.fail_reason);
             }
         }
     }

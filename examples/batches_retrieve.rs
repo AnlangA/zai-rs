@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .status
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
-        println!("poll[{}]: status={}", attempt, status);
+        tracing::trace!("poll[{}]: status={}", attempt, status);
         if status == "completed" || status == "failed" || attempt >= max_attempts {
             break batch;
         }
@@ -33,13 +33,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
 
-    println!(
+    tracing::trace!(
         "batch id={:?} status={:?} endpoint={:?}",
-        final_batch.id, final_batch.status, final_batch.endpoint
+        final_batch.id,
+        final_batch.status,
+        final_batch.endpoint
     );
-    println!(
+    tracing::trace!(
         "output_file_id={:?} error_file_id={:?}",
-        final_batch.output_file_id, final_batch.error_file_id
+        final_batch.output_file_id,
+        final_batch.error_file_id
     );
 
     std::fs::create_dir_all("data")?;
@@ -49,9 +52,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         FileContentRequest::new(key.clone(), out_id)
             .send_to("data/batch_output.jsonl")
             .await?;
-        println!("saved: data/batch_output.jsonl");
+        tracing::trace!("saved: data/batch_output.jsonl");
     } else {
-        println!("no output_file_id yet");
+        tracing::trace!("no output_file_id yet");
     }
 
     // Download error_file_id if present
@@ -59,9 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         FileContentRequest::new(key.clone(), err_id)
             .send_to("data/batch_errors.jsonl")
             .await?;
-        println!("saved: data/batch_errors.jsonl");
+        tracing::trace!("saved: data/batch_errors.jsonl");
     } else {
-        println!("no error_file_id");
+        tracing::trace!("no error_file_id");
     }
 
     Ok(())

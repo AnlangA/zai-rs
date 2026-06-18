@@ -297,7 +297,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(sessions);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    println!("🚀 AI Chat Server is running on http://localhost:3000");
+    tracing::trace!("🚀 AI Chat Server is running on http://localhost:3000");
 
     axum::serve(listener, app).await?;
 

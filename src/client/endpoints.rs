@@ -17,6 +17,16 @@ pub const LLM_APPLICATION_BASE: &str = "https://open.bigmodel.cn/api/llm-applica
 /// lives under `/api/paas/v4/realtime`, same v4 family as the REST APIs.
 pub const REALTIME_BASE: &str = "wss://open.bigmodel.cn/api/paas/v4/realtime";
 
+/// Official default base for the monitor / usage-statistics APIs.
+///
+/// The GLM Coding Plan exposes a usage/quota query endpoint under
+/// `/api/monitor/usage/quota/limit` (verified via the official
+/// `glm-plan-usage` plugin at
+/// <https://docs.bigmodel.cn/cn/coding-plan/extension/usage-query-plugin> and
+/// the community CLI <https://github.com/JinHanAI/coding-plan-monitor>). It
+/// returns the per-5-hour and weekly quota consumption/remaining amounts.
+pub const MONITOR_BASE: &str = "https://open.bigmodel.cn/api/monitor";
+
 /// API family selector used by [`EndpointConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiBase {
@@ -24,6 +34,8 @@ pub enum ApiBase {
     CodingPaasV4,
     LlmApplication,
     Realtime,
+    /// Monitor / usage-statistics endpoints (Coding Plan quota query).
+    Monitor,
     Custom(String),
 }
 
@@ -34,6 +46,8 @@ pub struct EndpointConfig {
     pub coding_paas_v4_base: String,
     pub llm_application_base: String,
     pub realtime_base: String,
+    /// Monitor / usage-statistics base URL.
+    pub monitor_base: String,
 }
 
 impl Default for EndpointConfig {
@@ -43,6 +57,7 @@ impl Default for EndpointConfig {
             coding_paas_v4_base: CODING_PAAS_V4_BASE.to_string(),
             llm_application_base: LLM_APPLICATION_BASE.to_string(),
             realtime_base: REALTIME_BASE.to_string(),
+            monitor_base: MONITOR_BASE.to_string(),
         }
     }
 }
@@ -68,12 +83,19 @@ impl EndpointConfig {
         self
     }
 
+    /// Override the monitor / usage-statistics base URL.
+    pub fn with_monitor_base(mut self, base: impl Into<String>) -> Self {
+        self.monitor_base = base.into();
+        self
+    }
+
     pub fn base<'a>(&'a self, api_base: &'a ApiBase) -> &'a str {
         match api_base {
             ApiBase::PaasV4 => &self.paas_v4_base,
             ApiBase::CodingPaasV4 => &self.coding_paas_v4_base,
             ApiBase::LlmApplication => &self.llm_application_base,
             ApiBase::Realtime => &self.realtime_base,
+            ApiBase::Monitor => &self.monitor_base,
             ApiBase::Custom(base) => base,
         }
     }
@@ -161,6 +183,10 @@ pub mod paths {
     pub const DOCUMENT_UPLOAD_DOCUMENT: &str = "document/upload_document";
     pub const DOCUMENT_EMBEDDING: &str = "document/embedding";
     pub const DOCUMENT_SLICE_IMAGE_LIST: &str = "document/slice/image_list";
+
+    /// GLM Coding Plan quota/usage query (GET, under the monitor base).
+    /// Returns per-5-hour and weekly quota consumption + remaining amounts.
+    pub const MONITOR_USAGE_QUOTA_LIMIT: &str = "usage/quota/limit";
 }
 
 #[cfg(test)]

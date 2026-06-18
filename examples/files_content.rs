@@ -19,6 +19,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send_to(&out_path)
         .await?;
 
-    println!("Saved {} bytes to {}", written, out_path);
+    tracing::trace!("Saved {} bytes to {}", written, out_path);
     Ok(())
 }

@@ -22,21 +22,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let moderation = Moderation::new_text(text_content, api_key);
     let result = moderation.send().await?;
 
-    println!("Moderation Result:");
+    tracing::trace!("Moderation Result:");
 
     if let Some(id) = &result.id {
-        println!("Task ID: {}", id);
+        tracing::trace!("Task ID: {}", id);
     }
     if let Some(request_id) = &result.request_id {
-        println!("Request ID: {}", request_id);
+        tracing::trace!("Request ID: {}", request_id);
     }
     if let Some(created) = &result.created {
-        println!("Created: {}", created);
+        tracing::trace!("Created: {}", created);
     }
 
     if let Some(results) = &result.result_list {
         for (i, moderation_result) in results.iter().enumerate() {
-            println!("Result {}: {:?}", i + 1, moderation_result);
+            tracing::trace!("Result {}: {:?}", i + 1, moderation_result);
         }
     }
 

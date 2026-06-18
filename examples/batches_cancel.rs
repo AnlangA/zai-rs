@@ -49,9 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .id
         .clone()
         .ok_or_else(|| Box::<dyn std::error::Error>::from("create returned no batch id"))?;
-    println!(
+    tracing::trace!(
         "created batch: id={:?} status={:?}",
-        created.id, created.status
+        created.id,
+        created.status
     );
 
     // 4) Immediately cancel the batch
@@ -59,9 +60,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send()
         .await?;
 
-    println!(
+    tracing::trace!(
         "cancelled? id={:?} status={:?}",
-        cancelled.id, cancelled.status
+        cancelled.id,
+        cancelled.status
     );
     Ok(())
 }

@@ -149,7 +149,7 @@ impl StreamState for StreamOn {}
 impl StreamState for StreamOff {}
 
 use futures::StreamExt;
-use tracing::info;
+use tracing::trace;
 
 use crate::client::http::HttpClient;
 
@@ -190,7 +190,10 @@ pub trait SseStreamable: HttpClient {
                 match next {
                     Ok(bytes) => {
                         for event in parser.push(&bytes) {
-                            info!("SSE data: {}", String::from_utf8_lossy(&event));
+                            // Per-chunk payload logging is verbose at high
+                            // token rates; keep it at `trace` so production
+                            // streams stay quiet by default.
+                            trace!(bytes = event.len(), "SSE event received");
                             if event == b"[DONE]" {
                                 return Ok(());
                             }

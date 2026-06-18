@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_stream(false);
 
     let body: AudioToTextResponse = client.send().await?;
-    println!("{:#?}", body);
+    tracing::trace!("{:#?}", body);
 
     Ok(())
 }

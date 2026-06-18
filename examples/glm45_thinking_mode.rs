@@ -15,11 +15,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    println!("=== GLM-4.5 Thinking Mode Demo ===\n");
+    tracing::trace!("=== GLM-4.5 Thinking Mode Demo ===\n");
 
     // Example 1: Simple question (no thinking needed)
-    println!("📝 Example 1: Simple Question (Thinking Disabled)");
-    println!("Question: What is the capital of China?\n");
+    tracing::trace!("📝 Example 1: Simple Question (Thinking Disabled)");
+    tracing::trace!("Question: What is the capital of China?\n");
 
     let response = simple_question(&key).await?;
 
@@ -27,17 +27,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}", reasoning);
-            println!("\n---\n");
+            tracing::trace!("🤔 Thinking Process:\n{}", reasoning);
+            tracing::trace!("\n---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            tracing::trace!("💡 Answer: {}\n", content);
         }
     }
 
     // Example 2: Medium complexity (some thinking helpful)
-    println!("\n📝 Example 2: Medium Complexity (Thinking Enabled)");
-    println!("Question: Why might a business choose to use Rust over Python for a new project?\n");
+    tracing::trace!("\n📝 Example 2: Medium Complexity (Thinking Enabled)");
+    tracing::trace!(
+        "Question: Why might a business choose to use Rust over Python for a new project?\n"
+    );
 
     let response = medium_question(&key).await?;
 
@@ -45,17 +47,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}", reasoning);
-            println!("\n---\n");
+            tracing::trace!("🤔 Thinking Process:\n{}", reasoning);
+            tracing::trace!("\n---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            tracing::trace!("💡 Answer: {}\n", content);
         }
     }
 
     // Example 3: Complex reasoning (maximum thinking needed)
-    println!("\n📝 Example 3: Complex Reasoning (Thinking Enabled)");
-    println!(
+    tracing::trace!("\n📝 Example 3: Complex Reasoning (Thinking Enabled)");
+    tracing::trace!(
         "Question: Explain how mixture-of-experts (MoE) models work, and why they might be more efficient than dense models.\n"
     );
 
@@ -65,29 +67,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}", reasoning);
-            println!("\n---\n");
+            tracing::trace!("🤔 Thinking Process:\n{}", reasoning);
+            tracing::trace!("\n---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            tracing::trace!("💡 Answer: {}\n", content);
         }
     }
 
     // Show usage statistics
     if let Some(usage) = response.usage {
-        println!("\n📊 Token Usage:");
+        tracing::trace!("\n📊 Token Usage:");
         if let Some(prompt) = usage.prompt_tokens() {
-            println!("  Prompt tokens: {}", prompt);
+            tracing::trace!("  Prompt tokens: {}", prompt);
         }
         if let Some(completion) = usage.completion_tokens() {
-            println!("  Completion tokens: {}", completion);
+            tracing::trace!("  Completion tokens: {}", completion);
         }
         if let Some(total) = usage.total_tokens() {
-            println!("  Total tokens: {}", total);
+            tracing::trace!("  Total tokens: {}", total);
         }
     }
 
-    println!("\n=== Demo Complete ===");
+    tracing::trace!("\n=== Demo Complete ===");
 
     Ok(())
 }

@@ -25,11 +25,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = TokenizerRequest::new(key, model, messages);
     let resp = req.send().await?;
 
-    println!("id: {}", resp.id);
-    println!("prompt_tokens: {}", resp.usage.prompt_tokens);
-    println!("created: {}", resp.created);
+    tracing::trace!("id: {}", resp.id);
+    tracing::trace!("prompt_tokens: {}", resp.usage.prompt_tokens);
+    tracing::trace!("created: {}", resp.created);
     if let Some(rid) = resp.request_id {
-        println!("request_id: {}", rid);
+        tracing::trace!("request_id: {}", rid);
     }
 
     Ok(())

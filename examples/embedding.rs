@@ -27,12 +27,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Send and print summary
     let resp = req.send().await?;
 
-    println!("model: {}", resp.model);
-    println!("object: {:?}", resp.object);
-    println!("items: {}", resp.data.len());
+    tracing::trace!("model: {}", resp.model);
+    tracing::trace!("object: {:?}", resp.object);
+    tracing::trace!("items: {}", resp.data.len());
 
     for item in &resp.data {
-        println!(
+        tracing::trace!(
             "- index={} object={:?} dims={}",
             item.index,
             item.object,
@@ -45,16 +45,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .take(8)
             .map(|x| format!("{:.6}", x))
             .collect();
-        println!(
+        tracing::trace!(
             "  preview: [{}]{}",
             preview.join(", "),
             if item.embedding.len() > 8 { " ..." } else { "" }
         );
     }
 
-    println!(
+    tracing::trace!(
         "usage: prompt_tokens={} completion_tokens={} total_tokens={}",
-        resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.total_tokens
+        resp.usage.prompt_tokens,
+        resp.usage.completion_tokens,
+        resp.usage.total_tokens
     );
 
     Ok(())

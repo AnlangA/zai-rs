@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ChatCompletion::new(model, TextMessage::user(user_text), key).with_coding_plan();
     // Send the request and await response (non-stream)
     let body: ChatCompletionResponse = client.send().await?;
-    println!("{:#?}", body);
+    tracing::trace!("{:#?}", body);
 
     Ok(())
 }

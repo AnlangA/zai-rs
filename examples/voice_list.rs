@@ -20,12 +20,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let body: VoiceListResponse = client.send().await?;
     if let Some(list) = body.voice_list.as_ref() {
-        println!("voices: {}", list.len());
+        tracing::trace!("voices: {}", list.len());
         for (i, item) in list.iter().enumerate() {
-            println!("#{}: {:?}", i + 1, item);
+            tracing::trace!("#{}: {:?}", i + 1, item);
         }
     } else {
-        println!("voices: 0");
+        tracing::trace!("voices: 0");
     }
 
     Ok(())

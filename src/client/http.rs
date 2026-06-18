@@ -297,10 +297,12 @@ pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
         .or_insert_with(|| {
             let builder = reqwest::Client::builder().timeout(config.timeout);
 
-            // Note: reqwest enables gzip compression by default
-            // if config.enable_compression {
-            //     builder = builder.gzip(true);
-            // }
+            // Note: reqwest's gzip/brotli features are not enabled in this
+            // crate's Cargo.toml, so `enable_compression` is currently a
+            // no-op reserved for future use (the field is kept in the public
+            // config surface for API stability). Enable the corresponding
+            // reqwest cargo features and gate on `config.enable_compression`
+            // here to turn it on.
 
             builder.build().expect("Failed to build reqwest Client")
         })
@@ -308,14 +310,40 @@ pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
 }
 
 /// Parse a successful HTTP response into a typed value.
+///
+/// The raw response body is captured as text before deserialization so it can
+/// be emitted at `trace` level. This is the single place that surfaces the
+/// received wire payload — the streaming/SSE paths log per-chunk, and the
+/// error path logs the body inline with the retry decision.
+///
+/// The body is run through [`mask_sensitive_info`] before logging so secrets
+/// (API keys, bearer tokens, …) never leak into logs even at `trace` level.
 pub async fn parse_typed_response<T>(resp: reqwest::Response) -> ZaiResult<T>
 where
     T: DeserializeOwned,
 {
-    resp.json::<T>().await.map_err(ZaiError::from)
+    let status = resp.status();
+    let url = resp.url().to_string();
+    let body = resp.text().await.map_err(ZaiError::from)?;
+
+    tracing::trace!(
+        url = %url,
+        http_status = %status,
+        bytes = body.len(),
+        response_body = %mask_sensitive_info(&body),
+        "Received HTTP response body"
+    );
+
+    serde_json::from_str::<T>(&body).map_err(ZaiError::from)
 }
 
 /// Send a JSON request through the shared transport pipeline.
+///
+/// Two log surfaces exist:
+/// - **`trace`** (always on): the raw sent JSON body (masked), so the wire
+///   payload is observable with `RUST_LOG=trace`.
+/// - **`info`** (gated by [`HttpClientConfig::enable_logging`]): a pretty
+///   human-readable request dump for ad-hoc debugging.
 pub async fn send_json_request<T>(
     method: Method,
     url: impl Into<String>,
@@ -329,6 +357,17 @@ where
     let body_compact = serde_json::to_string(body).map_err(|e| ZaiError::JsonError(Arc::new(e)))?;
     let enable_logging = config.enable_logging;
     let mask_sensitive = config.mask_sensitive_data;
+    let url_value: String = url.into();
+
+    // Always-on `trace` line for the raw outbound body (masked). This is what
+    // `RUST_LOG=trace` surfaces so developers can see exactly what is sent.
+    tracing::trace!(
+        method = %method,
+        url = %url_value,
+        bytes = body_compact.len(),
+        request_body = %mask_sensitive_info(&body_compact),
+        "Sending HTTP request body"
+    );
 
     if enable_logging {
         match serde_json::to_string_pretty(body) {
@@ -338,23 +377,22 @@ where
                 } else {
                     pretty
                 };
-                info!(method = %method, request_body = %log_pretty, "Sending JSON request");
+                info!(method = %method, url = %url_value, request_body = %log_pretty, "Sending JSON request");
             },
             Err(e) => warn!("Failed to pretty-print request body: {}", e),
         }
     }
 
-    let url = url.into();
     let key = api_key.as_ref().to_string();
     send_with_retry_factory(&config, move |client| {
         let builder = client
-            .request(method.clone(), &url)
+            .request(method.clone(), &url_value)
             .bearer_auth(&key)
             .header("Content-Type", "application/json")
             .body(body_compact.clone());
 
         if enable_logging && !mask_sensitive {
-            debug!(url = %url, "Built JSON request");
+            debug!(url = %url_value, "Built JSON request");
         }
 
         Ok(builder)
@@ -363,16 +401,25 @@ where
 }
 
 /// Send a request without a JSON body through the shared transport pipeline.
+///
+/// Always emits a `trace` line for the outbound request line (no body to log),
+/// so GET/DELETE traffic is observable with `RUST_LOG=trace`.
 pub async fn send_empty_request(
     method: Method,
     url: impl Into<String>,
     api_key: impl AsRef<str>,
     config: Arc<HttpClientConfig>,
 ) -> ZaiResult<reqwest::Response> {
-    let url = url.into();
+    let url_value: String = url.into();
+    tracing::trace!(
+        method = %method,
+        url = %url_value,
+        request_body = %"",
+        "Sending HTTP request (no body)"
+    );
     let key = api_key.as_ref().to_string();
     send_with_retry_factory(&config, move |client| {
-        Ok(client.request(method.clone(), &url).bearer_auth(&key))
+        Ok(client.request(method.clone(), &url_value).bearer_auth(&key))
     })
     .await
 }
@@ -380,6 +427,9 @@ pub async fn send_empty_request(
 /// Send a multipart/form-data request through the shared transport pipeline.
 ///
 /// The form is built per attempt so retry can safely recreate multipart bodies.
+///
+/// Always emits a `trace` line for the outbound request metadata (multipart
+/// bodies are not serialized as JSON, so only the request line is logged).
 pub async fn send_multipart_request<F>(
     method: Method,
     url: impl Into<String>,
@@ -390,12 +440,17 @@ pub async fn send_multipart_request<F>(
 where
     F: FnMut() -> ZaiResult<reqwest::multipart::Form> + Send,
 {
-    let url = url.into();
+    let url_value: String = url.into();
+    tracing::trace!(
+        method = %method,
+        url = %url_value,
+        "Sending multipart HTTP request"
+    );
     let key = api_key.as_ref().to_string();
     send_with_retry_factory(&config, move |client| {
         let form = build_form()?;
         Ok(client
-            .request(method.clone(), &url)
+            .request(method.clone(), &url_value)
             .bearer_auth(&key)
             .multipart(form))
     })

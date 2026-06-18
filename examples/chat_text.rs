@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Send the request and await response (non-stream)
     let body: ChatCompletionResponse = client.send().await?;
-    println!("{:#?}", body);
+    tracing::trace!("{:#?}", body);
 
     Ok(())
 }

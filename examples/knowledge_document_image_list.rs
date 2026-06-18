@@ -17,15 +17,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = DocumentImageListRequest::new(key, doc_id);
     let resp: DocumentImageListResponse = req.send().await?;
 
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
     if let Some(data) = &resp.data
         && let Some(images) = &data.images
     {
         for it in images.iter() {
-            println!("image: text={:?} url={:?}", it.text, it.cos_url);
+            tracing::trace!("image: text={:?} url={:?}", it.text, it.cos_url);
         }
     }
 

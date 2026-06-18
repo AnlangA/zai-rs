@@ -25,9 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ;
 
     let body: FileObject = client.send().await?;
-    println!(
+    tracing::trace!(
         "Uploaded file: id={:?} filename={:?} bytes={:?} purpose={:?}",
-        body.id, body.filename, body.bytes, body.purpose
+        body.id,
+        body.filename,
+        body.bytes,
+        body.purpose
     );
 
     Ok(())

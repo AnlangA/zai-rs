@@ -33,7 +33,7 @@ async fn main() -> ZaiResult<()> {
         .build()
         .await?;
 
-    println!("[realtime] connected (model={})", session.model_name());
+    tracing::trace!("[realtime] connected (model={})", session.model_name());
 
     // Ask the question as text and trigger inference.
     session.send_text(&prompt).await?;
@@ -51,18 +51,18 @@ async fn main() -> ZaiResult<()> {
             tokio::select! {
                 ev = events.next() => match ev {
                     Some(ServerEvent::ResponseAudioTranscriptDelta { delta, .. }) => {
-                        print!("{delta}");
+                        tracing::trace!("{delta}");
                         let _ = std::io::stdout().flush();
                     },
                     Some(ServerEvent::ResponseDone { response }) => {
-                        println!(
+                        tracing::trace!(
                             "\n[realtime] response done (status={:?})",
                             response.status
                         );
                         break;
                     },
                     Some(ServerEvent::Error { error }) => {
-                        eprintln!(
+                        tracing::trace!(
                             "[realtime] server error: {}",
                             error.message.as_deref().unwrap_or("(no message)")
                         );

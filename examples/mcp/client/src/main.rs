@@ -72,9 +72,9 @@ async fn main() -> Result<()> {
 
     // Print concise final text if available
     if let Some(answer) = extract_final_text(&final_resp) {
-        println!("Final answer: {}", answer);
+        tracing::trace!("Final answer: {}", answer);
     } else {
-        println!("Final answer (raw): {:#?}", final_resp);
+        tracing::trace!("Final answer (raw): {:#?}", final_resp);
     }
 
     // Clean shutdown

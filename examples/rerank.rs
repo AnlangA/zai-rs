@@ -29,23 +29,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Send
     let resp = req.send().await?;
 
-    println!("created: {}", resp.created);
-    println!("id: {}", resp.id);
+    tracing::trace!("created: {}", resp.created);
+    tracing::trace!("id: {}", resp.id);
     if let Some(rid) = &resp.request_id {
-        println!("request_id: {}", rid);
+        tracing::trace!("request_id: {}", rid);
     }
 
-    println!("results: {}", resp.results.len());
+    tracing::trace!("results: {}", resp.results.len());
     for r in &resp.results {
-        println!("- index={} score={:.6}", r.index, r.relevance_score);
+        tracing::trace!("- index={} score={:.6}", r.index, r.relevance_score);
         if let Some(doc) = &r.document {
-            println!("  doc: {}", doc);
+            tracing::trace!("  doc: {}", doc);
         }
     }
 
-    println!(
+    tracing::trace!(
         "usage: prompt_tokens={} total_tokens={}",
-        resp.usage.prompt_tokens, resp.usage.total_tokens
+        resp.usage.prompt_tokens,
+        resp.usage.total_tokens
     );
 
     Ok(())

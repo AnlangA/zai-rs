@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use local image file as input
     let file_path = "data/ocr_example.png";
 
-    println!("=== OCR Handwriting Recognition Example ===\n");
+    tracing::trace!("=== OCR Handwriting Recognition Example ===\n");
 
     // Build and send OCR request
     let client = OcrRequest::new(key)
@@ -27,26 +27,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_language_type(OcrLanguageType::ChnEng)
         .with_probability(true);
 
-    println!("Sending OCR request for image: {}\n", file_path);
+    tracing::trace!("Sending OCR request for image: {}\n", file_path);
 
     let response: OcrResponse = client.send().await?;
 
-    println!("OCR Recognition Result:\n");
-    println!("Task ID: {:?}", response.task_id);
-    println!("Status: {:?}", response.status);
-    println!("Message: {:?}", response.message);
-    println!("Number of Results: {:?}\n", response.words_result_num);
+    tracing::trace!("OCR Recognition Result:\n");
+    tracing::trace!("Task ID: {:?}", response.task_id);
+    tracing::trace!("Status: {:?}", response.status);
+    tracing::trace!("Message: {:?}", response.message);
+    tracing::trace!("Number of Results: {:?}\n", response.words_result_num);
 
     if let Some(results) = response.words_result {
         for (idx, item) in results.iter().enumerate() {
-            println!("--- Text Block {} ---", idx + 1);
+            tracing::trace!("--- Text Block {} ---", idx + 1);
 
             if let Some(words) = &item.words {
-                println!("Text: {}", words);
+                tracing::trace!("Text: {}", words);
             }
 
             if let Some(location) = &item.location {
-                println!(
+                tracing::trace!(
                     "Location: left={}, top={}, width={}, height={}",
                     location.left.unwrap_or(0),
                     location.top.unwrap_or(0),
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if let Some(prob) = &item.probability {
-                println!(
+                tracing::trace!(
                     "Confidence: avg={:.2}, var={:.2}, min={:.2}",
                     prob.average.unwrap_or(0.0),
                     prob.variance.unwrap_or(0.0),
@@ -64,11 +64,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
 
-            println!();
+            tracing::trace!("");
         }
     }
 
-    println!("=== OCR Example Completed ===");
+    tracing::trace!("=== OCR Example Completed ===");
 
     Ok(())
 }

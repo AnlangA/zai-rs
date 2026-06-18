@@ -163,6 +163,10 @@ name = "chat_coding_plan"
 path = "examples/chat_coding_plan.rs"
 
 [[example]]
+name = "coding_plan_usage"
+path = "examples/coding_plan_usage.rs"
+
+[[example]]
 name = "translation_bot"
 path = "examples/translation_bot.rs"
 

@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = VoiceDeleteRequest::new(key, voice).with_request_id("voice_delete_req_001");
 
     let body: VoiceDeleteResponse = client.send().await?;
-    println!("{:#?}", body);
+    tracing::trace!("{:#?}", body);
 
     Ok(())
 }

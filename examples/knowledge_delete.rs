@@ -14,9 +14,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("Usage: knowledge_delete <id>");
 
     let resp: KnowledgeDeleteResponse = KnowledgeDeleteRequest::new(key, id).send().await?;
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
 
     Ok(())

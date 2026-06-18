@@ -39,14 +39,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let audio_bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
                 let filename = format!("data/response_{}.wav", chrono::Utc::now().timestamp());
                 File::create(&filename)?.write_all(&audio_bytes)?;
-                println!("Audio saved to: {}", filename);
+                tracing::trace!("Audio saved to: {}", filename);
             }
         },
         Ok(Err(e)) => {
             return Err(e.into());
         },
         Err(_) => {
-            println!("Request timed out after 30 seconds");
+            tracing::trace!("Request timed out after 30 seconds");
             return Err("Request timed out".into());
         },
     }

@@ -26,9 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let resp: DocumentReembeddingResponse = req.send().await?;
-    println!(
+    tracing::trace!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
+        resp.code,
+        resp.message,
+        resp.timestamp
     );
 
     Ok(())

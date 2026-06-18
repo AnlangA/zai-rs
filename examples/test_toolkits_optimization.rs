@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .try_init();
     }
 
-    println!("🚀 Testing optimized toolkits...");
+    tracing::trace!("🚀 Testing optimized toolkits...");
 
     // Test 1: Tool registration performance
     let start = Instant::now();
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let registration_time = start.elapsed();
-    println!("✅ Registered 100 tools in {:?}", registration_time);
+    tracing::trace!("✅ Registered 100 tools in {:?}", registration_time);
 
     // Test 2: Tool execution performance
     let start = Instant::now();
@@ -76,8 +76,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let execution_time = start.elapsed();
-    println!("✅ Executed 50 tools in {:?}", execution_time);
-    println!("✅ Average execution time: {:?}", execution_time / 50);
+    tracing::trace!("✅ Executed 50 tools in {:?}", execution_time);
+    tracing::trace!("✅ Average execution time: {:?}", execution_time / 50);
 
     // Test 3: Parallel execution
     let start = Instant::now();
@@ -98,8 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parallel_results = executor.execute_tool_calls_parallel(&tool_calls).await;
     let parallel_time = start.elapsed();
 
-    println!("✅ Executed 10 tools in parallel in {:?}", parallel_time);
-    println!(
+    tracing::trace!("✅ Executed 10 tools in parallel in {:?}", parallel_time);
+    tracing::trace!(
         "✅ Parallel results: {} successful calls",
         parallel_results.len()
     );
@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
     }
     let cached_time = start.elapsed();
-    println!(
+    tracing::trace!(
         "✅ Executed same tool 20 times (with schema caching) in {:?}",
         cached_time
     );
@@ -150,14 +150,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     }
 
-    println!("\n🎉 All optimization tests completed successfully!");
-    println!("Key optimizations implemented:");
-    println!("  ✅ DashMap for concurrent tool registry");
-    println!("  ✅ Schema caching for JSON validation");
-    println!("  ✅ Exponential backoff for retries");
-    println!("  ✅ Zero-copy JSON parsing");
-    println!("  ✅ Cow strings for memory efficiency");
-    println!("  ✅ Error categorization");
+    tracing::trace!("\n🎉 All optimization tests completed successfully!");
+    tracing::trace!("Key optimizations implemented:");
+    tracing::trace!("  ✅ DashMap for concurrent tool registry");
+    tracing::trace!("  ✅ Schema caching for JSON validation");
+    tracing::trace!("  ✅ Exponential backoff for retries");
+    tracing::trace!("  ✅ Zero-copy JSON parsing");
+    tracing::trace!("  ✅ Cow strings for memory efficiency");
+    tracing::trace!("  ✅ Error categorization");
 
     Ok(())
 }

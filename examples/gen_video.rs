@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = CogVideoX3 {};
     let key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
-    println!("{key}");
+    tracing::trace!("{key}");
     let user_text = "可爱小猫叠在一起";
 
     // 提交视频生成请求
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body: ChatCompletionResponse = resp.json().await?;
 
     let task_id = body.id().ok_or("Task ID not found in response")?;
-    println!("Task ID: {}", task_id);
+    tracing::trace!("Task ID: {}", task_id);
 
     // 使用 async_chat_get 轮询结果
     let get_request = AsyncChatGetRequest::new(CogVideoX3 {}, task_id.to_string(), key);
@@ -37,25 +37,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match get_body.task_status() {
             Some(TaskStatus::Success) => {
-                println!("Video generation completed!");
+                tracing::trace!("Video generation completed!");
                 if let Some(video_result) = get_body.video_result() {
                     for video in video_result {
-                        println!("Video URL: {:?}", video.url());
-                        println!("Cover Image: {:?}", video.cover_image_url());
+                        tracing::trace!("Video URL: {:?}", video.url());
+                        tracing::trace!("Cover Image: {:?}", video.cover_image_url());
                     }
                 }
                 break;
             },
             Some(TaskStatus::Fail) => {
-                println!("Video generation failed!");
+                tracing::trace!("Video generation failed!");
                 break;
             },
             Some(TaskStatus::Processing) => {
-                println!("Processing...");
+                tracing::trace!("Processing...");
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             },
             None => {
-                println!("No task status found");
+                tracing::trace!("No task status found");
                 break;
             },
         }
