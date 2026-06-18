@@ -9,8 +9,7 @@
 //! - [`http`] — HTTP client implementation supporting POST/GET/DELETE requests,
 //!   connection reuse, exponential-backoff retries, and sensitive-data masking
 //! - [`error`] — Unified error type [`ZaiError`] covering API, network,
-//!   serialization, validation, and retry-exhausted errors
-//! - [`wss`] — WebSocket Secure connection support (for real-time audio/video)
+//!   serialization, validation, realtime, and retry-exhausted errors
 //!
 //! # Retry Strategy
 //!
@@ -39,11 +38,12 @@
 //! - Structured logging of requests/responses through `tracing`
 //! - Bearer token authentication on every request
 
+pub mod config;
 pub mod endpoints;
 pub mod error;
 pub mod http;
-pub mod wss;
 
+pub use config::*;
 pub use endpoints::*;
 pub use error::*;
 pub use http::*;

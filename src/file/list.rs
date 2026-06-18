@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use url::Url;
-
 use super::request::FileListQuery;
 use crate::{
     ZaiResult,
     client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
+        endpoints::{ApiBase, EndpointConfig, build_query, paths},
         http::{HttpClient, HttpClientConfig, parse_typed_response},
     },
 };
@@ -42,24 +40,21 @@ impl FileListRequest {
     }
 
     fn rebuild_url(&mut self) {
-        let mut url = Url::parse(&self.endpoint_config.url(&self.api_base, paths::FILES))
-            .expect("endpoint config URL should be valid");
-        {
-            let mut pairs = url.query_pairs_mut();
-            if let Some(after) = self.query.after.as_ref() {
-                pairs.append_pair("after", after);
-            }
-            if let Some(purpose) = self.query.purpose.as_ref() {
-                pairs.append_pair("purpose", purpose.as_str());
-            }
-            if let Some(order) = self.query.order.as_ref() {
-                pairs.append_pair("order", order.as_str());
-            }
-            if let Some(limit) = self.query.limit.as_ref() {
-                pairs.append_pair("limit", &limit.to_string());
-            }
+        let endpoint = self.endpoint_config.url(&self.api_base, paths::FILES);
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(after) = self.query.after.as_ref() {
+            params.push(("after", after.clone()));
         }
-        self.url = url.to_string();
+        if let Some(purpose) = self.query.purpose.as_ref() {
+            params.push(("purpose", purpose.as_str().to_string()));
+        }
+        if let Some(order) = self.query.order.as_ref() {
+            params.push(("order", order.as_str().to_string()));
+        }
+        if let Some(limit) = self.query.limit.as_ref() {
+            params.push(("limit", limit.to_string()));
+        }
+        self.url = build_query(&endpoint, params);
     }
 
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {

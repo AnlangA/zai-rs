@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use url::Url;
-
 use super::types::KnowledgeListResponse;
 use crate::{
     ZaiResult,
     client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
+        endpoints::{ApiBase, EndpointConfig, build_query, paths},
         http::{HttpClient, HttpClientConfig, parse_typed_response},
     },
 };
@@ -71,17 +69,14 @@ impl KnowledgeListRequest {
 
     fn rebuild_url(&mut self) {
         let endpoint = self.endpoint_config.url(&self.api_base, paths::KNOWLEDGE);
-        let mut url = Url::parse(&endpoint).unwrap();
-        {
-            let mut pairs = url.query_pairs_mut();
-            if let Some(page) = self.query.page.as_ref() {
-                pairs.append_pair("page", &page.to_string());
-            }
-            if let Some(size) = self.query.size.as_ref() {
-                pairs.append_pair("size", &size.to_string());
-            }
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(page) = self.query.page.as_ref() {
+            params.push(("page", page.to_string()));
         }
-        self.url = url.to_string();
+        if let Some(size) = self.query.size.as_ref() {
+            params.push(("size", size.to_string()));
+        }
+        self.url = build_query(&endpoint, params);
     }
 
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {

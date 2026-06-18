@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use url::Url;
-
 use super::types::DocumentListResponse;
 use crate::{
     ZaiResult,
     client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
+        endpoints::{ApiBase, EndpointConfig, build_query, paths},
         http::{HttpClient, HttpClientConfig, parse_typed_response},
     },
 };
@@ -84,23 +82,20 @@ impl DocumentListRequest {
 
     fn rebuild_url(&mut self) {
         let endpoint = self.endpoint_config.url(&self.api_base, paths::DOCUMENT);
-        let mut url = Url::parse(&endpoint).unwrap();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(q) = &self.query {
-            {
-                let mut pairs = url.query_pairs_mut();
-                pairs.append_pair("knowledge_id", &q.knowledge_id);
-                if let Some(page) = q.page.as_ref() {
-                    pairs.append_pair("page", &page.to_string());
-                }
-                if let Some(size) = q.size.as_ref() {
-                    pairs.append_pair("size", &size.to_string());
-                }
-                if let Some(word) = q.word.as_ref() {
-                    pairs.append_pair("word", word);
-                }
+            params.push(("knowledge_id", q.knowledge_id.clone()));
+            if let Some(page) = q.page.as_ref() {
+                params.push(("page", page.to_string()));
+            }
+            if let Some(size) = q.size.as_ref() {
+                params.push(("size", size.to_string()));
+            }
+            if let Some(word) = q.word.as_ref() {
+                params.push(("word", word.clone()));
             }
         }
-        self.url = url.to_string();
+        self.url = build_query(&endpoint, params);
     }
 
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {

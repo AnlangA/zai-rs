@@ -24,7 +24,7 @@
 //! | Tool calling | Function calling, web search, file parsing | [`tool`] |
 //! | Agent | Agent creation & management | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
-//! | Real-time | WebSocket audio/video (framework ready) | [`realtime`] |
+//! | Real-time | WebSocket audio/video (GLM-Realtime) | [`realtime`] |
 //!
 //! # Module Structure
 //!
@@ -114,21 +114,11 @@
 pub mod agent;
 pub mod batches;
 pub mod client;
-pub use client::error::*;
+pub use client::{config::ZaiConfig, error::*};
 pub mod file;
 pub mod knowledge;
 
 pub mod model;
-pub mod realtime {
-    //! Canonical realtime API module.
-    //!
-    //! Re-exports the experimental realtime framework while the legacy
-    //! [`crate::realTime`] module remains available for transition.
-    #[allow(deprecated)]
-    pub use crate::realTime::*;
-}
-#[allow(non_snake_case)]
-#[deprecated(note = "use realtime instead; realtime support is experimental")]
-pub mod realTime;
+pub mod realtime;
 pub mod tool;
 pub mod toolkits;

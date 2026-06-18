@@ -32,6 +32,7 @@
 //! | glm-4.6v-flash | [`GLM4_6v_flash`] | [`VisionMessage`] |
 //! | glm-4.6v-flashx | [`GLM4_6v_flashx`] | [`VisionMessage`] |
 //! | glm-4.5v | [`GLM4_5v`] | [`VisionMessage`] |
+//! | glm-5v-turbo | [`GLM5V_turbo`] | [`VisionMessage`] |
 //!
 //! ## Voice Models
 //!
@@ -196,6 +197,17 @@ define_model_type!(
 impl_message_binding!(GLM4_5v, VisionMessage);
 impl_model_markers!(GLM4_5v: Chat, AsyncChat);
 
+// GLM-5V-Turbo — multimodal coding base model (vision). Natively handles
+// image / video / text input; ideal for design-to-code and visual programming.
+// See <https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5v-turbo>.
+define_model_type!(
+    #[allow(non_camel_case_types)]
+    GLM5V_turbo,
+    "glm-5v-turbo"
+);
+impl_message_binding!(GLM5V_turbo, VisionMessage);
+impl_model_markers!(GLM5V_turbo: Chat, AsyncChat);
+
 // ============================================================================
 // Multimodal Models - Voice
 // ============================================================================
@@ -207,6 +219,28 @@ define_model_type!(
 );
 impl_message_binding!(GLM4_voice, VoiceMessage);
 impl_model_markers!(GLM4_voice: Chat, AsyncChat);
+
+// ============================================================================
+// Realtime Models (marker: crate::realtime::RealtimeModel)
+// ============================================================================
+
+// GLM-Realtime — the realtime (WebSocket) conversation model family. Used with
+// `crate::realtime`. The protocol does not transmit the model on the wire;
+// this id exists for type-safe session construction.
+define_model_type!(
+    #[allow(non_camel_case_types)]
+    GLM_realtime,
+    "glm-realtime"
+);
+impl_model_markers!(GLM_realtime: Chat, AsyncChat);
+
+// GLM-4.5 Voice — realtime voice-capable model id.
+define_model_type!(
+    #[allow(non_camel_case_types)]
+    GLM4_5_voice,
+    "glm-4.5-voice"
+);
+impl_model_markers!(GLM4_5_voice: Chat, AsyncChat);
 
 #[cfg(test)]
 mod tests {

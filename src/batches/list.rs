@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use url::Url;
 use validator::Validate;
 
 use super::types::BatchItem;
 use crate::{
     ZaiResult,
     client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
+        endpoints::{ApiBase, EndpointConfig, build_query, paths},
         http::{HttpClient, HttpClientConfig, parse_typed_response},
     },
 };
@@ -88,17 +87,14 @@ impl BatchesListRequest {
     /// Rebuild URL with query parameters
     fn rebuild_url(&mut self) {
         let endpoint = self.endpoint_config.url(&self.api_base, paths::BATCHES);
-        let mut url = Url::parse(&endpoint).unwrap();
-        {
-            let mut pairs = url.query_pairs_mut();
-            if let Some(after) = self.query.after.as_ref() {
-                pairs.append_pair("after", after);
-            }
-            if let Some(limit) = self.query.limit.as_ref() {
-                pairs.append_pair("limit", &limit.to_string());
-            }
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(after) = self.query.after.as_ref() {
+            params.push(("after", after.clone()));
         }
-        self.url = url.to_string();
+        if let Some(limit) = self.query.limit.as_ref() {
+            params.push(("limit", limit.to_string()));
+        }
+        self.url = build_query(&endpoint, params);
     }
 
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {

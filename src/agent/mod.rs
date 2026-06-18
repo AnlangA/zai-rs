@@ -30,7 +30,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, join_url, paths},
+    endpoints::{ApiBase, EndpointConfig, build_query, join_url, paths},
     http::{HttpClientConfig, parse_typed_response, send_empty_request, send_json_request},
 };
 
@@ -151,10 +151,11 @@ impl AgentClient {
         agent_id: &str,
         limit: Option<u32>,
     ) -> crate::ZaiResult<ConversationHistory> {
-        let mut url = self.url(&join_url(&join_url(paths::AGENTS, agent_id), "history"));
-        if let Some(l) = limit {
-            url.push_str(&format!("?limit={}", l));
-        }
+        let base = self.url(&join_url(&join_url(paths::AGENTS, agent_id), "history"));
+        let url = match limit {
+            Some(l) => build_query(&base, [("limit", l.to_string())]),
+            None => base,
+        };
         self.send_get_request(&url).await
     }
 

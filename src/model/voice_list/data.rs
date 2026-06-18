@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use url::Url;
-
 use super::request::VoiceListQuery;
 use crate::{
     ZaiResult,
     client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
+        endpoints::{ApiBase, EndpointConfig, build_query, paths},
         http::{HttpClient, HttpClientConfig, parse_typed_response},
     },
 };
@@ -41,17 +39,14 @@ impl VoiceListRequest {
 
     fn rebuild_url(&mut self) {
         let endpoint = self.endpoint_config.url(&self.api_base, paths::VOICE_LIST);
-        let mut url = Url::parse(&endpoint).unwrap();
-        {
-            let mut pairs = url.query_pairs_mut();
-            if let Some(ref n) = self.query.voice_name {
-                pairs.append_pair("voiceName", n);
-            }
-            if let Some(ref t) = self.query.voice_type {
-                pairs.append_pair("voiceType", t.as_str());
-            }
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(ref n) = self.query.voice_name {
+            params.push(("voiceName", n.clone()));
         }
-        self.url = url.to_string();
+        if let Some(ref t) = self.query.voice_type {
+            params.push(("voiceType", t.as_str().to_string()));
+        }
+        self.url = build_query(&endpoint, params);
     }
 
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {

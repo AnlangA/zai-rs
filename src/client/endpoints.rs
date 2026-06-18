@@ -10,7 +10,12 @@ pub const CODING_PAAS_V4_BASE: &str = "https://open.bigmodel.cn/api/coding/paas/
 /// Official default base for knowledge-base APIs.
 pub const LLM_APPLICATION_BASE: &str = "https://open.bigmodel.cn/api/llm-application/open";
 /// Official default base for realtime APIs.
-pub const REALTIME_BASE: &str = "wss://open.bigmodel.cn/api/realtime";
+///
+/// Verified against the official GLM-Realtime protocol
+/// (<https://github.com/MetaGLM/glm-realtime-sdk/blob/main/GLM-Realtime-doc-for-llm.md>
+/// and <https://docs.bigmodel.cn/cn/asyncapi/realtime>): the realtime endpoint
+/// lives under `/api/paas/v4/realtime`, same v4 family as the REST APIs.
+pub const REALTIME_BASE: &str = "wss://open.bigmodel.cn/api/paas/v4/realtime";
 
 /// API family selector used by [`EndpointConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,16 +94,41 @@ pub fn join_url(base: &str, path: &str) -> String {
     }
 }
 
-pub fn default_paas_url(path: &str) -> String {
-    EndpointConfig::default().url(&ApiBase::PaasV4, path)
-}
+/// Build a URL by appending query parameters to a base.
+///
+/// Centralizes query-string construction across list-style endpoints so every
+/// module uses identical (and panic-free) percent-encoding via `url::Url`. The
+/// iterator is generic so callers may pass `Vec<(&str, String)>`, arrays, etc.
+///
+/// If `base_url` is not a parseable absolute URL (a malformed user-supplied
+/// `ApiBase::Custom`), it falls back to naive string concatenation rather than
+/// panicking — a genuinely broken base will surface as a network error at
+/// request time. This keeps the fluent `with_*` builder API infallible.
+pub fn build_query<K, V, I>(base_url: &str, params: I) -> String
+where
+    K: AsRef<str>,
+    V: AsRef<str>,
+    I: IntoIterator<Item = (K, V)>,
+{
+    let collected: Vec<(K, V)> = params.into_iter().collect();
+    if let Ok(mut url) = url::Url::parse(base_url) {
+        if !collected.is_empty() {
+            url.query_pairs_mut()
+                .extend_pairs(collected.iter().map(|(k, v)| (k.as_ref(), v.as_ref())));
+        }
+        return url.to_string();
+    }
 
-pub fn default_coding_paas_url(path: &str) -> String {
-    EndpointConfig::default().url(&ApiBase::CodingPaasV4, path)
-}
-
-pub fn default_llm_application_url(path: &str) -> String {
-    EndpointConfig::default().url(&ApiBase::LlmApplication, path)
+    // Fallback for non-parseable bases (malformed custom URL): best-effort join.
+    if collected.is_empty() {
+        return base_url.to_string();
+    }
+    let query = collected
+        .iter()
+        .map(|(k, v)| format!("{}={}", k.as_ref(), v.as_ref()))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{base_url}?{query}")
 }
 
 pub mod paths {
@@ -125,7 +155,6 @@ pub mod paths {
     pub const AGENTS: &str = "agents";
 
     pub const KNOWLEDGE: &str = "knowledge";
-    pub const KNOWLEDGE_RETRIEVE: &str = "knowledge/retrieve";
     pub const KNOWLEDGE_CAPACITY: &str = "knowledge/capacity";
     pub const DOCUMENT: &str = "document";
     pub const DOCUMENT_UPLOAD_URL: &str = "document/upload_url";
@@ -152,5 +181,48 @@ mod tests {
         assert_eq!(config.paas_v4_base, PAAS_V4_BASE);
         assert_eq!(config.coding_paas_v4_base, CODING_PAAS_V4_BASE);
         assert_eq!(config.llm_application_base, LLM_APPLICATION_BASE);
+    }
+
+    #[test]
+    fn realtime_base_matches_official_endpoint() {
+        // Verified: https://github.com/MetaGLM/glm-realtime-sdk and
+        // https://docs.bigmodel.cn/cn/asyncapi/realtime
+        assert_eq!(REALTIME_BASE, "wss://open.bigmodel.cn/api/paas/v4/realtime");
+    }
+
+    #[test]
+    fn realtime_url_is_buildable_from_endpoint_config() {
+        let url = EndpointConfig::default().url(&ApiBase::Realtime, "");
+        assert_eq!(url, REALTIME_BASE);
+        // join_url must not mangle the wss:// scheme.
+        assert!(url.starts_with("wss://"));
+    }
+
+    #[test]
+    fn build_query_appends_percent_encoded_pairs() {
+        let url = build_query(
+            "https://open.bigmodel.cn/api/paas/v4/files",
+            [("purpose", "batch".to_string()), ("limit", "2".to_string())],
+        );
+        assert_eq!(
+            url,
+            "https://open.bigmodel.cn/api/paas/v4/files?purpose=batch&limit=2"
+        );
+    }
+
+    #[test]
+    fn build_query_without_params_returns_base() {
+        let url = build_query(
+            "https://open.bigmodel.cn/api/paas/v4/files",
+            Vec::<(String, String)>::new(),
+        );
+        assert_eq!(url, "https://open.bigmodel.cn/api/paas/v4/files");
+    }
+
+    #[test]
+    fn build_query_falls_back_for_malformed_base() {
+        // A non-parseable base must not panic.
+        let url = build_query("not a url", [("limit", "5".to_string())]);
+        assert_eq!(url, "not a url?limit=5");
     }
 }

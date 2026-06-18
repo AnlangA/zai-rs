@@ -278,9 +278,52 @@ pub enum ZaiError {
     #[error("JSON error: {0}")]
     JsonError(Arc<serde_json::Error>),
 
+    /// Realtime (WebSocket) transport errors — wrapped in `Arc` so the variant
+    /// stays `Clone`-able. See [`RealtimeErrorKind`] for the breakdown.
+    #[error("Realtime error: {0}")]
+    RealtimeError(Arc<RealtimeErrorKind>),
+
+    /// Realtime authentication / JWT errors (bad API-key shape, signing
+    /// failure, token rejected during the WebSocket handshake).
+    #[error("Realtime auth error: {0}")]
+    RealtimeAuthError(String),
+
     /// Other errors
     #[error("Unknown error [{code}]: {message}")]
     Unknown { code: u16, message: String },
+}
+
+/// Concrete error categories for the realtime (WebSocket) transport.
+///
+/// Kept separate from [`ZaiError`] so callers can introspect the failure mode
+/// without matching on the full enum, and so the realtime module can construct
+/// rich errors without touching HTTP-specific machinery.
+#[derive(Debug, thiserror::Error)]
+pub enum RealtimeErrorKind {
+    /// Low-level WebSocket error (connect/handshake/read/write).
+    #[error("websocket: {0}")]
+    WebSocket(String),
+
+    /// (De)serialization of a realtime event failed.
+    #[error("serialize: {0}")]
+    Serialize(serde_json::Error),
+
+    /// Protocol violation — unexpected or malformed server event.
+    #[error("protocol: {0}")]
+    Protocol(String),
+
+    /// The server emitted an `error` event.
+    #[error("server error event [code={code:?}]: {message}")]
+    ServerEvent {
+        /// Machine-readable error code (may be numeric or textual).
+        code: String,
+        /// Human-readable error message.
+        message: String,
+    },
+
+    /// The WebSocket session has been closed.
+    #[error("session closed")]
+    Closed,
 }
 
 impl ZaiError {
@@ -392,7 +435,16 @@ impl ZaiError {
             | ZaiError::ApiError { .. }
             | ZaiError::RateLimitError { .. }
             | ZaiError::ContentPolicyError { .. }
-            | ZaiError::FileError { .. } => true,
+            | ZaiError::FileError { .. }
+            | ZaiError::RealtimeAuthError(_) => true,
+            ZaiError::RealtimeError(kind) => match kind.as_ref() {
+                // Protocol/serialize/server-event failures are client-caused;
+                // transport/closure are not necessarily so.
+                RealtimeErrorKind::Protocol(_)
+                | RealtimeErrorKind::Serialize(_)
+                | RealtimeErrorKind::ServerEvent { .. } => true,
+                RealtimeErrorKind::WebSocket(_) | RealtimeErrorKind::Closed => false,
+            },
             _ => false,
         }
     }
@@ -436,6 +488,12 @@ impl ZaiError {
             ZaiError::JsonError(err) => {
                 format!("JSON: {}", err)
             },
+            ZaiError::RealtimeError(kind) => {
+                format!("REALTIME: {}", kind)
+            },
+            ZaiError::RealtimeAuthError(msg) => {
+                format!("REALTIME_AUTH: {}", msg)
+            },
             ZaiError::Unknown { code, message } => {
                 format!("UNKNOWN[{}]: {}", code, message)
             },
@@ -454,6 +512,7 @@ impl ZaiError {
             ZaiError::FileError { code, .. } => Some(*code),
             ZaiError::NetworkError(_) => None,
             ZaiError::JsonError(_) => None,
+            ZaiError::RealtimeError(_) | ZaiError::RealtimeAuthError(_) => None,
             ZaiError::Unknown { code, .. } => Some(*code),
         }
     }
@@ -470,6 +529,8 @@ impl ZaiError {
             ZaiError::FileError { message, .. } => message.clone(),
             ZaiError::NetworkError(err) => err.to_string(),
             ZaiError::JsonError(err) => err.to_string(),
+            ZaiError::RealtimeError(kind) => kind.to_string(),
+            ZaiError::RealtimeAuthError(msg) => msg.clone(),
             ZaiError::Unknown { message, .. } => message.clone(),
         }
     }
@@ -509,6 +570,8 @@ impl Clone for ZaiError {
             // Arc-wrapped errors can now be cloned properly
             ZaiError::NetworkError(err) => ZaiError::NetworkError(Arc::clone(err)),
             ZaiError::JsonError(err) => ZaiError::JsonError(Arc::clone(err)),
+            ZaiError::RealtimeError(kind) => ZaiError::RealtimeError(Arc::clone(kind)),
+            ZaiError::RealtimeAuthError(msg) => ZaiError::RealtimeAuthError(msg.clone()),
             ZaiError::Unknown { code, message } => ZaiError::Unknown {
                 code: *code,
                 message: message.clone(),
@@ -555,6 +618,21 @@ impl From<std::io::Error> for ZaiError {
             code: 0,
             message: err.to_string(),
         }
+    }
+}
+
+/// Convert from a realtime transport error kind into a [`ZaiError`].
+impl From<RealtimeErrorKind> for ZaiError {
+    fn from(kind: RealtimeErrorKind) -> Self {
+        ZaiError::RealtimeError(Arc::new(kind))
+    }
+}
+
+/// Convert from a low-level WebSocket (`tungstenite`) error into a
+/// [`ZaiError`].
+impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
+    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
+        ZaiError::RealtimeError(Arc::new(RealtimeErrorKind::WebSocket(err.to_string())))
     }
 }
 
