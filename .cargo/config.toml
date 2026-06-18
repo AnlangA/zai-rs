@@ -1,0 +1,9 @@
+# Loopback hosts bypass any configured HTTP/HTTPS/SOCKS proxy.
+#
+# The mock-server-based integration tests bind to 127.0.0.1; on machines that
+# have a system or env proxy configured (e.g. a local Clash/V2Ray forwarder),
+# reqwest would otherwise route those localhost requests through the proxy and
+# receive a 502 Bad Gateway. Excluding only loopback keeps remote API calls
+# (e.g. `cargo run --example chat_loop`) using the proxy as intended.
+[env]
+NO_PROXY = "127.0.0.1,localhost,::1"

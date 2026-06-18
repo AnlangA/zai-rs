@@ -195,10 +195,9 @@ impl FileParserCreateRequest {
         .await
         .map_err(|e| e.context("file parser create"))?;
 
-        let create_response =
-            parse_typed_response::<FileParserCreateResponse>(response)
-                .await
-                .map_err(|e| e.context("file parser create"))?;
+        let create_response = parse_typed_response::<FileParserCreateResponse>(response)
+            .await
+            .map_err(|e| e.context("file parser create"))?;
 
         debug!(task_id = %create_response.task_id, "File parser task created");
 

@@ -46,8 +46,10 @@ use serde_json::Value;
 use tracing::{debug, warn};
 use validator::Validate;
 
-use crate::client::error::codes;
-use crate::model::{Function, Tools};
+use crate::{
+    client::error::codes,
+    model::{Function, Tools},
+};
 
 /// Convert a single RMCP tool to a zai-rs function-call definition.
 ///
@@ -141,22 +143,18 @@ pub async fn call_mcp_tool(
         request = request.with_arguments(arguments);
     }
 
-    let res =
-        server
-            .call_tool(request)
-            .await
-            .map_err(|e| {
-                warn!(
-                    code = codes::SDK_EXTERNAL_TOOL,
-                    tool = %name,
-                    error = %e,
-                    "RMCP call_tool failed"
-                );
-                crate::client::error::ZaiError::Unknown {
-                    code: codes::SDK_EXTERNAL_TOOL,
-                    message: format!("RMCP service error: {}", e),
-                }
-            })?;
+    let res = server.call_tool(request).await.map_err(|e| {
+        warn!(
+            code = codes::SDK_EXTERNAL_TOOL,
+            tool = %name,
+            error = %e,
+            "RMCP call_tool failed"
+        );
+        crate::client::error::ZaiError::Unknown {
+            code: codes::SDK_EXTERNAL_TOOL,
+            message: format!("RMCP service error: {}", e),
+        }
+    })?;
     Ok((name, call_tool_result_to_json(&res)))
 }
 
@@ -272,7 +270,10 @@ pub async fn execute_tool_calls_as_messages(
             Some(arg_str) => match serde_json::from_str::<serde_json::Value>(arg_str) {
                 Ok(serde_json::Value::Object(map)) => Some(serde_json::Value::Object(map)),
                 Ok(_) => {
-                    warn!(reason = "non_object_arguments", "Function arguments are not an object; passing None");
+                    warn!(
+                        reason = "non_object_arguments",
+                        "Function arguments are not an object; passing None"
+                    );
                     None
                 },
                 Err(e) => {

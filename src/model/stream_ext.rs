@@ -255,7 +255,11 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                             Some(Ok(bytes)) => {
                                 let mut saw_done = done;
                                 for event in parser.push(&bytes) {
-                                    trace!(parser = "sse", bytes = event.len(), "SSE chunk received");
+                                    trace!(
+                                        parser = "sse",
+                                        bytes = event.len(),
+                                        "SSE chunk received"
+                                    );
                                     match parse_chat_stream_event(&event) {
                                         Ok(Some(item)) => pending.push_back(Ok(item)),
                                         Ok(None) => {

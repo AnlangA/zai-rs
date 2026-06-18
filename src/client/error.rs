@@ -928,40 +928,53 @@ mod tests {
             codes::SDK_TIMEOUT,
             codes::SDK_EXTERNAL_TOOL,
         ] {
-            assert!((9000..=9999).contains(&code), "code {code} outside 9000-9999");
+            assert!(
+                (9000..=9999).contains(&code),
+                "code {code} outside 9000-9999"
+            );
         }
     }
 
     #[test]
     fn test_is_sdk_error_classification() {
         // SDK codes → true.
-        assert!(ZaiError::FileError {
-            code: codes::SDK_FILE_NOT_FOUND,
-            message: "x".into(),
-        }
-        .is_sdk_error());
-        assert!(ZaiError::ApiError {
-            code: codes::SDK_TIMEOUT,
-            message: "x".into(),
-        }
-        .is_sdk_error());
+        assert!(
+            ZaiError::FileError {
+                code: codes::SDK_FILE_NOT_FOUND,
+                message: "x".into(),
+            }
+            .is_sdk_error()
+        );
+        assert!(
+            ZaiError::ApiError {
+                code: codes::SDK_TIMEOUT,
+                message: "x".into(),
+            }
+            .is_sdk_error()
+        );
 
         // API / HTTP codes → false.
-        assert!(!ZaiError::AuthError {
-            code: 1001,
-            message: "x".into(),
-        }
-        .is_sdk_error());
-        assert!(!ZaiError::RateLimitError {
-            code: 1301,
-            message: "x".into(),
-        }
-        .is_sdk_error());
-        assert!(!ZaiError::HttpError {
-            status: 500,
-            message: "x".into(),
-        }
-        .is_sdk_error());
+        assert!(
+            !ZaiError::AuthError {
+                code: 1001,
+                message: "x".into(),
+            }
+            .is_sdk_error()
+        );
+        assert!(
+            !ZaiError::RateLimitError {
+                code: 1301,
+                message: "x".into(),
+            }
+            .is_sdk_error()
+        );
+        assert!(
+            !ZaiError::HttpError {
+                status: 500,
+                message: "x".into(),
+            }
+            .is_sdk_error()
+        );
 
         // Code-less variants → false.
         assert!(!ZaiError::RealtimeAuthError("x".into()).is_sdk_error());

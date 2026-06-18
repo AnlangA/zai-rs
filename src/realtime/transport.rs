@@ -68,13 +68,10 @@ impl TungsteniteTransport {
 impl RealtimeTransport for TungsteniteTransport {
     #[tracing::instrument(name = "realtime.send", skip(self, msg))]
     async fn send(&mut self, msg: String) -> ZaiResult<()> {
-        self.inner
-            .send(Message::text(msg))
-            .await
-            .map_err(|e| {
-                warn!(error = %e, "WebSocket send error");
-                RealtimeErrorKind::WebSocket { source: e }.into()
-            })
+        self.inner.send(Message::text(msg)).await.map_err(|e| {
+            warn!(error = %e, "WebSocket send error");
+            RealtimeErrorKind::WebSocket { source: e }.into()
+        })
     }
 
     #[tracing::instrument(name = "realtime.recv", skip(self))]
@@ -109,12 +106,9 @@ impl RealtimeTransport for TungsteniteTransport {
 
     #[tracing::instrument(name = "realtime.close", skip(self))]
     async fn close(&mut self) -> ZaiResult<()> {
-        self.inner
-            .close(None)
-            .await
-            .map_err(|e| {
-                warn!(error = %e, "WebSocket close error");
-                RealtimeErrorKind::WebSocket { source: e }.into()
-            })
+        self.inner.close(None).await.map_err(|e| {
+            warn!(error = %e, "WebSocket close error");
+            RealtimeErrorKind::WebSocket { source: e }.into()
+        })
     }
 }

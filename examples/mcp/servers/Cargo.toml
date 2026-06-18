@@ -5,47 +5,35 @@ edition = "2024"
 publish = false
 
 [dependencies]
-rmcp = { version = "0.6.4", features = [
+rmcp = { version = "1.7.0", features = [
     "server",
     "macros",
     "client",
-    "transport-sse-server",
     "transport-io",
     "transport-streamable-http-server",
     "auth",
     "elicitation",
     "schemars",
 ] }
-tokio = { version = "1", features = [
+tokio = { version = "1.52.3", features = [
     "macros",
     "rt",
     "rt-multi-thread",
     "io-std",
     "signal",
 ] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-anyhow = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+anyhow = "1.0.102"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = [
     "env-filter",
     "std",
     "fmt",
 ] }
-futures = "0.3"
-rand = { version = "0.9", features = ["std"] }
-axum = { version = "0.8", features = ["macros"] }
-schemars = "1.0"
-reqwest = { version = "0.12", features = ["json"] }
-chrono = "0.4"
-uuid = { version = "1.6", features = ["v4", "serde"] }
-serde_urlencoded = "0.7"
-askama = { version = "0.14" }
-tower-http = { version = "0.6", features = ["cors"] }
-hyper = { version = "1" }
-hyper-util = { version = "0", features = ["server"] }
-tokio-util = { version = "0.7" }
+axum = { version = "0.8.9", features = ["macros"] }
+schemars = "1.2.1"
 
 [dev-dependencies]
-tokio-stream = { version = "0.1" }
-tokio-util = { version = "0.7", features = ["codec"] }
+tokio-stream = { version = "0.1.18" }
+tokio-util = { version = "0.7.18", features = ["codec"] }

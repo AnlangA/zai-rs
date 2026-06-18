@@ -14,7 +14,7 @@
 
 use base64::Engine;
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::json;
 use sha2::Sha256;
 use tracing::warn;
@@ -44,7 +44,7 @@ pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
             return Err(ZaiError::RealtimeAuthError(
                 "API key must be '<id>.<secret>'".into(),
             ));
-        }
+        },
     };
 
     if id.is_empty() || secret.is_empty() {

@@ -24,8 +24,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/send", post(send_message))
         .route("/stream", post(stream_message))
-        .route("/history/:session_id", get(get_history))
-        .route("/clear/:session_id", post(clear_history))
+        .route("/history/{session_id}", get(get_history))
+        .route("/clear/{session_id}", post(clear_history))
 }
 
 /// Send a regular chat message

@@ -120,10 +120,10 @@ impl Counter {
             "This is an example prompt with your message here: '{}'",
             args.message
         );
-        Ok(vec![PromptMessage {
-            role: PromptMessageRole::User,
-            content: PromptMessageContent::text(prompt),
-        }])
+        Ok(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            prompt,
+        )])
     }
 
     /// Analyze the current counter value and suggest next steps
@@ -151,13 +151,10 @@ impl Counter {
             ),
         ];
 
-        Ok(GetPromptResult {
-            description: Some(format!(
-                "Counter analysis for reaching {} from {}",
-                args.goal, current_value
-            )),
-            messages,
-        })
+        Ok(GetPromptResult::new(messages).with_description(format!(
+            "Counter analysis for reaching {} from {}",
+            args.goal, current_value
+        )))
     }
 }
 
@@ -165,21 +162,21 @@ impl Counter {
 #[prompt_handler]
 impl ServerHandler for Counter {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder()
+        ServerInfo::new(
+            ServerCapabilities::builder()
                 .enable_prompts()
                 .enable_resources()
                 .enable_tools()
                 .build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some("This server provides counter tools and prompts. Tools: increment, decrement, get_value, say_hello, echo, sum. Prompts: example_prompt (takes a message), counter_analysis (analyzes counter state with a goal).".to_string()),
-        }
+        )
+        .with_server_info(Implementation::from_build_env())
+        .with_protocol_version(ProtocolVersion::V_2024_11_05)
+        .with_instructions("This server provides counter tools and prompts. Tools: increment, decrement, get_value, say_hello, echo, sum. Prompts: example_prompt (takes a message), counter_analysis (analyzes counter state with a goal).".to_string())
     }
 
     async fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         Ok(ListResourcesResult {
@@ -188,26 +185,27 @@ impl ServerHandler for Counter {
                 self._create_resource_text("memo://insights", "memo-name"),
             ],
             next_cursor: None,
+            ..Default::default()
         })
     }
 
     async fn read_resource(
         &self,
-        ReadResourceRequestParam { uri }: ReadResourceRequestParam,
+        ReadResourceRequestParams { uri, .. }: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
         match uri.as_str() {
             "str:////Users/to/some/path/" => {
                 let cwd = "/Users/to/some/path/";
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(cwd, uri)],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    cwd, uri,
+                )]))
             },
             "memo://insights" => {
                 let memo = "Business Intelligence Memo\n\nAnalysis has revealed 5 key insights ...";
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(memo, uri)],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    memo, uri,
+                )]))
             },
             _ => Err(McpError::resource_not_found(
                 "resource_not_found",
@@ -220,18 +218,19 @@ impl ServerHandler for Counter {
 
     async fn list_resource_templates(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, McpError> {
         Ok(ListResourceTemplatesResult {
             next_cursor: None,
             resource_templates: Vec::new(),
+            ..Default::default()
         })
     }
 
     async fn initialize(
         &self,
-        _request: InitializeRequestParam,
+        _request: InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
         if let Some(http_request_part) = context.extensions.get::<axum::http::request::Parts>() {
@@ -291,10 +290,7 @@ mod tests {
             message
         );
 
-        let prompt_message = PromptMessage {
-            role: PromptMessageRole::User,
-            content: PromptMessageContent::text(prompt),
-        };
+        let prompt_message = PromptMessage::new_text(PromptMessageRole::User, prompt);
 
         assert_eq!(prompt_message.role, PromptMessageRole::User);
     }

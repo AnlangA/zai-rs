@@ -378,8 +378,7 @@ impl FunctionToolBuilder {
         let metadata = ToolMetadata::new(&name_str, &desc_str).unwrap_or_else(|e| {
             warn!(
                 "Invalid tool name '{}': {}. Falling back to 'unknown'.",
-                name_str,
-                e
+                name_str, e
             );
             ToolMetadata {
                 name: Cow::Borrowed("unknown"),
