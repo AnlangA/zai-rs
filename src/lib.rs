@@ -90,7 +90,7 @@
 //! Enable in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! zai-rs = { version = "0.2", features = ["rmcp-kits"] }
+//! zai-rs = { version = "0.2.1", features = ["rmcp-kits"] }
 //! ```
 //!
 //! # Error Handling
