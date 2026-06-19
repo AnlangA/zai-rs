@@ -2,11 +2,6 @@ use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Args: <document_id>
@@ -17,14 +12,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = DocumentRetrieveRequest::new(key, doc_id);
     let resp: DocumentDetailResponse = req.send().await?;
 
-    tracing::trace!(
+    println!(
         "code={:?} message={:?} timestamp={:?}",
         resp.code,
         resp.message,
         resp.timestamp
     );
     if let Some(doc) = &resp.data {
-        tracing::trace!(
+        println!(
             "id={:?} name={:?} type={:?} words={:?} bytes={:?}",
             doc.id,
             doc.name,
@@ -33,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             doc.length
         );
         if let Some(f) = &doc.fail_info {
-            tracing::trace!(
+            println!(
                 "fail: code={:?} msg={:?}",
                 f.embedding_code,
                 f.embedding_msg

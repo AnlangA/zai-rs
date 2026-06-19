@@ -2,11 +2,6 @@ use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Args: <knowledge_id> <file1> [file2] [file3] ...
@@ -26,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Minimal example: dynamic parse, no extra options
     let resp: UploadFileResponse = req.send().await?;
 
-    tracing::trace!(
+    println!(
         "code={:?} message={:?} timestamp={:?}",
         resp.code,
         resp.message,
@@ -35,12 +30,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(data) = &resp.data {
         if let Some(ok) = &data.success_infos {
             for s in ok.iter() {
-                tracing::trace!("success: doc_id={:?} file={:?}", s.document_id, s.file_name);
+                println!("success: doc_id={:?} file={:?}", s.document_id, s.file_name);
             }
         }
         if let Some(fails) = &data.failed_infos {
             for f in fails.iter() {
-                tracing::trace!("failed: file={:?} reason={:?}", f.file_name, f.fail_reason);
+                println!("failed: file={:?} reason={:?}", f.file_name, f.fail_reason);
             }
         }
     }

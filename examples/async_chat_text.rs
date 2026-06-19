@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
 
     // 提交异步聊天任务
-    tracing::trace!("=== 提交异步聊天任务 ===");
+    println!("=== 提交异步聊天任务 ===");
     let messages = vec![
         "你好，请介绍一下机器学习的基本概念",
         "你能解释一下什么是深度学习吗？",
@@ -43,13 +43,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match client.send().await {
             Ok(body) => {
                 if let Some(task_id) = body.id() {
-                    tracing::trace!("问题: {}", message);
-                    tracing::trace!("任务ID: {}", task_id);
+                    println!("问题: {}", message);
+                    println!("任务ID: {}", task_id);
                     task_ids.push((message, task_id.to_string()));
                 }
             },
             Err(e) => {
-                tracing::trace!("提交失败: {}", e);
+                eprintln!("提交失败: {}", e);
             },
         }
     }
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 并发轮询所有任务：每个任务在一个独立的 spawned task 里各自轮询到终态，
     // 多个任务并行推进（服务端也是并行处理的）。总耗时 ≈ max(单任务)，
     // 而非串行场景下的 Σ(单任务)。
-    tracing::trace!("\n=== 获取异步聊天结果 ===");
+    println!("\n=== 获取异步聊天结果 ===");
     use tokio::task::JoinSet;
 
     let mut set: JoinSet<(&'static str, Result<String, String>)> = JoinSet::new();
@@ -102,16 +102,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(res) = set.join_next().await {
         match res {
             Ok((message, Ok(content))) => {
-                tracing::trace!("问题: {message}");
-                tracing::trace!("回复: {content}");
-                tracing::trace!("---");
+                println!("问题: {message}");
+                println!("回复: {content}");
+                println!("---");
             },
             Ok((message, Err(e))) => {
-                tracing::trace!("问题: {message}");
-                tracing::trace!("{e}");
-                tracing::trace!("---");
+                println!("问题: {message}");
+                println!("{e}");
+                println!("---");
             },
-            Err(e) => tracing::trace!("轮询任务异常: {e}"),
+            Err(e) => eprintln!("轮询任务异常: {e}"),
         }
     }
 

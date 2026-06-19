@@ -2,11 +2,6 @@ use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Optional: parse page/size from args
@@ -24,21 +19,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = KnowledgeListRequest::new(key).with_query(query);
     let resp: KnowledgeListResponse = req.send().await?;
 
-    tracing::trace!(
+    println!(
         "code={:?} message={:?} timestamp={:?}",
         resp.code,
         resp.message,
         resp.timestamp
     );
     if let Some(data) = &resp.data {
-        tracing::trace!(
+        println!(
             "total={:?} list_len={}",
             data.total,
             data.list.as_ref().map(|v| v.len()).unwrap_or(0)
         );
         if let Some(list) = &data.list {
             for (i, item) in list.iter().enumerate().take(5) {
-                tracing::trace!(
+                println!(
                     "#{} id={:?} name={:?} docs={:?}",
                     i + 1,
                     item.id,

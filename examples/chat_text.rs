@@ -28,13 +28,6 @@ use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging for debugging
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     // Select the AI model - GLM-4.5-Flash for fast, efficient responses
     let model = GLM4_5_flash {};
 
@@ -52,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Send the request and await response (non-stream)
     let body: ChatCompletionResponse = client.send().await?;
-    tracing::trace!("{:#?}", body);
+    println!("{:#?}", body);
 
     Ok(())
 }

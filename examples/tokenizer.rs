@@ -2,12 +2,6 @@ use zai_rs::model::text_tokenizer::{TokenizerMessage, TokenizerModel, TokenizerR
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     // Read API key
     let key = std::env::var("ZHIPU_API_KEY").expect("Set ZHIPU_API_KEY in your environment");
 
@@ -25,11 +19,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = TokenizerRequest::new(key, model, messages);
     let resp = req.send().await?;
 
-    tracing::trace!("id: {}", resp.id);
-    tracing::trace!("prompt_tokens: {}", resp.usage.prompt_tokens);
-    tracing::trace!("created: {}", resp.created);
+    println!("id: {}", resp.id);
+    println!("prompt_tokens: {}", resp.usage.prompt_tokens);
+    println!("created: {}", resp.created);
     if let Some(rid) = resp.request_id {
-        tracing::trace!("request_id: {}", rid);
+        println!("request_id: {}", rid);
     }
 
     Ok(())

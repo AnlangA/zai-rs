@@ -2,12 +2,6 @@ use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     let model = GLM4_5v {};
     let key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
@@ -23,6 +17,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ChatCompletion::new(model, vision_message, key);
 
     let body: ChatCompletionResponse = client.send().await?;
-    tracing::trace!("{:#?}", body);
+    println!("{:#?}", body);
     Ok(())
 }

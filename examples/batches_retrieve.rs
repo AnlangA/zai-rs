@@ -4,11 +4,6 @@ use zai_rs::{batches::*, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Get batch_id from CLI arg or BATCH_ID env; otherwise show usage and exit
@@ -25,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .status
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
-        tracing::trace!("poll[{}]: status={}", attempt, status);
+        println!("poll[{}]: status={}", attempt, status);
         if status == "completed" || status == "failed" || attempt >= max_attempts {
             break batch;
         }
@@ -33,13 +28,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
 
-    tracing::trace!(
+    println!(
         "batch id={:?} status={:?} endpoint={:?}",
         final_batch.id,
         final_batch.status,
         final_batch.endpoint
     );
-    tracing::trace!(
+    println!(
         "output_file_id={:?} error_file_id={:?}",
         final_batch.output_file_id,
         final_batch.error_file_id
@@ -52,9 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         FileContentRequest::new(key.clone(), out_id)
             .send_to("data/batch_output.jsonl")
             .await?;
-        tracing::trace!("saved: data/batch_output.jsonl");
+        println!("saved: data/batch_output.jsonl");
     } else {
-        tracing::trace!("no output_file_id yet");
+        println!("no output_file_id yet");
     }
 
     // Download error_file_id if present
@@ -62,9 +57,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         FileContentRequest::new(key.clone(), err_id)
             .send_to("data/batch_errors.jsonl")
             .await?;
-        tracing::trace!("saved: data/batch_errors.jsonl");
+        println!("saved: data/batch_errors.jsonl");
     } else {
-        tracing::trace!("no error_file_id");
+        println!("no error_file_id");
     }
 
     Ok(())

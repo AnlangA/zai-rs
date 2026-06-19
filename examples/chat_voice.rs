@@ -5,11 +5,6 @@ use zai_rs::model::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let model = GLM4_voice {};
     let key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
@@ -39,14 +34,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let audio_bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
                 let filename = format!("data/response_{}.wav", chrono::Utc::now().timestamp());
                 File::create(&filename)?.write_all(&audio_bytes)?;
-                tracing::trace!("Audio saved to: {}", filename);
+                println!("Audio saved to: {}", filename);
             }
         },
         Ok(Err(e)) => {
             return Err(e.into());
         },
         Err(_) => {
-            tracing::trace!("Request timed out after 30 seconds");
+            eprintln!("Request timed out after 30 seconds");
             return Err("Request timed out".into());
         },
     }

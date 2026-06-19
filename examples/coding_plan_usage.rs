@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Pretty-print the normalized summary (also available via
     // `query_coding_plan_usage_summary` at the crate root).
-    tracing::info!("{}", resp.summary());
+    println!("{}", resp.summary());
 
     Ok(())
 }

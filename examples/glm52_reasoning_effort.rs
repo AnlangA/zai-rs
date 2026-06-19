@@ -27,15 +27,9 @@ use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    tracing::trace!("=== GLM-5.2 Reasoning Effort Demo ===\n");
+    println!("=== GLM-5.2 Reasoning Effort Demo ===\n");
 
     // GLM-5.2 is the flagship model with thinking + reasoning_effort support.
     let model = GLM5_2 {};
@@ -43,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_text = "Explain how mixture-of-experts (MoE) models work, and why \
                      they might be more efficient than dense models.";
 
-    tracing::trace!("📝 Question: {}\n", user_text);
+    println!("📝 Question: {}\n", user_text);
 
     // Enable thinking and request the maximum reasoning depth. Higher effort
     // yields deeper reasoning at the cost of latency and tokens — recommended
@@ -58,29 +52,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            tracing::trace!("🤔 Thinking Process:\n{}\n", reasoning);
-            tracing::trace!("---\n");
+            println!("🤔 Thinking Process:\n{}\n", reasoning);
+            println!("---\n");
         }
         if let Some(content) = choice.message().content() {
-            tracing::trace!("💡 Answer: {}\n", content);
+            println!("💡 Answer: {}\n", content);
         }
     }
 
     // Show usage statistics
     if let Some(usage) = response.usage {
-        tracing::trace!("📊 Token Usage:");
+        println!("📊 Token Usage:");
         if let Some(prompt) = usage.prompt_tokens() {
-            tracing::trace!("  Prompt tokens: {}", prompt);
+            println!("  Prompt tokens: {}", prompt);
         }
         if let Some(completion) = usage.completion_tokens() {
-            tracing::trace!("  Completion tokens: {}", completion);
+            println!("  Completion tokens: {}", completion);
         }
         if let Some(total) = usage.total_tokens() {
-            tracing::trace!("  Total tokens: {}", total);
+            println!("  Total tokens: {}", total);
         }
     }
 
-    tracing::trace!("\n=== Demo Complete ===");
+    println!("\n=== Demo Complete ===");
 
     Ok(())
 }

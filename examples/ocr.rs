@@ -6,19 +6,13 @@ use zai_rs::model::ocr::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     // Set your API key in env: ZHIPU_API_KEY
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Use local image file as input
     let file_path = "data/ocr_example.png";
 
-    tracing::trace!("=== OCR Handwriting Recognition Example ===\n");
+    println!("=== OCR Handwriting Recognition Example ===\n");
 
     // Build and send OCR request
     let client = OcrRequest::new(key)
@@ -27,26 +21,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_language_type(OcrLanguageType::ChnEng)
         .with_probability(true);
 
-    tracing::trace!("Sending OCR request for image: {}\n", file_path);
+    println!("Sending OCR request for image: {}\n", file_path);
 
     let response: OcrResponse = client.send().await?;
 
-    tracing::trace!("OCR Recognition Result:\n");
-    tracing::trace!("Task ID: {:?}", response.task_id);
-    tracing::trace!("Status: {:?}", response.status);
-    tracing::trace!("Message: {:?}", response.message);
-    tracing::trace!("Number of Results: {:?}\n", response.words_result_num);
+    println!("OCR Recognition Result:\n");
+    println!("Task ID: {:?}", response.task_id);
+    println!("Status: {:?}", response.status);
+    println!("Message: {:?}", response.message);
+    println!("Number of Results: {:?}\n", response.words_result_num);
 
     if let Some(results) = response.words_result {
         for (idx, item) in results.iter().enumerate() {
-            tracing::trace!("--- Text Block {} ---", idx + 1);
+            println!("--- Text Block {} ---", idx + 1);
 
             if let Some(words) = &item.words {
-                tracing::trace!("Text: {}", words);
+                println!("Text: {}", words);
             }
 
             if let Some(location) = &item.location {
-                tracing::trace!(
+                println!(
                     "Location: left={}, top={}, width={}, height={}",
                     location.left.unwrap_or(0),
                     location.top.unwrap_or(0),
@@ -56,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if let Some(prob) = &item.probability {
-                tracing::trace!(
+                println!(
                     "Confidence: avg={:.2}, var={:.2}, min={:.2}",
                     prob.average.unwrap_or(0.0),
                     prob.variance.unwrap_or(0.0),
@@ -64,11 +58,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
 
-            tracing::trace!("");
+            println!();
         }
     }
 
-    tracing::trace!("=== OCR Example Completed ===");
+    println!("=== OCR Example Completed ===");
 
     Ok(())
 }

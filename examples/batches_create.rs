@@ -22,11 +22,6 @@ fn make_jsonl_line(custom_id: &str, user_content: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Step 1: Prepare a .jsonl file (each line is a request JSON)
@@ -59,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_auto_delete_input_file(true);
     let batch: CreateBatchResponse = create.send().await?;
 
-    tracing::trace!(
+    println!(
         "created batch: id={:?} status={:?} input_file_id={:?}",
         batch.id,
         batch.status,

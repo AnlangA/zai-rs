@@ -2,12 +2,6 @@ use zai_rs::batches::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     // Set your API key in env: ZHIPU_API_KEY
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
@@ -20,13 +14,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = BatchesListRequest::new(key).with_query(query);
     let body: BatchesListResponse = client.send().await?;
 
-    tracing::trace!("object: {:?}", body.object);
-    tracing::trace!("has_more: {:?}", body.has_more);
+    println!("object: {:?}", body.object);
+    println!("has_more: {:?}", body.has_more);
 
     if let Some(items) = body.data.as_ref() {
-        tracing::trace!("batches: {}", items.len());
+        println!("batches: {}", items.len());
         for (i, b) in items.iter().enumerate() {
-            tracing::trace!(
+            println!(
                 "#{} id={:?} status={:?} endpoint={:?}",
                 i + 1,
                 b.id,

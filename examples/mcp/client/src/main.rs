@@ -2,7 +2,6 @@ use anyhow::{Context, Result, anyhow};
 use rmcp::{
     ServiceExt, model::ClientInfo, service::ServerSink, transport::StreamableHttpClientTransport,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 // ZAI (zai-rs) imports
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 // rmcp-kits bridge imports
@@ -15,22 +14,15 @@ use zai_rs::toolkits::rmcp_kits::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        tracing_subscriber::registry()
-            .with(tracing_subscriber::EnvFilter::from_default_env())
-            .with(tracing_subscriber::fmt::layer())
-            .init();
-    }
-
     // 1) Connect to MCP server via streamable HTTP
     let transport = StreamableHttpClientTransport::from_uri("http://localhost:8000/mcp");
     let client_info = ClientInfo::default();
     let client = client_info.serve(transport).await.inspect_err(|e| {
-        tracing::error!("client error: {:?}", e);
+        eprintln!("client error: {:?}", e);
     })?;
 
     // Initialize
-    tracing::info!("Connected to server: {:#?}", client.peer_info());
+    println!("Connected to server: {:#?}", client.peer_info());
 
     // Grab a clonable server handle for tool execution
     let server: ServerSink = client.peer().clone();
@@ -41,7 +33,7 @@ async fn main() -> Result<()> {
         .list_all_tools()
         .await
         .context("failed to list tools from server")?;
-    tracing::info!(
+    println!(
         "Available tools: {:#?}",
         tools.iter().map(|t| &t.name).collect::<Vec<_>>()
     );
@@ -68,13 +60,13 @@ async fn main() -> Result<()> {
     )
     .await
     .context("MCP tool-call roundtrip failed")?;
-    tracing::info!("AI final response: {:#?}", final_resp);
+    println!("AI final response: {:#?}", final_resp);
 
     // Print concise final text if available
     if let Some(answer) = extract_final_text(&final_resp) {
-        tracing::trace!("Final answer: {}", answer);
+        println!("Final answer: {}", answer);
     } else {
-        tracing::trace!("Final answer (raw): {:#?}", final_resp);
+        println!("Final answer (raw): {:#?}", final_resp);
     }
 
     // Clean shutdown

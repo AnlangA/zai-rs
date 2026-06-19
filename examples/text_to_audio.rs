@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = resp.bytes().await?;
     std::fs::create_dir_all("out").ok();
     std::fs::write("out/tts_output.wav", &bytes)?;
-    tracing::trace!("Saved to out/tts_output.wav ({} bytes)", bytes.len());
+    println!("Saved to out/tts_output.wav ({} bytes)", bytes.len());
 
     Ok(())
 }

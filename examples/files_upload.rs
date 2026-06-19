@@ -2,12 +2,6 @@ use zai_rs::file::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Choose a local file to upload
@@ -25,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ;
 
     let body: FileObject = client.send().await?;
-    tracing::trace!(
+    println!(
         "Uploaded file: id={:?} filename={:?} bytes={:?} purpose={:?}",
         body.id,
         body.filename,

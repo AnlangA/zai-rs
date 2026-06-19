@@ -107,12 +107,6 @@ fn make_calc_tool() -> FunctionTool {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     // Setup tools (executor owns its registry)
     let executor = ToolExecutor::new();
     executor
@@ -135,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // First round
     let last_resp: ChatCompletionResponse = client.send().await?;
-    tracing::trace!("📨 LLM Response: {:#?}", last_resp);
+    println!("📨 LLM Response: {:#?}", last_resp);
 
     if let Some(calls) = last_resp
         .choices()
@@ -153,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client = client.add_messages(sys);
 
         let next_body: ChatCompletionResponse = client.send().await?;
-        tracing::trace!("Model after tool: {:#?}", next_body);
+        println!("Model after tool: {:#?}", next_body);
     }
 
     Ok(())
@@ -167,7 +161,9 @@ fn get_key() -> Result<String, Box<dyn std::error::Error>> {
     match std::env::var("ZHIPU_API_KEY") {
         Ok(key) => Ok(key),
         Err(_) => {
-            tracing::trace!("Please enter your ZHIPU_API_KEY:");
+            use std::io::Write;
+            println!("Please enter your ZHIPU_API_KEY:");
+            std::io::stdout().flush().ok();
             let mut key = String::new();
             std::io::stdin().read_line(&mut key)?;
             Ok(key.trim().to_string())

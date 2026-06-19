@@ -1,4 +1,4 @@
-use tracing::{info, warn};
+use tracing::warn;
 use zai_rs::model::{chat::data::ChatCompletion, chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
@@ -42,19 +42,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_tool(tools);
     let body: ChatCompletionResponse = client.send().await?;
     let v = serde_json::to_value(&body).expect("Failed to serialize response to JSON");
-    info!(
+    println!(
         "{}",
         serde_json::to_string_pretty(&v).expect("Failed to format JSON")
     );
 
     // 1) 解析第一条 tool_call（更简洁）
     if let Some((id, name, arguments)) = parse_first_tool_call(&v) {
-        info!("提取到的 tool_call -> name: {name}, arguments: {arguments}");
+        println!("提取到的 tool_call -> name: {name}, arguments: {arguments}");
 
         // 2) 执行本地工具并返回模拟结果
         let result = handle_tool_call(&name, &arguments)
             .unwrap_or_else(|| serde_json::json!({"ok": false, "error": "no_result"}));
-        info!(
+        println!(
             "模拟函数返回结果: {}",
             serde_json::to_string_pretty(&result).expect("Failed to format JSON")
         );
@@ -68,12 +68,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let body2: ChatCompletionResponse = client.send().await?;
         let v2 = serde_json::to_value(&body2).expect("Failed to serialize response to JSON");
-        info!(
+        println!(
             "继续对话返回: {}",
             serde_json::to_string_pretty(&v2).expect("Failed to format JSON")
         );
     } else {
-        info!("未发现 tool_calls");
+        println!("未发现 tool_calls");
     }
 
     Ok(())
@@ -85,7 +85,9 @@ fn get_key() -> Result<String, Box<dyn std::error::Error>> {
     } else {
         // 从输入中读取
         let mut key = String::new();
-        tracing::trace!("请输入 ZHIPU_API_KEY: ");
+        print!("请输入 ZHIPU_API_KEY: ");
+        use std::io::Write;
+        std::io::stdout().flush().ok();
         std::io::stdin().read_line(&mut key)?;
         Ok(key.trim().to_string())
     }

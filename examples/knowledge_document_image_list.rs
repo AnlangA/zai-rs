@@ -2,11 +2,6 @@ use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Args: <document_id>
@@ -17,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let req = DocumentImageListRequest::new(key, doc_id);
     let resp: DocumentImageListResponse = req.send().await?;
 
-    tracing::trace!(
+    println!(
         "code={:?} message={:?} timestamp={:?}",
         resp.code,
         resp.message,
@@ -27,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(images) = &data.images
     {
         for it in images.iter() {
-            tracing::trace!("image: text={:?} url={:?}", it.text, it.cos_url);
+            println!("image: text={:?} url={:?}", it.text, it.cos_url);
         }
     }
 

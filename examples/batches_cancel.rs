@@ -5,11 +5,6 @@ use zai_rs::{batches::*, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // 1) Prepare a minimal .jsonl with a single chat.completions request
@@ -49,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .id
         .clone()
         .ok_or_else(|| Box::<dyn std::error::Error>::from("create returned no batch id"))?;
-    tracing::trace!(
+    println!(
         "created batch: id={:?} status={:?}",
         created.id,
         created.status
@@ -60,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send()
         .await?;
 
-    tracing::trace!(
+    println!(
         "cancelled? id={:?} status={:?}",
         cancelled.id,
         cancelled.status

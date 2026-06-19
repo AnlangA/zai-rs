@@ -13,12 +13,6 @@ use zai_rs::model::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     // 1) Read API key
     let key = std::env::var("ZHIPU_API_KEY").expect("Set ZHIPU_API_KEY in your environment");
 
@@ -60,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|choice| choice.delta.as_ref())
                 .and_then(|delta| delta.tool_calls.as_ref())
             {
-                tracing::trace!("{:#?}", tool_calls);
+                println!("{:#?}", tool_calls);
             }
             Ok(())
         })

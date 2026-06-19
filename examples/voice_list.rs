@@ -2,12 +2,6 @@ use zai_rs::model::voice_list::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
     // Build request: optionally filter by name/type
@@ -20,12 +14,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let body: VoiceListResponse = client.send().await?;
     if let Some(list) = body.voice_list.as_ref() {
-        tracing::trace!("voices: {}", list.len());
+        println!("voices: {}", list.len());
         for (i, item) in list.iter().enumerate() {
-            tracing::trace!("#{}: {:?}", i + 1, item);
+            println!("#{}: {:?}", i + 1, item);
         }
     } else {
-        tracing::trace!("voices: 0");
+        println!("voices: 0");
     }
 
     Ok(())

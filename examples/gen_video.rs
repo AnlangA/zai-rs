@@ -9,15 +9,10 @@ use zai_rs::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
     let model = CogVideoX3 {};
     let key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
-    tracing::trace!("{key}");
+    println!("{key}");
     let user_text = "可爱小猫叠在一起";
 
     // 提交视频生成请求
@@ -26,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body: ChatCompletionResponse = resp.json().await?;
 
     let task_id = body.id().ok_or("Task ID not found in response")?;
-    tracing::trace!("Task ID: {}", task_id);
+    println!("Task ID: {}", task_id);
 
     // 使用 async_chat_get 轮询结果
     let get_request = AsyncChatGetRequest::new(CogVideoX3 {}, task_id.to_string(), key);
@@ -37,25 +32,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match get_body.task_status() {
             Some(TaskStatus::Success) => {
-                tracing::trace!("Video generation completed!");
+                println!("Video generation completed!");
                 if let Some(video_result) = get_body.video_result() {
                     for video in video_result {
-                        tracing::trace!("Video URL: {:?}", video.url());
-                        tracing::trace!("Cover Image: {:?}", video.cover_image_url());
+                        println!("Video URL: {:?}", video.url());
+                        println!("Cover Image: {:?}", video.cover_image_url());
                     }
                 }
                 break;
             },
             Some(TaskStatus::Fail) => {
-                tracing::trace!("Video generation failed!");
+                eprintln!("Video generation failed!");
                 break;
             },
             Some(TaskStatus::Processing) => {
-                tracing::trace!("Processing...");
+                println!("Processing...");
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             },
             None => {
-                tracing::trace!("No task status found");
+                eprintln!("No task status found");
                 break;
             },
         }
