@@ -278,31 +278,68 @@ pub mod codes {
 pub enum ZaiError {
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
-    HttpError { status: u16, message: String },
+    HttpError {
+        /// HTTP status code (e.g. `400`, `404`, `500`).
+        status: u16,
+        /// Human-readable error message returned with the response.
+        message: String,
+    },
 
     /// Authentication and authorization errors
     #[error("Authentication error [{code}]: {message}")]
-    AuthError { code: u16, message: String },
+    AuthError {
+        /// Zhipu AI business error code (`1000`–`1004`, `1100`).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
     /// Account-related errors
     #[error("Account error [{code}]: {message}")]
-    AccountError { code: u16, message: String },
+    AccountError {
+        /// Zhipu AI business error code (`1110`–`1121`).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
     /// API call errors
     #[error("API error [{code}]: {message}")]
-    ApiError { code: u16, message: String },
+    ApiError {
+        /// Zhipu AI business error code (`1200`–`1234`) or a reserved SDK
+        /// code from [`codes`] (`9000`–`9999`).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
     /// Rate limiting and quota errors
     #[error("Rate limit error [{code}]: {message}")]
-    RateLimitError { code: u16, message: String },
+    RateLimitError {
+        /// Zhipu AI business error code (`1300`–`1313`).
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
     /// Content policy errors
     #[error("Content policy error [{code}]: {message}")]
-    ContentPolicyError { code: u16, message: String },
+    ContentPolicyError {
+        /// Zhipu AI business error code for content-policy violations.
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
     /// File processing errors
     #[error("File error [{code}]: {message}")]
-    FileError { code: u16, message: String },
+    FileError {
+        /// Zhipu AI business error code (`1400`–`1499`) or a reserved SDK
+        /// file code from [`codes`].
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 
     /// Network/IO errors (wrapped in Arc for Clone support)
     #[error("Network error: {0}")]
@@ -324,7 +361,13 @@ pub enum ZaiError {
 
     /// Other errors
     #[error("Unknown error [{code}]: {message}")]
-    Unknown { code: u16, message: String },
+    Unknown {
+        /// Numeric code — either an unmapped business code, an HTTP status,
+        /// or a reserved SDK code from [`codes`].
+        code: u16,
+        /// Human-readable error message.
+        message: String,
+    },
 }
 
 /// Concrete error categories for the realtime (WebSocket) transport.
@@ -347,6 +390,7 @@ pub enum RealtimeErrorKind {
     /// (De)serialization of a realtime event failed.
     #[error("serialize: {source}")]
     Serialize {
+        /// The underlying serde_json error.
         #[source]
         source: serde_json::Error,
     },

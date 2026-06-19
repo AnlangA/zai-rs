@@ -63,18 +63,21 @@ impl DocumentReembeddingRequest {
         );
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
@@ -107,16 +110,20 @@ impl HttpClient for DocumentReembeddingRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Serialized request body.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         Arc::clone(&self.http_config)
     }
@@ -125,10 +132,13 @@ impl HttpClient for DocumentReembeddingRequest {
 /// Simple response envelope: { code, message, timestamp }
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct DocumentReembeddingResponse {
+    /// Business status code.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<i64>,
+    /// Human-readable message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Server timestamp.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }

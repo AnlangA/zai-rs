@@ -7,7 +7,7 @@
 //!
 //! ## Model Identification
 //!
-//! - [`ModelName`] — Converts model types to string identifiers used in API
+//! - `ModelName` — Converts model types to string identifiers used in API
 //!   requests
 //!
 //! ## Capability Markers
@@ -15,36 +15,36 @@
 //! These marker traits carry no runtime data but encode model capabilities at
 //! compile time:
 //!
-//! - [`Chat`] — Synchronous chat completion
-//! - [`AsyncChat`] — Asynchronous (queued) chat completion
-//! - [`ThinkEnable`] — Thinking / reasoning mode
-//! - [`ReasoningEffortEnable`] — `reasoning_effort` depth control (GLM-5.2+)
-//! - [`ToolStreamEnable`] — Streaming tool-call output
-//! - [`VideoGen`] — Video generation
-//! - [`ImageGen`] — Image generation
-//! - [`AudioToText`] — Speech recognition
-//! - [`TextToAudio`] — Text-to-speech synthesis
-//! - [`VoiceClone`] — Voice cloning
-//! - [`Ocr`] — Optical character recognition
+//! - `Chat` — Synchronous chat completion
+//! - `AsyncChat` — Asynchronous (queued) chat completion
+//! - `ThinkEnable` — Thinking / reasoning mode
+//! - `ReasoningEffortEnable` — `reasoning_effort` depth control (GLM-5.2+)
+//! - `ToolStreamEnable` — Streaming tool-call output
+//! - `VideoGen` — Video generation
+//! - `ImageGen` — Image generation
+//! - `AudioToText` — Speech recognition
+//! - `TextToAudio` — Text-to-speech synthesis
+//! - `VoiceClone` — Voice cloning
+//! - `Ocr` — Optical character recognition
 //!
 //! ## Type-Safety Traits
 //!
-//! - [`Bounded`] — Compile-time model ↔ message compatibility check
-//! - [`StreamState`] — Type-state pattern for streaming control
+//! - `Bounded` — Compile-time model ↔ message compatibility check
+//! - `StreamState` — Type-state pattern for streaming control
 //!
 //! # Type-State Pattern
 //!
-//! [`StreamState`] and its implementations ([`StreamOn`], [`StreamOff`])
+//! `StreamState` and its implementations (`StreamOn`, `StreamOff`)
 //! enforce streaming vs. non-streaming semantics at the type level, preventing
 //! invalid API usage without any runtime cost.
 //!
 //! # Helper Macros
 //!
-//! - [`define_model_type!`] — Generates a model struct with `Debug`, `Clone`,
+//! - `define_model_type!` — Generates a model struct with `Debug`, `Clone`,
 //!   `Into<String>`, `Serialize`, and `ModelName` impls
-//! - [`impl_message_binding!`] — Binds one or more message types to a model
+//! - `impl_message_binding!` — Binds one or more message types to a model
 //!   (implements `Bounded`)
-//! - [`impl_model_markers!`] — Implements multiple capability marker traits on
+//! - `impl_model_markers!` — Implements multiple capability marker traits on
 //!   one or more models
 
 /// Trait for AI models that can be identified by name.
@@ -174,6 +174,10 @@ use crate::client::http::HttpClient;
 /// }).await?;
 /// ```
 pub trait SseStreamable: HttpClient {
+    /// Consume the SSE stream, invoking `on_data` once per data event.
+    ///
+    /// The returned future resolves when the stream terminates (either on a
+    /// `[DONE]` marker or on the underlying body's end-of-stream).
     fn stream_sse_for_each<'a, F>(
         &'a mut self,
         mut on_data: F,
@@ -235,6 +239,7 @@ pub trait SseStreamable: HttpClient {
 #[macro_export]
 macro_rules! define_model_type {
     ($(#[$meta:meta])* $name:ident, $s:expr) => {
+        #[doc = concat!(" AI model type backed by the upstream id `", $s, "`.")]
         #[derive(Debug, Clone)]
         $(#[$meta])*
         pub struct $name {}

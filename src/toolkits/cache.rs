@@ -8,11 +8,14 @@ use serde_json::Value;
 /// Cache key for tool calls
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CacheKey {
+    /// Name of the tool.
     pub tool_name: String,
+    /// Normalized (whitespace-trimmed) JSON arguments string.
     pub arguments: String,
 }
 
 impl CacheKey {
+    /// Create a cache key from a tool name and its (arbitrary JSON) arguments.
     pub fn new(tool_name: String, arguments: Value) -> Self {
         let normalized = normalize_json(&arguments);
         Self {
@@ -25,13 +28,18 @@ impl CacheKey {
 /// Cache entry with TTL
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
+    /// Cached tool result.
     pub result: Value,
+    /// When the entry was inserted.
     pub timestamp: SystemTime,
+    /// Time-to-live for this entry.
     pub ttl: Duration,
+    /// Number of cache hits on this entry.
     pub hit_count: u64,
 }
 
 impl CacheEntry {
+    /// Create a new cache entry with the given result and TTL.
     pub fn new(result: Value, ttl: Duration) -> Self {
         Self {
             result,
@@ -41,6 +49,7 @@ impl CacheEntry {
         }
     }
 
+    /// Whether this entry has exceeded its TTL.
     pub fn is_expired(&self) -> bool {
         match self.timestamp.elapsed() {
             Ok(elapsed) => elapsed > self.ttl,
@@ -48,12 +57,16 @@ impl CacheEntry {
         }
     }
 
+    /// Record one cache hit on this entry.
     pub fn hit(&mut self) {
         self.hit_count += 1;
     }
 }
 
 /// Intelligent tool call result cache
+///
+/// Concurrent (`DashMap`-backed) cache of tool-call results with per-entry TTL,
+/// LRU eviction at capacity, and hit/miss statistics.
 #[derive(Clone)]
 pub struct ToolCallCache {
     entries: dashmap::DashMap<CacheKey, CacheEntry>,
@@ -63,6 +76,7 @@ pub struct ToolCallCache {
 }
 
 impl ToolCallCache {
+    /// Create a new cache (default TTL 300s, max 1000 entries, enabled).
     pub fn new() -> Self {
         Self {
             entries: dashmap::DashMap::new(),
@@ -72,21 +86,26 @@ impl ToolCallCache {
         }
     }
 
+    /// Set the default TTL for entries without an explicit TTL.
     pub fn with_ttl(mut self, ttl: Duration) -> Self {
         self.default_ttl = ttl;
         self
     }
 
+    /// Set the maximum number of cached entries.
     pub fn with_max_size(mut self, size: usize) -> Self {
         self.max_size = size;
         self
     }
 
+    /// Enable or disable the cache entirely.
     pub fn with_enabled(mut self, enabled: bool) -> Self {
         self.enable_cache = enabled;
         self
     }
 
+    /// Look up a cached result, returning `None` if disabled, missing, or
+    /// expired (expired entries are atomically removed).
     pub fn get(&self, key: &CacheKey) -> Option<Value> {
         if !self.enable_cache {
             return None;
@@ -109,6 +128,7 @@ impl ToolCallCache {
         Some(entry.result.clone())
     }
 
+    /// Insert a result, evicting LRU entries at capacity. No-op if disabled.
     pub fn insert(&self, key: CacheKey, result: Value, ttl: Option<Duration>) {
         if !self.enable_cache {
             return;
@@ -122,19 +142,23 @@ impl ToolCallCache {
         self.entries.insert(key, entry);
     }
 
+    /// Convenience: build a [`CacheKey`] from name+arguments and insert.
     pub fn insert_with_key(&self, tool_name: String, arguments: Value, result: Value) {
         let key = CacheKey::new(tool_name, arguments);
         self.insert(key, result, None);
     }
 
+    /// Remove all cached entries.
     pub fn clear(&self) {
         self.entries.clear();
     }
 
+    /// Invalidate every entry for the given tool.
     pub fn invalidate_tool(&self, tool_name: &str) {
         self.entries.retain(|key, _| key.tool_name != tool_name);
     }
 
+    /// Compute aggregate cache statistics (entry count, hits, expiry, hit rate).
     pub fn stats(&self) -> CacheStats {
         let mut total_hits = 0u64;
         let mut expired_count = 0u64;
@@ -183,9 +207,13 @@ impl Default for ToolCallCache {
 /// Cache statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheStats {
+    /// Number of entries currently in the cache.
     pub total_entries: usize,
+    /// Total cache hits across all entries.
     pub total_hits: u64,
+    /// Number of entries that have expired (not yet evicted).
     pub expired_count: u64,
+    /// Hit rate (`total_hits / total_entries`).
     pub hit_rate: f64,
 }
 

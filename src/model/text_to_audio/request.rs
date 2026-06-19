@@ -3,6 +3,7 @@ use validator::Validate;
 
 use super::super::traits::*;
 
+/// Request body for text-to-speech synthesis.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct TextToAudioBody<N>
 where
@@ -43,6 +44,8 @@ impl<N> TextToAudioBody<N>
 where
     N: ModelName + TextToAudio + Serialize,
 {
+    /// Create a new TTS request body for the given model (defaults: voice
+    /// `Tongtong`, format `Wav`).
     pub fn new(model: N) -> Self {
         Self {
             model,
@@ -55,45 +58,59 @@ where
         }
     }
 
+    /// Set the input text to synthesize.
     pub fn with_input(mut self, input: impl Into<String>) -> Self {
         self.input = Some(input.into());
         self
     }
 
+    /// Set the voice preset.
     pub fn with_voice(mut self, voice: Voice) -> Self {
         self.voice = Some(voice);
         self
     }
 
+    /// Set the playback speed (`0.5`–`2.0`).
     pub fn with_speed(mut self, speed: f32) -> Self {
         self.speed = Some(speed);
         self
     }
 
+    /// Set the playback volume (`0.0`–`10.0`).
     pub fn with_volume(mut self, volume: f32) -> Self {
         self.volume = Some(volume);
         self
     }
 
+    /// Set the output audio format.
     pub fn with_response_format(mut self, fmt: TtsAudioFormat) -> Self {
         self.response_format = Some(fmt);
         self
     }
 
+    /// Enable/disable the audio watermark.
     pub fn with_watermark_enabled(mut self, enabled: bool) -> Self {
         self.watermark_enabled = Some(enabled);
         self
     }
 }
 
+/// Built-in TTS voice presets.
 #[derive(Debug, Clone)]
 pub enum Voice {
+    /// Tongtong voice.
     Tongtong,
+    /// Chuichui voice.
     Chuichui,
+    /// Xiaochen voice.
     Xiaochen,
+    /// Jam voice.
     Jam,
+    /// Kazi voice.
     Kazi,
+    /// Douji voice.
     Douji,
+    /// Luodo voice.
     Luodo,
 }
 
@@ -115,8 +132,10 @@ impl serde::Serialize for Voice {
     }
 }
 
+/// Supported output audio formats for TTS.
 #[derive(Debug, Clone)]
 pub enum TtsAudioFormat {
+    /// PCM WAV container.
     Wav,
 }
 

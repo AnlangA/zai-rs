@@ -7,8 +7,8 @@
 //!
 //! ## Validation Functions
 //!
-//! - [`validate_json_schema`] - Validates JSON Schema from string input
-//! - [`validate_json_schema_value`] - Validates JSON Schema from parsed JSON
+//! - `validate_json_schema` - Validates JSON Schema from string input
+//! - `validate_json_schema_value` - Validates JSON Schema from parsed JSON
 //!   value
 //!
 //! ## Error Handling

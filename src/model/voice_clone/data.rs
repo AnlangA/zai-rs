@@ -10,10 +10,15 @@ use crate::client::{
 };
 
 /// Voice clone request wrapper using JSON
+///
+/// Builder for the voice-clone endpoint. Construct with
+/// [`VoiceCloneRequest::new`], tune with the `with_*` methods, then call
+/// [`VoiceCloneRequest::send`].
 pub struct VoiceCloneRequest<N>
 where
     N: ModelName + VoiceClone + Serialize,
 {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
@@ -52,23 +57,27 @@ where
         self.url = self.endpoint_config.url(&self.api_base, paths::VOICE_CLONE);
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Borrow the underlying [`VoiceCloneBody`] mutably for advanced tweaks.
     pub fn body_mut(&mut self) -> &mut VoiceCloneBody<N> {
         &mut self.body
     }
@@ -85,6 +94,7 @@ where
         self
     }
 
+    /// Validate the request body constraints before sending.
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
@@ -95,6 +105,7 @@ where
         Ok(())
     }
 
+    /// Submit the request and parse the typed voice-clone response.
     pub async fn send(&self) -> crate::ZaiResult<super::response::VoiceCloneResponse> {
         self.validate()?;
         let resp = self.post().await?;
@@ -111,16 +122,20 @@ where
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Serialized request body.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         Arc::clone(&self.http_config)
     }

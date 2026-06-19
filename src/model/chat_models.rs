@@ -27,7 +27,7 @@
 //!
 //! | Model | Struct | Thinking | Message Type |
 //! |-------|--------|----------|--------------|
-//! | autoglm-phone | [`autoglm_phone`] | no | [`VisionMessage`](super::chat_message_types::VisionMessage) |
+//! | autoglm-phone | [`autoglm_phone`] | no | [`VisionMessage`] |
 //! | glm-4.6v | [`GLM4_6v`] | no | [`VisionMessage`] |
 //! | glm-4.6v-flash | [`GLM4_6v_flash`] | no | [`VisionMessage`] |
 //! | glm-4.6v-flashx | [`GLM4_6v_flashx`] | no | [`VisionMessage`] |
@@ -38,7 +38,7 @@
 //!
 //! | Model | Struct | Message Type |
 //! |-------|--------|--------------|
-//! | glm-4-voice | [`GLM4_voice`] | [`VoiceMessage`](super::chat_message_types::VoiceMessage) |
+//! | glm-4-voice | [`GLM4_voice`] | [`VoiceMessage`] |
 //!
 //! # Usage
 //!

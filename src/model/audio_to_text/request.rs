@@ -36,6 +36,7 @@ impl<N> AudioToTextBody<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
+    /// Create a new transcription body for the given model (all options `None`).
     pub fn new(model: N) -> Self {
         Self {
             model,
@@ -46,21 +47,25 @@ where
         }
     }
 
+    /// Set the sampling temperature (`0.0`–`1.0`).
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature);
         self
     }
 
+    /// Enable/disable streaming responses.
     pub fn with_stream(mut self, stream: bool) -> Self {
         self.stream = Some(stream);
         self
     }
 
+    /// Set the client-side request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self
     }
 
+    /// Set the end-user id (6..=128 chars).
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.user_id = Some(user_id.into());
         self

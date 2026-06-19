@@ -14,6 +14,7 @@ use crate::{
 /// Builds query parameters from `FileListQuery` and performs an authenticated
 /// GET.
 pub struct FileListRequest {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
@@ -24,6 +25,7 @@ pub struct FileListRequest {
 }
 
 impl FileListRequest {
+    /// Create a new file-list request (empty query).
     pub fn new(key: String) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -57,23 +59,27 @@ impl FileListRequest {
         self.url = build_query(&endpoint, params);
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Replace the query parameters.
     pub fn with_query(mut self, q: FileListQuery) -> Self {
         self.query = q;
         self.rebuild_url();
@@ -103,16 +109,20 @@ impl HttpClient for FileListRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL (with query string) for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Empty body placeholder (GET request).
     fn body(&self) -> &Self::Body {
         &self._body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }

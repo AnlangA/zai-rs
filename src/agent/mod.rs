@@ -83,6 +83,7 @@ impl AgentClient {
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self

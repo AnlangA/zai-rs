@@ -36,9 +36,13 @@
 //! client.cancel_batch(&CancelBatchRequest::new(&job.id)).await?;
 //! ```
 
+/// Cancel a running or queued batch job (`POST …/batches/{id}/cancel`).
 pub mod cancel;
+/// Create a new batch job (`POST …/batches`).
 pub mod create;
+/// List batch jobs with filtering/pagination (`GET …/batches`).
 pub mod list;
+/// Retrieve a batch job's status and results (`GET …/batches/{id}`).
 pub mod retrieve;
 mod types;
 

@@ -10,17 +10,23 @@ use crate::client::{
 };
 
 /// OCR recognition request (multipart/form-data)
+///
+/// Builder for the OCR endpoint. Set the image via
+/// [`OcrRequest::with_file_path`], then call [`OcrRequest::send`].
 pub struct OcrRequest {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
     api_base: ApiBase,
     http_config: Arc<HttpClientConfig>,
+    /// Multipart form fields (tool type, language, …).
     pub body: OcrBody,
     file_path: Option<String>,
 }
 
 impl OcrRequest {
+    /// Create a new OCR request with default options.
     pub fn new(key: String) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -36,53 +42,64 @@ impl OcrRequest {
         }
     }
 
+    /// Set the local image file path to recognize (required).
     pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
         self.file_path = Some(path.into());
         self
     }
 
+    /// Set the OCR tool type (e.g. handwriting).
     pub fn with_tool_type(mut self, tool_type: OcrToolType) -> Self {
         self.body = self.body.with_tool_type(tool_type);
         self
     }
 
+    /// Set the document language.
     pub fn with_language_type(mut self, language_type: OcrLanguageType) -> Self {
         self.body = self.body.with_language_type(language_type);
         self
     }
 
+    /// Whether to return per-character recognition probabilities.
     pub fn with_probability(mut self, probability: bool) -> Self {
         self.body = self.body.with_probability(probability);
         self
     }
 
+    /// Set the client-side request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.body = self.body.with_request_id(request_id);
         self
     }
 
+    /// Set the end-user id.
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
         self
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.url = self.endpoint_config.url(&self.api_base, paths::FILES_OCR);
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.url = self.endpoint_config.url(&self.api_base, paths::FILES_OCR);
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Validate the request: body constraints, file existence, size (≤8MB),
+    /// and supported extension (png/jpg/jpeg/bmp).
     pub fn validate(&self) -> crate::ZaiResult<()> {
         // Check body constraints
         self.body
@@ -138,6 +155,7 @@ impl OcrRequest {
         Ok(())
     }
 
+    /// Submit the multipart request and parse the typed OCR response.
     pub async fn send(&self) -> crate::ZaiResult<super::response::OcrResponse> {
         self.validate()?;
 
@@ -152,18 +170,22 @@ impl HttpClient for OcrRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
 
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
 
+    /// Form fields for the multipart request.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// POST the multipart form (file + fields) to the OCR endpoint.
     fn post(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
@@ -240,6 +262,7 @@ impl HttpClient for OcrRequest {
         }
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }

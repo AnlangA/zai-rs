@@ -3,6 +3,7 @@ use validator::*;
 
 use super::super::traits::*;
 
+/// Request body for asynchronous video generation.
 #[derive(Debug, Clone, Validate, Serialize)]
 #[validate(schema(function = "validate_prompt_or_image"))]
 pub struct VideoBody<N>
@@ -204,6 +205,7 @@ where
     }
 }
 
+/// Output quality mode for video generation.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VideoQuality {
@@ -213,6 +215,7 @@ pub enum VideoQuality {
     Quality,
 }
 
+/// Image input for video generation — base64 data or one/two URL(s).
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum ImageUrl {
@@ -239,6 +242,7 @@ impl ImageUrl {
     }
 }
 
+/// Supported video resolution presets.
 #[derive(Debug, Clone, Serialize)]
 pub enum VideoSize {
     /// 1280x720 resolution (HD)
@@ -264,6 +268,7 @@ pub enum VideoSize {
     Size3840x2160,
 }
 
+/// Video frame rate.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Fps {
@@ -273,6 +278,7 @@ pub enum Fps {
     Fps60,
 }
 
+/// Video duration in seconds.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VideoDuration {

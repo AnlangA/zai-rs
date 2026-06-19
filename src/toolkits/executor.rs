@@ -29,9 +29,13 @@ use crate::{
 /// Enhanced retry configuration with exponential backoff
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
+    /// Maximum number of retry attempts after the first try.
     pub max_retries: u32,
+    /// Delay before the first retry.
     pub initial_delay: Duration,
+    /// Upper bound on the per-attempt delay.
     pub max_delay: Duration,
+    /// Multiplier applied to the delay between successive retries.
     pub backoff_multiplier: f64,
 }
 
@@ -47,6 +51,7 @@ impl Default for RetryConfig {
 }
 
 impl RetryConfig {
+    /// Compute the delay to apply before the given (1-based) attempt.
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
         if attempt == 0 {
             return Duration::ZERO;
@@ -63,9 +68,13 @@ impl RetryConfig {
 /// Execution configuration with type-safe builder
 #[derive(Debug, Clone)]
 pub struct ExecutionConfig {
+    /// Per-call execution timeout (`None` = no timeout).
     pub timeout: Option<Duration>,
+    /// Retry/backoff configuration.
     pub retry_config: RetryConfig,
+    /// Whether to validate input parameters against the tool schema.
     pub validate_parameters: bool,
+    /// Whether to emit execution log events.
     pub enable_logging: bool,
 }
 
@@ -83,17 +92,26 @@ impl Default for ExecutionConfig {
 /// Execution result with enhanced metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
+    /// Name of the tool that was executed.
     pub tool_name: String,
+    /// The tool's return value (JSON).
     pub result: serde_json::Value,
+    /// Wall-clock duration of the (possibly retried) execution.
     pub duration: Duration,
+    /// Whether the execution succeeded.
     pub success: bool,
+    /// Error message, present only on failure.
     pub error: Option<String>,
+    /// Number of retries performed.
     pub retries: u32,
+    /// When the execution completed.
     pub timestamp: std::time::SystemTime,
+    /// Free-form metadata (e.g. `cache_hit`).
     pub metadata: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl ExecutionResult {
+    /// Construct a successful execution result.
     pub fn success(
         tool_name: String,
         result: serde_json::Value,
@@ -112,6 +130,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Construct a failed execution result.
     pub fn failure(tool_name: String, error: String, duration: Duration, retries: u32) -> Self {
         Self {
             tool_name,
@@ -125,6 +144,7 @@ impl ExecutionResult {
         }
     }
 
+    /// Attach a free-form metadata entry to this result.
     pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
         self.metadata.insert(key.into(), value);
         self
@@ -500,6 +520,8 @@ impl ToolExecutor {
         }
     }
 
+    /// Execute LLM tool calls concurrently, returning one `TextMessage::tool`
+    /// per call (order is NOT preserved — see [`Self::execute_tool_calls_ordered`]).
     pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         let mut set = JoinSet::new();
 
@@ -535,7 +557,7 @@ impl ToolExecutor {
     ///   present
     ///
     /// Returns:
-    /// - Vec<TextMessage> in the same order as input calls, ready for
+    /// - `Vec<TextMessage>` in the same order as input calls, ready for
     ///   ChatCompletion
     pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         use futures::future::join_all;
@@ -615,7 +637,7 @@ impl ToolExecutor {
         }
     }
 
-    /// Get the config
+    /// Get the executor's [`ExecutionConfig`].
     pub fn config(&self) -> &ExecutionConfig {
         &self.config
     }

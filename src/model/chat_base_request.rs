@@ -1,15 +1,13 @@
 //! # Chat Request Body
 //!
-//! Provides the core [`ChatBody`] structure shared by all chat-completion
+//! Provides the core `ChatBody` structure shared by all chat-completion
 //! endpoints. The generic type parameters enforce compile-time compatibility
 //! between model and message types.
 //!
 //! # Type Parameters
 //!
-//! - `N` — Model identifier type (must implement
-//!   [`ModelName`](super::traits::ModelName))
-//! - `M` — Message type (must form a [`Bounded`](super::traits::Bounded) pair
-//!   with `N`)
+//! - `N` — Model identifier type (must implement `ModelName`)
+//! - `M` — Message type (must form a `Bounded` pair with `N`)
 
 use serde::Serialize;
 use validator::*;
@@ -24,8 +22,8 @@ use super::{tools::*, traits::*};
 ///
 /// # Type Parameters
 ///
-/// * `N` - The model name type, must implement [`ModelName`]
-/// * `M` - The message type, must form a [`Bounded`] pair with `N`
+/// * `N` - The model name type, must implement `ModelName`
+/// * `M` - The message type, must form a `Bounded` pair with `N`
 ///
 /// # Examples
 ///
@@ -69,7 +67,7 @@ where
 
     /// Controls the depth of reasoning when thinking mode is enabled. Only
     /// available for GLM-5.2 and above (models that implement
-    /// [`ReasoningEffortEnable`]). See [`ReasoningEffort`] for the available
+    /// `ReasoningEffortEnable`). See [`ReasoningEffort`] for the available
     /// levels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<ReasoningEffort>,
@@ -140,6 +138,7 @@ where
     N: ModelName,
     (N, M): Bounded,
 {
+    /// Create a new chat request body from a model and the first message batch.
     pub fn new(model: N, messages: M) -> Self {
         Self {
             model,
@@ -160,6 +159,7 @@ where
         }
     }
 
+    /// Append another message batch to the conversation.
     pub fn add_messages(mut self, messages: M) -> Self {
         self.messages.push(messages);
         self
@@ -175,26 +175,32 @@ where
         self.messages.extend(messages);
         self
     }
+    /// Set the client-side request id (used for tracing/dedup).
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self
     }
+    /// Enable/disable sampling (`do_sample`).
     pub fn with_do_sample(mut self, do_sample: bool) -> Self {
         self.do_sample = Some(do_sample);
         self
     }
+    /// Enable/disable streaming responses.
     pub fn with_stream(mut self, stream: bool) -> Self {
         self.stream = Some(stream);
         self
     }
+    /// Set the sampling temperature.
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
         self
     }
+    /// Set the nucleus-sampling probability (`top_p`).
     pub fn with_top_p(mut self, top_p: f64) -> Self {
         self.top_p = Some(top_p);
         self
     }
+    /// Set the maximum number of tokens to generate.
     pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
         self.max_tokens = Some(max_tokens);
         self
@@ -207,18 +213,22 @@ where
         self.tools = Some(tools.into());
         self
     }
+    /// Add a single tool to the request.
     pub fn add_tools(mut self, tools: Tools) -> Self {
         self.tools.get_or_insert(Vec::new()).push(tools);
         self
     }
+    /// Add multiple tools to the request at once.
     pub fn extend_tools(mut self, tools: Vec<Tools>) -> Self {
         self.tools.get_or_insert(Vec::new()).extend(tools);
         self
     }
+    /// Set the end-user id (used for abuse monitoring).
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.user_id = Some(user_id.into());
         self
     }
+    /// Add a stop sequence that halts generation when encountered.
     pub fn with_stop(mut self, stop: String) -> Self {
         self.stop.get_or_insert_with(Vec::new).push(stop);
         self
@@ -234,7 +244,7 @@ where
     /// capabilities.
     ///
     /// This method is only available for models that implement the
-    /// [`ThinkEnable`] trait, ensuring type safety for thinking-enabled
+    /// `ThinkEnable` trait, ensuring type safety for thinking-enabled
     /// models.
     ///
     /// # Arguments
@@ -269,7 +279,7 @@ where
     /// model performs when thinking mode is enabled.
     ///
     /// Only available on GLM-5.2 and above (models implementing
-    /// [`ReasoningEffortEnable`]). Typically combined with
+    /// `ReasoningEffortEnable`). Typically combined with
     /// [`with_thinking`](Self::with_thinking) to enable thinking first.
     ///
     /// # Examples

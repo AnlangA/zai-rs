@@ -29,7 +29,9 @@
 //! let result = moderation.send().await?;
 //! ```
 
+/// Request builder and client for content moderation.
 pub mod data;
+/// Supported moderation model ids.
 pub mod models;
 
 // Re-export main types for convenience

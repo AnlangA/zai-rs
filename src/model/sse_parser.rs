@@ -14,6 +14,7 @@ pub struct SseEventParser {
 }
 
 impl SseEventParser {
+    /// Create a new empty SSE event parser.
     pub fn new() -> Self {
         Self::default()
     }

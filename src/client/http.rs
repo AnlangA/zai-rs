@@ -115,7 +115,12 @@ pub enum RetryDelay {
     Fixed(Duration),
 
     /// Exponential backoff with jitter
-    Exponential { base: Duration, max: Duration },
+    Exponential {
+        /// Initial (base) delay between retries; doubled on each attempt.
+        base: Duration,
+        /// Upper bound for the backoff delay.
+        max: Duration,
+    },
 
     /// No delay (not recommended for production)
     None,
@@ -492,13 +497,22 @@ where
 }
 
 /// Trait for HTTP clients that communicate with the Zhipu AI API.
+///
+/// Every concrete request builder in the SDK implements this so the shared
+/// transport helpers can post/submit requests uniformly.
 pub trait HttpClient {
+    /// Request body type (must be JSON-serializable).
     type Body: serde::Serialize;
+    /// Resolved API URL holder (typically `String` or `&'a str`).
     type ApiUrl: AsRef<str>;
+    /// API key holder (typically `String` or `&'a str`).
     type ApiKey: AsRef<str>;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl;
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey;
+    /// Serialized request body.
     fn body(&self) -> &Self::Body;
 
     /// Get HTTP client configuration for this request

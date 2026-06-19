@@ -28,23 +28,40 @@ pub const REALTIME_BASE: &str = "wss://open.bigmodel.cn/api/paas/v4/realtime";
 pub const MONITOR_BASE: &str = "https://open.bigmodel.cn/api/monitor";
 
 /// API family selector used by [`EndpointConfig`].
+///
+/// Each variant identifies one of the Zhipu AI API families so that
+/// [`EndpointConfig::base`] can resolve the right base URL. [`ApiBase::Custom`]
+/// is the escape hatch for self-hosted or proxy deployments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiBase {
+    /// General PAAS v4 APIs (chat, embeddings, files, …).
     PaasV4,
+    /// Coding Plan PAAS v4 APIs (chat under the Coding Plan product).
     CodingPaasV4,
+    /// LLM application APIs (knowledge base, agents).
     LlmApplication,
+    /// Realtime (WebSocket) APIs.
     Realtime,
     /// Monitor / usage-statistics endpoints (Coding Plan quota query).
     Monitor,
+    /// User-supplied base URL for self-hosted or proxied deployments.
     Custom(String),
 }
 
 /// Runtime-configurable API bases.
+///
+/// Holds the per-family base URLs the SDK uses to build request URLs. The
+/// [`Default`] implementation populates every field with the official Zhipu AI
+/// endpoints; override individual bases via the `with_*` builders.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointConfig {
+    /// Base URL for the general PAAS v4 API family.
     pub paas_v4_base: String,
+    /// Base URL for the Coding Plan PAAS v4 API family.
     pub coding_paas_v4_base: String,
+    /// Base URL for the LLM application API family (knowledge base, agents).
     pub llm_application_base: String,
+    /// Base URL for the realtime (WebSocket) API family.
     pub realtime_base: String,
     /// Monitor / usage-statistics base URL.
     pub monitor_base: String,
@@ -63,21 +80,25 @@ impl Default for EndpointConfig {
 }
 
 impl EndpointConfig {
+    /// Override the general PAAS v4 base URL.
     pub fn with_paas_v4_base(mut self, base: impl Into<String>) -> Self {
         self.paas_v4_base = base.into();
         self
     }
 
+    /// Override the Coding Plan PAAS v4 base URL.
     pub fn with_coding_paas_v4_base(mut self, base: impl Into<String>) -> Self {
         self.coding_paas_v4_base = base.into();
         self
     }
 
+    /// Override the LLM application base URL.
     pub fn with_llm_application_base(mut self, base: impl Into<String>) -> Self {
         self.llm_application_base = base.into();
         self
     }
 
+    /// Override the realtime (WebSocket) base URL.
     pub fn with_realtime_base(mut self, base: impl Into<String>) -> Self {
         self.realtime_base = base.into();
         self
@@ -89,6 +110,7 @@ impl EndpointConfig {
         self
     }
 
+    /// Resolve the base URL for the given [`ApiBase`] family.
     pub fn base<'a>(&'a self, api_base: &'a ApiBase) -> &'a str {
         match api_base {
             ApiBase::PaasV4 => &self.paas_v4_base,
@@ -100,6 +122,7 @@ impl EndpointConfig {
         }
     }
 
+    /// Build a full URL by joining `path` onto the base for `api_base`.
     pub fn url(&self, api_base: &ApiBase, path: &str) -> String {
         join_url(self.base(api_base), path)
     }
@@ -153,35 +176,67 @@ where
     format!("{base_url}?{query}")
 }
 
+/// Canonical REST endpoint paths (relative to an [`EndpointConfig`] base).
+///
+/// Centralizing the path strings keeps product modules free of magic strings
+/// and makes endpoint renames a single-line change.
 pub mod paths {
+    /// `chat/completions` — sync/async/stream chat completions.
     pub const CHAT_COMPLETIONS: &str = "chat/completions";
+    /// `async/chat/completions` — asynchronous chat completions.
     pub const ASYNC_CHAT_COMPLETIONS: &str = "async/chat/completions";
+    /// `async-result` — poll an asynchronous task result.
     pub const ASYNC_RESULT: &str = "async-result";
+    /// `embeddings` — text embeddings.
     pub const EMBEDDINGS: &str = "embeddings";
+    /// `rerank` — text reranking.
     pub const RERANK: &str = "rerank";
+    /// `tokenizer` — tokenization / token counting.
     pub const TOKENIZER: &str = "tokenizer";
+    /// `moderations` — content moderation.
     pub const MODERATIONS: &str = "moderations";
+    /// `images/generations` — text-to-image generation.
     pub const IMAGES_GENERATIONS: &str = "images/generations";
+    /// `videos/generations` — text-to-video generation.
     pub const VIDEOS_GENERATIONS: &str = "videos/generations";
+    /// `audio/transcriptions` — speech-to-text (audio transcription).
     pub const AUDIO_TRANSCRIPTIONS: &str = "audio/transcriptions";
+    /// `audio/speech` — text-to-speech (audio synthesis).
     pub const AUDIO_SPEECH: &str = "audio/speech";
+    /// `voice/clone` — voice cloning.
     pub const VOICE_CLONE: &str = "voice/clone";
+    /// `voice/list` — list cloned voices.
     pub const VOICE_LIST: &str = "voice/list";
+    /// `voice/delete` — delete a cloned voice.
     pub const VOICE_DELETE: &str = "voice/delete";
+    /// `files` — file management (upload/list/delete).
     pub const FILES: &str = "files";
+    /// `files/ocr` — optical character recognition on a file.
     pub const FILES_OCR: &str = "files/ocr";
+    /// `files/parser/create` — create a file-parsing task.
     pub const FILE_PARSER_CREATE: &str = "files/parser/create";
+    /// `files/parser/result` — fetch a file-parsing task result.
     pub const FILE_PARSER_RESULT: &str = "files/parser/result";
+    /// `web_search` — built-in web search tool.
     pub const WEB_SEARCH: &str = "web_search";
+    /// `batches` — batch processing.
     pub const BATCHES: &str = "batches";
+    /// `agents` — agent management.
     pub const AGENTS: &str = "agents";
 
+    /// `knowledge` — knowledge-base management.
     pub const KNOWLEDGE: &str = "knowledge";
+    /// `knowledge/capacity` — knowledge-base capacity query.
     pub const KNOWLEDGE_CAPACITY: &str = "knowledge/capacity";
+    /// `document` — knowledge-base document operations.
     pub const DOCUMENT: &str = "document";
+    /// `document/upload_url` — upload a document by URL.
     pub const DOCUMENT_UPLOAD_URL: &str = "document/upload_url";
+    /// `document/upload_document` — upload a document file.
     pub const DOCUMENT_UPLOAD_DOCUMENT: &str = "document/upload_document";
+    /// `document/embedding` — (re-)embed a document.
     pub const DOCUMENT_EMBEDDING: &str = "document/embedding";
+    /// `document/slice/image_list` — list images for a document slice.
     pub const DOCUMENT_SLICE_IMAGE_LIST: &str = "document/slice/image_list";
 
     /// GLM Coding Plan quota/usage query (GET, under the monitor base).

@@ -5,10 +5,16 @@ use crate::client::{
     endpoints::{ApiBase, EndpointConfig, join_url, paths},
     http::{HttpClient, HttpClientConfig, parse_typed_response},
 };
+/// Retrieve the result of an asynchronous chat task by its task id.
+///
+/// Generic over the model `N` for compile-time consistency with the original
+/// async request. Construct with [`AsyncChatGetRequest::new`], then call
+/// [`AsyncChatGetRequest::send`].
 pub struct AsyncChatGetRequest<N>
 where
     N: ModelName + AsyncChat,
 {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
@@ -25,6 +31,7 @@ impl<N> AsyncChatGetRequest<N>
 where
     N: ModelName + AsyncChat,
 {
+    /// Create a new get-result request for the given task id.
     pub fn new(_model: N, task_id: String, key: String) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -47,23 +54,27 @@ where
         self.url = self.endpoint_config.url(&self.api_base, &path);
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Validate that the request URL is non-empty.
     pub fn validate(&self) -> crate::ZaiResult<()> {
         if self.url.trim().is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
@@ -74,6 +85,7 @@ where
         Ok(())
     }
 
+    /// Fetch the asynchronous task result.
     pub async fn send(
         &self,
     ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse> {
@@ -97,18 +109,22 @@ where
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
 
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
 
+    /// Empty body placeholder (GET request).
     fn body(&self) -> &Self::Body {
         &self._body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }

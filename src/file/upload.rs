@@ -12,6 +12,7 @@ use crate::client::{
 /// - purpose: `FilePurpose`
 /// - file: file content
 pub struct FileUploadRequest {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
@@ -25,6 +26,7 @@ pub struct FileUploadRequest {
 }
 
 impl FileUploadRequest {
+    /// Create a new upload request for the given purpose and local file path.
     pub fn new(key: String, purpose: FilePurpose, file_path: impl Into<PathBuf>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -43,29 +45,34 @@ impl FileUploadRequest {
         }
     }
 
+    /// Override the uploaded file name (defaults to the path's file name).
     pub fn with_file_name(mut self, name: impl Into<String>) -> Self {
         self.file_name = Some(name.into());
         self
     }
 
+    /// Override the MIME content type of the upload.
     pub fn with_content_type(mut self, ct: impl Into<String>) -> Self {
         self.content_type = Some(ct.into());
 
         self
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.url = self.endpoint_config.url(&self.api_base, paths::FILES);
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.url = self.endpoint_config.url(&self.api_base, paths::FILES);
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
@@ -83,18 +90,22 @@ impl HttpClient for FileUploadRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Empty body placeholder (multipart is built in `post`).
     fn body(&self) -> &Self::Body {
         &self._body
     }
 
     // Override POST to send multipart/form-data
 
+    /// POST the multipart form (file + `purpose`) to the files endpoint.
     fn post(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
@@ -134,6 +145,7 @@ impl HttpClient for FileUploadRequest {
         }
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }

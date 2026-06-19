@@ -8,10 +8,10 @@
 //!
 //! - [`ThinkingType`] — Controls reasoning mode for thinking-capable models
 //! - [`ReasoningEffort`] — Controls reasoning depth for GLM-5.2+ models
-//! - [`FunctionTool`] — Defines a callable function with JSON-schema parameters
-//! - [`WebSearchTool`] — Enables live web search within chat
+//! - `Function` — Defines a callable function with JSON-schema parameters
+//! - `WebSearch` — Enables live web search within chat
 //! - [`Retrieval`] — Enables knowledge-base retrieval
-//! - [`ToolChoice`] — Controls tool-selection behaviour (`auto`, `none`, or
+//! - `tool_choice` — Controls tool-selection behaviour (`auto`, `none`, or
 //!   specific function)
 
 use std::collections::HashMap;
@@ -70,7 +70,9 @@ pub struct ThinkingType {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThinkingMode {
+    /// Thinking/reasoning traces are emitted by the model.
     Enabled,
+    /// Thinking/reasoning traces are suppressed.
     Disabled,
 }
 
@@ -205,26 +207,38 @@ pub enum Tools {
     /// Allows the AI to invoke user-defined functions with structured
     /// arguments. Functions must be pre-defined with JSON schemas for
     /// parameter validation.
-    Function { function: Function },
+    Function {
+        /// The function definition (name, description, parameter schema).
+        function: Function,
+    },
 
     /// Knowledge retrieval system access tools.
     ///
     /// Provides access to knowledge bases, document collections, or other
     /// structured information sources that the AI can query.
-    Retrieval { retrieval: Retrieval },
+    Retrieval {
+        /// The retrieval-tool descriptor.
+        retrieval: Retrieval,
+    },
 
     /// Web search capabilities for internet access.
     ///
     /// Enables the AI to perform web searches and access current information
     /// from the internet. Supports various search engines and configurations.
-    WebSearch { web_search: WebSearch },
+    WebSearch {
+        /// The web-search-tool descriptor.
+        web_search: WebSearch,
+    },
 
     /// Model Context Protocol (MCP) tools.
     ///
     /// Standardized tools that follow the Model Context Protocol specification,
     /// providing a consistent interface for tool integration and communication.
     #[serde(rename = "mcp")]
-    MCP { mcp: MCP },
+    MCP {
+        /// The MCP-tool descriptor.
+        mcp: MCP,
+    },
 }
 
 /// Definition of a callable function tool.
@@ -315,7 +329,9 @@ impl Retrieval {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ResultSequence {
+    /// Search results appear before the model's answer.
     Before,
+    /// Search results appear after the model's answer.
     After,
 }
 
@@ -529,7 +545,9 @@ impl MCP {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum MCPTransportType {
+    /// Server-Sent Events transport.
     Sse,
+    /// Streamable HTTP transport.
     StreamableHttp,
 }
 

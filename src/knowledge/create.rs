@@ -21,6 +21,7 @@ pub enum EmbeddingId {
 }
 
 impl EmbeddingId {
+    /// Return the upstream integer id for this embedding model.
     pub fn as_i64(&self) -> i64 {
         match self {
             EmbeddingId::Embedding2 => 3,
@@ -53,12 +54,19 @@ impl<'de> Deserialize<'de> for EmbeddingId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BackgroundColor {
+    /// Blue background.
     Blue,
+    /// Red background.
     Red,
+    /// Orange background.
     Orange,
+    /// Purple background.
     Purple,
+    /// Sky-blue background.
     Sky,
+    /// Green background.
     Green,
+    /// Yellow background.
     Yellow,
 }
 
@@ -66,12 +74,19 @@ pub enum BackgroundColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KnowledgeIcon {
+    /// Question-mark icon.
     Question,
+    /// Book icon.
     Book,
+    /// Seal icon.
     Seal,
+    /// Wrench icon.
     Wrench,
+    /// Tag icon.
     Tag,
+    /// Horn icon.
     Horn,
+    /// House icon.
     House,
 }
 
@@ -132,32 +147,38 @@ impl CreateKnowledgeRequest {
         self.url = self.endpoint_config.url(&self.api_base, paths::KNOWLEDGE);
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
     /// Optional fields setters
+    /// Set the knowledge-base description.
     pub fn with_description(mut self, desc: impl Into<String>) -> Self {
         self.body.description = Some(desc.into());
         self
     }
+    /// Set the background color.
     pub fn with_background(mut self, bg: BackgroundColor) -> Self {
         self.body.background = Some(bg);
         self
     }
+    /// Set the icon.
     pub fn with_icon(mut self, icon: KnowledgeIcon) -> Self {
         self.body.icon = Some(icon);
         self
@@ -179,22 +200,26 @@ impl HttpClient for CreateKnowledgeRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Serialized request body.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         Arc::clone(&self.http_config)
     }
 }
 
-/// Response of knowledge creation
+/// Inner data of [`CreateKnowledgeResponse`] — the newly created id.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateKnowledgeResponseData {
     /// Newly created id
@@ -202,14 +227,19 @@ pub struct CreateKnowledgeResponseData {
     pub id: Option<String>,
 }
 
+/// Response of knowledge creation
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateKnowledgeResponse {
+    /// Created knowledge-base data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<CreateKnowledgeResponseData>,
+    /// Business status code.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<i64>,
+    /// Human-readable message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Server timestamp.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }

@@ -46,19 +46,33 @@
 //! let results = client.retrieve_knowledge(&KnowledgeRetrieveRequest::new(kb_id, query)).await?;
 //! ```
 
+/// Knowledge-base capacity / quota query.
 pub mod capacity;
+/// Create a new knowledge base.
 pub mod create;
+/// Delete a knowledge base.
 pub mod delete;
+/// Delete documents from a knowledge base.
 pub mod document_delete;
+/// List images extracted from a document.
 pub mod document_image_list;
+/// List documents in a knowledge base.
 pub mod document_list;
+/// Re-run vectorisation (embedding) for documents.
 pub mod document_reembedding;
+/// Retrieve document details.
 pub mod document_retrieve;
+/// Upload a local file as a document.
 pub mod document_upload_file;
+/// Upload a document from a URL.
 pub mod document_upload_url;
+/// List knowledge bases.
 pub mod list;
+/// Retrieve knowledge-base details / semantic search.
 pub mod retrieve;
+/// Shared knowledge-base data types.
 pub mod types;
+/// Update knowledge-base metadata.
 pub mod update;
 
 pub use capacity::KnowledgeCapacityRequest;

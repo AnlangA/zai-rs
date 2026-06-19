@@ -25,6 +25,7 @@ pub struct OcrResponse {
     pub words_result: Option<Vec<WordsResultItem>>,
 }
 
+/// One recognized text line within an [`OcrResponse`].
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct WordsResultItem {
     /// Location coordinates of the text line
@@ -40,6 +41,7 @@ pub struct WordsResultItem {
     pub probability: Option<Probability>,
 }
 
+/// Bounding-box rectangle of a recognized text line.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Location {
     /// Left coordinate of the rectangle
@@ -59,6 +61,7 @@ pub struct Location {
     pub height: Option<i32>,
 }
 
+/// Per-character confidence statistics (only returned when `probability=true`).
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Probability {
     /// Average confidence

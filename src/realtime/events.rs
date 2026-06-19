@@ -32,15 +32,19 @@ pub enum ClientEvent {
     /// `session.update` — set the session defaults (formats, VAD, tools, …).
     #[serde(rename = "session.update")]
     SessionUpdate {
+        /// Optional client-side event id for correlation.
         #[serde(skip_serializing_if = "Option::is_none")]
         event_id: Option<String>,
+        /// New session configuration to apply.
         session: SessionConfig,
     },
 
     /// `input_audio_buffer.append` — upload base64 WAV audio.
     #[serde(rename = "input_audio_buffer.append")]
     InputAudioBufferAppend {
+        /// Base64-encoded audio payload.
         audio: String,
+        /// Optional client-side timestamp (ms).
         #[serde(skip_serializing_if = "Option::is_none")]
         client_timestamp: Option<i64>,
     },
@@ -48,7 +52,9 @@ pub enum ClientEvent {
     /// `input_audio_buffer.append_video_frame` — upload a base64 JPEG frame.
     #[serde(rename = "input_audio_buffer.append_video_frame")]
     InputAudioBufferAppendVideoFrame {
+        /// Base64-encoded JPEG video frame.
         video_frame: String,
+        /// Optional client-side timestamp (ms).
         #[serde(skip_serializing_if = "Option::is_none")]
         client_timestamp: Option<i64>,
     },
@@ -56,6 +62,7 @@ pub enum ClientEvent {
     /// `input_audio_buffer.commit` — commit buffered audio for inference.
     #[serde(rename = "input_audio_buffer.commit")]
     InputAudioBufferCommit {
+        /// Optional client-side timestamp (ms).
         #[serde(skip_serializing_if = "Option::is_none")]
         client_timestamp: Option<i64>,
     },
@@ -68,14 +75,17 @@ pub enum ClientEvent {
     /// output into the conversation history.
     #[serde(rename = "conversation.item.create")]
     ConversationItemCreate {
+        /// Optional client-side event id for correlation.
         #[serde(skip_serializing_if = "Option::is_none")]
         event_id: Option<String>,
+        /// The conversation item to insert.
         item: RealtimeConversationItem,
     },
 
     /// `response.create` — trigger model inference.
     #[serde(rename = "response.create")]
     ResponseCreate {
+        /// Optional client-side timestamp (ms).
         #[serde(skip_serializing_if = "Option::is_none")]
         client_timestamp: Option<i64>,
     },
@@ -83,6 +93,7 @@ pub enum ClientEvent {
     /// `response.cancel` — cancel the in-flight response (interruption).
     #[serde(rename = "response.cancel")]
     ResponseCancel {
+        /// Optional client-side timestamp (ms).
         #[serde(skip_serializing_if = "Option::is_none")]
         client_timestamp: Option<i64>,
     },
@@ -98,7 +109,10 @@ pub enum ClientEvent {
 pub enum ServerEvent {
     /// Server-side error (most are recoverable; the session stays open).
     #[serde(rename = "error")]
-    Error { error: ServerErrorBody },
+    Error {
+        /// Error detail body.
+        error: ServerErrorBody,
+    },
 
     /// `session.created` — session established.
     #[serde(rename = "session.created")]
@@ -114,22 +128,33 @@ pub enum ServerEvent {
 
     /// `conversation.item.created`.
     #[serde(rename = "conversation.item.created")]
-    ConversationItemCreated { item: RealtimeConversationItem },
+    ConversationItemCreated {
+        /// The conversation item that was created.
+        item: RealtimeConversationItem,
+    },
 
     /// `conversation.item.input_audio_transcription.completed`.
     #[serde(rename = "conversation.item.input_audio_transcription.completed")]
-    InputAudioTranscriptionCompleted { item_id: String, transcript: String },
+    InputAudioTranscriptionCompleted {
+        /// Id of the transcribed audio item.
+        item_id: String,
+        /// Transcribed text.
+        transcript: String,
+    },
 
     /// `conversation.item.input_audio_transcription.failed`.
     #[serde(rename = "conversation.item.input_audio_transcription.failed")]
     InputAudioTranscriptionFailed {
+        /// Id of the audio item whose transcription failed.
         item_id: String,
+        /// Error detail body.
         error: ServerErrorBody,
     },
 
     /// `input_audio_buffer.committed`.
     #[serde(rename = "input_audio_buffer.committed")]
     InputAudioBufferCommitted {
+        /// Id of the committed audio item, if any.
         #[serde(default)]
         item_id: Option<String>,
     },
@@ -148,45 +173,66 @@ pub enum ServerEvent {
 
     /// `response.created`.
     #[serde(rename = "response.created")]
-    ResponseCreated { response: RealtimeResponse },
+    ResponseCreated {
+        /// The response object.
+        response: RealtimeResponse,
+    },
 
     /// `response.done` — final state + usage. Always emitted.
     #[serde(rename = "response.done")]
-    ResponseDone { response: RealtimeResponse },
+    ResponseDone {
+        /// The final response object.
+        response: RealtimeResponse,
+    },
 
     /// `response.audio.delta` — base64 audio chunk (mp3 or pcm).
     #[serde(rename = "response.audio.delta")]
     ResponseAudioDelta {
+        /// Id of the response this chunk belongs to.
         response_id: String,
+        /// Id of the output item, if any.
         #[serde(default)]
         item_id: Option<String>,
+        /// Base64-encoded audio delta.
         delta: String,
     },
 
     /// `response.audio.done`.
     #[serde(rename = "response.audio.done")]
     ResponseAudioDone {
+        /// Id of the response that finished.
         response_id: String,
+        /// Id of the output item, if any.
         #[serde(default)]
         item_id: Option<String>,
     },
 
     /// `response.audio_transcript.delta` — incremental transcript text.
     #[serde(rename = "response.audio_transcript.delta")]
-    ResponseAudioTranscriptDelta { response_id: String, delta: String },
+    ResponseAudioTranscriptDelta {
+        /// Id of the response this delta belongs to.
+        response_id: String,
+        /// Incremental transcript text.
+        delta: String,
+    },
 
     /// `response.audio_transcript.done` — final transcript.
     #[serde(rename = "response.audio_transcript.done")]
     ResponseAudioTranscriptDone {
+        /// Id of the response whose transcript completed.
         response_id: String,
+        /// Final transcript text.
         transcript: String,
     },
 
     /// `response.function_call_arguments.done` — completed tool call.
     #[serde(rename = "response.function_call_arguments.done")]
     ResponseFunctionCallArgumentsDone {
+        /// Id of the response that produced the call.
         response_id: String,
+        /// Name of the function/tool to invoke.
         name: String,
+        /// JSON-encoded arguments for the call.
         arguments: String,
     },
 

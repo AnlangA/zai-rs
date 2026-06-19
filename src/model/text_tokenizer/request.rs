@@ -5,15 +5,20 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
 pub enum TokenizerModel {
+    /// glm-4-plus (default).
     #[serde(rename = "glm-4-plus")]
     #[default]
     Glm4Plus,
+    /// glm-4-0520.
     #[serde(rename = "glm-4-0520")]
     Glm40520,
+    /// glm-4-long.
     #[serde(rename = "glm-4-long")]
     Glm4Long,
+    /// glm-4-air.
     #[serde(rename = "glm-4-air")]
     Glm4Air,
+    /// glm-4-flash.
     #[serde(rename = "glm-4-flash")]
     Glm4Flash,
 }
@@ -23,16 +28,26 @@ pub enum TokenizerModel {
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum TokenizerMessage {
     /// 用户消息
-    User { content: String },
+    User {
+        /// Message text.
+        content: String,
+    },
     /// 系统消息
-    System { content: String },
+    System {
+        /// System-instruction text.
+        content: String,
+    },
     /// 助手消息（content 可选）
     Assistant {
+        /// Assistant reply text, if any.
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<String>,
     },
     /// 工具消息
-    Tool { content: String },
+    Tool {
+        /// Tool-result text.
+        content: String,
+    },
 }
 
 /// Request body for tokenizer
@@ -51,6 +66,7 @@ pub struct TokenizerBody {
 }
 
 impl TokenizerBody {
+    /// Create a new tokenizer body from a model and a message list.
     pub fn new(model: TokenizerModel, messages: Vec<TokenizerMessage>) -> Self {
         Self {
             model,
@@ -59,10 +75,12 @@ impl TokenizerBody {
             user_id: None,
         }
     }
+    /// Set the client-side request id.
     pub fn with_request_id(mut self, v: impl Into<String>) -> Self {
         self.request_id = Some(v.into());
         self
     }
+    /// Set the end-user id.
     pub fn with_user_id(mut self, v: impl Into<String>) -> Self {
         self.user_id = Some(v.into());
         self

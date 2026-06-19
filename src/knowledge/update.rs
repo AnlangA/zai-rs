@@ -85,53 +85,64 @@ impl KnowledgeUpdateRequest {
             .url(&self.api_base, &join_url(paths::KNOWLEDGE, &self.id));
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
     /// Setters to update individual fields
+    /// Set the embedding model id.
     pub fn with_embedding_id(mut self, id: EmbeddingId) -> Self {
         self.body.embedding_id = Some(id);
         self
     }
+    /// Set the knowledge-base name.
     pub fn with_name(mut self, name: impl Into<String>) -> Self {
         self.body.name = Some(name.into());
         self
     }
+    /// Set the description.
     pub fn with_description(mut self, desc: impl Into<String>) -> Self {
         self.body.description = Some(desc.into());
         self
     }
+    /// Set the background color.
     pub fn with_background(mut self, bg: BackgroundColor) -> Self {
         self.body.background = Some(bg);
         self
     }
+    /// Set the icon.
     pub fn with_icon(mut self, icon: KnowledgeIcon) -> Self {
         self.body.icon = Some(icon);
         self
     }
+    /// Set the callback URL (notified when rebuilding completes).
     pub fn with_callback_url(mut self, url: impl Into<String>) -> Self {
         self.body.callback_url = Some(url.into());
         self
     }
+    /// Set the callback headers.
     pub fn with_callback_header(mut self, headers: HashMap<String, String>) -> Self {
         self.body.callback_header = Some(headers);
         self
     }
 
+    /// Send the update request and parse the typed response.
     pub async fn send(&self) -> crate::ZaiResult<KnowledgeUpdateResponse> {
         if self.body.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
@@ -145,6 +156,7 @@ impl KnowledgeUpdateRequest {
         parse_typed_response::<KnowledgeUpdateResponse>(resp).await
     }
 
+    /// Issue the underlying PUT request.
     pub fn put(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
@@ -157,16 +169,20 @@ impl HttpClient for KnowledgeUpdateRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Serialized request body.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }
@@ -175,10 +191,13 @@ impl HttpClient for KnowledgeUpdateRequest {
 /// Update response envelope without data
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct KnowledgeUpdateResponse {
+    /// Business status code.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<i64>,
+    /// Human-readable message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Server timestamp.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }

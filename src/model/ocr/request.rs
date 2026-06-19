@@ -4,6 +4,7 @@ use validator::Validate;
 /// OCR tool types
 #[derive(Debug, Clone, Serialize)]
 pub enum OcrToolType {
+    /// Handwriting recognition.
     #[serde(rename = "hand_write")]
     HandWrite,
 }
@@ -144,6 +145,7 @@ impl Default for OcrBody {
 }
 
 impl OcrBody {
+    /// Create a new empty OCR body (all fields `None`).
     pub fn new() -> Self {
         Self {
             tool_type: None,
@@ -154,26 +156,31 @@ impl OcrBody {
         }
     }
 
+    /// Set the OCR tool type.
     pub fn with_tool_type(mut self, tool_type: OcrToolType) -> Self {
         self.tool_type = Some(tool_type);
         self
     }
 
+    /// Set the document language.
     pub fn with_language_type(mut self, language_type: OcrLanguageType) -> Self {
         self.language_type = Some(language_type);
         self
     }
 
+    /// Whether to return per-character recognition probabilities.
     pub fn with_probability(mut self, probability: bool) -> Self {
         self.probability = Some(probability);
         self
     }
 
+    /// Set the client-side request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self
     }
 
+    /// Set the end-user id (6..=128 chars).
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.user_id = Some(user_id.into());
         self

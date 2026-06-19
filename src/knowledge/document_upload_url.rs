@@ -38,6 +38,7 @@ pub struct UploadUrlDetail {
 }
 
 impl UploadUrlDetail {
+    /// Create a new upload detail for the given source URL.
     pub fn new(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),
@@ -48,22 +49,27 @@ impl UploadUrlDetail {
             callback_header: None,
         }
     }
+    /// Set the slice/knowledge type.
     pub fn with_knowledge_type(mut self, t: i64) -> Self {
         self.knowledge_type = Some(t);
         self
     }
+    /// Set custom separators.
     pub fn with_custom_separator(mut self, seps: Vec<String>) -> Self {
         self.custom_separator = Some(seps);
         self
     }
+    /// Set the sentence size.
     pub fn with_sentence_size(mut self, size: u32) -> Self {
         self.sentence_size = Some(size);
         self
     }
+    /// Set the callback URL.
     pub fn with_callback_url(mut self, url: impl Into<String>) -> Self {
         self.callback_url = Some(url.into());
         self
     }
+    /// Set the callback headers.
     pub fn with_callback_header(
         mut self,
         headers: std::collections::BTreeMap<String, String>,
@@ -85,16 +91,19 @@ pub struct UploadUrlBody {
 }
 
 impl UploadUrlBody {
+    /// Create a new upload body for the given knowledge base id.
     pub fn new(knowledge_id: impl Into<String>) -> Self {
         Self {
             upload_detail: Vec::new(),
             knowledge_id: knowledge_id.into(),
         }
     }
+    /// Append a fully-built [`UploadUrlDetail`].
     pub fn add_detail(mut self, detail: UploadUrlDetail) -> Self {
         self.upload_detail.push(detail);
         self
     }
+    /// Convenience: append a detail built from a single URL.
     pub fn add_url(mut self, url: impl Into<String>) -> Self {
         self.upload_detail.push(UploadUrlDetail::new(url));
         self
@@ -113,6 +122,7 @@ pub struct DocumentUploadUrlRequest {
 }
 
 impl DocumentUploadUrlRequest {
+    /// Create a new upload-by-URL request with the given body.
     pub fn new(key: String, body: UploadUrlBody) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
@@ -133,23 +143,27 @@ impl DocumentUploadUrlRequest {
             .url(&self.api_base, paths::DOCUMENT_UPLOAD_URL);
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Borrow the underlying [`UploadUrlBody`] mutably.
     pub fn body_mut(&mut self) -> &mut UploadUrlBody {
         &mut self.body
     }
@@ -168,16 +182,20 @@ impl HttpClient for DocumentUploadUrlRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Serialized request body.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         Arc::clone(&self.http_config)
     }

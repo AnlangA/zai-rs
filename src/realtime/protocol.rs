@@ -31,6 +31,7 @@ pub struct TurnDetection {
 }
 
 impl TurnDetection {
+    /// Create a `turn_detection` object with the given VAD strategy.
     pub fn new(type_: TurnDetectionType) -> Self {
         Self { type_ }
     }
@@ -128,8 +129,11 @@ impl Default for SessionConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemType {
+    /// A chat message (with `role` + `content`).
     Message,
+    /// A function/tool call emitted by the model.
     FunctionCall,
+    /// The caller's reply to a function/tool call.
     FunctionCallOutput,
 }
 
@@ -222,10 +226,13 @@ impl RealtimeConversationItem {
 /// Token-usage detail breakdown.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TokenDetails {
+    /// Number of text tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_tokens: Option<u64>,
+    /// Number of audio tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_tokens: Option<u64>,
+    /// Number of cached tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u64>,
 }
@@ -233,14 +240,19 @@ pub struct TokenDetails {
 /// `RealtimeResponse.usage`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RealtimeUsage {
+    /// Total tokens for this response.
     #[serde(default)]
     pub total_tokens: u64,
+    /// Input tokens.
     #[serde(default)]
     pub input_tokens: u64,
+    /// Output tokens.
     #[serde(default)]
     pub output_tokens: u64,
+    /// Input-token breakdown.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_token_details: Option<TokenDetails>,
+    /// Output-token breakdown.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_token_details: Option<TokenDetails>,
 }
@@ -248,12 +260,15 @@ pub struct RealtimeUsage {
 /// `RealtimeResponse`: emitted by `response.created` / `response.done`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RealtimeResponse {
+    /// Response id.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// Always `"realtime.response"`.
     pub object: String,
+    /// Response status (`completed` / `incomplete` / …).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// Token usage (present on `response.done`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<RealtimeUsage>,
 }

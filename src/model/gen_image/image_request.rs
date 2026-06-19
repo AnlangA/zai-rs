@@ -83,7 +83,12 @@ pub enum ImageSize {
     /// 720x1440 pixels
     Size720x1440,
     /// Custom dimensions in width x height format
-    Custom { width: u32, height: u32 },
+    Custom {
+        /// Custom width in pixels (512–2048, divisible by 16).
+        width: u32,
+        /// Custom height in pixels (512–2048, divisible by 16).
+        height: u32,
+    },
 }
 
 impl serde::Serialize for ImageSize {

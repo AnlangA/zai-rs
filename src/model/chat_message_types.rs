@@ -412,11 +412,20 @@ impl TextMessage {
 #[serde(rename_all = "lowercase")]
 pub enum VisionMessage {
     /// A message from the user/human containing rich multimedia content.
-    User { content: Vec<VisionRichContent> },
+    User {
+        /// Ordered list of multimedia content parts.
+        content: Vec<VisionRichContent>,
+    },
     /// A system message that provides instructions or context to the assistant.
-    System { content: String },
+    System {
+        /// The system-instruction text.
+        content: String,
+    },
     /// A response from the AI assistant.
-    Assistant { content: Option<String> },
+    Assistant {
+        /// The assistant's reply text, if any.
+        content: Option<String>,
+    },
 }
 
 /// Represents video URL information.
@@ -460,7 +469,9 @@ pub struct FileUrlInfo {
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum VisionRichContent {
+    /// Plain text content part.
     Text {
+        /// The text value.
         text: String,
     },
     /// Image URL or Base64 encoded image data.
@@ -473,6 +484,7 @@ pub enum VisionRichContent {
     /// - GLM-4V-Plus-0111: maximum 5 images
     /// - GLM-4V-Flash: maximum 1 image (Base64 encoding not supported)
     ImageUrl {
+        /// Image URL / base64 descriptor.
         image_url: ImageUrlInfo,
     },
     /// Video URL for video content.
@@ -484,6 +496,7 @@ pub enum VisionRichContent {
     ///
     /// Supported format: mp4
     VideoUrl {
+        /// Video URL descriptor.
         video_url: VideoUrlInfo,
     },
     /// File URL for document content.
@@ -492,6 +505,7 @@ pub enum VisionRichContent {
     /// Supported formats: PDF, Word, and other document formats.
     /// Maximum 50 files supported.
     FileUrl {
+        /// File URL descriptor.
         file_url: FileUrlInfo,
     },
 }

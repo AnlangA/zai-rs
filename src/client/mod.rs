@@ -33,8 +33,7 @@
 //!
 //! # Security
 //!
-//! - API keys are automatically masked in logs via
-//!   [`mask_sensitive_info`](error::mask_sensitive_info)
+//! - API keys are automatically masked in logs via [`mask_sensitive_info`]
 //! - Structured logging of requests/responses through `tracing`
 //! - Bearer token authentication on every request
 

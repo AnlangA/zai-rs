@@ -11,15 +11,20 @@ use crate::client::{
 };
 
 /// Audio transcription request (multipart/form-data)
+///
+/// Builder for the audio-transcription (ASR) endpoint. Set the audio file via
+/// [`AudioToTextRequest::with_file_path`], then call [`AudioToTextRequest::send`].
 pub struct AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
     api_base: ApiBase,
     http_config: Arc<HttpClientConfig>,
+    /// Multipart form fields (model, temperature, …).
     pub body: AudioToTextBody<N>,
     file_path: Option<String>,
 }
@@ -28,6 +33,7 @@ impl<N> AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize + Clone,
 {
+    /// Create a new transcription request for the given ASR model.
     pub fn new(model: N, key: String) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -43,31 +49,37 @@ where
         }
     }
 
+    /// Set the local audio file path to transcribe (required).
     pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
         self.file_path = Some(path.into());
         self
     }
 
+    /// Set the sampling temperature.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.body = self.body.with_temperature(temperature);
         self
     }
 
+    /// Enable/disable streaming responses.
     pub fn with_stream(mut self, stream: bool) -> Self {
         self.body = self.body.with_stream(stream);
         self
     }
 
+    /// Set the client-side request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.body = self.body.with_request_id(request_id);
         self
     }
 
+    /// Set the end-user id.
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
         self
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.url = self
@@ -76,6 +88,7 @@ where
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.url = self
@@ -84,11 +97,13 @@ where
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Validate body constraints and that the supplied file path exists.
     pub fn validate(&self) -> crate::ZaiResult<()> {
         // Check body constraints
 
@@ -115,6 +130,7 @@ where
         Ok(())
     }
 
+    /// Submit the multipart request and parse the typed transcription response.
     pub async fn send(&self) -> crate::ZaiResult<super::response::AudioToTextResponse>
     where
         N: Clone + Send + Sync + 'static,
@@ -135,18 +151,22 @@ where
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
 
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
 
+    /// Form fields for the multipart request.
     fn body(&self) -> &Self::Body {
         &self.body
     }
 
+    /// POST the multipart form (file + fields) to the transcription endpoint.
     fn post(
         &self,
     ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
@@ -210,6 +230,7 @@ where
         }
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }

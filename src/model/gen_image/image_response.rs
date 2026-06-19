@@ -42,18 +42,22 @@ pub struct ImageDataItem {
 
 // --- Getters ---
 impl ImageResponse {
+    /// Request created time, Unix timestamp (seconds).
     pub fn created(&self) -> Option<u64> {
         self.created
     }
+    /// Generated image items (currently a single item).
     pub fn data(&self) -> Option<&[ImageDataItem]> {
         self.data.as_deref()
     }
+    /// Content-safety filter results, if any.
     pub fn content_filter(&self) -> Option<&[ContentFilterInfo]> {
         self.content_filter.as_deref()
     }
 }
 
 impl ImageDataItem {
+    /// Temporary image URL (~30 days validity).
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
     }

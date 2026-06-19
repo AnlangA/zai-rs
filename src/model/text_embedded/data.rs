@@ -10,7 +10,11 @@ use crate::client::{
 };
 
 /// Text Embedding request client (JSON POST)
+///
+/// Builder for the embeddings endpoint. Construct with [`EmbeddingRequest::new`],
+/// tune with the `with_*` methods, then call [`EmbeddingRequest::send`].
 pub struct EmbeddingRequest {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
@@ -20,6 +24,7 @@ pub struct EmbeddingRequest {
 }
 
 impl EmbeddingRequest {
+    /// Create a new embedding request for the given model and input.
     pub fn new(key: String, model: EmbeddingModel, input: EmbeddingInput) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -39,23 +44,27 @@ impl EmbeddingRequest {
         self.url = self.endpoint_config.url(&self.api_base, paths::EMBEDDINGS);
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
     }
 
+    /// Set the embedding vector dimensionality.
     pub fn with_dimensions(mut self, dims: EmbeddingDimensions) -> Self {
         self.body = self.body.with_dimensions(dims);
         self
@@ -97,15 +106,19 @@ impl HttpClient for EmbeddingRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Serialized request body.
     fn body(&self) -> &Self::Body {
         &self.body
     }
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         Arc::clone(&self.http_config)
     }

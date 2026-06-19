@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum RerankModel {
+    /// The default rerank model.
     #[default]
     Rerank,
 }
@@ -43,6 +44,7 @@ pub struct RerankBody {
 }
 
 impl RerankBody {
+    /// Create a new rerank body from a model, query, and candidate documents.
     pub fn new(model: RerankModel, query: impl Into<String>, documents: Vec<String>) -> Self {
         Self {
             model,
@@ -56,22 +58,27 @@ impl RerankBody {
         }
     }
 
+    /// Set how many top-ranked documents to return.
     pub fn with_top_n(mut self, n: usize) -> Self {
         self.top_n = Some(n);
         self
     }
+    /// Whether to include the document text in the response.
     pub fn with_return_documents(mut self, v: bool) -> Self {
         self.return_documents = Some(v);
         self
     }
+    /// Whether to include raw relevance scores in the response.
     pub fn with_return_raw_scores(mut self, v: bool) -> Self {
         self.return_raw_scores = Some(v);
         self
     }
+    /// Set the client-side request id.
     pub fn with_request_id(mut self, v: impl Into<String>) -> Self {
         self.request_id = Some(v.into());
         self
     }
+    /// Set the end-user id.
     pub fn with_user_id(mut self, v: impl Into<String>) -> Self {
         self.user_id = Some(v.into());
         self

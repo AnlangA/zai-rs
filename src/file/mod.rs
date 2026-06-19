@@ -30,13 +30,19 @@
 //! client.delete_file(&FileDeleteRequest::new(file_id)).await?;
 //! ```
 
+/// Request body / shared types for file operations.
 pub mod request;
+/// Response types for file operations.
 pub mod response;
 
 // Split operations into clear modules
+/// Retrieve file content (`GET …/files/{id}/content`).
 pub mod content;
+/// Delete a file (`DELETE …/files/{id}`).
 pub mod delete;
+/// List files with metadata (`GET …/files`).
 pub mod list;
+/// Upload files (`POST …/files`, multipart).
 pub mod upload;
 
 pub use content::*;

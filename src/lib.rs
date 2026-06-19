@@ -95,8 +95,8 @@
 //!
 //! # Error Handling
 //!
-//! All API calls return [`ZaiResult`](client::error::ZaiResult)`<T>`,
-//! unified under the [`ZaiError`](client::error::ZaiError) enum:
+//! All API calls return `ZaiResult<T>`,
+//! unified under the [`ZaiError`] enum:
 //!
 //! - `ApiError` — Business-level API error (with code and message)
 //! - `NetworkError` — Network / timeout error

@@ -49,7 +49,8 @@
 //!
 //! # Key Design Patterns
 //!
-//! - **Marker traits** — [`Chat`], [`AsyncChat`], [`ThinkEnable`] etc. encode
+//! - **Marker traits** — [`Chat`](traits::Chat), [`AsyncChat`](traits::AsyncChat),
+//!   [`ThinkEnable`](traits::ThinkEnable) etc. encode
 //!   model capabilities at compile time
 //! - **Type-state pattern** — [`StreamOn`](traits::StreamOn) /
 //!   [`StreamOff`](traits::StreamOff) enforce streaming vs. non-streaming at
@@ -68,30 +69,55 @@
 //! let client = ChatCompletion::new(model, messages, api_key);
 //! ```
 
+/// Asynchronous (queued) chat completion — submit a chat task and poll later.
 pub mod async_chat;
+/// Retrieve the result of an asynchronous chat task.
 pub mod async_chat_get;
+/// Speech-to-text (ASR) — transcribe audio into text.
 pub mod audio_to_text;
+/// Synchronous chat completion (text / vision / voice).
 pub mod chat;
+/// Shared chat request body ([`chat_base_request::ChatBody`]).
 pub mod chat_base_request;
+/// Shared chat response structures ([`chat_base_response`]).
 pub mod chat_base_response;
+/// Message types for text, vision, and voice chat modes.
 pub mod chat_message_types;
+/// Model type definitions and capability marker traits.
 pub mod chat_models;
+/// Streaming chat response deserialization.
 pub mod chat_stream_response;
+/// Text-to-image generation.
 pub mod gen_image;
+/// Asynchronous text-to-video generation.
 pub mod gen_video_async;
+/// Request validation helpers.
 pub mod model_validate;
+/// Content moderation / safety analysis.
 pub mod moderation;
+/// Optical character recognition (OCR).
 pub mod ocr;
+/// Server-Sent Events (SSE) protocol parser.
 pub mod sse_parser;
+/// Stream extension traits for chat streaming.
 pub mod stream_ext;
+/// Text embeddings.
 pub mod text_embedded;
+/// Text re-ranking.
 pub mod text_rerank;
+/// Text-to-speech synthesis (TTS).
 pub mod text_to_audio;
+/// Tokenization / token counting.
 pub mod text_tokenizer;
+/// Tool/function definitions, `ThinkingType`, web-search tools.
 pub mod tools;
+/// Core traits (`Chat`, `AsyncChat`, `Bounded`, `SseStreamable`, …).
 pub mod traits;
+/// Voice cloning.
 pub mod voice_clone;
+/// Voice deletion.
 pub mod voice_delete;
+/// Voice listing.
 pub mod voice_list;
 
 // Avoid wildcard re-exports to prevent name collisions (e.g., `data`)

@@ -65,16 +65,21 @@ pub fn parse_chat_stream_event(event: &[u8]) -> ZaiResult<Option<ChatStreamRespo
 /// Accumulates streaming chat deltas into convenient final buffers.
 #[derive(Debug, Clone, Default)]
 pub struct ChatStreamAccumulator {
+    /// Concatenated assistant content across all chunks.
     pub content: String,
+    /// Concatenated reasoning content across all chunks.
     pub reasoning_content: String,
+    /// Merged tool/function calls across all chunks.
     pub tool_calls: Vec<ToolCallMessage>,
 }
 
 impl ChatStreamAccumulator {
+    /// Create a new empty accumulator.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Fold one streaming chunk into the accumulator.
     pub fn push_chunk(&mut self, chunk: &ChatStreamResponse) {
         for choice in &chunk.choices {
             let Some(delta) = &choice.delta else {

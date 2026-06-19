@@ -109,14 +109,19 @@ impl std::fmt::Debug for ChatCompletionResponse {
 /// Values correspond to upstream payload strings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskStatus {
+    /// Task is still running; poll again to retrieve the final result.
     #[serde(rename = "PROCESSING", alias = "processing")]
     Processing,
+    /// Task completed successfully.
     #[serde(rename = "SUCCESS", alias = "success")]
     Success,
+    /// Task failed.
     #[serde(rename = "FAIL", alias = "fail")]
     Fail,
 }
 impl TaskStatus {
+    /// Return the canonical upstream string for this status
+    /// (`"PROCESSING"` / `"SUCCESS"` / `"FAIL"`).
     pub fn as_str(&self) -> &'static str {
         match self {
             TaskStatus::Processing => "PROCESSING",
@@ -188,13 +193,16 @@ pub struct Message {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ToolCallMessage {
+    /// Unique id of this tool/function call (server may return numbers).
     #[serde(
         skip_serializing_if = "Option::is_none",
         deserialize_with = "de_opt_string_from_number_or_string"
     )]
     pub id: Option<String>,
+    /// Tool call type — typically `"function"` for function calls.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
+    /// Function-call payload (name + arguments) when `type` is `"function"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<ToolFunction>,
     /// MCP tool call payload (when type indicates MCP)
@@ -202,10 +210,13 @@ pub struct ToolCallMessage {
     pub mcp: Option<MCPMessage>,
 }
 
+/// Function-call payload inside a [`ToolCallMessage`].
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ToolFunction {
+    /// Name of the function/tool to invoke.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// JSON-encoded arguments to pass to the function.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<String>,
 }
@@ -244,13 +255,17 @@ pub struct MCPMessage {
     pub output: Option<serde_json::Value>,
 }
 
+/// MCP tool call type — either a tool-list request or an actual tool invocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MCPCallType {
+    /// Request the server to list its available MCP tools.
     McpListTools,
+    /// Invoke a specific MCP tool.
     McpCall,
 }
 
+/// Tool descriptor reported by an MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MCPTool {
     /// Tool name
@@ -266,6 +281,7 @@ pub struct MCPTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_schema: Option<MCPInputSchema>,
 }
+/// JSON-schema-like input descriptor for an MCP tool.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MCPInputSchema {
     /// Fixed value 'object'
@@ -288,6 +304,7 @@ pub struct MCPInputSchema {
 /// compatibility.
 #[serde(rename_all = "lowercase")]
 pub enum MCPInputType {
+    /// JSON-schema `object` type (the only value observed today).
     Object,
 }
 
@@ -327,10 +344,13 @@ pub struct AudioContent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Usage {
+    /// Number of tokens in the prompt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens: Option<u32>,
+    /// Number of tokens in the completion.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completion_tokens: Option<u32>,
+    /// Total tokens for this request (`prompt` + `completion`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u32>,
     /// Details for prompt tokens (e.g., cached tokens count)
@@ -417,219 +437,278 @@ pub struct ContentFilterInfo {
 
 // Getter implementations
 impl ChatCompletionResponse {
+    /// Task id (normalized to `&str`).
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+    /// Request id (normalized to `&str`).
     pub fn request_id(&self) -> Option<&str> {
         self.request_id.as_deref()
     }
+    /// Unix timestamp (seconds) at which the request was created.
     pub fn created(&self) -> Option<u64> {
         self.created
     }
+    /// Model name that produced the response.
     pub fn model(&self) -> Option<&str> {
         self.model.as_deref()
     }
+    /// Generated choices (typically one in non-stream mode).
     pub fn choices(&self) -> Option<&[Choice]> {
         self.choices.as_deref()
     }
+    /// Token usage statistics (mainly on the final response).
     pub fn usage(&self) -> Option<&Usage> {
         self.usage.as_ref()
     }
+    /// Video generation result items, if any.
     pub fn video_result(&self) -> Option<&[VideoResultItem]> {
         self.video_result.as_deref()
     }
+    /// Web-search citations, if `web_search` was used.
     pub fn web_search(&self) -> Option<&[WebSearchInfo]> {
         self.web_search.as_deref()
     }
+    /// Content-safety filter results, if any.
     pub fn content_filter(&self) -> Option<&[ContentFilterInfo]> {
         self.content_filter.as_deref()
     }
+    /// Async task status, if this is an async response.
     pub fn task_status(&self) -> Option<&TaskStatus> {
         self.task_status.as_ref()
     }
 }
 
 impl Choice {
+    /// Index of this choice within the `choices` array.
     pub fn index(&self) -> i32 {
         self.index
     }
+    /// The assistant message payload.
     pub fn message(&self) -> &Message {
         &self.message
     }
+    /// Reason generation finished (e.g. `"stop"`, `"length"`).
     pub fn finish_reason(&self) -> Option<&str> {
         self.finish_reason.as_deref()
     }
 }
 
 impl Message {
+    /// Role of the message (typically `"assistant"`).
     pub fn role(&self) -> Option<&str> {
         self.role.as_deref()
     }
+    /// Dialog content (may include `<think>` traces for some models).
     pub fn content(&self) -> Option<&serde_json::Value> {
         self.content.as_ref()
     }
+    /// Reasoning-chain content, when the model exposes it.
     pub fn reasoning_content(&self) -> Option<&str> {
         self.reasoning_content.as_deref()
     }
+    /// Audio payload, for voice models.
     pub fn audio(&self) -> Option<&AudioContent> {
         self.audio.as_ref()
     }
+    /// Tool/function calls the model wants the caller to execute.
     pub fn tool_calls(&self) -> Option<&[ToolCallMessage]> {
         self.tool_calls.as_deref()
     }
 }
 
 impl ToolCallMessage {
+    /// Unique id of this tool/function call.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+    /// Tool call type (typically `"function"`).
     pub fn type_(&self) -> Option<&str> {
         self.type_.as_deref()
     }
+    /// Function-call payload (name + arguments).
     pub fn function(&self) -> Option<&ToolFunction> {
         self.function.as_ref()
     }
+    /// MCP tool call payload, when applicable.
     pub fn mcp(&self) -> Option<&MCPMessage> {
         self.mcp.as_ref()
     }
 }
 
 impl ToolFunction {
+    /// Name of the function/tool to invoke.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
+    /// JSON-encoded arguments for the function call.
     pub fn arguments(&self) -> Option<&str> {
         self.arguments.as_deref()
     }
 }
 
 impl MCPMessage {
+    /// Unique id of this MCP tool call.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+    /// MCP call type (`mcp_list_tools` / `mcp_call`).
     pub fn type_(&self) -> Option<&MCPCallType> {
         self.type_.as_ref()
     }
+    /// MCP server label.
     pub fn server_label(&self) -> Option<&str> {
         self.server_label.as_deref()
     }
+    /// Error message reported by the MCP server, if any.
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
+    /// Tools advertised by the server (when `type` is `mcp_list_tools`).
     pub fn tools(&self) -> Option<&[MCPTool]> {
         self.tools.as_deref()
     }
+    /// JSON-encoded call arguments (when `type` is `mcp_call`).
     pub fn arguments(&self) -> Option<&str> {
         self.arguments.as_deref()
     }
+    /// Tool name invoked (when `type` is `mcp_call`).
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
+    /// Raw tool output returned by the server (when `type` is `mcp_call`).
     pub fn output(&self) -> Option<&serde_json::Value> {
         self.output.as_ref()
     }
 }
 
 impl MCPTool {
+    /// Tool name.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
+    /// Human-readable tool description.
     pub fn description(&self) -> Option<&str> {
         self.description.as_deref()
     }
+    /// Tool annotations (provider-specific).
     pub fn annotations(&self) -> Option<&serde_json::Value> {
         self.annotations.as_ref()
     }
+    /// Input schema describing the tool's parameters.
     pub fn input_schema(&self) -> Option<&MCPInputSchema> {
         self.input_schema.as_ref()
     }
 }
 
 impl MCPInputSchema {
+    /// Schema type (currently always `object`).
     pub fn type_(&self) -> Option<&MCPInputType> {
         self.type_.as_ref()
     }
+    /// Property definitions of the schema.
     pub fn properties(&self) -> Option<&serde_json::Value> {
         self.properties.as_ref()
     }
+    /// List of required property names.
     pub fn required(&self) -> Option<&[String]> {
         self.required.as_deref()
     }
+    /// Whether properties beyond `properties` are permitted.
     pub fn additional_properties(&self) -> Option<bool> {
         self.additional_properties
     }
 }
 
 impl AudioContent {
+    /// Audio content id (usable for multi-turn inputs).
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+    /// Base64-encoded audio data.
     pub fn data(&self) -> Option<&str> {
         self.data.as_deref()
     }
+    /// Expiration timestamp of the audio content.
     pub fn expires_at(&self) -> Option<&str> {
         self.expires_at.as_deref()
     }
 }
 
 impl Usage {
+    /// Number of prompt tokens.
     pub fn prompt_tokens(&self) -> Option<u32> {
         self.prompt_tokens
     }
+    /// Number of completion tokens.
     pub fn completion_tokens(&self) -> Option<u32> {
         self.completion_tokens
     }
+    /// Total tokens for this request.
     pub fn total_tokens(&self) -> Option<u32> {
         self.total_tokens
     }
+    /// Breakdown of prompt-token accounting.
     pub fn prompt_tokens_details(&self) -> Option<&PromptTokensDetails> {
         self.prompt_tokens_details.as_ref()
     }
 }
 
 impl PromptTokensDetails {
+    /// Number of prompt tokens served from cache.
     pub fn cached_tokens(&self) -> Option<u32> {
         self.cached_tokens
     }
 }
 
 impl WebSearchInfo {
+    /// Source website icon URL.
     pub fn icon(&self) -> Option<&str> {
         self.icon.as_deref()
     }
+    /// Search-result title.
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
+    /// Search-result page URL.
     pub fn link(&self) -> Option<&str> {
         self.link.as_deref()
     }
+    /// Media/source name of the page.
     pub fn media(&self) -> Option<&str> {
         self.media.as_deref()
     }
+    /// Publish date of the page.
     pub fn publish_date(&self) -> Option<&str> {
         self.publish_date.as_deref()
     }
+    /// Quoted snippet from the result page.
     pub fn content(&self) -> Option<&str> {
         self.content.as_deref()
     }
+    /// Reference marker (corner number) for the citation.
     pub fn refer(&self) -> Option<&str> {
         self.refer.as_deref()
     }
 }
 
 impl VideoResultItem {
+    /// Generated video URL.
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
     }
+    /// Cover-image URL for the video.
     pub fn cover_image_url(&self) -> Option<&str> {
         self.cover_image_url.as_deref()
     }
 }
 
 impl ContentFilterInfo {
+    /// Safety-check stage (`assistant`, `user`, or `history`).
     pub fn role(&self) -> Option<&str> {
         self.role.as_deref()
     }
+    /// Severity level (`0` most severe … `3` minor).
     pub fn level(&self) -> Option<i32> {
         self.level
     }

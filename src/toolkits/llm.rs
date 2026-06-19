@@ -11,7 +11,9 @@ use serde_json::Value;
 /// A parsed tool call request from an LLM response with zero-copy optimization.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmToolCall<'a> {
+    /// Tool-call id (used to correlate the tool's reply with the request).
     pub id: Cow<'a, str>,
+    /// Name of the function/tool to invoke.
     pub name: Cow<'a, str>,
     /// Raw string form of arguments if the provider returned it as a JSON
     /// string. Useful for diagnostics; may be None if provider already

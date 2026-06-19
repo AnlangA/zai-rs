@@ -96,26 +96,31 @@ impl ToolMetadata {
     }
 
     /// Builder pattern methods
+    /// Set the tool version.
     pub fn version(mut self, version: impl Into<Cow<'static, str>>) -> Self {
         self.version = version.into();
         self
     }
 
+    /// Set the tool author.
     pub fn author(mut self, author: impl Into<Cow<'static, str>>) -> Self {
         self.author = Some(author.into());
         self
     }
 
+    /// Set the tool's category tags.
     pub fn tags<T: Into<Cow<'static, str>>>(mut self, tags: impl IntoIterator<Item = T>) -> Self {
         self.tags = tags.into_iter().map(Into::into).collect();
         self
     }
 
+    /// Enable or disable the tool.
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
     }
 
+    /// Attach an arbitrary key/value metadata entry.
     pub fn with_metadata(
         mut self,
         key: impl Into<Cow<'static, str>>,
@@ -212,6 +217,7 @@ impl Clone for FunctionTool {
 }
 
 impl FunctionTool {
+    /// Start building a [`FunctionTool`] with the given name and description.
     pub fn builder(name: impl Into<String>, description: impl Into<String>) -> FunctionToolBuilder {
         FunctionToolBuilder::new(name, description)
     }
@@ -372,6 +378,7 @@ pub struct FunctionToolBuilder {
 }
 
 impl FunctionToolBuilder {
+    /// Create a new builder for a tool with the given name and description.
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         let name_str = name.into();
         let desc_str = description.into();
@@ -399,16 +406,19 @@ impl FunctionToolBuilder {
         }
     }
 
+    /// Provide the full input JSON schema directly.
     pub fn schema(mut self, schema: serde_json::Value) -> Self {
         self.input_schema = Some(schema);
         self
     }
 
+    /// Mutate the tool's metadata (e.g. version, tags) via a closure.
     pub fn metadata(mut self, f: impl FnOnce(ToolMetadata) -> ToolMetadata) -> Self {
         self.metadata = f(self.metadata);
         self
     }
 
+    /// Set the async handler invoked on each (validated) call.
     pub fn handler<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
@@ -446,6 +456,8 @@ impl FunctionToolBuilder {
         self
     }
 
+    /// Finalize the tool: validates the handler is set, compiles the schema,
+    /// and returns the built [`FunctionTool`].
     pub fn build(mut self) -> crate::toolkits::error::ToolResult<FunctionTool> {
         let handler = self
             .handler

@@ -7,6 +7,7 @@ use crate::client::{
 
 /// File content request (GET /paas/v4/files/{file_id}/content)
 pub struct FileContentRequest {
+    /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
     url: String,
     endpoint_config: EndpointConfig,
@@ -17,6 +18,7 @@ pub struct FileContentRequest {
 }
 
 impl FileContentRequest {
+    /// Create a new content request for the given file id.
     pub fn new(key: String, file_id: impl Into<String>) -> Self {
         let file_id = file_id.into();
         let endpoint_config = EndpointConfig::default();
@@ -43,18 +45,21 @@ impl FileContentRequest {
         );
     }
 
+    /// Override the base URL (uses [`ApiBase::Custom`]).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.api_base = ApiBase::Custom(base_url.into());
         self.rebuild_url();
         self
     }
 
+    /// Replace the full [`EndpointConfig`] used to resolve URLs.
     pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
         self.endpoint_config = endpoint_config;
         self.rebuild_url();
         self
     }
 
+    /// Replace the HTTP client configuration (timeouts, retries, …).
     pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
         self.http_config = Arc::new(config);
         self
@@ -104,16 +109,20 @@ impl HttpClient for FileContentRequest {
     type ApiUrl = String;
     type ApiKey = String;
 
+    /// Resolved target URL for the request.
     fn api_url(&self) -> &Self::ApiUrl {
         &self.url
     }
+    /// API key used for `Authorization: Bearer …`.
     fn api_key(&self) -> &Self::ApiKey {
         &self.key
     }
+    /// Empty body placeholder (GET request).
     fn body(&self) -> &Self::Body {
         &self._body
     }
 
+    /// HTTP client configuration (timeouts, retries, …).
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }

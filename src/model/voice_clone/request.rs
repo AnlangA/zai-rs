@@ -3,6 +3,7 @@ use validator::Validate;
 
 use super::super::traits::*;
 
+/// Request body for voice cloning.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct VoiceCloneBody<N>
 where
@@ -36,6 +37,7 @@ impl<N> VoiceCloneBody<N>
 where
     N: ModelName + VoiceClone + Serialize,
 {
+    /// Create a new voice-clone body from the required fields.
     pub fn new(
         model: N,
         voice_name: impl Into<String>,
@@ -52,11 +54,13 @@ where
         }
     }
 
+    /// Set the optional transcription text of the example audio.
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
         self
     }
 
+    /// Set the optional client-provided request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self

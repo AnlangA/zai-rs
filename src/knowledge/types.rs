@@ -182,6 +182,7 @@ pub struct DocumentDetailResponse {
     pub timestamp: Option<u64>,
 }
 
+/// Inner data of [`DocumentListResponse`] — the document list and total count.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct DocumentListData {
     /// Documents list

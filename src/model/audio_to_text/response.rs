@@ -29,6 +29,7 @@ pub struct AudioToTextResponse {
     pub text: Option<String>,
 }
 
+/// One time-coded segment of an [`AudioToTextResponse`].
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct SegmentItem {
     /// Segment index
