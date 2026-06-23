@@ -167,6 +167,18 @@ where
         self.body = self.body.extend_tools(tools);
         self
     }
+    /// Set the `tool_choice` policy (`auto` / `none` / a specific function).
+    /// Only meaningful when tools are attached via
+    /// [`add_tool`](Self::add_tool).
+    pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.body = self.body.with_tool_choice(tool_choice);
+        self
+    }
+    /// Set the response format (plain text or JSON object).
+    pub fn with_response_format(mut self, format: ResponseFormat) -> Self {
+        self.body = self.body.with_response_format(format);
+        self
+    }
     /// Set the end-user id (used for abuse monitoring).
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);

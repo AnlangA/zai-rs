@@ -16,6 +16,7 @@ use hyper_util::{rt::TokioIo, server::conn::auto::Builder as ConnBuilder};
 use serde_json::json;
 use tokio::{net::TcpListener, sync::oneshot, time::sleep};
 use zai_rs::{
+    client::EndpointConfig,
     file::{FileListQuery, FileListRequest, FilePurpose, FileUploadRequest},
     model::{ChatCompletion, GLM5_2, TextMessage},
     usage::CodingPlanUsageRequest,
@@ -139,6 +140,115 @@ async fn test_sdk_json_post_uses_dynamic_mock_base() {
     let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
     assert_eq!(body["model"], "glm-5.2");
     assert_eq!(body["messages"][0]["content"], "hello");
+}
+
+#[tokio::test]
+async fn test_sdk_chat_serializes_tool_choice_and_response_format() {
+    use zai_rs::model::tools::{ResponseFormat, ToolChoice};
+
+    let key = "test.12345678901234567890".to_string();
+    let (base_url, captured) = capture_one_sdk_request(json!({
+        "id": "chatcmpl-tc",
+        "created": 1,
+        "model": "glm-5.2",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "ok"},
+            "finish_reason": "stop"
+        }],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+    }))
+    .await;
+
+    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"), key.clone())
+        .with_base_url(base_url)
+        .with_tool_choice(ToolChoice::function("get_weather"))
+        .with_response_format(ResponseFormat::JsonObject)
+        .send()
+        .await
+        .unwrap();
+
+    let request = captured.await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    // tool_choice reaches the wire in the documented object form.
+    assert_eq!(
+        body["tool_choice"],
+        json!({"type": "function", "function": {"name": "get_weather"}})
+    );
+    // response_format reaches the wire too.
+    assert_eq!(body["response_format"]["type"], "json_object");
+}
+
+#[tokio::test]
+async fn test_sdk_chat_tool_choice_auto_serializes_as_bare_string() {
+    use zai_rs::model::tools::ToolChoice;
+
+    let key = "test.12345678901234567890".to_string();
+    let (base_url, captured) = capture_one_sdk_request(json!({
+        "id": "chatcmpl-tc-auto",
+        "created": 1,
+        "model": "glm-5.2",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "ok"},
+            "finish_reason": "stop"
+        }],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+    }))
+    .await;
+
+    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"), key.clone())
+        .with_base_url(base_url)
+        .with_tool_choice(ToolChoice::auto())
+        .send()
+        .await
+        .unwrap();
+
+    let request = captured.await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    // auto must serialize as a bare JSON string, not an object.
+    assert_eq!(body["tool_choice"], json!("auto"));
+}
+
+#[tokio::test]
+async fn test_sdk_chat_uses_configured_coding_plan_base() {
+    let key = "test.12345678901234567890".to_string();
+    let (coding_base_url, captured) = capture_one_request_under(
+        "/api/coding/paas/v4",
+        json!({
+            "id": "chatcmpl-coding-test",
+            "created": 1,
+            "model": "glm-5.2",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+        }),
+    )
+    .await;
+
+    let endpoint_config = EndpointConfig::default().with_coding_paas_v4_base(coding_base_url);
+
+    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("fix this"), key.clone())
+        .with_endpoint_config(endpoint_config)
+        .with_coding_plan()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.model.as_deref(), Some("glm-5.2"));
+    let request = captured.await.unwrap();
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.path, "/api/coding/paas/v4/chat/completions");
+    assert_eq!(
+        request.authorization.as_deref(),
+        Some(format!("Bearer {key}").as_str())
+    );
+    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+    assert_eq!(body["model"], "glm-5.2");
+    assert_eq!(body["messages"][0]["content"], "fix this");
 }
 
 #[tokio::test]

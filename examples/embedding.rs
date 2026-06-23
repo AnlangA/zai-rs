@@ -54,9 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "usage: prompt_tokens={} completion_tokens={} total_tokens={}",
-        resp.usage.prompt_tokens,
-        resp.usage.completion_tokens,
-        resp.usage.total_tokens
+        resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.total_tokens
     );
 
     Ok(())

@@ -115,7 +115,12 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Tools>>,
 
-    // tool_choice: enum<string>, but we don't need it for now
+    /// Controls whether the model calls a tool, and which one. Only meaningful
+    /// when [`tools`](Self::tools) is set. See [`ToolChoice`] for the wire
+    /// forms (`"auto"`, `"none"`, or a specific function).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<ToolChoice>,
+
     /// A unique identifier representing your end-user, which can help monitor
     /// and detect abuse. Must be between 6 and 128 characters long.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,6 +158,7 @@ where
             top_p: None,
             max_tokens: None,
             tools: None,
+            tool_choice: None,
             user_id: None,
             stop: None,
             response_format: None,
@@ -221,6 +227,17 @@ where
     /// Add multiple tools to the request at once.
     pub fn extend_tools(mut self, tools: Vec<Tools>) -> Self {
         self.tools.get_or_insert(Vec::new()).extend(tools);
+        self
+    }
+    /// Set the `tool_choice` policy (`auto` / `none` / a specific function).
+    /// Only meaningful when [`tools`](Self::tools) is attached.
+    pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+    /// Set the response format (plain text or JSON object).
+    pub fn with_response_format(mut self, format: ResponseFormat) -> Self {
+        self.response_format = Some(format);
         self
     }
     /// Set the end-user id (used for abuse monitoring).
@@ -428,5 +445,50 @@ mod tests {
             .with_reasoning_effort(ReasoningEffort::Xhigh);
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["reasoning_effort"], "xhigh");
+    }
+
+    #[test]
+    fn test_tool_choice_is_omitted_by_default() {
+        let body: ChatBody<GLM4_6, TextMessage> = ChatBody::new(GLM4_6 {}, TextMessage::user("hi"));
+        assert!(body.tool_choice.is_none());
+        let json = serde_json::to_value(&body).unwrap();
+        assert!(json.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn test_with_tool_choice_serializes_each_form() {
+        // auto -> bare "auto"
+        let body: ChatBody<GLM4_6, TextMessage> = ChatBody::new(GLM4_6 {}, TextMessage::user("hi"))
+            .with_tool_choice(crate::model::tools::ToolChoice::auto());
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["tool_choice"], serde_json::json!("auto"));
+
+        // none -> bare "none"
+        let body: ChatBody<GLM4_6, TextMessage> = ChatBody::new(GLM4_6 {}, TextMessage::user("hi"))
+            .with_tool_choice(crate::model::tools::ToolChoice::none());
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["tool_choice"], serde_json::json!("none"));
+
+        // function -> object form
+        let body: ChatBody<GLM4_6, TextMessage> = ChatBody::new(GLM4_6 {}, TextMessage::user("hi"))
+            .with_tool_choice(crate::model::tools::ToolChoice::function("get_weather"));
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(
+            json["tool_choice"],
+            serde_json::json!({
+                "type": "function",
+                "function": { "name": "get_weather" }
+            })
+        );
+    }
+
+    #[test]
+    fn test_with_response_format_serializes() {
+        use crate::model::tools::ResponseFormat;
+        let body: ChatBody<GLM4_6, TextMessage> = ChatBody::new(GLM4_6 {}, TextMessage::user("hi"))
+            .with_response_format(ResponseFormat::JsonObject);
+        assert_eq!(body.response_format, Some(ResponseFormat::JsonObject));
+        let json = serde_json::to_value(&body).unwrap();
+        assert_eq!(json["response_format"]["type"], "json_object");
     }
 }

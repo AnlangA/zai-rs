@@ -11,9 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let resp: KnowledgeDeleteResponse = KnowledgeDeleteRequest::new(key, id).send().await?;
     println!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code,
-        resp.message,
-        resp.timestamp
+        resp.code, resp.message, resp.timestamp
     );
 
     Ok(())

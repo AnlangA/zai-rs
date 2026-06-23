@@ -11,7 +11,7 @@
 //! - `Function` — Defines a callable function with JSON-schema parameters
 //! - `WebSearch` — Enables live web search within chat
 //! - [`Retrieval`] — Enables knowledge-base retrieval
-//! - `tool_choice` — Controls tool-selection behaviour (`auto`, `none`, or
+//! - [`ToolChoice`] — Controls tool-selection behaviour (`auto`, `none`, or
 //!   specific function)
 
 use std::collections::HashMap;
@@ -302,24 +302,69 @@ impl Function {
     }
 }
 
-/// Configuration for retrieval tool capabilities.
+/// Knowledge-base retrieval tool configuration.
 ///
-/// This structure represents a retrieval tool that can access knowledge bases
-/// or document collections. Currently a placeholder for future expansion.
+/// Attaches a Zhipu AI knowledge base to a chat completion so the model can
+/// retrieve relevant passages from it before answering. Create the knowledge
+/// base (and obtain its `knowledge_id`) in the BigModel console, then pass the
+/// id here via the [`Retrieval`] tool.
+///
+/// See the official guide:
+/// <https://docs.bigmodel.cn/cn/guide/tools/knowledge/retrieval>.
+///
+/// # Wire form
+///
+/// Serializes as `{"knowledge_id":"…","prompt_template":"…"}` (the
+/// `prompt_template` field is omitted when not set).
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// use zai_rs::model::tools::{Retrieval, Tools};
+///
+/// let tool = Tools::Retrieval {
+///     retrieval: Retrieval::new("kb_1234567890", None),
+/// };
+/// // Or with a custom prompt template:
+/// let tool = Tools::Retrieval {
+///     retrieval: Retrieval::builder("kb_1234567890")
+///         .with_prompt_template("仅依据知识库回答：{knowledge}"),
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize)]
 pub struct Retrieval {
-    knowledge_id: String,
+    /// Knowledge-base id (required). Obtain it from the BigModel console after
+    /// creating and populating a knowledge base.
+    pub knowledge_id: String,
+    /// Optional prompt template applied when the model consumes retrieved
+    /// knowledge. Serialized as `prompt_template`; omitted when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    prompt_template: Option<String>,
+    pub prompt_template: Option<String>,
 }
 
 impl Retrieval {
-    /// Creates a new `Retrieval` instance.
+    /// Creates a new retrieval tool bound to `knowledge_id`.
+    ///
+    /// Pass `None` for `prompt_template` to use the server default.
     pub fn new(knowledge_id: impl Into<String>, prompt_template: Option<String>) -> Self {
         Self {
             knowledge_id: knowledge_id.into(),
             prompt_template,
         }
+    }
+
+    /// Start a builder for a retrieval tool bound to `knowledge_id`.
+    pub fn builder(knowledge_id: impl Into<String>) -> Self {
+        Self {
+            knowledge_id: knowledge_id.into(),
+            prompt_template: None,
+        }
+    }
+
+    /// Attach a custom prompt template to the retrieval tool.
+    pub fn with_prompt_template(mut self, prompt_template: impl Into<String>) -> Self {
+        self.prompt_template = Some(prompt_template.into());
+        self
     }
 }
 
@@ -560,7 +605,7 @@ pub enum MCPTransportType {
 ///
 /// * `Text` - Plain text response format
 /// * `JsonObject` - Structured JSON object response format
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum ResponseFormat {
@@ -568,6 +613,117 @@ pub enum ResponseFormat {
     Text,
     /// Structured JSON object response format.
     JsonObject,
+}
+
+// Marker types used only to drive `ToolChoice` serialization. The API expects
+// the `auto` / `none` variants as a bare JSON string and the function variant
+// as an object, so we model each as a `#[serde(transparent)]` newtype that
+// serializes to exactly `"auto"` / `"none"` and combine them via `untagged`.
+mod tool_choice_wire {
+    use serde::{Serialize, Serializer};
+
+    /// Serializes to the bare JSON string `"auto"`.
+    #[derive(Debug, Clone, Copy)]
+    pub struct Auto;
+
+    impl Serialize for Auto {
+        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            s.serialize_str("auto")
+        }
+    }
+
+    /// Serializes to the bare JSON string `"none"`.
+    #[derive(Debug, Clone, Copy)]
+    pub struct NoneChoice;
+
+    impl Serialize for NoneChoice {
+        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            s.serialize_str("none")
+        }
+    }
+}
+
+/// Name of a specific function the model must call when
+/// [`ToolChoice::Function`] is selected.
+///
+/// Serializes as `{"type":"function","function":{"name":"..."}}`, matching the
+/// Zhipu AI / OpenAI-compatible `tool_choice` object form.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolChoiceFunction {
+    /// Always `"function"` on the wire.
+    #[serde(rename = "type")]
+    kind: &'static str,
+    /// The function descriptor.
+    function: ToolChoiceFunctionRef,
+}
+
+impl ToolChoiceFunction {
+    /// Wrap a function name into the wire object form.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            kind: "function",
+            function: ToolChoiceFunctionRef { name: name.into() },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ToolChoiceFunctionRef {
+    name: String,
+}
+
+/// Controls whether the model calls a tool during a chat completion, and which
+/// one.
+///
+/// This is the value carried by the `tool_choice` request parameter. It is only
+/// meaningful when [`Tools`] are also attached to the request.
+///
+/// # Variants
+///
+/// * [`ToolChoice::Auto`] — serialized as the bare string `"auto"`; the model
+///   decides whether to call a tool (the API default).
+/// * [`ToolChoice::None`] — serialized as the bare string `"none"`; the model
+///   never calls a tool and always answers directly.
+/// * [`ToolChoice::Function`] — serialized as
+///   `{"type":"function","function":{"name":"…"}}`; forces the model to call
+///   the named function.
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// use zai_rs::model::tools::ToolChoice;
+///
+/// // Let the model decide (default behaviour):
+/// let choice = ToolChoice::auto();
+/// // Force a specific function:
+/// let choice = ToolChoice::function("get_weather");
+/// ```
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum ToolChoice {
+    /// The model decides whether to call a tool (`"auto"` on the wire).
+    Auto(tool_choice_wire::Auto),
+    /// The model never calls a tool (`"none"` on the wire).
+    None(tool_choice_wire::NoneChoice),
+    /// Force the model to call the named function.
+    Function(ToolChoiceFunction),
+}
+
+impl ToolChoice {
+    /// Let the model decide whether to call a tool (`"auto"`).
+    pub fn auto() -> Self {
+        ToolChoice::Auto(tool_choice_wire::Auto)
+    }
+
+    /// Forbid tool calls for this request (`"none"`).
+    pub fn none() -> Self {
+        ToolChoice::None(tool_choice_wire::NoneChoice)
+    }
+
+    /// Force the model to call the named function.
+    pub fn function(name: impl Into<String>) -> Self {
+        ToolChoice::Function(ToolChoiceFunction::new(name))
+    }
 }
 
 #[cfg(test)]
@@ -679,6 +835,24 @@ mod tests {
         assert!(json.contains("\"knowledge_id\":\"kb_789\""));
         // prompt_template should be omitted when None
         assert!(!json.contains("prompt_template"));
+    }
+
+    #[test]
+    fn test_retrieval_builder_omits_template_by_default() {
+        let retrieval = Retrieval::builder("kb_builder");
+        assert_eq!(retrieval.knowledge_id, "kb_builder");
+        assert!(retrieval.prompt_template.is_none());
+        let json = serde_json::to_value(&retrieval).unwrap();
+        assert_eq!(json["knowledge_id"], "kb_builder");
+        assert!(json.get("prompt_template").is_none());
+    }
+
+    #[test]
+    fn test_retrieval_builder_with_prompt_template_serializes() {
+        let retrieval = Retrieval::builder("kb_builder").with_prompt_template("ctx: {knowledge}");
+        let json = serde_json::to_value(&retrieval).unwrap();
+        assert_eq!(json["knowledge_id"], "kb_builder");
+        assert_eq!(json["prompt_template"], "ctx: {knowledge}");
     }
 
     // WebSearch tests
@@ -871,6 +1045,31 @@ mod tests {
         let format = ResponseFormat::JsonObject;
         let json = serde_json::to_string(&format).unwrap();
         assert!(json.contains("\"type\":\"json_object\""));
+    }
+
+    // ToolChoice tests
+    #[test]
+    fn test_tool_choice_auto_serializes_as_bare_string() {
+        let json = serde_json::to_value(ToolChoice::auto()).unwrap();
+        assert_eq!(json, serde_json::json!("auto"));
+    }
+
+    #[test]
+    fn test_tool_choice_none_serializes_as_bare_string() {
+        let json = serde_json::to_value(ToolChoice::none()).unwrap();
+        assert_eq!(json, serde_json::json!("none"));
+    }
+
+    #[test]
+    fn test_tool_choice_function_serializes_as_object() {
+        let json = serde_json::to_value(ToolChoice::function("get_weather")).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "function",
+                "function": { "name": "get_weather" }
+            })
+        );
     }
 
     // Tools enum tests

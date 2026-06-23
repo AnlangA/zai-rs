@@ -100,9 +100,13 @@ let client = ZaiClient::new_with_config(api_key, config);
 ### 启用压缩
 ```rust
 let config = HttpClientConfig::builder()
-    .compression(true)  // 默认启用
+    .compression(true)  // 默认启用，开启后 SDK 会在请求中声明 gzip 并透明解压响应
     .build();
 ```
+
+启用后，共享传输层（`http_client_with_config`）会在构造 `reqwest::Client` 时打开 `gzip(true)`，
+并对相同配置（含 compression 开关）做连接池缓存复用。关闭压缩可以节省少量 CPU，但会显著增加
+网络传输量，通常仅在调试或对接不支持 gzip 的代理时关闭。
 
 ### 设置合适的超时
 ```rust

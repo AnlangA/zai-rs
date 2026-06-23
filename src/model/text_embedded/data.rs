@@ -11,8 +11,9 @@ use crate::client::{
 
 /// Text Embedding request client (JSON POST)
 ///
-/// Builder for the embeddings endpoint. Construct with [`EmbeddingRequest::new`],
-/// tune with the `with_*` methods, then call [`EmbeddingRequest::send`].
+/// Builder for the embeddings endpoint. Construct with
+/// [`EmbeddingRequest::new`], tune with the `with_*` methods, then call
+/// [`EmbeddingRequest::send`].
 pub struct EmbeddingRequest {
     /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,

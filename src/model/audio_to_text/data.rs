@@ -13,7 +13,8 @@ use crate::client::{
 /// Audio transcription request (multipart/form-data)
 ///
 /// Builder for the audio-transcription (ASR) endpoint. Set the audio file via
-/// [`AudioToTextRequest::with_file_path`], then call [`AudioToTextRequest::send`].
+/// [`AudioToTextRequest::with_file_path`], then call
+/// [`AudioToTextRequest::send`].
 pub struct AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize,

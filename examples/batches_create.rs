@@ -56,9 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "created batch: id={:?} status={:?} input_file_id={:?}",
-        batch.id,
-        batch.status,
-        batch.input_file_id
+        batch.id, batch.status, batch.input_file_id
     );
 
     // Next steps:

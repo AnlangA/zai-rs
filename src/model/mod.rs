@@ -49,9 +49,9 @@
 //!
 //! # Key Design Patterns
 //!
-//! - **Marker traits** — [`Chat`](traits::Chat), [`AsyncChat`](traits::AsyncChat),
-//!   [`ThinkEnable`](traits::ThinkEnable) etc. encode
-//!   model capabilities at compile time
+//! - **Marker traits** — [`Chat`](traits::Chat),
+//!   [`AsyncChat`](traits::AsyncChat), [`ThinkEnable`](traits::ThinkEnable)
+//!   etc. encode model capabilities at compile time
 //! - **Type-state pattern** — [`StreamOn`](traits::StreamOn) /
 //!   [`StreamOff`](traits::StreamOff) enforce streaming vs. non-streaming at
 //!   the type level

@@ -12,9 +12,10 @@ use crate::client::{
 /// Asynchronous (queued) chat-completion request builder.
 ///
 /// Generic over the model `N`, the message type `M`, and a stream type-state
-/// `S` (`StreamOff` by default, `StreamOn` after [`enable_stream`](Self::enable_stream)).
-/// Posts to the `async/chat/completions` endpoint and returns a task id that
-/// must be polled via [`AsyncChatGetRequest`](crate::model::async_chat_get::data::AsyncChatGetRequest).
+/// `S` (`StreamOff` by default, `StreamOn` after
+/// [`enable_stream`](Self::enable_stream)). Posts to the
+/// `async/chat/completions` endpoint and returns a task id that must be polled
+/// via [`AsyncChatGetRequest`](crate::model::async_chat_get::data::AsyncChatGetRequest).
 pub struct AsyncChatCompletion<N, M, S = StreamOff>
 where
     N: ModelName + AsyncChat,

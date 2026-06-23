@@ -158,7 +158,8 @@ impl ToolCallCache {
         self.entries.retain(|key, _| key.tool_name != tool_name);
     }
 
-    /// Compute aggregate cache statistics (entry count, hits, expiry, hit rate).
+    /// Compute aggregate cache statistics (entry count, hits, expiry, hit
+    /// rate).
     pub fn stats(&self) -> CacheStats {
         let mut total_hits = 0u64;
         let mut expired_count = 0u64;

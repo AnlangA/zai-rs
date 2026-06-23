@@ -79,6 +79,29 @@
 //! }
 //! ```
 //!
+//! # Configuration
+//!
+//! [`ZaiConfig`] is the central place for credentials, endpoint families, and
+//! HTTP transport settings. It mirrors the API families exposed by
+//! [`client::endpoints::EndpointConfig`], including the dedicated Coding Plan
+//! endpoint required by official Zhipu AI documentation.
+//!
+//! ```rust
+//! use zai_rs::ZaiConfig;
+//!
+//! let config = ZaiConfig::builder()
+//!     .api_key("abc123.abcdefghijklmnopqrstuvwxyz")
+//!     .paas_v4_base("https://open.bigmodel.cn/api/paas/v4")
+//!     .coding_paas_v4_base("https://open.bigmodel.cn/api/coding/paas/v4")
+//!     .build()
+//!     .unwrap();
+//!
+//! assert_eq!(
+//!     config.coding_paas_v4_url("chat/completions"),
+//!     "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
+//! );
+//! ```
+//!
 //! # Feature Flags
 //!
 //! | Feature | Default | Description |
@@ -102,6 +125,7 @@
 //! - `NetworkError` — Network / timeout error
 //! - `JsonError` — JSON serialization / deserialization error
 //! - `RateLimitError` — Rate-limit or quota exceeded
+//! - `ContentPolicyError` — API policy or unsafe-content block
 //! - `AuthError` — Authentication / authorization error
 //!
 //! # Design Principles
