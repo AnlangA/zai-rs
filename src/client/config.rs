@@ -40,6 +40,12 @@ impl ZaiConfig {
         }
     }
 
+    /// Build a config from an API key using the official default endpoints and
+    /// HTTP settings.
+    pub fn new(api_key: impl Into<String>) -> ZaiResult<Self> {
+        Self::builder().api_key(api_key).build()
+    }
+
     /// Read `ZHIPU_API_KEY` from the environment and use default endpoints/HTTP
     /// settings.
     pub fn from_env() -> ZaiResult<Self> {
@@ -61,6 +67,11 @@ impl ZaiConfig {
     /// Resolve a PAAS v4 REST URL for the given path.
     pub fn paas_v4_url(&self, path: &str) -> String {
         self.endpoints.url(&ApiBase::PaasV4, path)
+    }
+
+    /// Resolve a Coding Plan PAAS v4 URL for the given path.
+    pub fn coding_paas_v4_url(&self, path: &str) -> String {
+        self.endpoints.url(&ApiBase::CodingPaasV4, path)
     }
 
     /// Resolve a knowledge-base (LLM application) URL for the given path.
@@ -91,6 +102,24 @@ impl ZaiConfigBuilder {
     /// Replace the entire endpoint config.
     pub fn endpoint_config(mut self, endpoints: EndpointConfig) -> Self {
         self.config.endpoints = endpoints;
+        self
+    }
+
+    /// Override the general PAAS v4 base URL.
+    pub fn paas_v4_base(mut self, base: impl Into<String>) -> Self {
+        self.config.endpoints = self.config.endpoints.with_paas_v4_base(base);
+        self
+    }
+
+    /// Override the Coding Plan PAAS v4 base URL.
+    pub fn coding_paas_v4_base(mut self, base: impl Into<String>) -> Self {
+        self.config.endpoints = self.config.endpoints.with_coding_paas_v4_base(base);
+        self
+    }
+
+    /// Override the knowledge-base / LLM application base URL.
+    pub fn llm_application_base(mut self, base: impl Into<String>) -> Self {
+        self.config.endpoints = self.config.endpoints.with_llm_application_base(base);
         self
     }
 
@@ -138,10 +167,7 @@ mod tests {
     #[test]
     fn builder_requires_api_key() {
         assert!(ZaiConfig::builder().build().is_err());
-        let cfg = ZaiConfig::builder()
-            .api_key("abcdefghij.0123456789abcdef")
-            .build()
-            .unwrap();
+        let cfg = ZaiConfig::new("abcdefghij.0123456789abcdef").unwrap();
         assert_eq!(cfg.api_key, "abcdefghij.0123456789abcdef");
     }
 
@@ -162,5 +188,34 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(cfg.realtime_url(), "wss://custom.example.com/realtime");
+    }
+
+    #[test]
+    fn builder_overrides_all_rest_base_families() {
+        let cfg = ZaiConfig::builder()
+            .api_key("abcdefghij.0123456789abcdef")
+            .paas_v4_base("https://proxy.example.com/api/paas/v4")
+            .coding_paas_v4_base("https://proxy.example.com/api/coding/paas/v4")
+            .llm_application_base("https://proxy.example.com/api/llm-application/open")
+            .monitor_base("https://proxy.example.com/api/monitor")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            cfg.paas_v4_url("chat/completions"),
+            "https://proxy.example.com/api/paas/v4/chat/completions"
+        );
+        assert_eq!(
+            cfg.coding_paas_v4_url("chat/completions"),
+            "https://proxy.example.com/api/coding/paas/v4/chat/completions"
+        );
+        assert_eq!(
+            cfg.llm_application_url("knowledge"),
+            "https://proxy.example.com/api/llm-application/open/knowledge"
+        );
+        assert_eq!(
+            cfg.monitor_url("usage/quota/limit"),
+            "https://proxy.example.com/api/monitor/usage/quota/limit"
+        );
     }
 }

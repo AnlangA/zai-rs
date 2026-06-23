@@ -11,13 +11,13 @@ pub type ToolResult<T> = Result<T, ToolError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorSeverity {
     /// User error, no retry needed.
-    User,      // User error, no retry needed
+    User, // User error, no retry needed
     /// Normal error, may retry.
-    Normal,    // Normal error, may retry
+    Normal, // Normal error, may retry
     /// Transient error, should retry.
     Transient, // Transient error, should retry
     /// Critical error, log and alert.
-    Critical,  // Critical error, log and alert
+    Critical, // Critical error, log and alert
 }
 
 /// Enhanced error type with better context and error chaining
@@ -159,7 +159,8 @@ impl ErrorContext {
         self
     }
 
-    /// Attach an operation name (e.g. `"execute"`, `"validate"`) to this context.
+    /// Attach an operation name (e.g. `"execute"`, `"validate"`) to this
+    /// context.
     pub fn with_operation(mut self, operation: impl Into<String>) -> Self {
         self.operation = Some(operation.into());
         self

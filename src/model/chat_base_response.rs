@@ -255,7 +255,8 @@ pub struct MCPMessage {
     pub output: Option<serde_json::Value>,
 }
 
-/// MCP tool call type — either a tool-list request or an actual tool invocation.
+/// MCP tool call type — either a tool-list request or an actual tool
+/// invocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MCPCallType {

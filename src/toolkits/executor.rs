@@ -521,7 +521,8 @@ impl ToolExecutor {
     }
 
     /// Execute LLM tool calls concurrently, returning one `TextMessage::tool`
-    /// per call (order is NOT preserved — see [`Self::execute_tool_calls_ordered`]).
+    /// per call (order is NOT preserved — see
+    /// [`Self::execute_tool_calls_ordered`]).
     pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         let mut set = JoinSet::new();
 

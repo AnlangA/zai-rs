@@ -30,14 +30,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "batch id={:?} status={:?} endpoint={:?}",
-        final_batch.id,
-        final_batch.status,
-        final_batch.endpoint
+        final_batch.id, final_batch.status, final_batch.endpoint
     );
     println!(
         "output_file_id={:?} error_file_id={:?}",
-        final_batch.output_file_id,
-        final_batch.error_file_id
+        final_batch.output_file_id, final_batch.error_file_id
     );
 
     std::fs::create_dir_all("data")?;

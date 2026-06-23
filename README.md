@@ -12,6 +12,8 @@
 3. 运行示例（examples/ 目录内）
    - `cargo run --example chat_loop`
 
+更多设计和维护说明见 [架构说明](docs/ARCHITECTURE.md)，完整使用文档见 [docs/](docs/README.md)。
+
 ## 支持的模型
 
 ### 文本模型

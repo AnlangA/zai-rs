@@ -5,8 +5,8 @@
 //!
 //! # Core Components
 //!
-//! - [`core`] — Core traits ([`DynTool`](core::DynTool), [`FunctionTool`])
-//!   and type conversions
+//! - [`core`] — Core traits ([`DynTool`](core::DynTool), [`FunctionTool`]) and
+//!   type conversions
 //! - [`error`] — Error types with context information
 //! - [`executor`] — Execution engine with registration, caching, and retry
 //!   logic
@@ -36,8 +36,8 @@
 
 /// In-memory tool-call cache with hit/miss statistics.
 pub mod cache;
-/// Core traits ([`DynTool`](core::DynTool), [`FunctionTool`](core::FunctionTool))
-/// and type conversions.
+/// Core traits ([`DynTool`](core::DynTool),
+/// [`FunctionTool`](core::FunctionTool)) and type conversions.
 pub mod core;
 /// Error types with context information.
 pub mod error;

@@ -307,14 +307,15 @@ pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
     clients
         .entry(config_key)
         .or_insert_with(|| {
-            let builder = reqwest::Client::builder().timeout(config.timeout);
+            let mut builder = reqwest::Client::builder().timeout(config.timeout);
 
-            // Note: reqwest's gzip/brotli features are not enabled in this
-            // crate's Cargo.toml, so `enable_compression` is currently a
-            // no-op reserved for future use (the field is kept in the public
-            // config surface for API stability). Enable the corresponding
-            // reqwest cargo features and gate on `config.enable_compression`
-            // here to turn it on.
+            // When compression is enabled (the default), reqwest advertises an
+            // `Accept-Encoding: gzip` header and transparently decompresses
+            // gzip responses. `enable_compression` is now wired through to the
+            // builder instead of being a silent no-op.
+            if config.enable_compression {
+                builder = builder.gzip(true);
+            }
 
             builder.build().expect("Failed to build reqwest Client")
         })
@@ -687,7 +688,7 @@ fn should_retry(error: &ZaiError, attempt: u32, max_retries: u32) -> bool {
     match error {
         // Retry on server errors (5xx) and HTTP-level rate limiting.
         ZaiError::HttpError { status, .. } => *status == 429 || (500..600).contains(status),
-        // Retry on rate limit errors (business codes 1300-1313)
+        // Retry on transient rate limit / quota errors.
         ZaiError::RateLimitError { .. } => true,
         // Retry on network errors
         ZaiError::NetworkError(_) => true,
@@ -752,11 +753,11 @@ mod tests {
 
     #[test]
     fn test_api_error_envelope_deserialize_str_code() {
-        let json = r#"{"error":{"code":"1300","message":"Rate limit exceeded"}}"#;
+        let json = r#"{"error":{"code":"1302","message":"Rate limit exceeded"}}"#;
         let envelope: ApiErrorEnvelope = serde_json::from_str(json).unwrap();
         let (code, message) = envelope.into_parts();
         assert_eq!(message, "Rate limit exceeded");
-        assert_eq!(to_api_code(&code), 1300);
+        assert_eq!(to_api_code(&code), 1302);
     }
 
     #[test]
@@ -868,10 +869,19 @@ mod tests {
     #[test]
     fn test_should_retry_rate_limit() {
         let error = ZaiError::RateLimitError {
-            code: 1301,
+            code: 1302,
             message: "Rate limit exceeded".to_string(),
         };
         assert!(should_retry(&error, 0, 3));
+    }
+
+    #[test]
+    fn test_should_not_retry_content_policy_error() {
+        let error = ZaiError::ContentPolicyError {
+            code: 1301,
+            message: "Unsafe content detected".to_string(),
+        };
+        assert!(!should_retry(&error, 0, 3));
     }
 
     #[test]
@@ -949,6 +959,26 @@ mod tests {
         assert_eq!(config.max_retries, 3);
         assert!(config.enable_compression);
         matches!(config.retry_delay, RetryDelay::Exponential { .. });
+    }
+
+    #[test]
+    fn test_compression_config_round_trips_through_builder() {
+        // Default: compression on.
+        let on = HttpClientConfig::default();
+        assert!(on.enable_compression);
+
+        // Builder can disable it.
+        let off = HttpClientConfig::builder().compression(false).build();
+        assert!(!off.enable_compression);
+
+        // The cached-client key encodes the compression flag, so the two
+        // configs resolve to distinct pooled clients (otherwise toggling
+        // compression would be a silent no-op due to caching).
+        let client_on = http_client_with_config(&on);
+        let client_off = http_client_with_config(&off);
+        // reqwest::Client is neither Eq nor introspectable, but the registry
+        // guarantees a distinct Client per distinct key — exercise the path.
+        let _ = (client_on, client_off);
     }
 
     #[test]

@@ -4,12 +4,11 @@ use std::{
     borrow::Cow,
     collections::{HashMap, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
 use jsonschema;
-use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -38,8 +37,8 @@ pub trait DynTool: Send + Sync {
 }
 
 /// Global schema cache for compiled JSON schemas
-static SCHEMA_CACHE: Lazy<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+static SCHEMA_CACHE: LazyLock<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Maximum number of compiled schemas to cache
 const SCHEMA_CACHE_MAX_SIZE: usize = 256;

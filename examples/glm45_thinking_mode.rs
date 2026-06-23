@@ -31,9 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 2: Medium complexity (some thinking helpful)
     println!("\n📝 Example 2: Medium Complexity (Thinking Enabled)");
-    println!(
-        "Question: Why might a business choose to use Rust over Python for a new project?\n"
-    );
+    println!("Question: Why might a business choose to use Rust over Python for a new project?\n");
 
     let response = medium_question(&key).await?;
 

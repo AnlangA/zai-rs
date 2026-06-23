@@ -27,7 +27,8 @@ pub struct RerankRequest {
 }
 
 impl RerankRequest {
-    /// Create a new rerank request for a query and a set of candidate documents.
+    /// Create a new rerank request for a query and a set of candidate
+    /// documents.
     pub fn new(key: String, query: impl Into<String>, documents: Vec<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;

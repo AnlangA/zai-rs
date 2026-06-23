@@ -11,7 +11,8 @@
 //! | [`ZaiError::AuthError`] | 1000–1004, 1100 | Authentication / authorization (invalid API key, etc.) |
 //! | [`ZaiError::AccountError`] | 1110–1121 | Account/package-related errors |
 //! | [`ZaiError::ApiError`] | 1200–1234 | Request validation / API call errors |
-//! | [`ZaiError::RateLimitError`] | 1300–1313 | Rate-limit, quota, package pressure or fair-use errors |
+//! | [`ZaiError::ContentPolicyError`] | 1300–1301 | API policy / unsafe-content blocks |
+//! | [`ZaiError::RateLimitError`] | 1302–1305, 1308–1313 | Rate-limit, quota, package pressure or fair-use errors |
 //! | [`ZaiError::FileError`] | 1400–1499 | File-processing errors |
 //! | [`ZaiError::Unknown`] | other | Unrecognized business or HTTP errors |
 //! | [`ZaiError::NetworkError`] | — | Network / timeout errors |
@@ -316,7 +317,7 @@ pub enum ZaiError {
     /// Rate limiting and quota errors
     #[error("Rate limit error [{code}]: {message}")]
     RateLimitError {
-        /// Zhipu AI business error code (`1300`–`1313`).
+        /// Zhipu AI business error code (`1302`–`1305`, `1308`–`1313`).
         code: u16,
         /// Human-readable error message.
         message: String,
@@ -325,7 +326,8 @@ pub enum ZaiError {
     /// Content policy errors
     #[error("Content policy error [{code}]: {message}")]
     ContentPolicyError {
-        /// Zhipu AI business error code for content-policy violations.
+        /// Zhipu AI business error code (`1300`–`1301`) for policy blocks or
+        /// unsafe-content violations.
         code: u16,
         /// Human-readable error message.
         message: String,
@@ -433,8 +435,13 @@ impl ZaiError {
                     code: api_code,
                     message: api_message,
                 },
-                // Rate limiting and package access pressure/fair-use errors
-                1300..=1313 => ZaiError::RateLimitError {
+                // API policy and unsafe-content blocks are not transient.
+                1300..=1301 => ZaiError::ContentPolicyError {
+                    code: api_code,
+                    message: api_message,
+                },
+                // Rate limiting, quota, package access pressure/fair-use errors.
+                1302..=1305 | 1308..=1313 => ZaiError::RateLimitError {
                     code: api_code,
                     message: api_message,
                 },
@@ -844,24 +851,35 @@ mod tests {
     #[test]
     fn test_from_api_response_rate_limit() {
         // Business code takes precedence over HTTP status.
-        let err = ZaiError::from_api_response(429, 1301, "Too many requests".to_string());
+        let err = ZaiError::from_api_response(429, 1302, "Too many requests".to_string());
         assert!(err.is_client_error());
         assert!(err.is_rate_limit());
-        assert_eq!(err.code(), Some(1301));
+        assert_eq!(err.code(), Some(1302));
 
-        // API code 1301 returns RateLimitError even with a non-error HTTP
+        // API code 1302 returns RateLimitError even with a non-error HTTP
         // status.
-        let err = ZaiError::from_api_response(200, 1301, "Too many requests".to_string());
+        let err = ZaiError::from_api_response(200, 1302, "Too many requests".to_string());
         assert!(err.is_client_error());
         assert!(err.is_rate_limit());
-        assert_eq!(err.code(), Some(1301));
+        assert_eq!(err.code(), Some(1302));
     }
 
     #[test]
     fn test_from_api_response_package_limit_codes() {
-        for code in [1300, 1312, 1313] {
+        for code in [1302, 1303, 1304, 1305, 1308, 1309, 1310, 1311, 1312, 1313] {
             let err = ZaiError::from_api_response(429, code, "Limited".to_string());
             assert!(err.is_rate_limit());
+            assert_eq!(err.code(), Some(code));
+        }
+    }
+
+    #[test]
+    fn test_from_api_response_content_policy_codes() {
+        for code in [1300, 1301] {
+            let err = ZaiError::from_api_response(400, code, "Blocked".to_string());
+            assert!(matches!(err, ZaiError::ContentPolicyError { .. }));
+            assert!(err.is_client_error());
+            assert!(!err.is_rate_limit());
             assert_eq!(err.code(), Some(code));
         }
     }
@@ -944,7 +962,7 @@ mod tests {
     #[test]
     fn test_message() {
         let err = ZaiError::RateLimitError {
-            code: 1300,
+            code: 1302,
             message: "Too many requests".to_string(),
         };
         assert_eq!(err.message(), "Too many requests");
@@ -1007,7 +1025,7 @@ mod tests {
         );
         assert!(
             !ZaiError::RateLimitError {
-                code: 1301,
+                code: 1302,
                 message: "x".into(),
             }
             .is_sdk_error()

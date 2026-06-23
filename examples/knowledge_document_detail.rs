@@ -14,24 +14,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code,
-        resp.message,
-        resp.timestamp
+        resp.code, resp.message, resp.timestamp
     );
     if let Some(doc) = &resp.data {
         println!(
             "id={:?} name={:?} type={:?} words={:?} bytes={:?}",
-            doc.id,
-            doc.name,
-            doc.knowledge_type,
-            doc.word_num,
-            doc.length
+            doc.id, doc.name, doc.knowledge_type, doc.word_num, doc.length
         );
         if let Some(f) = &doc.fail_info {
             println!(
                 "fail: code={:?} msg={:?}",
-                f.embedding_code,
-                f.embedding_msg
+                f.embedding_code, f.embedding_msg
             );
         }
     }

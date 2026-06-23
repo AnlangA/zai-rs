@@ -1,4 +1,6 @@
-/target
+# Match `target/` at any depth — root build dir plus nested ones such as
+# `examples/web_chat/target/`.
+target/
 .idea/
 /out
 /.claude

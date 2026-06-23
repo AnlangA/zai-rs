@@ -36,7 +36,8 @@ impl<N> AudioToTextBody<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
-    /// Create a new transcription body for the given model (all options `None`).
+    /// Create a new transcription body for the given model (all options
+    /// `None`).
     pub fn new(model: N) -> Self {
         Self {
             model,

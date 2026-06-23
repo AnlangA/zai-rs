@@ -21,9 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "code={:?} message={:?} timestamp={:?}",
-        resp.code,
-        resp.message,
-        resp.timestamp
+        resp.code, resp.message, resp.timestamp
     );
     if let Some(data) = &resp.data {
         println!(
