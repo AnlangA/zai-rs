@@ -1,7 +1,16 @@
-//! Mock Server for Integration Tests
+//! Mock server helpers for integration tests.
 //!
-//! This module provides a mock HTTP server that simulates the Zhipu AI API
-//! for integration testing purposes.
+//! This module provides a mock HTTP server that simulates the Zhipu AI API.
+//!
+//! # What is actually used
+//!
+//! The integration tests (`tests/integration_tests.rs`) use the lightweight
+//! inline capture helpers (`capture_one_sdk_request` / `capture_one_request_under`)
+//! together with [`MockServerClient`] / [`MockServerConfig`]. The standalone
+//! [`start_mock_server`] and the per-endpoint `handle_*` handlers below are
+//! **dormant** scaffolding (hence the `#[allow(dead_code)]`) retained for a
+//! future retry/backoff integration test — they are not exercised by the
+//! current suite.
 
 use std::{
     collections::HashMap,
