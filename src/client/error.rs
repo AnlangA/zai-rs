@@ -276,6 +276,7 @@ pub mod codes {
 
 /// Main error type for the ZAI-RS SDK
 #[derive(Error, Debug, Clone)]
+#[non_exhaustive]
 pub enum ZaiError {
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
@@ -412,6 +413,7 @@ fn classify_status(status: u16) -> ErrorCategory {
 /// without matching on the full enum, and so the realtime module can construct
 /// rich errors without touching HTTP-specific machinery.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RealtimeErrorKind {
     /// Low-level WebSocket error (connect/handshake/read/write). The original
     /// `tungstenite` error is kept as the `#[source]` so the full chain

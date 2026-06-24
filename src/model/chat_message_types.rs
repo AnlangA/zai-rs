@@ -631,15 +631,16 @@ impl VisionMessage {
     /// let msg = VisionMessage.add_content(image)
     ///     .add_content(text);
     /// ```
-    pub fn add_user(self, rich_content: VisionRichContent) -> Self {
+    pub fn add_content(self, rich_content: VisionRichContent) -> Self {
         match self {
             VisionMessage::User { mut content } => {
                 content.push(rich_content);
                 VisionMessage::User { content }
             },
-            _ => VisionMessage::User {
-                content: vec![rich_content],
-            },
+            // Only a `User` message carries rich content; appending to any
+            // other variant is a no-op rather than silently replacing it with
+            // an empty `User` (which used to discard a System/Assistant msg).
+            _ => self,
         }
     }
 
@@ -1168,18 +1169,19 @@ impl VoiceMessage {
     /// let audio = VoiceRichContent::text("Hello");
     /// let text = VoiceRichContent::text("describe this audio");
     /// let msg = VoiceMessage::new_user()
-    ///     .add_user(audio)
-    ///     .add_user(text);
+    ///     .add_content(audio)
+    ///     .add_content(text);
     /// ```
-    pub fn add_user(self, rich_content: VoiceRichContent) -> Self {
+    pub fn add_content(self, rich_content: VoiceRichContent) -> Self {
         match self {
             VoiceMessage::User { mut content } => {
                 content.push(rich_content);
                 VoiceMessage::User { content }
             },
-            _ => VoiceMessage::User {
-                content: vec![rich_content],
-            },
+            // Only a `User` message carries rich content; appending to any
+            // other variant is a no-op rather than silently replacing it with
+            // an empty `User` (which used to discard a System/Assistant msg).
+            _ => self,
         }
     }
 
@@ -1660,10 +1662,10 @@ mod tests {
     }
 
     #[test]
-    fn test_vision_message_add_user() {
+    fn test_vision_message_add_content() {
         let msg = VisionMessage::new_user()
-            .add_user(VisionRichContent::text("Hello"))
-            .add_user(VisionRichContent::image("https://example.com/img.jpg"));
+            .add_content(VisionRichContent::text("Hello"))
+            .add_content(VisionRichContent::image("https://example.com/img.jpg"));
 
         if let VisionMessage::User { content } = msg {
             assert_eq!(content.len(), 2);
@@ -1729,10 +1731,10 @@ mod tests {
     }
 
     #[test]
-    fn test_voice_message_add_user() {
+    fn test_voice_message_add_content() {
         let msg = VoiceMessage::new_user()
-            .add_user(VoiceRichContent::text("Hello"))
-            .add_user(VoiceRichContent::input_audio(
+            .add_content(VoiceRichContent::text("Hello"))
+            .add_content(VoiceRichContent::input_audio(
                 b"audio_data",
                 VoiceFormat::MP3,
             ));

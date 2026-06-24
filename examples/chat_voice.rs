@@ -15,8 +15,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create audio content from the local WAV file
     let audio_content = VoiceRichContent::input_audio(audio_data, VoiceFormat::WAV);
     let voice_message = VoiceMessage::new_user()
-        .add_user(text_contxt)
-        .add_user(audio_content);
+        .add_content(text_contxt)
+        .add_content(audio_content);
 
     let client = ChatCompletion::new(model, voice_message, key);
 

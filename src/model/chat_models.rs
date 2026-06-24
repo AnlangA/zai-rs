@@ -3,6 +3,16 @@
 //! Defines all available AI model types for the Zhipu AI API, together with
 //! their capability markers and message-type bindings.
 //!
+//! # Naming convention
+//!
+//! Each model struct mirrors the vendor's model string as closely as Rust's
+//! identifier rules allow: the `GLM` prefix and version segments use
+//! underscores for the version dot (e.g. `glm-4.5` → `GLM4_5`), and the tier
+//! suffix is appended verbatim (e.g. `glm-4.5-X` → `GLM4_5_x`,
+//! `glm-4.7-flashx` → `GLM4_7_flashx`). Because these intentionally echo API
+//! strings rather than follow Rust's `UpperCamelCase` convention, every model
+//! struct carries `#[allow(non_camel_case_types)]`.
+//!
 //! # Model Categories
 //!
 //! ## Text Models
