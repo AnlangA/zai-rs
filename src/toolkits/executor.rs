@@ -7,7 +7,7 @@ use std::{
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use tokio::{task::JoinSet, time::timeout};
+use tokio::{sync::Semaphore, task::JoinSet, time::timeout};
 use tracing::warn;
 
 use super::{
@@ -25,6 +25,15 @@ use crate::{
         error::{ToolError, ToolResult, error_context},
     },
 };
+
+/// Cap on how many tool calls run concurrently in
+/// [`execute_tool_calls_parallel`](ToolExecutor::execute_tool_calls_parallel)
+/// / [`execute_tool_calls_ordered`](ToolExecutor::execute_tool_calls_ordered).
+///
+/// Prevents a model that emits many tool calls in one turn from fanning them
+/// all out at once and overwhelming downstream (e.g. MCP) services. Network
+/// calls queue on the semaphore rather than spawning unbounded tasks.
+const MAX_CONCURRENT_TOOL_CALLS: usize = 8;
 
 /// Enhanced retry configuration with exponential backoff
 #[derive(Debug, Clone)]
@@ -525,18 +534,47 @@ impl ToolExecutor {
     /// [`Self::execute_tool_calls_ordered`]).
     pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         let mut set = JoinSet::new();
+        let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_TOOL_CALLS));
 
-        // Clone the calls to avoid borrowing issues
-        let calls_vec = calls.to_vec();
-        for tc in calls_vec {
+        // Clone each call so it can be moved into the `'static` spawned task.
+        for tc in calls {
+            let tc = tc.clone();
             let this = self.clone();
-            set.spawn(async move { this.execute_single_tool_call(&tc).await });
+            let permits = Arc::clone(&permits);
+            set.spawn(async move {
+                // Bounded concurrency: a model emitting many tool calls no
+                // longer fires them all simultaneously.
+                let _permit = permits
+                    .acquire()
+                    .await
+                    .expect("tool-call semaphore is never closed");
+                this.execute_single_tool_call(&tc).await
+            });
         }
 
         let mut messages = Vec::with_capacity(calls.len());
         while let Some(res) = set.join_next().await {
-            if let Ok(msg) = res {
-                messages.push(msg);
+            match res {
+                Ok(msg) => messages.push(msg),
+                Err(join_err) => {
+                    // A spawned task panicked or was cancelled. Surface it as a
+                    // tool message so the caller (and the LLM) observes the
+                    // failure rather than receiving a silently-shorter result
+                    // vector whose length no longer matches the input.
+                    warn!(
+                        error = %join_err,
+                        "tool execution task panicked or was cancelled"
+                    );
+                    messages.push(TextMessage::tool(
+                        serde_json::json!({
+                            "error": {
+                                "type": "task_panic",
+                                "message": "a tool execution task panicked or was cancelled"
+                            }
+                        })
+                        .to_string(),
+                    ));
+                },
             }
         }
         messages
@@ -563,12 +601,21 @@ impl ToolExecutor {
     pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
         use futures::future::join_all;
 
-        let calls_vec = calls.to_vec();
-        let futures: Vec<_> = calls_vec
-            .into_iter()
+        let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_TOOL_CALLS));
+        let futures: Vec<_> = calls
+            .iter()
             .map(|tc| {
+                // Clone each call so it can be moved into the async block.
+                let tc = tc.clone();
                 let this = self.clone();
-                async move { this.execute_single_tool_call(&tc).await }
+                let permits = Arc::clone(&permits);
+                async move {
+                    let _permit = permits
+                        .acquire()
+                        .await
+                        .expect("tool-call semaphore is never closed");
+                    this.execute_single_tool_call(&tc).await
+                }
             })
             .collect();
 

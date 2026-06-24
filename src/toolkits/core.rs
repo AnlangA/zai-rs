@@ -283,6 +283,12 @@ impl FunctionTool {
 
 /// Compile JSON schema with caching for better performance
 fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschema::Validator>> {
+    // The serialized form is canonical: serde_json is built without
+    // `preserve_order`, so `Map` is BTreeMap-backed and `to_string()` emits
+    // object keys in sorted order. Two schemas that differ only in key
+    // ordering therefore hash identically and share a cache entry.
+    // (`serde_json::Value` is not `Hash`, so re-serializing to hash is
+    // unavoidable; this only runs at tool-registration time, not per call.)
     let mut hasher = DefaultHasher::new();
     schema.to_string().hash(&mut hasher);
     let hash = hasher.finish();
