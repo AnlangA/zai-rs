@@ -170,10 +170,8 @@ impl ToolCallCache {
         let was_present = self.state.entries.contains_key(&key);
         let entry = CacheEntry::new(result, ttl.unwrap_or(self.default_ttl));
         self.state.entries.insert(key.clone(), entry);
-        if !was_present {
-            if let Ok(mut order) = self.state.insertion_order.lock() {
-                order.push_back(key);
-            }
+        if !was_present && let Ok(mut order) = self.state.insertion_order.lock() {
+            order.push_back(key);
         }
     }
 
