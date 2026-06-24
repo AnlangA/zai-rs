@@ -11,13 +11,13 @@ pub type ToolResult<T> = Result<T, ToolError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorSeverity {
     /// User error, no retry needed.
-    User, // User error, no retry needed
+    User,
     /// Normal error, may retry.
-    Normal, // Normal error, may retry
+    Normal,
     /// Transient error, should retry.
-    Transient, // Transient error, should retry
+    Transient,
     /// Critical error, log and alert.
-    Critical, // Critical error, log and alert
+    Critical,
 }
 
 /// Enhanced error type with better context and error chaining

@@ -81,4 +81,4 @@
 
 ---
 
-**© 2024 ZAI-RS. All rights reserved.**
+**© 2024-2026 ZAI-RS. All rights reserved.**

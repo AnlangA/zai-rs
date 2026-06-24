@@ -275,7 +275,7 @@ pub mod codes {
 }
 
 /// Main error type for the ZAI-RS SDK
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ZaiError {
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
@@ -702,50 +702,6 @@ impl ZaiError {
             Self::Unknown { code, message } => Self::Unknown {
                 code,
                 message: with_context(message),
-            },
-        }
-    }
-}
-
-impl Clone for ZaiError {
-    fn clone(&self) -> Self {
-        match self {
-            ZaiError::HttpError { status, message } => ZaiError::HttpError {
-                status: *status,
-                message: message.clone(),
-            },
-            ZaiError::AuthError { code, message } => ZaiError::AuthError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::AccountError { code, message } => ZaiError::AccountError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::ApiError { code, message } => ZaiError::ApiError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::RateLimitError { code, message } => ZaiError::RateLimitError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::ContentPolicyError { code, message } => ZaiError::ContentPolicyError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::FileError { code, message } => ZaiError::FileError {
-                code: *code,
-                message: message.clone(),
-            },
-            // Arc-wrapped errors can now be cloned properly
-            ZaiError::NetworkError(err) => ZaiError::NetworkError(Arc::clone(err)),
-            ZaiError::JsonError(err) => ZaiError::JsonError(Arc::clone(err)),
-            ZaiError::RealtimeError(kind) => ZaiError::RealtimeError(Arc::clone(kind)),
-            ZaiError::RealtimeAuthError(msg) => ZaiError::RealtimeAuthError(msg.clone()),
-            ZaiError::Unknown { code, message } => ZaiError::Unknown {
-                code: *code,
-                message: message.clone(),
             },
         }
     }
