@@ -38,6 +38,7 @@ use std::{
     time::Duration,
 };
 
+use bytes::Bytes;
 use reqwest::Method;
 use serde::{Deserialize, de::DeserializeOwned};
 use tracing::{trace, warn};
@@ -290,13 +291,18 @@ impl Default for HttpClientConfigBuilder {
 }
 
 /// A global HTTP client registry for connection pooling and configuration
-/// caching.
-static HTTP_CLIENTS: OnceLock<dashmap::DashMap<String, reqwest::Client>> = OnceLock::new();
+/// caching. The cached value is the build *result* so a persistent init
+/// failure is remembered and surfaced rather than re-attempted per request.
+static HTTP_CLIENTS: OnceLock<dashmap::DashMap<String, Arc<Result<reqwest::Client, ZaiError>>>> =
+    OnceLock::new();
 
-/// Get or create an HTTP client with the specified configuration
+/// Get or create an HTTP client with the specified configuration.
 ///
-/// Clients are cached by configuration to allow connection reuse.
-pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
+/// Clients are cached by configuration to allow connection reuse. The build
+/// *result* itself is cached, so a persistent client-init failure (e.g. a TLS
+/// provider initialization error) is surfaced as a [`ZaiError`] instead of
+/// panicking the whole process on the first request.
+pub fn http_client_with_config(config: &HttpClientConfig) -> ZaiResult<reqwest::Client> {
     let config_key = format!(
         "timeout:{:?}|compression:{}",
         config.timeout, config.enable_compression
@@ -304,22 +310,27 @@ pub fn http_client_with_config(config: &HttpClientConfig) -> reqwest::Client {
 
     let clients = HTTP_CLIENTS.get_or_init(dashmap::DashMap::new);
 
-    clients
+    let cached = clients
         .entry(config_key)
-        .or_insert_with(|| {
-            let mut builder = reqwest::Client::builder().timeout(config.timeout);
+        .or_insert_with(|| Arc::new(build_reqwest_client(config)));
 
-            // When compression is enabled (the default), reqwest advertises an
-            // `Accept-Encoding: gzip` header and transparently decompresses
-            // gzip responses. `enable_compression` is now wired through to the
-            // builder instead of being a silent no-op.
-            if config.enable_compression {
-                builder = builder.gzip(true);
-            }
+    match &**cached {
+        Ok(client) => Ok(client.clone()),
+        Err(err) => Err(err.clone()),
+    }
+}
 
-            builder.build().expect("Failed to build reqwest Client")
-        })
-        .clone()
+/// Construct a `reqwest::Client` from an [`HttpClientConfig`].
+///
+/// When compression is enabled (the default), reqwest advertises an
+/// `Accept-Encoding: gzip` header and transparently decompresses gzip
+/// responses; `enable_compression` is wired through to the builder.
+fn build_reqwest_client(config: &HttpClientConfig) -> ZaiResult<reqwest::Client> {
+    let mut builder = reqwest::Client::builder().timeout(config.timeout);
+    if config.enable_compression {
+        builder = builder.gzip(true);
+    }
+    builder.build().map_err(ZaiError::from)
 }
 
 /// Parse a successful HTTP response into a typed value.
@@ -373,15 +384,16 @@ where
 ///
 /// `enable_logging` on [`HttpClientConfig`] is retained for API stability but
 /// no longer adds output — the `trace` line already covers that need.
-#[tracing::instrument(
-    name = "http.request",
-    skip_all,
-    fields(
-        otel.name = "http.send_json",
-        http.method = %method,
-        http.url = tracing::field::Empty,
-    )
-)]
+/// Send a JSON request through the shared transport pipeline.
+///
+/// The body is serialized exactly once; the retry loop then clones cheap
+/// `Bytes`/`Arc<str>` handles per attempt rather than re-serializing or
+/// deep-copying the body string.
+///
+/// Emits a single always-on **`trace`** line carrying the raw sent JSON body
+/// (masked via [`mask_sensitive_info`]), so the wire payload is observable
+/// with `RUST_LOG=trace`. Per the library-silent logging policy, the success
+/// path produces no higher-level output; only retries are surfaced (`warn!`).
 pub async fn send_json_request<T>(
     method: Method,
     url: impl Into<String>,
@@ -392,30 +404,58 @@ pub async fn send_json_request<T>(
 where
     T: serde::Serialize + ?Sized,
 {
-    let body_compact = serde_json::to_string(body).map_err(|e| ZaiError::JsonError(Arc::new(e)))?;
-    let url_value: String = url.into();
+    let serialized = serde_json::to_string(body).map_err(|e| ZaiError::JsonError(Arc::new(e)))?;
+    send_request_bytes(
+        method,
+        url.into(),
+        Arc::from(api_key.as_ref()),
+        Bytes::from(serialized),
+        config,
+    )
+    .await
+}
 
-    tracing::Span::current().record("http.url", url_value.as_str());
+/// Run a pre-serialized JSON body through the retry pipeline.
+///
+/// This is the single retry entry for JSON-with-body requests: the public
+/// [`send_json_request`] and the `HttpClient::post`/`put` defaults both
+/// serialize once and hand the resulting bytes here, so neither
+/// double-serialization nor per-retry body clones occur.
+#[tracing::instrument(
+    name = "http.request",
+    skip_all,
+    fields(
+        otel.name = "http.send_json",
+        http.method = %method,
+        http.url = tracing::field::Empty,
+    )
+)]
+async fn send_request_bytes(
+    method: Method,
+    url: String,
+    api_key: Arc<str>,
+    body: Bytes,
+    config: Arc<HttpClientConfig>,
+) -> ZaiResult<reqwest::Response> {
+    tracing::Span::current().record("http.url", url.as_str());
 
     // Always-on `trace` line for the raw outbound body (masked). This is what
     // `RUST_LOG=trace` surfaces so developers can see exactly what is sent.
+    let body_str = std::str::from_utf8(&body).unwrap_or("");
     trace!(
         method = %method,
-        url = %url_value,
-        bytes = body_compact.len(),
-        request_body = %mask_sensitive_info(&body_compact),
+        url = %url,
+        bytes = body.len(),
+        request_body = %mask_sensitive_info(body_str),
         "Sending HTTP request body"
     );
 
-    let key = api_key.as_ref().to_string();
     send_with_retry_factory(&config, move |client| {
-        let builder = client
-            .request(method.clone(), &url_value)
-            .bearer_auth(&key)
+        Ok(client
+            .request(method.clone(), &url)
+            .bearer_auth(api_key.as_ref())
             .header("Content-Type", "application/json")
-            .body(body_compact.clone());
-
-        Ok(builder)
+            .body(body.clone()))
     })
     .await
 }
@@ -447,9 +487,11 @@ pub async fn send_empty_request(
         request_body = %"",
         "Sending HTTP request (no body)"
     );
-    let key = api_key.as_ref().to_string();
+    let key: Arc<str> = Arc::from(api_key.as_ref());
     send_with_retry_factory(&config, move |client| {
-        Ok(client.request(method.clone(), &url_value).bearer_auth(&key))
+        Ok(client
+            .request(method.clone(), &url_value)
+            .bearer_auth(key.as_ref()))
     })
     .await
 }
@@ -486,12 +528,12 @@ where
         url = %url_value,
         "Sending multipart HTTP request"
     );
-    let key = api_key.as_ref().to_string();
+    let key: Arc<str> = Arc::from(api_key.as_ref());
     send_with_retry_factory(&config, move |client| {
         let form = build_form()?;
         Ok(client
             .request(method.clone(), &url_value)
-            .bearer_auth(&key)
+            .bearer_auth(key.as_ref())
             .multipart(form))
     })
     .await
@@ -534,12 +576,14 @@ pub trait HttpClient {
     fn post(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
         let config = self.http_config().clone();
         let url = self.api_url().as_ref().to_owned();
-        let key = self.api_key().as_ref().to_owned();
-        let body = serde_json::to_value(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
+        let key: Arc<str> = Arc::from(self.api_key().as_ref());
+        // Serialize once (to bytes); `send_request_bytes` reuses the cheap
+        // `Bytes` handle across retries instead of re-serializing per attempt.
+        let body = serde_json::to_vec(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
 
         async move {
             let body = body?;
-            send_json_request(Method::POST, url, key, &body, config).await
+            send_request_bytes(Method::POST, url, key, Bytes::from(body), config).await
         }
     }
 
@@ -550,7 +594,7 @@ pub trait HttpClient {
     fn get(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
         let config = self.http_config().clone();
         let url = self.api_url().as_ref().to_owned();
-        let key = self.api_key().as_ref().to_owned();
+        let key: Arc<str> = Arc::from(self.api_key().as_ref());
 
         async move { send_empty_request(Method::GET, url, key, config).await }
     }
@@ -559,12 +603,12 @@ pub trait HttpClient {
     fn put(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
         let config = self.http_config().clone();
         let url = self.api_url().as_ref().to_owned();
-        let key = self.api_key().as_ref().to_owned();
-        let body = serde_json::to_value(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
+        let key: Arc<str> = Arc::from(self.api_key().as_ref());
+        let body = serde_json::to_vec(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
 
         async move {
             let body = body?;
-            send_json_request(Method::PUT, url, key, &body, config).await
+            send_request_bytes(Method::PUT, url, key, Bytes::from(body), config).await
         }
     }
 
@@ -572,7 +616,7 @@ pub trait HttpClient {
     fn delete(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
         let config = self.http_config().clone();
         let url = self.api_url().as_ref().to_owned();
-        let key = self.api_key().as_ref().to_owned();
+        let key: Arc<str> = Arc::from(self.api_key().as_ref());
 
         async move { send_empty_request(Method::DELETE, url, key, config).await }
     }
@@ -591,7 +635,7 @@ where
     F: FnMut(reqwest::Client) -> ZaiResult<reqwest::RequestBuilder>,
 {
     let mut last_error: Option<ZaiError> = None;
-    let client = http_client_with_config(config);
+    let client = http_client_with_config(config)?;
 
     for attempt in 0..=config.max_retries {
         tracing::Span::current().record("attempt", attempt);
@@ -680,21 +724,11 @@ fn calculate_retry_delay(attempt: u32, strategy: &RetryDelay) -> Duration {
 }
 
 /// Determines if an error should trigger a retry.
+///
+/// Thin wrapper over [`ZaiError::is_retryable`] that also enforces the
+/// attempt-count budget.
 fn should_retry(error: &ZaiError, attempt: u32, max_retries: u32) -> bool {
-    if attempt >= max_retries {
-        return false;
-    }
-
-    match error {
-        // Retry on server errors (5xx) and HTTP-level rate limiting.
-        ZaiError::HttpError { status, .. } => *status == 429 || (500..600).contains(status),
-        // Retry on transient rate limit / quota errors.
-        ZaiError::RateLimitError { .. } => true,
-        // Retry on network errors
-        ZaiError::NetworkError(_) => true,
-        // Don't retry on client errors (4xx), auth errors, account errors, etc.
-        _ => false,
-    }
+    attempt < max_retries && error.is_retryable()
 }
 
 /// Adds jitter to delay to avoid thundering herd.
@@ -974,8 +1008,8 @@ mod tests {
         // The cached-client key encodes the compression flag, so the two
         // configs resolve to distinct pooled clients (otherwise toggling
         // compression would be a silent no-op due to caching).
-        let client_on = http_client_with_config(&on);
-        let client_off = http_client_with_config(&off);
+        let client_on = http_client_with_config(&on).expect("client build with compression");
+        let client_off = http_client_with_config(&off).expect("client build without compression");
         // reqwest::Client is neither Eq nor introspectable, but the registry
         // guarantees a distinct Client per distinct key — exercise the path.
         let _ = (client_on, client_off);

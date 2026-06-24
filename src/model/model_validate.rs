@@ -90,12 +90,19 @@ use validator::ValidationError;
 /// let invalid_schema = r#"{"type": "invalid_type"}"#;
 /// assert!(validate_json_schema(invalid_schema).is_err());
 /// ```
+#[cfg(feature = "tool-validation")]
 pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
     let schema_json: serde_json::Value =
         serde_json::from_str(parameters).map_err(|_| ValidationError::new("invalid_json"))?;
     if jsonschema::validator_for(&schema_json).is_err() {
         return Err(ValidationError::new("invalid_json_schema"));
     }
+    Ok(())
+}
+
+/// No-op when `tool-validation` is disabled (the `jsonschema` crate is absent).
+#[cfg(not(feature = "tool-validation"))]
+pub fn validate_json_schema(_parameters: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
@@ -136,6 +143,7 @@ pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
 /// let invalid_schema = json!({"type": "invalid_type"});
 /// assert!(validate_json_schema_value(&invalid_schema).is_err());
 /// ```
+#[cfg(feature = "tool-validation")]
 pub fn validate_json_schema_value(parameters: &serde_json::Value) -> Result<(), ValidationError> {
     if jsonschema::validator_for(parameters).is_err() {
         return Err(ValidationError::new("invalid_json_schema"));
@@ -143,7 +151,13 @@ pub fn validate_json_schema_value(parameters: &serde_json::Value) -> Result<(), 
     Ok(())
 }
 
-#[cfg(test)]
+/// No-op when `tool-validation` is disabled (the `jsonschema` crate is absent).
+#[cfg(not(feature = "tool-validation"))]
+pub fn validate_json_schema_value(_parameters: &serde_json::Value) -> Result<(), ValidationError> {
+    Ok(())
+}
+
+#[cfg(all(test, feature = "tool-validation"))]
 mod tests {
     use super::*;
 

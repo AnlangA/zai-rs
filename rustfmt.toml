@@ -1,63 +1,43 @@
 # Rustfmt configuration for zai-rs
+#
+# Only stable options are used here so that `cargo fmt` on the stable
+# toolchain (what CI runs) actually enforces every rule below. Earlier the
+# config relied on nightly-only options (imports_granularity, group_imports,
+# wrap_comments, normalize_comments, format_code_in_doc_comments,
+# normalize_doc_attributes, control_brace_style, trailing_comma,
+# struct_lit_single_line, struct_variant_width, match_arm_blocks,
+# blank_lines_*, spaces_around_ranges) that stable rustfmt silently ignores,
+# which made the CI formatting check a near no-op. (`force_explicit_abi` was
+# also dropped — it is not a recognized rustfmt config key.)
 
-# Edition
 edition = "2024"
 
-# Maximum line width
+# Maximum line width.
 max_width = 100
 
-# Hard tabs or spaces
+# Indentation: spaces, 4 wide.
 hard_tabs = false
 tab_spaces = 4
 
-# Newline style
+# Unix line endings.
 newline_style = "Unix"
 
-# Use field init shorthand if possible
+# Shorthand: `Foo { x }` instead of `Foo { x: x }`.
 use_field_init_shorthand = true
 
-# Use try shorthand
+# `?` shorthand instead of `try!(…)`.
 use_try_shorthand = true
 
-# Force explicit types for public items
-force_explicit_abi = true
-
-# Format comments
-format_code_in_doc_comments = true
-normalize_comments = true
-normalize_doc_attributes = true
-wrap_comments = true
-
-# Imports
-imports_granularity = "Crate"
-group_imports = "StdExternalCrate"
-reorder_imports = true
-
-# Structs
-struct_lit_single_line = true
-struct_variant_width = 35
-
-# Match
-match_arm_blocks = true
-match_block_trailing_comma = true
-
-# Control flow
-control_brace_style = "AlwaysSameLine"
-
-# Blank lines
-blank_lines_upper_bound = 1
-blank_lines_lower_bound = 0
-
-# Spaces
-spaces_around_ranges = false
-
-# Chains
-# chains_overflow_last is not available in current rustfmt version
-
-# Trailing comma
-trailing_comma = "Vertical"
-
-# Misc
+# Canonical derive ordering and import/module reordering.
 merge_derives = true
+reorder_imports = true
+reorder_modules = true
+
+# Drop redundant nested parens: `(x)` -> `x`.
 remove_nested_parens = true
+
+# Width heuristics drive where rustfmt breaks collections/calls.
 use_small_heuristics = "Default"
+
+# Trailing comma inside `match` arms.
+match_block_trailing_comma = true

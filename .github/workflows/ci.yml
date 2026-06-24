@@ -60,29 +60,37 @@ jobs:
       - name: cargo test (lib + integration)
         run: cargo test --all-features --tests
 
+      # Compile-check every example with all features. Examples are not built by
+      # `cargo test`, so without this step they can silently rot. They only
+      # compile here — running them needs a live ZHIPU_API_KEY.
+      - name: cargo build --examples (all features)
+        run: cargo build --examples --all-features
+
       - name: cargo doc (no-deps, treats doc warnings as errors)
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --all-features --no-deps
 
   msrv:
-    name: MSRV (edition 2024 → 1.85)
+    name: MSRV (edition 2024 → 1.88)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.85
+      - name: Install Rust 1.88
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: "1.85"
+          toolchain: "1.88"
           override: true
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Verify build on MSRV
-        run: cargo check --all-features --lib
+        # `--all-targets` (not just `--lib`) so example/test MSRV regressions are
+        # caught too, not just the library.
+        run: cargo check --all-features --all-targets
 
   security:
     name: Security Audit
@@ -101,3 +109,24 @@ jobs:
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-dry-run:
+    name: Publish dry-run (packaging sanity)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Packages the crate and runs a verification build with all features,
+      # catching metadata/exclude mistakes before a real `cargo publish`.
+      - name: cargo publish --dry-run
+        run: cargo publish --dry-run --all-features

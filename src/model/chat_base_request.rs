@@ -211,7 +211,7 @@ where
         self.max_tokens = Some(max_tokens);
         self
     }
-    /// Deprecated: use `add_tools` (single) or `extend_tools` (Vec) on
+    /// Deprecated: use `add_tool` (single) or `extend_tools` (Vec) on
     /// ChatBody, or prefer ChatCompletion::add_tool / add_tools at the
     /// client layer.
     #[deprecated(note = "with_tools is deprecated; use add_tool/add_tools instead")]
@@ -220,8 +220,8 @@ where
         self
     }
     /// Add a single tool to the request.
-    pub fn add_tools(mut self, tools: Tools) -> Self {
-        self.tools.get_or_insert(Vec::new()).push(tools);
+    pub fn add_tool(mut self, tool: Tools) -> Self {
+        self.tools.get_or_insert(Vec::new()).push(tool);
         self
     }
     /// Add multiple tools to the request at once.
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_tools_accumulates() {
+    fn test_add_tool_accumulates() {
         let body: ChatBody<GLM4_6, TextMessage> =
             ChatBody::new(GLM4_6 {}, TextMessage::user("test"));
         let tool = crate::model::tools::Function::new(
@@ -375,7 +375,7 @@ mod tests {
             "A test function",
             serde_json::json!({"type": "object"}),
         );
-        let body = body.add_tools(crate::model::tools::Tools::Function { function: tool });
+        let body = body.add_tool(crate::model::tools::Tools::Function { function: tool });
         assert!(body.tools.is_some());
         assert_eq!(body.tools.unwrap().len(), 1);
     }

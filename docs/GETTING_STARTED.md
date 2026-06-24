@@ -4,7 +4,7 @@
 
 ## 前置要求
 
-- Rust 1.85+（edition 2024）
+- Rust 1.88+（edition 2024）
 - 智谱AI API Key（从 [智谱AI开放平台](https://open.bigmodel.cn/) 获取）
 
 ## 安装

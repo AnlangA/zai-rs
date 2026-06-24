@@ -5,7 +5,7 @@
 ## 快速开始
 
 1. 准备环境
-   - Rust 1.85+（edition 2024）
+   - Rust 1.88+（edition 2024）
    - 设置环境变量：`ZHIPU_API_KEY="<your_api_key>"`
 2. 构建
    - `cargo build`

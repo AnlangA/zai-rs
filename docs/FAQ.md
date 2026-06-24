@@ -9,7 +9,7 @@ A: 请访问 [智谱 AI 开放平台](https://open.bigmodel.cn/) 注册账号并
 A: zai-rs SDK 本身是开源免费的，但使用智谱 AI API 会产生费用。请查看智谱 AI 的定价页面了解详细信息。
 
 ### Q: 最低支持的 Rust 版本是什么？
-A: zai-rs 使用 Rust Edition 2024，最低支持 Rust 1.85+。建议使用最新的稳定版 Rust，运行 `rustup update` 更新您的 Rust 工具链。
+A: zai-rs 使用 Rust Edition 2024，最低支持 Rust 1.88+。建议使用最新的稳定版 Rust，运行 `rustup update` 更新您的 Rust 工具链。
 
 ### Q: 如何报告 bug 或请求新功能？
 A: 请在 [GitHub Issues](https://github.com/AnlangA/zai-rs/issues) 提交 Issue。报告 bug 时请提供重现步骤、错误信息和环境信息。

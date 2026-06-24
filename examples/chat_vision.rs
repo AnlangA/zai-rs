@@ -12,8 +12,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let text_content = VisionRichContent::text("这个视频描述了什么?，用中文回复我");
     let vision_message = VisionMessage::new_user()
-        .add_user(video_content)
-        .add_user(text_content);
+        .add_content(video_content)
+        .add_content(text_content);
     let client = ChatCompletion::new(model, vision_message, key);
 
     let body: ChatCompletionResponse = client.send().await?;

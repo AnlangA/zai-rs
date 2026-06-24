@@ -137,6 +137,12 @@
 //! - **Consistent API style** — all API clients follow a uniform builder
 //!   pattern and implement the `HttpClient` trait
 
+// On docs.rs (which builds with `--cfg docsrs`, see `[package.metadata.docs.rs]`
+// in Cargo.toml), enable the nightly `doc_cfg` feature so feature-gated items
+// are badged in the rendered documentation. The `cfg_attr` is inert on stable
+// local builds, where `docsrs` is never set.
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 pub mod agent;
 pub mod batches;
 pub mod client;
@@ -145,6 +151,9 @@ pub mod file;
 pub mod knowledge;
 
 pub mod model;
+/// WebSocket realtime (GLM-Realtime) client — audio/video over a WebSocket.
+/// Gated behind the `realtime` Cargo feature (off by default).
+#[cfg(feature = "realtime")]
 pub mod realtime;
 pub mod tool;
 pub mod toolkits;

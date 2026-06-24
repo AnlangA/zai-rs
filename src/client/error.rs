@@ -275,7 +275,8 @@ pub mod codes {
 }
 
 /// Main error type for the ZAI-RS SDK
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
+#[non_exhaustive]
 pub enum ZaiError {
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
@@ -372,16 +373,52 @@ pub enum ZaiError {
     },
 }
 
+/// Coarse classification of a [`ZaiError`] for retry/recovery decisions.
+///
+/// The single source of truth consulted by [`ZaiError::category`]; the
+/// [`is_client_error`](ZaiError::is_client_error) /
+/// [`is_server_error`](ZaiError::is_server_error) predicates derive from it so
+/// they can never drift apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorCategory {
+    /// Caller-side (4xx): bad request, bad params, business-rule violation.
+    Client,
+    /// Server-side (5xx): transient backend failure.
+    Server,
+    /// Rate limiting / quota (HTTP 429, business `1302`–`1313`).
+    RateLimit,
+    /// Network / transport failure (connection, timeout, WebSocket).
+    Network,
+    /// Authentication / authorization — re-auth, do not retry.
+    Auth,
+    /// (De)serialization of a payload — programmer error.
+    Serialization,
+    /// Anything not covered above.
+    Other,
+}
+
+/// Map a raw HTTP/business status code to an [`ErrorCategory`].
+fn classify_status(status: u16) -> ErrorCategory {
+    match status {
+        429 => ErrorCategory::RateLimit,
+        s if (400..500).contains(&s) => ErrorCategory::Client,
+        s if (500..600).contains(&s) => ErrorCategory::Server,
+        _ => ErrorCategory::Other,
+    }
+}
+
 /// Concrete error categories for the realtime (WebSocket) transport.
 ///
 /// Kept separate from [`ZaiError`] so callers can introspect the failure mode
 /// without matching on the full enum, and so the realtime module can construct
 /// rich errors without touching HTTP-specific machinery.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RealtimeErrorKind {
     /// Low-level WebSocket error (connect/handshake/read/write). The original
     /// `tungstenite` error is kept as the `#[source]` so the full chain
-    /// survives propagation.
+    /// survives propagation. Only available with the `realtime` feature.
+    #[cfg(feature = "realtime")]
     #[error("websocket: {source}")]
     WebSocket {
         /// The underlying tungstenite error.
@@ -520,34 +557,76 @@ impl ZaiError {
         matches!(self, ZaiError::AuthError { .. })
     }
 
-    /// Check if the error is a client error (4xx)
-    pub fn is_client_error(&self) -> bool {
+    /// Classify this error into a single canonical [`ErrorCategory`].
+    ///
+    /// This is the one place the SDK decides whether an error is client-side,
+    /// server-side, a rate limit, a network blip, etc. The convenience
+    /// predicates ([`is_client_error`](Self::is_client_error),
+    /// [`is_server_error`](Self::is_server_error)) derive from it, so they can
+    /// never disagree.
+    pub fn category(&self) -> ErrorCategory {
         match self {
-            ZaiError::HttpError { status, .. } => *status >= 400 && *status < 500,
-            ZaiError::AuthError { .. }
-            | ZaiError::AccountError { .. }
+            ZaiError::RateLimitError { .. } => ErrorCategory::RateLimit,
+            ZaiError::NetworkError(_) => ErrorCategory::Network,
+            ZaiError::AuthError { .. } | ZaiError::RealtimeAuthError(_) => ErrorCategory::Auth,
+            ZaiError::AccountError { .. }
             | ZaiError::ApiError { .. }
-            | ZaiError::RateLimitError { .. }
             | ZaiError::ContentPolicyError { .. }
-            | ZaiError::FileError { .. }
-            | ZaiError::RealtimeAuthError(_) => true,
+            | ZaiError::FileError { .. } => ErrorCategory::Client,
+            ZaiError::JsonError(_) => ErrorCategory::Serialization,
             ZaiError::RealtimeError(kind) => match kind.as_ref() {
                 // Protocol/serialize/server-event failures are client-caused;
-                // transport/closure are not necessarily so.
+                // transport failures are network-level; closure is neither.
                 RealtimeErrorKind::Protocol(_)
                 | RealtimeErrorKind::Serialize { .. }
-                | RealtimeErrorKind::ServerEvent { .. } => true,
-                RealtimeErrorKind::WebSocket { .. } | RealtimeErrorKind::Closed => false,
+                | RealtimeErrorKind::ServerEvent { .. } => ErrorCategory::Client,
+                #[cfg(feature = "realtime")]
+                RealtimeErrorKind::WebSocket { .. } => ErrorCategory::Network,
+                RealtimeErrorKind::Closed => ErrorCategory::Other,
             },
-            _ => false,
+            ZaiError::HttpError { status, .. } => classify_status(*status),
+            // `Unknown` mirrors an unmapped HTTP/business code: 5xx is a server
+            // error, everything else is uncategorized. It is intentionally *not*
+            // classified as client-side or rate-limited even at 4xx/429, matching
+            // the legacy predicate behavior (and it is not retried — its
+            // transience is uncertain).
+            ZaiError::Unknown { code, .. } => {
+                if (500..600).contains(code) {
+                    ErrorCategory::Server
+                } else {
+                    ErrorCategory::Other
+                }
+            },
         }
     }
 
-    /// Check if the error is a server error (5xx)
+    /// Check if the error is a client error (4xx), including auth and rate
+    /// limiting (which arrive as 4xx responses).
+    pub fn is_client_error(&self) -> bool {
+        matches!(
+            self.category(),
+            ErrorCategory::Client | ErrorCategory::Auth | ErrorCategory::RateLimit
+        )
+    }
+
+    /// Check if the error is a server error (5xx).
     pub fn is_server_error(&self) -> bool {
+        matches!(self.category(), ErrorCategory::Server)
+    }
+
+    /// Whether retrying the request that produced this error could succeed.
+    ///
+    /// The HTTP send-path retry policy in one place (consumed by the retry
+    /// loop): rate-limit, network, and server (5xx) failures are retryable;
+    /// client 4xx, auth, and serialization errors are not. This is deliberately
+    /// narrower than [`category`](Self::category) — an unmapped 5xx
+    /// ([`Unknown`](ZaiError::Unknown)) is reported as a server error but not
+    /// retried. Callers still need an attempt-count guard.
+    pub fn is_retryable(&self) -> bool {
         match self {
-            ZaiError::HttpError { status, .. } => *status >= 500,
-            ZaiError::Unknown { code, .. } => *code >= 500,
+            ZaiError::HttpError { status, .. } => *status == 429 || (500..600).contains(status),
+            ZaiError::RateLimitError { .. } => true,
+            ZaiError::NetworkError(_) => true,
             _ => false,
         }
     }
@@ -707,50 +786,6 @@ impl ZaiError {
     }
 }
 
-impl Clone for ZaiError {
-    fn clone(&self) -> Self {
-        match self {
-            ZaiError::HttpError { status, message } => ZaiError::HttpError {
-                status: *status,
-                message: message.clone(),
-            },
-            ZaiError::AuthError { code, message } => ZaiError::AuthError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::AccountError { code, message } => ZaiError::AccountError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::ApiError { code, message } => ZaiError::ApiError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::RateLimitError { code, message } => ZaiError::RateLimitError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::ContentPolicyError { code, message } => ZaiError::ContentPolicyError {
-                code: *code,
-                message: message.clone(),
-            },
-            ZaiError::FileError { code, message } => ZaiError::FileError {
-                code: *code,
-                message: message.clone(),
-            },
-            // Arc-wrapped errors can now be cloned properly
-            ZaiError::NetworkError(err) => ZaiError::NetworkError(Arc::clone(err)),
-            ZaiError::JsonError(err) => ZaiError::JsonError(Arc::clone(err)),
-            ZaiError::RealtimeError(kind) => ZaiError::RealtimeError(Arc::clone(kind)),
-            ZaiError::RealtimeAuthError(msg) => ZaiError::RealtimeAuthError(msg.clone()),
-            ZaiError::Unknown { code, message } => ZaiError::Unknown {
-                code: *code,
-                message: message.clone(),
-            },
-        }
-    }
-}
-
 /// Type alias for Result with ZaiError
 pub type ZaiResult<T> = Result<T, ZaiError>;
 
@@ -822,7 +857,9 @@ impl From<RealtimeErrorKind> for ZaiError {
 
 /// Convert from a low-level WebSocket (`tungstenite`) error into a
 /// [`ZaiError`]. The original error is preserved as the `#[source]` of
-/// [`RealtimeErrorKind::WebSocket`].
+/// [`RealtimeErrorKind::WebSocket`]. Only available with the `realtime`
+/// feature.
+#[cfg(feature = "realtime")]
 impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
     fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
         ZaiError::RealtimeError(Arc::new(RealtimeErrorKind::WebSocket { source: err }))
@@ -1264,5 +1301,69 @@ mod tests {
         assert!(contains_sensitive_info("token: xyz123"));
         assert!(!contains_sensitive_info("token"));
         assert!(!contains_sensitive_info("tokenize this"));
+    }
+
+    #[test]
+    fn test_error_category_classification() {
+        // Single source of truth: `category()` drives is_client_error /
+        // is_server_error / is_retryable. Spot-check the classification table.
+
+        // Rate-limit business error: client-side AND retryable.
+        let rl = ZaiError::RateLimitError {
+            code: 1302,
+            message: "slow down".into(),
+        };
+        assert_eq!(rl.category(), ErrorCategory::RateLimit);
+        assert!(rl.is_retryable());
+        assert!(rl.is_client_error());
+        assert!(!rl.is_server_error());
+
+        // HTTP 429 -> rate limit, retryable, client-side.
+        let h429 = ZaiError::HttpError {
+            status: 429,
+            message: "too many".into(),
+        };
+        assert_eq!(h429.category(), ErrorCategory::RateLimit);
+        assert!(h429.is_retryable());
+        assert!(h429.is_client_error());
+
+        // HTTP 500 -> server, retryable, not client.
+        let h500 = ZaiError::HttpError {
+            status: 500,
+            message: "boom".into(),
+        };
+        assert_eq!(h500.category(), ErrorCategory::Server);
+        assert!(h500.is_retryable());
+        assert!(h500.is_server_error());
+        assert!(!h500.is_client_error());
+
+        // HTTP 400 -> client, NOT retryable.
+        let h400 = ZaiError::HttpError {
+            status: 400,
+            message: "bad".into(),
+        };
+        assert_eq!(h400.category(), ErrorCategory::Client);
+        assert!(!h400.is_retryable());
+        assert!(h400.is_client_error());
+
+        // Auth -> client-side, not retryable.
+        let auth = ZaiError::AuthError {
+            code: 1001,
+            message: "bad key".into(),
+        };
+        assert_eq!(auth.category(), ErrorCategory::Auth);
+        assert!(!auth.is_retryable());
+        assert!(auth.is_client_error());
+
+        // Unknown 5xx is reported as a server error but, by design, is NOT
+        // retried (its transience is uncertain) — this is the one intentional
+        // divergence between `is_server_error` and `is_retryable`.
+        let unk = ZaiError::Unknown {
+            code: 503,
+            message: "?".into(),
+        };
+        assert_eq!(unk.category(), ErrorCategory::Server);
+        assert!(unk.is_server_error());
+        assert!(!unk.is_retryable());
     }
 }

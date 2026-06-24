@@ -1,6 +1,10 @@
 //! Tool call result cache with intelligent invalidation
 
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime},
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -66,20 +70,38 @@ impl CacheEntry {
 /// Intelligent tool call result cache
 ///
 /// Concurrent (`DashMap`-backed) cache of tool-call results with per-entry TTL,
-/// LRU eviction at capacity, and hit/miss statistics.
+/// O(1) FIFO eviction at capacity, and hit/miss statistics. Cloning is cheap
+/// (an `Arc` bump) — all clones share the same cached entries, so a
+/// [`ToolExecutor`](crate::toolkits::executor::ToolExecutor) cloned per tool
+/// call does not deep-copy the cache.
 #[derive(Clone)]
 pub struct ToolCallCache {
-    entries: dashmap::DashMap<CacheKey, CacheEntry>,
+    /// Shared mutable cache contents (entries + eviction ordering).
+    state: Arc<CacheState>,
     default_ttl: Duration,
     max_size: usize,
     enable_cache: bool,
+}
+
+/// The shared, concurrent interior of [`ToolCallCache`].
+struct CacheState {
+    entries: dashmap::DashMap<CacheKey, CacheEntry>,
+    /// Insertion-order queue driving O(1) FIFO eviction (see
+    /// [`ToolCallCache::evict_oldest`]). Mirrors the prior timestamp-based
+    /// eviction, which was insertion-ordered since `get` does not refresh the
+    /// timestamp. Stale keys (removed via expiry/invalidate before eviction)
+    /// are skipped lazily.
+    insertion_order: Mutex<VecDeque<CacheKey>>,
 }
 
 impl ToolCallCache {
     /// Create a new cache (default TTL 300s, max 1000 entries, enabled).
     pub fn new() -> Self {
         Self {
-            entries: dashmap::DashMap::new(),
+            state: Arc::new(CacheState {
+                entries: dashmap::DashMap::new(),
+                insertion_order: Mutex::new(VecDeque::new()),
+            }),
             default_ttl: Duration::from_secs(300),
             max_size: 1000,
             enable_cache: true,
@@ -115,7 +137,7 @@ impl ToolCallCache {
         // If the entry exists and is expired, atomically remove it and return None.
         // If not expired, we need to get it again for hit counting.
         // This avoids TOCTOU issues between check and remove.
-        let expired = self.entries.remove_if(key, |_k, v| v.is_expired());
+        let expired = self.state.entries.remove_if(key, |_k, v| v.is_expired());
 
         if expired.is_some() {
             // Entry was expired and removed atomically
@@ -123,23 +145,34 @@ impl ToolCallCache {
         }
 
         // Entry was not expired (or didn't exist) - get it for hit counting
-        let mut entry = self.entries.get_mut(key)?;
+        let mut entry = self.state.entries.get_mut(key)?;
         entry.hit();
         Some(entry.result.clone())
     }
 
-    /// Insert a result, evicting LRU entries at capacity. No-op if disabled.
+    /// Insert a result, evicting the oldest entries at capacity. No-op if
+    /// disabled.
     pub fn insert(&self, key: CacheKey, result: Value, ttl: Option<Duration>) {
         if !self.enable_cache {
             return;
         }
 
-        if self.entries.len() >= self.max_size {
-            self.evict_lru();
+        if self.state.entries.len() >= self.max_size {
+            self.evict_oldest();
         }
 
+        // Track insertion order only for genuinely new keys so the eviction
+        // queue never carries duplicates. `contains_key` releases its read lock
+        // before the write lock is taken below, and the queue mutex is taken
+        // only after the entry write lock is released — so there is no
+        // lock-ordering cycle with `evict_oldest` (which holds the queue mutex
+        // then takes entry locks).
+        let was_present = self.state.entries.contains_key(&key);
         let entry = CacheEntry::new(result, ttl.unwrap_or(self.default_ttl));
-        self.entries.insert(key, entry);
+        self.state.entries.insert(key.clone(), entry);
+        if !was_present && let Ok(mut order) = self.state.insertion_order.lock() {
+            order.push_back(key);
+        }
     }
 
     /// Convenience: build a [`CacheKey`] from name+arguments and insert.
@@ -150,12 +183,17 @@ impl ToolCallCache {
 
     /// Remove all cached entries.
     pub fn clear(&self) {
-        self.entries.clear();
+        self.state.entries.clear();
+        if let Ok(mut order) = self.state.insertion_order.lock() {
+            order.clear();
+        }
     }
 
     /// Invalidate every entry for the given tool.
     pub fn invalidate_tool(&self, tool_name: &str) {
-        self.entries.retain(|key, _| key.tool_name != tool_name);
+        self.state
+            .entries
+            .retain(|key, _| key.tool_name != tool_name);
     }
 
     /// Compute aggregate cache statistics (entry count, hits, expiry, hit
@@ -164,37 +202,45 @@ impl ToolCallCache {
         let mut total_hits = 0u64;
         let mut expired_count = 0u64;
 
-        for entry in self.entries.iter() {
+        for entry in self.state.entries.iter() {
             total_hits += entry.hit_count;
             if entry.is_expired() {
                 expired_count += 1;
             }
         }
 
+        let total_entries = self.state.entries.len();
         CacheStats {
-            total_entries: self.entries.len(),
+            total_entries,
             total_hits,
             expired_count,
-            hit_rate: if self.entries.is_empty() {
+            hit_rate: if total_entries == 0 {
                 0.0
             } else {
-                total_hits as f64 / self.entries.len() as f64
+                total_hits as f64 / total_entries as f64
             },
         }
     }
 
-    fn evict_lru(&self) {
-        let mut entries: Vec<_> = self
-            .entries
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.value().timestamp))
-            .collect();
-
-        entries.sort_by_key(|a| a.1);
-
-        let remove_count = (self.max_size / 10).max(1);
-        for (key, _) in entries.into_iter().take(remove_count) {
-            self.entries.remove(&key);
+    /// Evict the oldest ~10% of entries in O(1) amortized time.
+    ///
+    /// Pops from the front of the insertion-order queue (oldest first) and
+    /// removes the corresponding entries. Keys already removed (expired during
+    /// a `get`, or invalidated) are skipped without counting toward the
+    /// eviction budget, so the queue self-cleans.
+    fn evict_oldest(&self) {
+        let mut budget = (self.max_size / 10).max(1);
+        let mut order = match self.state.insertion_order.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        while budget > 0 {
+            let Some(key) = order.pop_front() else { break };
+            // Only consume budget for entries still present — stale queue
+            // entries (removed via expiry/invalidate) drop silently.
+            if self.state.entries.remove(&key).is_some() {
+                budget -= 1;
+            }
         }
     }
 }
@@ -438,5 +484,74 @@ mod tests {
         // The new entry should be present
         let key = CacheKey::new("tool_new".to_string(), serde_json::json!({"input": "new"}));
         assert!(cache.get(&key).is_some());
+    }
+
+    #[test]
+    fn test_cache_clone_shares_state() {
+        // Cloning a cache is a cheap `Arc` bump and shares the entries, so a
+        // write through one handle is visible through the other (a
+        // `ToolExecutor` cloned per tool call does not deep-copy the cache).
+        let cache = ToolCallCache::new();
+        let other = cache.clone();
+
+        let args = serde_json::json!({"input": "shared"});
+        cache.insert_with_key(
+            "tool".to_string(),
+            args.clone(),
+            serde_json::json!({"v": 1}),
+        );
+
+        let key = CacheKey::new("tool".to_string(), args);
+        assert!(cache.get(&key).is_some());
+        // Visible through the clone.
+        assert!(other.get(&key).is_some());
+    }
+
+    #[test]
+    fn test_cache_evicts_in_fifo_order() {
+        // O(1) FIFO eviction: with max_size 3, inserting a 4th entry evicts
+        // the oldest (t0), leaving t1/t2/t3.
+        let cache = ToolCallCache::new().with_max_size(3);
+        for i in 0..3 {
+            cache.insert_with_key(
+                format!("t{i}"),
+                serde_json::json!({"i": i}),
+                serde_json::json!({}),
+            );
+        }
+        assert_eq!(cache.stats().total_entries, 3);
+
+        cache.insert_with_key(
+            "t3".to_string(),
+            serde_json::json!({"i": 3}),
+            serde_json::json!({}),
+        );
+
+        assert!(
+            cache
+                .get(&CacheKey::new(
+                    "t0".to_string(),
+                    serde_json::json!({"i": 0})
+                ))
+                .is_none(),
+            "oldest entry (t0) should have been evicted"
+        );
+        assert!(
+            cache
+                .get(&CacheKey::new(
+                    "t1".to_string(),
+                    serde_json::json!({"i": 1})
+                ))
+                .is_some()
+        );
+        assert!(
+            cache
+                .get(&CacheKey::new(
+                    "t3".to_string(),
+                    serde_json::json!({"i": 3})
+                ))
+                .is_some()
+        );
+        assert!(cache.stats().total_entries <= 3);
     }
 }

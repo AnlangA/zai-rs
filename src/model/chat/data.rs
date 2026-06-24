@@ -159,7 +159,7 @@ where
     }
     /// Add a single tool to the request.
     pub fn add_tool(mut self, tool: Tools) -> Self {
-        self.body = self.body.add_tools(tool);
+        self.body = self.body.add_tool(tool);
         self
     }
     /// Add multiple tools to the request at once.

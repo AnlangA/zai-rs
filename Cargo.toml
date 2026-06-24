@@ -1,8 +1,8 @@
 [package]
 name = "zai-rs"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["anlang <2682525840@qq.com>"]
 description = "一个 Rust SDK, 用于调用 智谱AI API"
 documentation = "https://docs.rs/zai-rs"
@@ -13,228 +13,34 @@ readme = "README.md"
 keywords = ["zhipu", "glm", "ai", "llm", "bigmodel"]
 categories = ["api-bindings", "asynchronous"]
 
-# Keep published artifacts lean: exclude example build dirs and local caches
-# so they never enter a crates.io tarball.
+# Keep published artifacts lean: exclude example build dirs, the local example
+# media/fixtures (`data/`), and caches so they never enter a crates.io tarball.
 exclude = [
-    "examples/web_chat/target",
+    "/target",
+    "/data",
+    "examples/*/target",
+    "examples/*/*/target",
     ".github",
     ".zcode",
     ".claude",
     "/out",
 ]
 
+[package.metadata.docs.rs]
+# Build the docs with every feature so the `realtime`, `tool-validation`, and
+# `rmcp-kits` surfaces render on docs.rs (without this, docs.rs documents only
+# the default feature set).
+all-features = true
+# Pairs with `#![cfg_attr(docsrs, feature(doc_cfg))]` in src/lib.rs so
+# feature-gated items are badged in the rendered documentation.
+rustdoc-args = ["--cfg", "docsrs"]
 
-[[example]]
-name = "function_call"
-path = "examples/function_call.rs"
-
-[[example]]
-name = "chat_text"
-path = "examples/chat_text.rs"
-
-[[example]]
-name = "chat_vision"
-path = "examples/chat_vision.rs"
-
-[[example]]
-name = "chat_voice"
-path = "examples/chat_voice.rs"
-
-[[example]]
-name = "chat_loop"
-path = "examples/chat_loop.rs"
-
-[[example]]
-name = "chat_stream"
-path = "examples/chat_stream.rs"
-
-[[example]]
-name = "async_chat_text"
-path = "examples/async_chat_text.rs"
-
-[[example]]
-name = "function_call_with_toolkits"
-path = "examples/function_call_with_toolkits.rs"
-
-[[example]]
-name = "tool_stream_min"
-path = "examples/tool_stream_min.rs"
-
-[[example]]
-name = "gen_video"
-path = "examples/gen_video.rs"
-
-[[example]]
-name = "gen_image"
-path = "examples/gen_image.rs"
-
-[[example]]
-name = "text_to_audio"
-path = "examples/text_to_audio.rs"
-
-[[example]]
-name = "voice_clone"
-path = "examples/voice_clone.rs"
-
-[[example]]
-name = "voice_list"
-path = "examples/voice_list.rs"
-
-[[example]]
-name = "voice_delete"
-path = "examples/voice_delete.rs"
-
-[[example]]
-name = "files_list"
-path = "examples/files_list.rs"
-
-[[example]]
-name = "files_upload"
-path = "examples/files_upload.rs"
-
-[[example]]
-name = "files_delete"
-path = "examples/files_delete.rs"
-
-[[example]]
-name = "files_content"
-path = "examples/files_content.rs"
-
-
-[[example]]
-name = "web_search"
-path = "examples/web_search.rs"
-
-[[example]]
-name = "audio_to_text"
-path = "examples/audio_to_text.rs"
-
-[[example]]
-name = "ocr"
-path = "examples/ocr.rs"
-
-[[example]]
-name = "embedding"
-path = "examples/embedding.rs"
-
-[[example]]
-name = "rerank"
-path = "examples/rerank.rs"
-
-[[example]]
-name = "tokenizer"
-path = "examples/tokenizer.rs"
-
-[[example]]
-name = "simple_moderation"
-path = "examples/simple_moderation.rs"
-
-[[example]]
-name = "file_parser_demo"
-path = "examples/file_parser_demo.rs"
-
-[[example]]
-name = "batches_create"
-path = "examples/batches_create.rs"
-
-[[example]]
-name = "batches_list"
-path = "examples/batches_list.rs"
-
-[[example]]
-name = "batches_retrieve"
-path = "examples/batches_retrieve.rs"
-
-[[example]]
-name = "batches_cancel"
-path = "examples/batches_cancel.rs"
-
-[[example]]
-name = "knowledge_list"
-path = "examples/knowledge_list.rs"
-
-[[example]]
-name = "knowledge_create"
-path = "examples/knowledge_create.rs"
-
-[[example]]
-name = "knowledge_retrieve"
-path = "examples/knowledge_retrieve.rs"
-
-[[example]]
-name = "knowledge_update"
-path = "examples/knowledge_update.rs"
-
-[[example]]
-name = "knowledge_delete"
-path = "examples/knowledge_delete.rs"
-
-[[example]]
-name = "knowledge_capacity"
-path = "examples/knowledge_capacity.rs"
-
-[[example]]
-name = "knowledge_document_list"
-path = "examples/knowledge_document_list.rs"
-
-[[example]]
-name = "knowledge_document_upload_url"
-path = "examples/knowledge_document_upload_url.rs"
-
-[[example]]
-name = "knowledge_document_upload_file"
-path = "examples/knowledge_document_upload_file.rs"
-
-[[example]]
-name = "knowledge_document_detail"
-path = "examples/knowledge_document_detail.rs"
-
-[[example]]
-name = "knowledge_document_delete"
-path = "examples/knowledge_document_delete.rs"
-
-[[example]]
-name = "knowledge_document_image_list"
-path = "examples/knowledge_document_image_list.rs"
-
-[[example]]
-name = "knowledge_document_reembedding"
-path = "examples/knowledge_document_reembedding.rs"
-
-[[example]]
-name = "chat_coding_plan"
-path = "examples/chat_coding_plan.rs"
-
-[[example]]
-name = "coding_plan_usage"
-path = "examples/coding_plan_usage.rs"
-
-[[example]]
-name = "translation_bot"
-path = "examples/translation_bot.rs"
-
-[[example]]
-name = "web_chat"
-path = "examples/web_chat/server.rs"
-required-features = ["web-example"]
-
-[[example]]
-name = "glm45_thinking_mode"
-path = "examples/glm45_thinking_mode.rs"
-
-[[example]]
-name = "glm52_reasoning_effort"
-path = "examples/glm52_reasoning_effort.rs"
-
-[[example]]
-name = "realtime_audio"
-path = "examples/realtime_audio.rs"
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
-tokio = { version = "1.52.3", features = ["full"] }
-jsonschema = "0.46.5"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "time", "fs", "sync"] }
+jsonschema = { version = "0.46.5", optional = true, default-features = false }
 validator = { version = "0.20.0", features = ["derive"] }
 url = "2.5.8"
 reqwest = { version = "0.13.4", features = ["json", "multipart", "stream", "gzip"] }
@@ -251,8 +57,7 @@ async-trait = "0.1.89"
 thiserror = "2.0.18"
 futures = "0.3.32"
 dashmap = "6.2.1"
-parking_lot = "0.12.5"
-rmcp = { version = "1.7.0", features = ["client"], optional = true }
+rmcp = { version = "1.8.0", features = ["client"], optional = true }
 axum = { version = "0.8.9", optional = true }
 tower = { version = "0.5.3", optional = true }
 tower-http = { version = "0.7.0", features = ["fs", "cors"], optional = true }
@@ -260,21 +65,41 @@ uuid = { version = "1.23.3", features = ["v4", "serde"] }
 
 # Realtime (WebSocket) API dependencies.
 # rustls keeps the SDK free of a system OpenSSL dependency.
-tokio-tungstenite = { version = "0.29", features = ["connect", "rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["connect", "rustls-tls-native-roots"], optional = true }
 # JWT signing for the realtime client-auth handshake (HS256).
-hmac = "0.13.0"
-sha2 = "0.11.0"
+hmac = { version = "0.13.0", optional = true }
+sha2 = { version = "0.11.0", optional = true }
 # `BroadcastStream` adapts tokio broadcast channels into `Stream`s for the
 # realtime event/audio fan-out.
-tokio-stream = { version = "0.1.18", features = ["sync"] }
+tokio-stream = { version = "0.1.18", features = ["sync"], optional = true }
 # Promoted from dev-dependencies — needed by the realtime transport/audio paths.
 bytes = "1.11.1"
-http = "1.4.2"
+http = { version = "1.4.2", optional = true }
 
 [features]
 default = []
 rmcp-kits = ["dep:rmcp"]
 web-example = ["dep:axum", "dep:tower", "dep:tower-http"]
+# WebSocket realtime (GLM-Realtime) client. Off by default — most users only
+# need the HTTP chat/embeddings surface. Pulls in tokio-tungstenite, the JWT
+# crypto stack (hmac/sha2), tokio-stream, and `tokio/net`.
+realtime = [
+    "dep:tokio-tungstenite",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:tokio-stream",
+    "dep:http",
+    "tokio/net",
+]
+# Runtime validation of tool-call arguments against their JSON Schema. Off by
+# default — disabling it drops the heavy `jsonschema` dependency (and its
+# transitive `reqwest`/`fraction`/`fancy-regex`/... tree) for users who don't
+# need argument validation at execution time.
+tool-validation = ["dep:jsonschema"]
+
+[[example]]
+name = "realtime_audio"
+required-features = ["realtime"]
 
 [dev-dependencies]
 toml = "1.1.2"
