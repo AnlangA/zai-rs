@@ -415,7 +415,8 @@ fn classify_status(status: u16) -> ErrorCategory {
 pub enum RealtimeErrorKind {
     /// Low-level WebSocket error (connect/handshake/read/write). The original
     /// `tungstenite` error is kept as the `#[source]` so the full chain
-    /// survives propagation.
+    /// survives propagation. Only available with the `realtime` feature.
+    #[cfg(feature = "realtime")]
     #[error("websocket: {source}")]
     WebSocket {
         /// The underlying tungstenite error.
@@ -577,6 +578,7 @@ impl ZaiError {
                 RealtimeErrorKind::Protocol(_)
                 | RealtimeErrorKind::Serialize { .. }
                 | RealtimeErrorKind::ServerEvent { .. } => ErrorCategory::Client,
+                #[cfg(feature = "realtime")]
                 RealtimeErrorKind::WebSocket { .. } => ErrorCategory::Network,
                 RealtimeErrorKind::Closed => ErrorCategory::Other,
             },
@@ -853,7 +855,9 @@ impl From<RealtimeErrorKind> for ZaiError {
 
 /// Convert from a low-level WebSocket (`tungstenite`) error into a
 /// [`ZaiError`]. The original error is preserved as the `#[source]` of
-/// [`RealtimeErrorKind::WebSocket`].
+/// [`RealtimeErrorKind::WebSocket`]. Only available with the `realtime`
+/// feature.
+#[cfg(feature = "realtime")]
 impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
     fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
         ZaiError::RealtimeError(Arc::new(RealtimeErrorKind::WebSocket { source: err }))

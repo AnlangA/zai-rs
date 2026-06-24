@@ -151,6 +151,9 @@ pub mod file;
 pub mod knowledge;
 
 pub mod model;
+/// WebSocket realtime (GLM-Realtime) client — audio/video over a WebSocket.
+/// Gated behind the `realtime` Cargo feature (off by default).
+#[cfg(feature = "realtime")]
 pub mod realtime;
 pub mod tool;
 pub mod toolkits;

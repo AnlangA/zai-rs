@@ -1,19 +1,28 @@
 //! Core traits and types with enhanced type safety
 
+use std::{borrow::Cow, collections::HashMap};
+
+#[cfg(feature = "tool-validation")]
 use std::{
-    borrow::Cow,
-    collections::{HashMap, hash_map::DefaultHasher},
+    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
-use jsonschema;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 use crate::toolkits::error::{ToolResult, error_context};
+
+/// Compiled JSON-Schema validator used for tool-argument validation.
+///
+/// When the `tool-validation` feature is disabled the type collapses to `()`
+/// so [`FunctionTool`] keeps a uniform shape without pulling in `jsonschema`.
+#[cfg(feature = "tool-validation")]
+type CompiledSchema = Arc<jsonschema::Validator>;
+#[cfg(not(feature = "tool-validation"))]
+type CompiledSchema = ();
 
 /// Type-erased tool trait for dynamic dispatch
 #[async_trait]
@@ -36,11 +45,13 @@ pub trait DynTool: Send + Sync {
     fn clone_box(&self) -> Box<dyn DynTool>;
 }
 
-/// Global schema cache for compiled JSON schemas
-static SCHEMA_CACHE: LazyLock<RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+/// Global schema cache for compiled JSON schemas (only with `tool-validation`).
+#[cfg(feature = "tool-validation")]
+static SCHEMA_CACHE: LazyLock<std::sync::RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
+    LazyLock::new(|| std::sync::RwLock::new(HashMap::new()));
 
-/// Maximum number of compiled schemas to cache
+/// Maximum number of compiled schemas to cache (only with `tool-validation`).
+#[cfg(feature = "tool-validation")]
 const SCHEMA_CACHE_MAX_SIZE: usize = 256;
 
 /// Enhanced tool metadata with better type information and memory optimization
@@ -200,16 +211,21 @@ pub(crate) type ToolHandler = std::sync::Arc<
 pub struct FunctionTool {
     metadata: ToolMetadata,
     input_schema: serde_json::Value,
-    compiled_schema: Arc<jsonschema::Validator>,
+    compiled_schema: CompiledSchema,
     handler: ToolHandler,
 }
 
 impl Clone for FunctionTool {
     fn clone(&self) -> Self {
+        // `CompiledSchema` is `Arc<Validator>` (with `tool-validation`) or `()`
+        // (without). `().clone()` trips clippy's `clone_on_copy`/`unit_arg`,
+        // hence the scoped allow on this binding.
+        #[allow(clippy::clone_on_copy, clippy::unit_arg, clippy::let_unit_value)]
+        let compiled_schema = self.compiled_schema.clone();
         Self {
             metadata: self.metadata.clone(),
             input_schema: self.input_schema.clone(),
-            compiled_schema: Arc::clone(&self.compiled_schema),
+            compiled_schema,
             handler: self.handler.clone(),
         }
     }
@@ -281,6 +297,7 @@ impl FunctionTool {
     }
 }
 
+#[cfg(feature = "tool-validation")]
 /// Compile JSON schema with caching for better performance
 fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschema::Validator>> {
     // The serialized form is canonical: serde_json is built without
@@ -295,7 +312,7 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
 
     // Check cache first
     {
-        let cache = SCHEMA_CACHE.read();
+        let cache = SCHEMA_CACHE.read().unwrap();
         if let Some(cached) = cache.get(&hash) {
             return Ok(Arc::clone(cached));
         }
@@ -309,7 +326,7 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
     let validator = Arc::new(validator);
 
     {
-        let mut cache = SCHEMA_CACHE.write();
+        let mut cache = SCHEMA_CACHE.write().unwrap();
         // Evict oldest entries if cache is full
         if cache.len() >= SCHEMA_CACHE_MAX_SIZE {
             // Remove approximately 10% of entries (oldest by insertion order)
@@ -536,11 +553,16 @@ impl FunctionToolBuilder {
             }
         }
 
-        let compiled_schema = compile_schema_cached(&schema).map_err(|e| {
+        #[cfg(feature = "tool-validation")]
+        let compiled_schema: CompiledSchema = compile_schema_cached(&schema).map_err(|e| {
             error_context()
                 .with_tool(self.metadata.name.clone())
                 .schema_validation(format!("Failed to compile schema: {}", e))
         })?;
+        // Without `tool-validation` there is no compiled validator; the
+        // argument-validation step in `execute_json` is skipped.
+        #[cfg(not(feature = "tool-validation"))]
+        let compiled_schema: CompiledSchema = ();
 
         Ok(FunctionTool {
             metadata: self.metadata,
@@ -558,14 +580,15 @@ impl DynTool for FunctionTool {
     }
 
     async fn execute_json(&self, input: serde_json::Value) -> ToolResult<serde_json::Value> {
-        // Validate the input against the compiled schema
+        // Validate the input against the compiled schema (only when enabled).
+        #[cfg(feature = "tool-validation")]
         if let Err(validation_error) = self.compiled_schema.validate(&input) {
             return Err(error_context()
                 .with_tool(self.name())
                 .invalid_parameters(format!("Input validation failed: {}", validation_error)));
         }
 
-        // If validation passes, execute the handler
+        // If validation passes (or is disabled), execute the handler
         (self.handler)(input).await
     }
 
