@@ -29,13 +29,13 @@ pub struct RerankRequest {
 impl RerankRequest {
     /// Create a new rerank request for a query and a set of candidate
     /// documents.
-    pub fn new(key: String, query: impl Into<String>, documents: Vec<String>) -> Self {
+    pub fn new(key: impl Into<String>, query: impl Into<String>, documents: Vec<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::RERANK);
         let body = RerankBody::new(RerankModel::Rerank, query, documents);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -99,7 +99,7 @@ impl RerankRequest {
         self.body
             .validate_constraints()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {:?}", e),
             })
     }

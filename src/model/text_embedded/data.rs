@@ -26,13 +26,13 @@ pub struct EmbeddingRequest {
 
 impl EmbeddingRequest {
     /// Create a new embedding request for the given model and input.
-    pub fn new(key: String, model: EmbeddingModel, input: EmbeddingInput) -> Self {
+    pub fn new(key: impl Into<String>, model: EmbeddingModel, input: EmbeddingInput) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::EMBEDDINGS);
         let body = EmbeddingBody::new(model, input);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -75,7 +75,7 @@ impl EmbeddingRequest {
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body.validate_model_constraints().map_err(|e| {
             crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {:?}", e),
             }
         })
@@ -86,7 +86,7 @@ impl EmbeddingRequest {
     pub async fn send(&self) -> crate::ZaiResult<EmbeddingResponse> {
         if let Err(e) = self.validate() {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("validation failed: {}", e),
             });
         }

@@ -187,7 +187,7 @@ pub fn contains_sensitive_info(text: &str) -> bool {
 pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
     if api_key.is_empty() {
         return Err(ZaiError::ApiError {
-            code: 1200,
+            code: codes::SDK_VALIDATION,
             message: "API key cannot be empty".to_string(),
         });
     }
@@ -195,7 +195,7 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
     let parts: Vec<&str> = api_key.split('.').collect();
     if parts.len() != 2 {
         return Err(ZaiError::ApiError {
-            code: 1001,
+            code: codes::SDK_VALIDATION,
             message: "API key must be in format '<id>.<secret>'".to_string(),
         });
     }
@@ -204,7 +204,7 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
 
     if id.is_empty() || secret.is_empty() {
         return Err(ZaiError::ApiError {
-            code: 1200,
+            code: codes::SDK_VALIDATION,
             message: "API key id and secret must not be empty".to_string(),
         });
     }
@@ -218,7 +218,7 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
 
     if !valid_chars(id) || !valid_chars(secret) {
         return Err(ZaiError::ApiError {
-            code: 1200,
+            code: codes::SDK_VALIDATION,
             message: "API key contains invalid characters".to_string(),
         });
     }
@@ -227,14 +227,14 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
     // chars)
     if id.len() < 3 {
         return Err(ZaiError::ApiError {
-            code: 1200,
+            code: codes::SDK_VALIDATION,
             message: "API key id is too short".to_string(),
         });
     }
 
     if secret.len() < 10 {
         return Err(ZaiError::ApiError {
-            code: 1200,
+            code: codes::SDK_VALIDATION,
             message: "API key secret is too short".to_string(),
         });
     }
@@ -346,18 +346,21 @@ pub enum ZaiError {
         message: String,
     },
 
-    /// Network/IO errors (wrapped in Arc for Clone support)
+    /// Network/IO errors (wrapped in Arc for Clone support). The underlying
+    /// `reqwest::Error` is exposed as the [`Error::source`](std::error::Error::source).
     #[error("Network error: {0}")]
-    NetworkError(Arc<reqwest::Error>),
+    NetworkError(#[source] Arc<reqwest::Error>),
 
-    /// JSON parsing errors (wrapped in Arc for Clone support)
+    /// JSON parsing errors (wrapped in Arc for Clone support). The underlying
+    /// `serde_json::Error` is exposed as the [`Error::source`](std::error::Error::source).
     #[error("JSON error: {0}")]
-    JsonError(Arc<serde_json::Error>),
+    JsonError(#[source] Arc<serde_json::Error>),
 
     /// Realtime (WebSocket) transport errors — wrapped in `Arc` so the variant
-    /// stays `Clone`-able. See [`RealtimeErrorKind`] for the breakdown.
+    /// stays `Clone`-able. See [`RealtimeErrorKind`] for the breakdown. The
+    /// kind is exposed as the [`Error::source`](std::error::Error::source).
     #[error("Realtime error: {0}")]
-    RealtimeError(Arc<RealtimeErrorKind>),
+    RealtimeError(#[source] Arc<RealtimeErrorKind>),
 
     /// Realtime authentication / JWT errors (bad API-key shape, signing
     /// failure, token rejected during the WebSocket handshake).
@@ -382,6 +385,7 @@ pub enum ZaiError {
 /// [`is_server_error`](ZaiError::is_server_error) predicates derive from it so
 /// they can never drift apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ErrorCategory {
     /// Caller-side (4xx): bad request, bad params, business-rule violation.
     Client,
@@ -813,7 +817,7 @@ impl From<serde_json::Error> for ZaiError {
 impl From<validator::ValidationErrors> for ZaiError {
     fn from(err: validator::ValidationErrors) -> Self {
         ZaiError::ApiError {
-            code: 1200,
+            code: codes::SDK_VALIDATION,
             message: format!("Validation error: {:?}", err),
         }
     }
@@ -1165,7 +1169,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(ZaiError::ApiError { code, .. }) => {
-                assert_eq!(code, 1200);
+                assert_eq!(code, codes::SDK_VALIDATION);
             },
             _ => panic!("Expected ApiError"),
         }
@@ -1177,7 +1181,7 @@ mod tests {
         assert!(result.is_err());
         match result {
             Err(ZaiError::ApiError { code, message }) => {
-                assert_eq!(code, 1001);
+                assert_eq!(code, codes::SDK_VALIDATION);
                 assert!(message.contains("format"));
             },
             _ => panic!("Expected ApiError"),
@@ -1188,28 +1192,28 @@ mod tests {
     fn test_validate_api_key_multiple_dots() {
         let result = validate_api_key("id.secret.extra");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code(), Some(1001));
+        assert_eq!(result.unwrap_err().code(), Some(codes::SDK_VALIDATION));
     }
 
     #[test]
     fn test_validate_api_key_empty_id() {
         let result = validate_api_key(".secret123456789");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code(), Some(1200));
+        assert_eq!(result.unwrap_err().code(), Some(codes::SDK_VALIDATION));
     }
 
     #[test]
     fn test_validate_api_key_empty_secret() {
         let result = validate_api_key("id123.");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code(), Some(1200));
+        assert_eq!(result.unwrap_err().code(), Some(codes::SDK_VALIDATION));
     }
 
     #[test]
     fn test_validate_api_key_invalid_chars() {
         let result = validate_api_key("id$123.secret@456");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code(), Some(1200));
+        assert_eq!(result.unwrap_err().code(), Some(codes::SDK_VALIDATION));
     }
 
     #[test]

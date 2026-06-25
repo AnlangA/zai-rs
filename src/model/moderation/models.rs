@@ -135,9 +135,10 @@ impl ModerationRequest {
 }
 
 /// Risk level for moderated content.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum RiskLevel {
     /// Normal content, no risks detected
+    #[default]
     #[serde(rename = "PASS")]
     Pass,
     /// Suspicious content, requires review
@@ -148,37 +149,24 @@ pub enum RiskLevel {
     Reject,
 }
 
-/// Risk types that can be detected.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RiskType {
-    /// Pornographic or adult content
-    #[serde(rename = "porn")]
-    Porn,
-    /// Violent or gory content
-    #[serde(rename = "violence")]
-    Violence,
-    /// Illegal or criminal content
-    #[serde(rename = "illegal")]
-    Illegal,
-    /// Political or sensitive content
-    #[serde(rename = "politics")]
-    Politics,
-    /// Other risk types
-    #[serde(rename = "other")]
-    Other,
-}
-
 /// Moderation result for a single content item.
+///
+/// Fields use `#[serde(default)]` so a partial server payload (e.g. an
+/// omitted `risk_level`) deserializes instead of failing the whole response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModerationResult {
     /// Type of content that was moderated
-    #[serde(rename = "content_type")]
+    #[serde(
+        rename = "content_type",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
     pub content_type: String,
     /// Risk level assessment
-    #[serde(rename = "risk_level")]
+    #[serde(rename = "risk_level", default)]
     pub risk_level: RiskLevel,
     /// List of detected risk types
-    #[serde(rename = "risk_type")]
+    #[serde(rename = "risk_type", default, skip_serializing_if = "Vec::is_empty")]
     pub risk_types: Vec<String>,
 }
 

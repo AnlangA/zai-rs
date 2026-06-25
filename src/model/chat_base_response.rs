@@ -108,6 +108,7 @@ impl std::fmt::Debug for ChatCompletionResponse {
 /// Task processing status.
 /// Values correspond to upstream payload strings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum TaskStatus {
     /// Task is still running; poll again to retrieve the final result.
     #[serde(rename = "PROCESSING", alias = "processing")]
@@ -118,15 +119,22 @@ pub enum TaskStatus {
     /// Task failed.
     #[serde(rename = "FAIL", alias = "fail")]
     Fail,
+    /// An unrecognized status returned by a newer API version. The catch-all
+    /// (`#[serde(other)]`) keeps a single unknown value from failing the whole
+    /// response deserialization; callers should treat it as not-yet-complete
+    /// (keep polling) or surface it, rather than aborting.
+    #[serde(other)]
+    Unknown,
 }
 impl TaskStatus {
     /// Return the canonical upstream string for this status
-    /// (`"PROCESSING"` / `"SUCCESS"` / `"FAIL"`).
+    /// (`"PROCESSING"` / `"SUCCESS"` / `"FAIL"` / `"UNKNOWN"`).
     pub fn as_str(&self) -> &'static str {
         match self {
             TaskStatus::Processing => "PROCESSING",
             TaskStatus::Success => "SUCCESS",
             TaskStatus::Fail => "FAIL",
+            TaskStatus::Unknown => "UNKNOWN",
         }
     }
 }
@@ -503,6 +511,13 @@ impl Message {
     /// Dialog content (may include `<think>` traces for some models).
     pub fn content(&self) -> Option<&serde_json::Value> {
         self.content.as_ref()
+    }
+    /// Return the assistant text when `content` is a JSON string; `None`
+    /// otherwise (absent, null, or the array-of-parts form). Convenience over
+    /// [`content`](Self::content) for the common case where the model returns a
+    /// plain string.
+    pub fn content_str(&self) -> Option<&str> {
+        self.content.as_ref().and_then(|v| v.as_str())
     }
     /// Reasoning-chain content, when the model exposes it.
     pub fn reasoning_content(&self) -> Option<&str> {

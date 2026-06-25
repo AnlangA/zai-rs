@@ -63,13 +63,13 @@ pub struct KnowledgeUpdateRequest {
 
 impl KnowledgeUpdateRequest {
     /// Build update request targeting a specific id with empty body
-    pub fn new(key: String, id: impl AsRef<str>) -> Self {
-        let id = id.as_ref().to_string();
+    pub fn new(key: impl Into<String>, id: impl Into<String>) -> Self {
+        let id = id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
         let url = endpoint_config.url(&api_base, &join_url(paths::KNOWLEDGE, &id));
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -146,7 +146,7 @@ impl KnowledgeUpdateRequest {
     pub async fn send(&self) -> crate::ZaiResult<KnowledgeUpdateResponse> {
         if self.body.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "update body is empty; set at least one field".to_string(),
             });
         }

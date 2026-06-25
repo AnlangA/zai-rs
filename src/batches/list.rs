@@ -69,12 +69,12 @@ pub struct BatchesListRequest {
 
 impl BatchesListRequest {
     /// Create a request targeting the batches list endpoint
-    pub fn new(key: String) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::BATCHES);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

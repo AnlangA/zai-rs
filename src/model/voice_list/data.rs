@@ -28,12 +28,12 @@ pub struct VoiceListRequest {
 
 impl VoiceListRequest {
     /// Create a new voice-list request with default (empty) query.
-    pub fn new(key: String) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::VOICE_LIST);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

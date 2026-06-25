@@ -50,7 +50,7 @@ impl ZaiConfig {
     /// settings.
     pub fn from_env() -> ZaiResult<Self> {
         let api_key = std::env::var("ZHIPU_API_KEY").map_err(|_| ZaiError::AuthError {
-            code: 1001,
+            code: crate::client::error::codes::SDK_CONFIG,
             message: "ZHIPU_API_KEY environment variable not set".to_string(),
         })?;
         Ok(Self {
@@ -151,7 +151,7 @@ impl ZaiConfigBuilder {
     pub fn build(self) -> ZaiResult<ZaiConfig> {
         if self.config.api_key.is_empty() {
             return Err(ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_CONFIG,
                 message: "ZaiConfig requires an api_key".to_string(),
             });
         }

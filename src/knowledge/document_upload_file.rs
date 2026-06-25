@@ -70,8 +70,8 @@ pub struct DocumentUploadFileRequest {
 
 impl DocumentUploadFileRequest {
     /// Create a new request for a specific knowledge base id
-    pub fn new(key: String, knowledge_id: impl AsRef<str>) -> Self {
-        let knowledge_id = knowledge_id.as_ref().to_string();
+    pub fn new(key: impl Into<String>, knowledge_id: impl Into<String>) -> Self {
+        let knowledge_id = knowledge_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
         let url = endpoint_config.url(
@@ -79,7 +79,7 @@ impl DocumentUploadFileRequest {
             &join_url(paths::DOCUMENT_UPLOAD_DOCUMENT, &knowledge_id),
         );
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -144,7 +144,7 @@ impl DocumentUploadFileRequest {
                 && !(20..=2000).contains(&sz)
             {
                 return Err(crate::client::error::ZaiError::ApiError {
-                    code: 1200,
+                    code: crate::client::error::codes::SDK_VALIDATION,
                     message: "sentence_size must be 20..=2000 when knowledge_type=Custom (5)"
                         .to_string(),
                 });
@@ -154,13 +154,13 @@ impl DocumentUploadFileRequest {
             && !w.chars().all(|c| c.is_ascii_digit())
         {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "word_num_limit must be numeric string".to_string(),
             });
         }
         if self.files.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "at least one file path must be provided".to_string(),
             });
         }
@@ -211,7 +211,7 @@ impl HttpClient for DocumentUploadFileRequest {
                     .and_then(|s| s.to_str())
                     .map(std::string::ToString::to_string)
                     .unwrap_or_else(|| "upload.bin".to_string());
-                file_parts.push((fname, std::fs::read(path)?));
+                file_parts.push((fname, tokio::fs::read(path).await?));
             }
             send_multipart_request(reqwest::Method::POST, url, key, config, move || {
                 let mut form = reqwest::multipart::Form::new();

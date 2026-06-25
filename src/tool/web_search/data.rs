@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-
 use crate::{
     ZaiResult,
     client::{
@@ -30,18 +28,18 @@ impl WebSearchRequest {
     /// * `key` - API key for authentication
     /// * `search_query` - Search query content (max 70 characters)
     /// * `search_engine` - Search engine to use
-    pub fn new(key: String, search_query: String, search_engine: SearchEngine) -> Self {
+    pub fn new(key: impl Into<String>, search_query: String, search_engine: SearchEngine) -> Self {
         let body = WebSearchBody::new(search_query, search_engine);
         Self::with_body(key, body)
     }
 
     /// Create a web search request with a pre-configured body
-    pub fn with_body(key: String, body: WebSearchBody) -> Self {
+    pub fn with_body(key: impl Into<String>, body: WebSearchBody) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::WEB_SEARCH);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -87,8 +85,8 @@ impl WebSearchRequest {
     }
 
     /// Set domain filter for search results
-    pub fn with_domain_filter(mut self, domain: String) -> Self {
-        self.body = self.body.with_domain_filter(domain);
+    pub fn with_domain_filter(mut self, domain: impl Into<String>) -> Self {
+        self.body = self.body.with_domain_filter(domain.into());
         self
     }
 
@@ -105,14 +103,14 @@ impl WebSearchRequest {
     }
 
     /// Set custom request ID
-    pub fn with_request_id(mut self, request_id: String) -> Self {
-        self.body = self.body.with_request_id(request_id);
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.body = self.body.with_request_id(request_id.into());
         self
     }
 
     /// Set user ID
-    pub fn with_user_id(mut self, user_id: String) -> Self {
-        self.body = self.body.with_user_id(user_id);
+    pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.body = self.body.with_user_id(user_id.into());
         self
     }
 
@@ -130,7 +128,6 @@ impl WebSearchRequest {
     }
 }
 
-#[async_trait]
 impl HttpClient for WebSearchRequest {
     type Body = WebSearchBody;
     type ApiUrl = String;

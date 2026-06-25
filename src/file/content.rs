@@ -19,7 +19,7 @@ pub struct FileContentRequest {
 
 impl FileContentRequest {
     /// Create a new content request for the given file id.
-    pub fn new(key: String, file_id: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, file_id: impl Into<String>) -> Self {
         let file_id = file_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
@@ -28,7 +28,7 @@ impl FileContentRequest {
             &join_url(&join_url(paths::FILES, &file_id), "content"),
         );
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

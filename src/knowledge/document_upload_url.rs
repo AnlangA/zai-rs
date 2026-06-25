@@ -123,12 +123,12 @@ pub struct DocumentUploadUrlRequest {
 
 impl DocumentUploadUrlRequest {
     /// Create a new upload-by-URL request with the given body.
-    pub fn new(key: String, body: UploadUrlBody) -> Self {
+    pub fn new(key: impl Into<String>, body: UploadUrlBody) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
         let url = endpoint_config.url(&api_base, paths::DOCUMENT_UPLOAD_URL);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

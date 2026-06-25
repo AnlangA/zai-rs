@@ -27,12 +27,12 @@ pub struct OcrRequest {
 
 impl OcrRequest {
     /// Create a new OCR request with default options.
-    pub fn new(key: String) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::FILES_OCR);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -111,7 +111,7 @@ impl OcrRequest {
             self.file_path
                 .as_ref()
                 .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: 1200,
+                    code: crate::client::error::codes::SDK_VALIDATION,
                     message: "file_path is required".to_string(),
                 })?;
 
@@ -195,7 +195,7 @@ impl HttpClient for OcrRequest {
         async move {
             let file_path =
                 file_path_opt.ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: 1200,
+                    code: crate::client::error::codes::SDK_VALIDATION,
                     message: "file_path is required".to_string(),
                 })?;
 

@@ -100,6 +100,10 @@ pub struct McpCallSpec {
 }
 
 impl McpCallSpec {
+    /// Create a new `McpCallSpec` from a tool name and optional JSON arguments.
+    ///
+    /// `arguments` should be a JSON object when `Some`; pass `None` for a
+    /// parameterless tool.
     pub fn new(name: impl Into<String>, arguments: Option<Value>) -> Self {
         Self {
             name: name.into(),

@@ -88,26 +88,26 @@ impl RerankBody {
     pub fn validate_constraints(&self) -> crate::ZaiResult<()> {
         if self.query.chars().count() > 4096 {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "query length exceeds 4096 characters".to_string(),
             });
         }
         if self.documents.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "documents must not be empty".to_string(),
             });
         }
         if self.documents.len() > 128 {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "documents length exceeds 128".to_string(),
             });
         }
         for (i, d) in self.documents.iter().enumerate() {
             if d.chars().count() > 4096 {
                 return Err(crate::client::error::ZaiError::ApiError {
-                    code: 1200,
+                    code: crate::client::error::codes::SDK_VALIDATION,
                     message: format!("document at index {} exceeds 4096 characters", i),
                 });
             }
@@ -116,7 +116,7 @@ impl RerankBody {
             && n > self.documents.len()
         {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "top_n cannot exceed documents length".to_string(),
             });
         }

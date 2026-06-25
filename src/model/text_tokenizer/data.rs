@@ -26,13 +26,17 @@ pub struct TokenizerRequest {
 
 impl TokenizerRequest {
     /// Create a new tokenizer request for the given model and messages.
-    pub fn new(key: String, model: TokenizerModel, messages: Vec<TokenizerMessage>) -> Self {
+    pub fn new(
+        key: impl Into<String>,
+        model: TokenizerModel,
+        messages: Vec<TokenizerMessage>,
+    ) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::TOKENIZER);
         let body = TokenizerBody::new(model, messages);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -80,7 +84,7 @@ impl TokenizerRequest {
     pub fn validate(&self) -> crate::ZaiResult<()> {
         if self.body.messages.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "messages must not be empty".to_string(),
             });
         }

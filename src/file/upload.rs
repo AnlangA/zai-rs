@@ -27,12 +27,16 @@ pub struct FileUploadRequest {
 
 impl FileUploadRequest {
     /// Create a new upload request for the given purpose and local file path.
-    pub fn new(key: String, purpose: FilePurpose, file_path: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        key: impl Into<String>,
+        purpose: FilePurpose,
+        file_path: impl Into<PathBuf>,
+    ) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::FILES);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -125,14 +129,14 @@ impl HttpClient for FileUploadRequest {
                 })
                 .unwrap_or_else(|| "upload.bin".to_string());
 
-            let bytes = std::fs::read(&path)?;
+            let bytes = tokio::fs::read(&path).await?;
             send_multipart_request(reqwest::Method::POST, url, key, config, move || {
                 let mut part =
                     reqwest::multipart::Part::bytes(bytes.clone()).file_name(fname.clone());
                 if let Some(ct) = content_type.as_ref() {
                     part = part.mime_str(ct).map_err(|e| {
                         crate::client::error::ZaiError::ApiError {
-                            code: 1200,
+                            code: crate::client::error::codes::SDK_VALIDATION,
                             message: format!("invalid content-type: {}", e),
                         }
                     })?;

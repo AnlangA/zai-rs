@@ -178,7 +178,7 @@ impl WebSearchBody {
     pub fn validate_constraints(&self) -> crate::ZaiResult<()> {
         self.validate()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {}", e),
             })?;
 
@@ -190,7 +190,7 @@ impl WebSearchBody {
                 10 | 20 | 30 | 40 | 50 => {},
                 _ => {
                     return Err(crate::client::error::ZaiError::ApiError {
-                        code: 1200,
+                        code: crate::client::error::codes::SDK_VALIDATION,
                         message: "search_pro_sogou only supports count values: 10, 20, 30, 40, 50"
                             .to_string(),
                     });

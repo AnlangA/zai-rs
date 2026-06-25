@@ -92,8 +92,13 @@ use validator::ValidationError;
 /// ```
 #[cfg(feature = "tool-validation")]
 pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
-    let schema_json: serde_json::Value =
-        serde_json::from_str(parameters).map_err(|_| ValidationError::new("invalid_json"))?;
+    let schema_json: serde_json::Value = serde_json::from_str(parameters).map_err(|e| {
+        // Preserve the parse error (line/column/reason) in the message instead
+        // of discarding it; the error CODE stays "invalid_json" for stability.
+        ValidationError::new("invalid_json").with_message(std::borrow::Cow::Owned(format!(
+            "invalid JSON in schema: {e}"
+        )))
+    })?;
     if jsonschema::validator_for(&schema_json).is_err() {
         return Err(ValidationError::new("invalid_json_schema"));
     }

@@ -38,13 +38,13 @@ where
     /// * `model` - Video generation model implementing VideoGen trait
     /// * `body` - Video generation parameters and configuration
     /// * `key` - API key for authentication
-    pub fn new(model: N, key: String) -> Self {
+    pub fn new(model: N, key: impl Into<String>) -> Self {
         let body = VideoBody::new(model);
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::VIDEOS_GENERATIONS);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

@@ -23,13 +23,13 @@ pub struct DocumentRetrieveRequest {
 
 impl DocumentRetrieveRequest {
     /// Create a new request
-    pub fn new(key: String, document_id: impl AsRef<str>) -> Self {
-        let document_id = document_id.as_ref().to_string();
+    pub fn new(key: impl Into<String>, document_id: impl Into<String>) -> Self {
+        let document_id = document_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
         let url = endpoint_config.url(&api_base, &join_url(paths::DOCUMENT, &document_id));
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

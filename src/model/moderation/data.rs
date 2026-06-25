@@ -45,14 +45,14 @@ impl Moderation {
     /// ## Returns
     ///
     /// A new `Moderation` instance configured for text moderation.
-    pub fn new_text(text: impl Into<String>, key: String) -> Self {
+    pub fn new_text(text: impl Into<String>, key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::MODERATIONS);
         let body = ModerationRequest::new_text(text);
         Self {
             body,
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -71,14 +71,18 @@ impl Moderation {
     /// ## Returns
     ///
     /// A new `Moderation` instance configured for multimedia moderation.
-    pub fn new_multimedia(content_type: MediaType, url: impl Into<String>, key: String) -> Self {
+    pub fn new_multimedia(
+        content_type: MediaType,
+        url: impl Into<String>,
+        key: impl Into<String>,
+    ) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let endpoint_url = endpoint_config.url(&api_base, paths::MODERATIONS);
         let body = ModerationRequest::new_multimedia(content_type, url);
         Self {
             body,
-            key,
+            key: key.into(),
             url: endpoint_url,
             endpoint_config,
             api_base,

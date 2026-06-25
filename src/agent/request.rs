@@ -92,7 +92,7 @@ impl AgentCreateRequestBuilder {
         let name = self
             .name
             .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "name is required".to_string(),
             })?;
 
@@ -108,7 +108,7 @@ impl AgentCreateRequestBuilder {
         // Run full validation (name length 1-100, description max 1000, etc.)
         req.validate()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {:?}", e),
             })?;
 

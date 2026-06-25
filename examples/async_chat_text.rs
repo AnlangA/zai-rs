@@ -91,6 +91,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(TaskStatus::Processing) => {
                             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                         },
+                        // `TaskStatus` is `#[non_exhaustive]`; `Some(_)`
+                        // covers `Unknown` and any future variant — keep
+                        // polling.
+                        Some(_) => {
+                            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                        },
                         None => break (message, Err("未知状态".to_string())),
                     },
                     Err(e) => break (message, Err(format!("获取结果失败: {e}"))),

@@ -36,6 +36,7 @@ use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
 use futures::{Stream, StreamExt, stream};
 use tracing::trace;
+use validator::Validate;
 
 use crate::{
     client::{
@@ -177,8 +178,13 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
     where
         F: FnMut(ChatStreamResponse) -> Fut + 'a,
         Fut: core::future::Future<Output = crate::ZaiResult<()>> + 'a,
+        Self::Body: Validate,
     {
         async move {
+            // Field-level validation (temperature/top_p/max_tokens/…) before
+            // we open the connection, mirroring the non-streaming `send()` path.
+            // The stream-state guard does NOT apply here (StreamOn is expected).
+            self.body().validate().map_err(ZaiError::from)?;
             let resp = self.post().await?;
             let mut stream = resp.bytes_stream();
             let mut parser = SseEventParser::new();
@@ -232,8 +238,14 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
         Output = crate::ZaiResult<
             Pin<Box<dyn Stream<Item = crate::ZaiResult<ChatStreamResponse>> + Send + 'static>>,
         >,
-    > + 'a {
+    > + 'a
+    where
+        Self::Body: Validate,
+    {
         async move {
+            // Field-level validation before opening the connection, mirroring
+            // the non-streaming `send()` path (stream-state guard excluded).
+            self.body().validate().map_err(ZaiError::from)?;
             let resp = self.post().await?;
             let byte_stream = resp.bytes_stream();
 

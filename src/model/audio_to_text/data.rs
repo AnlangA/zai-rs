@@ -35,12 +35,12 @@ where
     N: ModelName + AudioToText + Serialize + Clone,
 {
     /// Create a new transcription request for the given ASR model.
-    pub fn new(model: N, key: String) -> Self {
+    pub fn new(model: N, key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::AUDIO_TRANSCRIPTIONS);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -117,7 +117,7 @@ where
             self.file_path
                 .as_ref()
                 .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: 1200,
+                    code: crate::client::error::codes::SDK_VALIDATION,
                     message: "file_path is required".to_string(),
                 })?;
 
@@ -183,7 +183,7 @@ where
         async move {
             let file_path =
                 file_path_opt.ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: 1200,
+                    code: crate::client::error::codes::SDK_VALIDATION,
                     message: "file_path is required".to_string(),
                 })?;
 

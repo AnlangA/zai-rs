@@ -78,13 +78,17 @@ pub struct CreateBatchRequest {
 
 impl CreateBatchRequest {
     /// Build a new create-batch request with required fields
-    pub fn new(key: String, input_file_id: impl Into<String>, endpoint: BatchEndpoint) -> Self {
+    pub fn new(
+        key: impl Into<String>,
+        input_file_id: impl Into<String>,
+        endpoint: BatchEndpoint,
+    ) -> Self {
         let body = CreateBatchBody::new(input_file_id, endpoint);
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::BATCHES);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

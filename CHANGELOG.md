@@ -5,6 +5,73 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+A best-practices hardening pass (verified by an 8-dimension audit). Mostly
+additive/non-breaking; the few semver-relevant items are flagged below.
+
+### ⚠️ Semver-relevant (decide 0.3.1 vs 0.4.0)
+- **Client-side error codes reclassified into the reserved SDK band.** Errors
+  that originate inside the SDK (validation, config, file checks) now report
+  `codes::SDK_VALIDATION` (9001) / `SDK_CONFIG` (9600) instead of the server
+  business code `1200`/`1001`. This fixes `ZaiError::is_sdk_error()` (previously
+  it misclassified SDK failures as server rejections). The variant and retry
+  behavior are unchanged; only the numeric `code()` changes. Callers matching on
+  the literal `1200` for these paths should match `is_sdk_error()` instead.
+- **`TaskStatus` is now `#[non_exhaustive]`** with an `Unknown` catch-all
+  (deserialized via `#[serde(other)]`), so an unrecognized status from a newer
+  API no longer fails the whole response. Exhaustive external `match`es need a
+  `_`/`Some(_)` arm.
+- **`ErrorCategory`, `ToolError`, `ErrorSeverity` are now `#[non_exhaustive]`**
+  (consistent with `ZaiError`/`RealtimeErrorKind`).
+- **Removed the unused `web-example` Cargo feature** (and its `axum`/`tower`/
+  `tower-http` deps). It was off-by-default and gated no code; the example
+  projects declare their own deps. Remove `features = ["web-example"]` if set.
+
+### Added
+- `StreamChatLikeExt::stream_for_each` / `to_stream` now validate the request
+  body before opening the connection (the streaming path previously skipped the
+  field-level validation the non-streaming path runs).
+- `Message::content_str()` convenience accessor for the common case where
+  `content` is a JSON string.
+- `RealtimeSession::request_close(&self)` — signal teardown without consuming
+  the session (for `Arc`-shared / `select!`-driven use); `close(self)` remains
+  the awaited-teardown path and now warns on a panicked event loop instead of
+  silently dropping the `JoinError`.
+- `[lints]` table in `Cargo.toml` (`unsafe_code = "deny"`, `clippy::all = warn`)
+  so the unsafe-free invariant and clippy cleanliness are enforced locally / in
+  IDEs, not only via the CI flags.
+- CI now runs `cargo test --all-features --doc` (doc-tests were previously
+  excluded by `--tests`).
+- Regression test pinning the realtime drop→teardown invariant (dropping the
+  last command sender terminates the loop and closes the transport).
+
+### Fixed
+- `ZaiError::source()` now chains the underlying cause for `NetworkError`,
+  `JsonError`, and `RealtimeError` (previously returned `None`).
+- `ModerationResult` deserializes partial server payloads (uses serde defaults;
+  `RiskLevel` gained a `Default`). Removed the dead, never-referenced `RiskType`
+  enum.
+- `validate_json_schema` preserves the JSON parse error in the message instead
+  of discarding it (error code unchanged).
+- File upload paths use `tokio::fs::read` instead of blocking `std::fs::read`
+  (no more stalling the async runtime).
+
+### Changed
+- ~30 request constructors and `WebSearchRequest` setters now take the API key
+  / strings as `impl Into<String>` (accepts `&str` or `String`); resource-id
+  params in `batches`/`knowledge` uniformly use `impl Into<String>`.
+- Removed a redundant `#[async_trait]` on `impl HttpClient for WebSearchRequest`
+  (the trait uses native `impl Future`).
+- SSE event parser: single-`data:`-line events (the common per-token case) no
+  longer do a redundant allocate+copy on join.
+
+### Documentation
+- Fixed a duplicated doc block on `send_json_request`; refreshed the Feature
+  Flags table (added `realtime`/`tool-validation`) and the install version
+  (`0.2.1` → `0.3`); documented `McpCallSpec::new`, `Function::new`'s
+  `parameters` type, and the `HTTP_CLIENTS` cache semantics.
+
 ## [0.3.0] - 2026-06-25
 
 Comprehensive optimization pass. **Breaking changes** are concentrated here so
