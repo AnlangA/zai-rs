@@ -173,7 +173,13 @@ async fn run_loop<T: RealtimeTransport>(
                     let json = match serde_json::to_string(&ev) {
                         Ok(s) => s,
                         // Drop a malformed event but keep the session alive.
-                        Err(_) => continue,
+                        Err(e) => {
+                            warn!(
+                                error = %e,
+                                "Dropping realtime client event that failed to serialize"
+                            );
+                            continue;
+                        }
                     };
                     if transport.send(json).await.is_err() {
                         break;
@@ -302,16 +308,35 @@ impl RealtimeSession {
     /// subscribe before driving commands when ordering matters. Transient
     /// `Lagged` gaps (slow consumer) are dropped rather than erroring.
     pub fn events(&self) -> Pin<Box<dyn Stream<Item = ServerEvent> + Send + '_>> {
-        let stream = BroadcastStream::new(self.events_tx.subscribe())
-            .filter_map(|res| async move { res.ok() });
+        let stream = BroadcastStream::new(self.events_tx.subscribe()).filter_map(|res| {
+            async move {
+                match res {
+                    Ok(event) => Some(event),
+                    // A slow consumer fell behind the broadcast buffer. Surface
+                    // the gap so it is observable (the stream still continues
+                    // from the live tail rather than terminating).
+                    Err(_) => {
+                        warn!("Realtime events consumer lagged; some events were dropped");
+                        None
+                    },
+                }
+            }
+        });
         Box::pin(stream)
     }
 
     /// Stream of decoded audio output chunks (PCM/MP3 bytes, per
     /// `output_audio_format`).
     pub fn audio_stream(&self) -> Pin<Box<dyn Stream<Item = Bytes> + Send + '_>> {
-        let stream = BroadcastStream::new(self.audio_tx.subscribe())
-            .filter_map(|res| async move { res.ok() });
+        let stream = BroadcastStream::new(self.audio_tx.subscribe()).filter_map(|res| async move {
+            match res {
+                Ok(bytes) => Some(bytes),
+                Err(_) => {
+                    warn!("Realtime audio consumer lagged; some audio chunks were dropped");
+                    None
+                },
+            }
+        });
         Box::pin(stream)
     }
 

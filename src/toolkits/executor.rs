@@ -66,9 +66,15 @@ impl RetryConfig {
             return Duration::ZERO;
         }
 
-        let delay_ms = self.initial_delay.as_millis() as f64
-            * self.backoff_multiplier.powi((attempt - 1) as i32);
-        let delay_ms = delay_ms.min(self.max_delay.as_millis() as f64) as u64;
+        // Compute in milliseconds as `f64` (honors the configurable `f64`
+        // `backoff_multiplier`), cap at `max_delay`, then convert. The final
+        // `as u64` saturates on overflow or NaN, and `max(0.0)` guards against
+        // a negative product from a misconfigured multiplier.
+        let initial_ms = self.initial_delay.as_millis() as f64;
+        let max_ms = self.max_delay.as_millis() as f64;
+        let raw = initial_ms * self.backoff_multiplier.powi((attempt - 1) as i32);
+        let capped = if raw.is_finite() { raw } else { max_ms };
+        let delay_ms = capped.clamp(0.0, max_ms) as u64;
 
         Duration::from_millis(delay_ms)
     }
@@ -291,9 +297,17 @@ impl ToolExecutor {
         let mut retries = 0;
         let retry_config = &self.config.retry_config;
 
-        // Check cache first
-        let cache_key = CacheKey::new(tool_name.to_string(), input.clone());
-        if let Some(cached_result) = self.cache.get(&cache_key) {
+        // Build the cache key lazily: `CacheKey::new` deep-clones and
+        // re-serializes the arguments, so skip it entirely when the cache is
+        // disabled (and only pay for it once when enabled).
+        let cache_key = if self.cache.enabled() {
+            Some(CacheKey::new(tool_name.to_string(), input.clone()))
+        } else {
+            None
+        };
+        if let Some(ref key) = cache_key
+            && let Some(cached_result) = self.cache.get(key)
+        {
             let duration = start_time.elapsed();
             return Ok(ExecutionResult::success(
                 tool_name.to_string(),
@@ -308,8 +322,10 @@ impl ToolExecutor {
             match self.execute_once(tool_name, &input).await {
                 Ok(result) => {
                     let duration = start_time.elapsed();
-                    // Cache the successful result
-                    self.cache.insert(cache_key, result.clone(), None);
+                    // Cache the successful result (only if the cache is on).
+                    if let Some(key) = cache_key {
+                        self.cache.insert(key, result.clone(), None);
+                    }
 
                     return Ok(ExecutionResult::success(
                         tool_name.to_string(),
@@ -492,7 +508,7 @@ impl ToolExecutor {
     /// - `Vec<TextMessage>` ready to be appended to ChatCompletion as tool
     ///   messages.
     async fn execute_single_tool_call(&self, tc: &ToolCallMessage) -> TextMessage {
-        let id_opt = tc.id().map(|s| s.to_string());
+        let id_opt = tc.id().map(std::string::ToString::to_string);
         let func_opt = tc.function();
 
         if let Some(func) = func_opt {
@@ -543,11 +559,10 @@ impl ToolExecutor {
             let permits = Arc::clone(&permits);
             set.spawn(async move {
                 // Bounded concurrency: a model emitting many tool calls no
-                // longer fires them all simultaneously.
-                let _permit = permits
-                    .acquire()
-                    .await
-                    .expect("tool-call semaphore is never closed");
+                // longer fires them all simultaneously. `.ok()` holds the
+                // `Option<Permit>` (gating the call) without panicking; `None`
+                // only if the semaphore were closed, which never happens here.
+                let _permit = permits.acquire().await.ok();
                 this.execute_single_tool_call(&tc).await
             });
         }
@@ -610,10 +625,7 @@ impl ToolExecutor {
                 let this = self.clone();
                 let permits = Arc::clone(&permits);
                 async move {
-                    let _permit = permits
-                        .acquire()
-                        .await
-                        .expect("tool-call semaphore is never closed");
+                    let _permit = permits.acquire().await.ok();
                     this.execute_single_tool_call(&tc).await
                 }
             })
@@ -1017,7 +1029,7 @@ mod tests {
         });
 
         let tool = FunctionTool::builder("test_tool", "A test tool")
-            .schema(schema.clone())
+            .schema(schema)
             .handler(|_args| async move { Ok(serde_json::json!({})) })
             .build()
             .unwrap();
@@ -1080,8 +1092,14 @@ mod tests {
             .property("a", serde_json::json!({"type": "number"}))
             .property("b", serde_json::json!({"type": "number"}))
             .handler(|args| async move {
-                let a = args.get("a").and_then(|v| v.as_i64()).unwrap_or(0);
-                let b = args.get("b").and_then(|v| v.as_i64()).unwrap_or(0);
+                let a = args
+                    .get("a")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                let b = args
+                    .get("b")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
                 Ok(serde_json::json!({"result": a + b}))
             })
             .build()
@@ -1452,7 +1470,10 @@ mod tests {
         let tool1 = FunctionTool::builder("tool_a", "First tool")
             .property("n", serde_json::json!({"type": "number"}))
             .handler(|args| async move {
-                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                let n = args
+                    .get("n")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
                 Ok(serde_json::json!({"tool": "a", "n": n}))
             })
             .build()
@@ -1461,7 +1482,10 @@ mod tests {
         let tool2 = FunctionTool::builder("tool_b", "Second tool")
             .property("n", serde_json::json!({"type": "number"}))
             .handler(|args| async move {
-                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                let n = args
+                    .get("n")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
                 Ok(serde_json::json!({"tool": "b", "n": n}))
             })
             .build()
@@ -1496,7 +1520,7 @@ mod tests {
         // Verify ordering: first result should be from tool_a, second from tool_b
         let first = &results[0];
         let first_content = match first {
-            crate::model::chat_message_types::TextMessage::Tool { content, .. } => content.clone(),
+            TextMessage::Tool { content, .. } => content.clone(),
             _ => panic!("Expected Tool message"),
         };
         let parsed1: serde_json::Value = serde_json::from_str(&first_content).unwrap();
@@ -1506,7 +1530,7 @@ mod tests {
 
         let second = &results[1];
         let second_content = match second {
-            crate::model::chat_message_types::TextMessage::Tool { content, .. } => content.clone(),
+            TextMessage::Tool { content, .. } => content.clone(),
             _ => panic!("Expected Tool message"),
         };
         let parsed2: serde_json::Value = serde_json::from_str(&second_content).unwrap();
@@ -1523,7 +1547,10 @@ mod tests {
         let tool1 = FunctionTool::builder("parallel_a", "First parallel tool")
             .property("n", serde_json::json!({"type": "number"}))
             .handler(|args| async move {
-                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                let n = args
+                    .get("n")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
                 Ok(serde_json::json!({"tool": "a", "n": n}))
             })
             .build()
@@ -1532,7 +1559,10 @@ mod tests {
         let tool2 = FunctionTool::builder("parallel_b", "Second parallel tool")
             .property("n", serde_json::json!({"type": "number"}))
             .handler(|args| async move {
-                let n = args.get("n").and_then(|v| v.as_i64()).unwrap_or(0);
+                let n = args
+                    .get("n")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
                 Ok(serde_json::json!({"tool": "b", "n": n}))
             })
             .build()
@@ -1564,5 +1594,28 @@ mod tests {
 
         let results = executor.execute_tool_calls_parallel(&calls).await;
         assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_execute_works_with_cache_disabled() {
+        // Regression guard for the lazy cache-key path: with caching disabled,
+        // execute() must not build a key / touch the cache, yet still succeed.
+        let executor = ToolExecutor::builder().disable_cache().build();
+
+        let tool = FunctionTool::builder("echo", "echo input")
+            .property("x", serde_json::json!({"type": "number"}))
+            .handler(|args| async move { Ok(args) })
+            .build()
+            .unwrap();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let result = executor
+            .execute("echo", serde_json::json!({"x": 1}))
+            .await
+            .unwrap();
+        assert!(result.success);
+        assert_eq!(result.result, serde_json::json!({"x": 1}));
+        // Cache stays empty (disabled).
+        assert_eq!(executor.cache_stats().total_entries, 0);
     }
 }

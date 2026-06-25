@@ -59,10 +59,15 @@ pub fn decode_base64(s: &str) -> ZaiResult<Vec<u8>> {
 pub fn encode_wav_pcm_base64(samples: &[u8], sample_rate: u32) -> String {
     let bytes_per_sample: u32 = 2;
     let channels: u32 = 1;
-    let byte_rate = sample_rate * channels * bytes_per_sample;
-    let block_align = (channels * bytes_per_sample) as u16;
-    let data_len = samples.len() as u32;
-    let chunk_size = 36 + data_len;
+    // Saturating math: WAV sizes are 32-bit, so guard against silent `as`
+    // truncation on absurdly large inputs rather than emitting a corrupt
+    // header (a >4 GiB PCM buffer can't be represented in WAV anyway).
+    let byte_rate = sample_rate
+        .saturating_mul(channels)
+        .saturating_mul(bytes_per_sample);
+    let block_align = (channels * bytes_per_sample).min(u16::MAX as u32) as u16;
+    let data_len = u32::try_from(samples.len()).unwrap_or(u32::MAX);
+    let chunk_size = data_len.saturating_add(36);
 
     let mut wav = Vec::with_capacity(44 + samples.len());
     // RIFF header

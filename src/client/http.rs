@@ -99,13 +99,13 @@ fn to_api_code(code: &ErrorCode) -> u16 {
 /// Attempts to deserialize the body as `{"error":{"code":...,"message":...}}`
 /// and maps it to the appropriate ZaiError variant. Falls back to a generic
 /// HttpError if parsing fails.
-pub fn parse_api_error_response(status: u16, body: String) -> crate::client::error::ZaiError {
+pub fn parse_api_error_response(status: u16, body: String) -> ZaiError {
     if let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(&body) {
         let (code, message) = parsed.into_parts();
         let api_code = to_api_code(&code);
-        crate::client::error::ZaiError::from_api_response(status, api_code, message)
+        ZaiError::from_api_response(status, api_code, message)
     } else {
-        crate::client::error::ZaiError::from_api_response(status, 0, body)
+        ZaiError::from_api_response(status, 0, body)
     }
 }
 
@@ -362,17 +362,20 @@ where
     span.record("http.url", url.as_str());
     span.record("http.status_code", status.as_u16());
 
-    let body = resp.text().await.map_err(ZaiError::from)?;
+    let body_bytes = resp.bytes().await.map_err(ZaiError::from)?;
 
     trace!(
         url = %url,
         http_status = %status,
-        bytes = body.len(),
-        response_body = %mask_sensitive_info(&body),
+        bytes = body_bytes.len(),
+        response_body = %mask_sensitive_info(std::str::from_utf8(&body_bytes).unwrap_or("")),
         "Received HTTP response body"
     );
 
-    serde_json::from_str::<T>(&body).map_err(ZaiError::from)
+    // Deserialize directly from the raw bytes: serde_json validates UTF-8
+    // lazily as it parses, so we avoid the extra full-body `String` allocation
+    // and the separate UTF-8 validation pass that `resp.text()` performs.
+    serde_json::from_slice::<T>(&body_bytes).map_err(ZaiError::from)
 }
 
 /// Send a JSON request through the shared transport pipeline.
@@ -563,7 +566,7 @@ pub trait HttpClient {
     /// Override this method to provide custom configuration.
     /// Default implementation returns default configuration.
     fn http_config(&self) -> Arc<HttpClientConfig> {
-        static DEFAULT: std::sync::OnceLock<Arc<HttpClientConfig>> = std::sync::OnceLock::new();
+        static DEFAULT: OnceLock<Arc<HttpClientConfig>> = OnceLock::new();
         DEFAULT
             .get_or_init(|| Arc::new(HttpClientConfig::default()))
             .clone()
@@ -574,7 +577,7 @@ pub trait HttpClient {
     /// This method implements retry logic with exponential backoff and jitter.
     /// It supports configuration through `http_config` method.
     fn post(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config().clone();
+        let config = self.http_config();
         let url = self.api_url().as_ref().to_owned();
         let key: Arc<str> = Arc::from(self.api_key().as_ref());
         // Serialize once (to bytes); `send_request_bytes` reuses the cheap
@@ -592,7 +595,7 @@ pub trait HttpClient {
     /// This method implements retry logic with exponential backoff and jitter.
     /// It supports configuration through the `http_config` method.
     fn get(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config().clone();
+        let config = self.http_config();
         let url = self.api_url().as_ref().to_owned();
         let key: Arc<str> = Arc::from(self.api_key().as_ref());
 
@@ -601,7 +604,7 @@ pub trait HttpClient {
 
     /// Sends a PUT request with a JSON body to the API endpoint.
     fn put(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config().clone();
+        let config = self.http_config();
         let url = self.api_url().as_ref().to_owned();
         let key: Arc<str> = Arc::from(self.api_key().as_ref());
         let body = serde_json::to_vec(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
@@ -614,7 +617,7 @@ pub trait HttpClient {
 
     /// Sends a DELETE request without a body to the API endpoint.
     fn delete(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config().clone();
+        let config = self.http_config();
         let url = self.api_url().as_ref().to_owned();
         let key: Arc<str> = Arc::from(self.api_key().as_ref());
 
@@ -676,7 +679,10 @@ where
                 }
             },
             Err(e) => {
-                let url = e.url().map(|u| u.to_string()).unwrap_or_default();
+                let url = e
+                    .url()
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_default();
                 let error = ZaiError::from(e);
 
                 if should_retry(&error, attempt, config.max_retries) {
@@ -716,8 +722,13 @@ fn calculate_retry_delay(attempt: u32, strategy: &RetryDelay) -> Duration {
     match strategy {
         RetryDelay::Fixed(delay) => *delay,
         RetryDelay::Exponential { base, max } => {
-            let delay = *base * 2u32.pow(attempt.min(10));
-            delay.min(*max)
+            // `base`/`max` are public, unvalidated `Duration` fields, so
+            // `base * 2^attempt` can overflow `Duration` (panic in debug, wrap
+            // in release) BEFORE the `.min(*max)` clamp runs. Use checked mul:
+            // on overflow we fall back to `max`, which is exactly the desired
+            // capped behavior, so the clamp still holds.
+            let factor = 2u32.pow(attempt.min(10));
+            base.checked_mul(factor).unwrap_or(*max).min(*max)
         },
         RetryDelay::None => Duration::ZERO,
     }
@@ -733,8 +744,12 @@ fn should_retry(error: &ZaiError, attempt: u32, max_retries: u32) -> bool {
 
 /// Adds jitter to delay to avoid thundering herd.
 fn add_jitter(delay: Duration) -> Duration {
-    let jitter_ms = fastrand::u64(0..=delay.as_millis() as u64 / 4);
-    delay + Duration::from_millis(jitter_ms)
+    // `Duration::as_millis` is `u128`; convert safely (cap rather than silently
+    // truncate via raw `as`), and use `saturating_add` so we can't overflow at
+    // the `Duration::MAX` boundary.
+    let quarter_ms = u64::try_from(delay.as_millis() / 4).unwrap_or(u64::MAX);
+    let jitter_ms = fastrand::u64(0..=quarter_ms);
+    delay.saturating_add(Duration::from_millis(jitter_ms))
 }
 
 #[cfg(test)]
@@ -1019,5 +1034,43 @@ mod tests {
     fn test_retry_delay_default() {
         let delay = RetryDelay::default();
         matches!(delay, RetryDelay::Exponential { base, max } if base == Duration::from_millis(500) && max == Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_calculate_retry_delay_huge_base_does_not_panic() {
+        // Regression guard: a user-supplied `base` near `Duration::MAX` must
+        // NOT overflow when scaled by the backoff factor. Previously
+        // `base * 2^attempt` panicked in debug (and wrapped in release) before
+        // the `.min(max)` clamp ran; checked_mul now clamps to `max`.
+        let strategy = RetryDelay::Exponential {
+            base: Duration::MAX,
+            max: Duration::from_secs(5),
+        };
+        for attempt in 0..=20 {
+            assert_eq!(
+                calculate_retry_delay(attempt, &strategy),
+                Duration::from_secs(5),
+                "attempt {attempt} should clamp to max"
+            );
+        }
+
+        // Normal growth still clamps at the top end.
+        let strategy = RetryDelay::Exponential {
+            base: Duration::from_millis(500),
+            max: Duration::from_secs(5),
+        };
+        assert_eq!(calculate_retry_delay(4, &strategy), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_add_jitter_does_not_panic_or_overflow() {
+        // A delay near `Duration::MAX` must saturate on the add, not panic.
+        assert_eq!(add_jitter(Duration::MAX), Duration::MAX);
+
+        // Normal delay stays within [delay, delay + 25%].
+        let delay = Duration::from_secs(1);
+        let with_jitter = add_jitter(delay);
+        assert!(with_jitter >= delay);
+        assert!(with_jitter <= delay + Duration::from_millis(250));
     }
 }

@@ -367,7 +367,7 @@ pub fn extract_final_text(
                 return obj
                     .get("text")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .map(std::string::ToString::to_string);
             }
             None
         }),

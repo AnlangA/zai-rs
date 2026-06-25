@@ -61,7 +61,10 @@ rmcp = { version = "1.8.0", features = ["client"], optional = true }
 axum = { version = "0.8.9", optional = true }
 tower = { version = "0.5.3", optional = true }
 tower-http = { version = "0.7.0", features = ["fs", "cors"], optional = true }
-uuid = { version = "1.23.3", features = ["v4", "serde"] }
+# Only used to mint realtime event ids (`evt_<uuid>`); gated under `realtime`
+# so the default chat/embeddings build doesn't pull it in. The `serde` feature
+# is intentionally NOT enabled — no `Uuid` field is (de)serialized anywhere.
+uuid = { version = "1.23.3", features = ["v4"], optional = true }
 
 # Realtime (WebSocket) API dependencies.
 # rustls keeps the SDK free of a system OpenSSL dependency.
@@ -72,7 +75,8 @@ sha2 = { version = "0.11.0", optional = true }
 # `BroadcastStream` adapts tokio broadcast channels into `Stream`s for the
 # realtime event/audio fan-out.
 tokio-stream = { version = "0.1.18", features = ["sync"], optional = true }
-# Promoted from dev-dependencies — needed by the realtime transport/audio paths.
+# Unconditional: `bytes::Bytes` is used by the default HTTP send/parse path
+# (not just the realtime transport/audio paths), so it can't be feature-gated.
 bytes = "1.11.1"
 http = { version = "1.4.2", optional = true }
 
@@ -89,6 +93,7 @@ realtime = [
     "dep:sha2",
     "dep:tokio-stream",
     "dep:http",
+    "dep:uuid",
     "tokio/net",
 ]
 # Runtime validation of tool-call arguments against their JSON Schema. Off by

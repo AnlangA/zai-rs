@@ -126,6 +126,13 @@ impl ToolCallCache {
         self
     }
 
+    /// Whether the cache is currently enabled (a `get`/`insert` no-op when
+    /// false). Lets callers avoid building a [`CacheKey`] — which deep-clones
+    /// and re-serializes the arguments — when the cache is disabled.
+    pub fn enabled(&self) -> bool {
+        self.enable_cache
+    }
+
     /// Look up a cached result, returning `None` if disabled, missing, or
     /// expired (expired entries are atomically removed).
     pub fn get(&self, key: &CacheKey) -> Option<Value> {
@@ -265,6 +272,22 @@ pub struct CacheStats {
 }
 
 fn normalize_json(value: &Value) -> String {
+    // Fast path for the common structured case: when no object key anywhere in
+    // the tree carries surrounding whitespace (the overwhelmingly common case —
+    // LLMs emit clean JSON), skip the full deep-clone + rebuild below and
+    // serialize the original directly. serde_json's default `BTreeMap`-backed
+    // Map sorts object keys, so this canonicalizes key order for free, making
+    // `{"a":1,"b":2}` and `{"b":2,"a":1}` collide as they should.
+    //
+    // NOTE: this relies on serde_json being compiled WITHOUT its `preserve_order`
+    // feature (the default for this crate — see Cargo.toml). If `preserve_order`
+    // is ever enabled, keys would serialize in insertion order and reordered
+    // args would stop colliding; `test_cache_collides_on_reordered_keys` pins
+    // the user-facing behavior so that regression would be caught.
+    if matches!(value, Value::Object(_) | Value::Array(_)) && !needs_normalization(value) {
+        return serde_json::to_string(value).unwrap_or_default();
+    }
+
     match value {
         Value::Object(obj) => {
             let mut normalized = serde_json::Map::new();
@@ -281,6 +304,18 @@ fn normalize_json(value: &Value) -> String {
         },
         Value::String(s) => s.clone(),
         _ => serde_json::to_string(value).unwrap_or_default(),
+    }
+}
+
+/// Whether any object key in the tree has surrounding whitespace (and thus
+/// needs the full normalize-and-rebuild path). Allocation-free.
+fn needs_normalization(value: &Value) -> bool {
+    match value {
+        Value::Object(obj) => obj
+            .iter()
+            .any(|(k, v)| k.trim().len() != k.len() || needs_normalization(v)),
+        Value::Array(arr) => arr.iter().any(needs_normalization),
+        _ => false,
     }
 }
 
@@ -322,7 +357,7 @@ mod tests {
         );
         assert!(!entry.is_expired());
 
-        let mut entry_mut = entry.clone();
+        let mut entry_mut = entry;
         entry_mut.timestamp = SystemTime::now() - Duration::from_secs(2);
         assert!(entry_mut.is_expired());
     }
@@ -359,9 +394,9 @@ mod tests {
         let args = serde_json::json!({"input": "test"});
         let result = serde_json::json!({"output": "success"});
 
-        cache.insert_with_key("test_tool".to_string(), args.clone(), result.clone());
+        cache.insert_with_key("test_tool".to_string(), args.clone(), result);
 
-        let key = CacheKey::new("test_tool".to_string(), args.clone());
+        let key = CacheKey::new("test_tool".to_string(), args);
 
         // Entry should be cached initially
         assert!(cache.get(&key).is_some());
@@ -381,7 +416,7 @@ mod tests {
         cache.insert_with_key("tool_a".to_string(), args.clone(), serde_json::json!({}));
         cache.insert_with_key("tool_b".to_string(), args.clone(), serde_json::json!({}));
 
-        let key = CacheKey::new("tool_a".to_string(), args.clone());
+        let key = CacheKey::new("tool_a".to_string(), args);
         let _ = cache.get(&key);
         let _ = cache.get(&key);
 
@@ -553,5 +588,35 @@ mod tests {
                 .is_some()
         );
         assert!(cache.stats().total_entries <= 3);
+    }
+
+    #[test]
+    fn test_cache_collides_on_reordered_keys() {
+        // End-to-end pin of the user-facing behavior: the cache must treat
+        // reordered object keys as the same entry. (The canonicalization rides
+        // on serde_json's default BTreeMap key ordering — see the NOTE on
+        // `normalize_json`. This asserts the *observable* cache hit, so a
+        // future change that broke ordering — e.g. enabling serde_json's
+        // `preserve_order` feature — would fail here.)
+        let cache = ToolCallCache::new();
+        cache.insert_with_key(
+            "t".to_string(),
+            serde_json::json!({"a": 1, "b": 2}),
+            serde_json::json!(true),
+        );
+        let reordered = CacheKey::new("t".to_string(), serde_json::json!({"b": 2, "a": 1}));
+        assert!(
+            cache.get(&reordered).is_some(),
+            "reordered object keys must collide in the cache"
+        );
+    }
+
+    #[test]
+    fn test_cache_key_trims_whitespace_bearing_keys() {
+        // The slow path must still trim whitespace-bearing keys, and the
+        // trimmed form must match a clean key built via the fast path.
+        let messy = CacheKey::new("t".to_string(), serde_json::json!({" a ": 1}));
+        let clean = CacheKey::new("t".to_string(), serde_json::json!({"a": 1}));
+        assert_eq!(messy, clean);
     }
 }
