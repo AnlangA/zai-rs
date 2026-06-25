@@ -96,7 +96,7 @@ async fn capture_one_sdk_request(
 #[tokio::test]
 async fn test_chat_completion_integration() {
     let config = MockServerConfig::default();
-    let client = MockServerClient::new(config.base_url.clone());
+    let client = MockServerClient::new(config.base_url);
 
     // Verify URL construction
     let expected_url = client.url("/api/paas/v4/chat/completions");
@@ -353,7 +353,7 @@ async fn test_sdk_multipart_uses_dynamic_mock_base() {
 #[tokio::test]
 async fn test_error_handling_integration() {
     let config = MockServerConfig::default();
-    let client = MockServerClient::new(config.base_url.clone());
+    let client = MockServerClient::new(config.base_url);
 
     // Test URL construction for different endpoints
     let embeddings_url = client.url("/api/paas/v4/embeddings");
@@ -373,7 +373,7 @@ async fn test_error_handling_integration() {
 #[tokio::test]
 async fn test_file_operations_integration() {
     let config = MockServerConfig::default();
-    let client = MockServerClient::new(config.base_url.clone());
+    let client = MockServerClient::new(config.base_url);
 
     // Test file URL construction
     let file_url = client.url("/api/paas/v4/files/file-123456");
@@ -536,6 +536,90 @@ async fn test_retry_simulation() {
     }
 
     assert_eq!(retry_count, 3);
+}
+
+/// End-to-end exercise of the SDK's real retry loop
+/// (`send_with_retry_factory`): a server that responds `500` (retryable as
+/// `HttpError`) twice and then `200` must be driven through exactly three
+/// attempts and ultimately succeed. Uses `RetryDelay::None` so the backoff
+/// sleeps are instant. The error body is intentionally empty so the response
+/// classifies as `HttpError { 500 }` (retryable), not an unmapped business
+/// code (`Unknown`, which is deliberately non-retryable).
+#[tokio::test]
+async fn test_send_path_retries_500_then_succeeds() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use zai_rs::client::http::{HttpClientConfig, RetryDelay};
+
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let attempts = Arc::new(AtomicU32::new(0));
+    let attempts_server = Arc::clone(&attempts);
+
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(s) => s,
+                Err(_) => break,
+            };
+            let io = TokioIo::new(stream);
+            let counter = Arc::clone(&attempts_server);
+            let service = service_fn(move |req: Request<Incoming>| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    // Drain the request body so the connection can be reused.
+                    let _ = req.collect().await.unwrap().to_bytes();
+                    let n = counter.fetch_add(1, Ordering::SeqCst);
+                    if n < 2 {
+                        // First two attempts: 500 with empty body -> HttpError
+                        // (retryable).
+                        let mut resp = Response::new(Full::new(Bytes::new()));
+                        *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+                        Ok::<_, Infallible>(resp)
+                    } else {
+                        let body = serde_json::to_string(&json!({
+                            "id": "chatcmpl-1",
+                            "object": "chat.completion",
+                            "created": 1,
+                            "model": "glm-5.2",
+                            "choices": [{
+                                "index": 0,
+                                "message": {"role": "assistant", "content": "ok"},
+                                "finish_reason": "stop"
+                            }],
+                            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                        }))
+                        .unwrap();
+                        Ok(Response::new(Full::new(Bytes::from(body))))
+                    }
+                }
+            });
+            let _ = ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
+                .serve_connection(io, service)
+                .await;
+        }
+    });
+
+    let cfg = HttpClientConfig::builder()
+        .max_retries(2)
+        .retry_delay(RetryDelay::None)
+        .build();
+    let key = "test.12345678901234567890".to_string();
+    let resp = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"), key)
+        .with_base_url(base_url)
+        .with_http_config(cfg)
+        .send()
+        .await;
+
+    assert!(
+        resp.is_ok(),
+        "should succeed after retries: {:?}",
+        resp.err()
+    );
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        3,
+        "expected exactly 3 attempts (1 initial + 2 retries)"
+    );
 }
 
 /// Test request validation

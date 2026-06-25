@@ -209,7 +209,7 @@ impl HttpClient for DocumentUploadFileRequest {
                 let fname = path
                     .file_name()
                     .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
+                    .map(std::string::ToString::to_string)
                     .unwrap_or_else(|| "upload.bin".to_string());
                 file_parts.push((fname, std::fs::read(path)?));
             }

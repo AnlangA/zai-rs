@@ -52,7 +52,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY").unwrap();
+//!     let key = std::env::var("ZHIPU_API_KEY")?;
 //!     let client = ChatCompletion::new(model, TextMessage::user("Hello"), key);
 //!     let _resp = client.post().await?;
 //!     Ok(())
@@ -67,7 +67,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY").unwrap();
+//!     let key = std::env::var("ZHIPU_API_KEY")?;
 //!     let mut client =
 //!         ChatCompletion::new(model, TextMessage::user("Hello"), key).enable_stream();
 //!     client
@@ -87,19 +87,21 @@
 //! endpoint required by official Zhipu AI documentation.
 //!
 //! ```rust
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use zai_rs::ZaiConfig;
 //!
 //! let config = ZaiConfig::builder()
 //!     .api_key("abc123.abcdefghijklmnopqrstuvwxyz")
 //!     .paas_v4_base("https://open.bigmodel.cn/api/paas/v4")
 //!     .coding_paas_v4_base("https://open.bigmodel.cn/api/coding/paas/v4")
-//!     .build()
-//!     .unwrap();
+//!     .build()?;
 //!
 //! assert_eq!(
 //!     config.coding_paas_v4_url("chat/completions"),
 //!     "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"
 //! );
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Feature Flags

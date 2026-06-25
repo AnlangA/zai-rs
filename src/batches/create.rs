@@ -131,7 +131,7 @@ impl CreateBatchRequest {
 
     /// Validate body using `validator`
     pub fn validate(&self) -> ZaiResult<()> {
-        self.body.validate().map_err(|e| e.into())
+        self.body.validate().map_err(std::convert::Into::into)
     }
 
     /// Send request and parse typed response

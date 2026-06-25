@@ -68,13 +68,13 @@ fn make_calc_tool() -> FunctionTool {
             let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("");
 
             // 使用 ErrorContext 的 with_operation 来添加上下文信息
-            let a = args.get("a").and_then(|v| v.as_f64())
+            let a = args.get("a").and_then(serde_json::Value::as_f64)
                 .ok_or_else(|| error_context()
                     .with_tool("calc")
                     .with_operation("解析左操作数")
                     .invalid_parameters("Missing number 'a'"))?;
 
-            let b = args.get("b").and_then(|v| v.as_f64())
+            let b = args.get("b").and_then(serde_json::Value::as_f64)
                 .ok_or_else(|| error_context()
                     .with_tool("calc")
                     .with_operation("解析右操作数")

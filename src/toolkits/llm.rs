@@ -122,7 +122,7 @@ fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
                     Err(_) => (Some(Cow::Borrowed(s.as_str())), Value::String(s.clone())),
                 }
             },
-            Some(v @ Value::Object(_)) | Some(v @ Value::Array(_)) => (None, v.clone()),
+            Some(v @ (Value::Object(_) | Value::Array(_))) => (None, v.clone()),
             Some(v) => {
                 // Unexpected primitive; keep as-is for robustness.
                 (None, v.clone())
@@ -168,7 +168,7 @@ pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall<'_>> {
                     Err(_) => (Some(Cow::Borrowed(s.as_str())), Value::String(s.clone())),
                 }
             },
-            Some(v @ Value::Object(_)) | Some(v @ Value::Array(_)) => (None, v.clone()),
+            Some(v @ (Value::Object(_) | Value::Array(_))) => (None, v.clone()),
             Some(v) => {
                 // Unexpected primitive; keep as-is for robustness.
                 (None, v.clone())

@@ -931,7 +931,7 @@ impl VoiceRichContent {
 /// let format = VoiceFormat::WAV;
 ///
 /// // Detect format from file extension
-/// let format = VoiceFormat::from_extension("mp3").unwrap();
+/// let format = VoiceFormat::from_extension("mp3").unwrap_or(VoiceFormat::MP3);
 /// ```
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]

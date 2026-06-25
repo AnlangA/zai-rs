@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "total={:?} list_len={}",
             data.total,
-            data.list.as_ref().map(|v| v.len()).unwrap_or(0)
+            data.list.as_ref().map(std::vec::Vec::len).unwrap_or(0)
         );
         if let Some(list) = &data.list {
             for (i, d) in list.iter().enumerate().take(5) {

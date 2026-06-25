@@ -137,11 +137,8 @@ impl OcrRequest {
         let ext = Path::new(p)
             .extension()
             .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase());
-        let valid_ext = matches!(
-            ext.as_deref(),
-            Some("png") | Some("jpg") | Some("jpeg") | Some("bmp")
-        );
+            .map(str::to_ascii_lowercase);
+        let valid_ext = matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "bmp"));
         if !valid_ext {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_TYPE_UNSUPPORTED,
@@ -213,10 +210,10 @@ impl HttpClient for OcrRequest {
             let ext = Path::new(&file_path)
                 .extension()
                 .and_then(|s| s.to_str())
-                .map(|s| s.to_ascii_lowercase());
+                .map(str::to_ascii_lowercase);
             let mime = match ext.as_deref() {
                 Some("png") => "image/png",
-                Some("jpg") | Some("jpeg") => "image/jpeg",
+                Some("jpg" | "jpeg") => "image/jpeg",
                 Some("bmp") => "image/bmp",
                 _ => "image/png",
             };

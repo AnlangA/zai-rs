@@ -22,16 +22,22 @@ impl SseEventParser {
     /// Push a transport byte chunk and return completed SSE event payloads.
     pub fn push(&mut self, new_bytes: &[u8]) -> Vec<Vec<u8>> {
         self.buf.extend_from_slice(new_bytes);
-        let mut events = Vec::new();
+        let mut events = Vec::with_capacity(4);
 
-        while let Some(newline_index) = self.buf.iter().position(|&b| b == b'\n') {
-            let mut line = self.buf.drain(..=newline_index).collect::<Vec<_>>();
-            if line.ends_with(b"\n") {
-                line.pop();
-            }
-            if line.ends_with(b"\r") {
-                line.pop();
-            }
+        // Scan forward without a per-line `drain` (which memmoves the entire
+        // tail on every line → O(n^2) per chunk, and this runs for every
+        // streaming token). Track consumed bytes and drop them once at the end.
+        let mut consumed = 0;
+        while let Some(rel) = self.buf[consumed..].iter().position(|&b| b == b'\n') {
+            let newline = consumed + rel;
+            // Line body is `[consumed, end)`; strip a single trailing CR.
+            let end = if newline > consumed && self.buf[newline - 1] == b'\r' {
+                newline - 1
+            } else {
+                newline
+            };
+            let line = &self.buf[consumed..end];
+            consumed = newline + 1;
 
             if line.is_empty() {
                 if !self.event_data.is_empty() {
@@ -50,6 +56,7 @@ impl SseEventParser {
             }
         }
 
+        self.buf.drain(..consumed);
         events
     }
 }
@@ -59,7 +66,8 @@ fn trim_one_leading_space(bytes: &[u8]) -> &[u8] {
 }
 
 fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
-    let mut event = Vec::new();
+    let total: usize = lines.iter().map(std::vec::Vec::len).sum::<usize>() + lines.len();
+    let mut event = Vec::with_capacity(total);
     for (idx, line) in lines.iter().enumerate() {
         if idx > 0 {
             event.push(b'\n');
@@ -196,5 +204,32 @@ mod tests {
         let mut parser = SseEventParser::new();
         let events = parser.push(b": keepalive\nid: 1\ndata: payload\n\n");
         assert_eq!(events, vec![b"payload".to_vec()]);
+    }
+
+    #[test]
+    fn event_parser_done_marker_split_across_chunks() {
+        // Regression guard for the scan-in-place rewrite: a `[DONE]` payload
+        // split across two transport chunks must still reassemble into one
+        // `[DONE]` event.
+        let mut parser = SseEventParser::new();
+        assert!(parser.push(b"data: [DO").is_empty());
+        assert_eq!(parser.push(b"NE]\n\n"), vec![b"[DONE]".to_vec()]);
+    }
+
+    #[test]
+    fn event_parser_lone_cr_then_lf() {
+        // A CR ending one chunk followed by an LF starting the next must not
+        // leave a stray CR in the payload.
+        let mut parser = SseEventParser::new();
+        assert!(parser.push(b"data: hi\r").is_empty());
+        assert_eq!(parser.push(b"\n\n"), vec![b"hi".to_vec()]);
+    }
+
+    #[test]
+    fn extract_sse_handles_crlf_split_across_chunks() {
+        let mut buf = Vec::new();
+        assert!(extract_sse_data_lines(&mut buf, b"data: hello\r").is_empty());
+        let lines = extract_sse_data_lines(&mut buf, b"\n");
+        assert_eq!(lines, vec![b"hello".to_vec()]);
     }
 }

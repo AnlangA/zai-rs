@@ -197,11 +197,7 @@ pub(crate) type ToolHandler = std::sync::Arc<
     dyn Fn(
             serde_json::Value,
         ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                    > + Send,
-            >,
+            Box<dyn std::future::Future<Output = ToolResult<serde_json::Value>> + Send>,
         > + Send
         + Sync,
 >;
@@ -243,12 +239,10 @@ impl FunctionTool {
         description: impl Into<String>,
         schema: serde_json::Value,
         f: F,
-    ) -> crate::toolkits::error::ToolResult<FunctionTool>
+    ) -> ToolResult<FunctionTool>
     where
         F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = crate::toolkits::error::ToolResult<serde_json::Value>>
-            + Send
-            + 'static,
+        Fut: std::future::Future<Output = ToolResult<serde_json::Value>> + Send + 'static,
     {
         Self::builder(name, description)
             .schema(schema)
@@ -259,15 +253,10 @@ impl FunctionTool {
     /// 1) {"name":..., "description":..., "parameters": {...}}
     /// 2) {"type":"function", "function": {"name":..., "description":...,
     ///    "parameters": {...}}}
-    pub fn from_function_spec<F, Fut>(
-        spec: serde_json::Value,
-        f: F,
-    ) -> crate::toolkits::error::ToolResult<FunctionTool>
+    pub fn from_function_spec<F, Fut>(spec: serde_json::Value, f: F) -> ToolResult<FunctionTool>
     where
         F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = crate::toolkits::error::ToolResult<serde_json::Value>>
-            + Send
-            + 'static,
+        Fut: std::future::Future<Output = ToolResult<serde_json::Value>> + Send + 'static,
     {
         let (name, description, parameters) = parse_function_spec_details(&spec)?;
         let mut builder = Self::builder(name, description);
@@ -281,12 +270,10 @@ impl FunctionTool {
     pub fn from_function_spec_file<F, Fut>(
         path: impl AsRef<std::path::Path>,
         f: F,
-    ) -> crate::toolkits::error::ToolResult<FunctionTool>
+    ) -> ToolResult<FunctionTool>
     where
         F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = crate::toolkits::error::ToolResult<serde_json::Value>>
-            + Send
-            + 'static,
+        Fut: std::future::Future<Output = ToolResult<serde_json::Value>> + Send + 'static,
     {
         let content = std::fs::read_to_string(path).map_err(|e| {
             error_context().invalid_parameters(format!("Failed to read spec file: {}", e))
@@ -312,7 +299,11 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
 
     // Check cache first
     {
-        let cache = SCHEMA_CACHE.read().unwrap();
+        // Recover from a poisoned lock (a prior panic while holding it) by
+        // taking the inner guard rather than panicking here.
+        let cache = SCHEMA_CACHE
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(cached) = cache.get(&hash) {
             return Ok(Arc::clone(cached));
         }
@@ -326,7 +317,9 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
     let validator = Arc::new(validator);
 
     {
-        let mut cache = SCHEMA_CACHE.write().unwrap();
+        let mut cache = SCHEMA_CACHE
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Evict oldest entries if cache is full
         if cache.len() >= SCHEMA_CACHE_MAX_SIZE {
             // Remove approximately 10% of entries (oldest by insertion order)
@@ -346,7 +339,7 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
 /// spec.
 pub(crate) fn parse_function_spec_details(
     spec: &serde_json::Value,
-) -> crate::toolkits::error::ToolResult<(String, String, Option<serde_json::Value>)> {
+) -> ToolResult<(String, String, Option<serde_json::Value>)> {
     use serde_json::Value;
     let obj = match spec {
         Value::Object(map) => map,
@@ -444,16 +437,10 @@ impl FunctionToolBuilder {
     pub fn handler<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(serde_json::Value) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = crate::toolkits::error::ToolResult<serde_json::Value>>
-            + Send
-            + 'static,
+        Fut: std::future::Future<Output = ToolResult<serde_json::Value>> + Send + 'static,
     {
         let wrapped = move |args: serde_json::Value| -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<
-                        Output = crate::toolkits::error::ToolResult<serde_json::Value>,
-                    > + Send,
-            >,
+            Box<dyn std::future::Future<Output = ToolResult<serde_json::Value>> + Send>,
         > { Box::pin(f(args)) };
         self.handler = Some(std::sync::Arc::new(wrapped));
         self
@@ -480,7 +467,7 @@ impl FunctionToolBuilder {
 
     /// Finalize the tool: validates the handler is set, compiles the schema,
     /// and returns the built [`FunctionTool`].
-    pub fn build(mut self) -> crate::toolkits::error::ToolResult<FunctionTool> {
+    pub fn build(mut self) -> ToolResult<FunctionTool> {
         let handler = self
             .handler
             .ok_or_else(|| error_context().invalid_parameters("FunctionTool handler not set"))?;
@@ -517,7 +504,7 @@ impl FunctionToolBuilder {
                     .and_then(|v| v.as_array())
                     .map(|arr| {
                         arr.iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .filter_map(|v| v.as_str().map(std::string::ToString::to_string))
                             .collect()
                     })
                     .unwrap_or_default();

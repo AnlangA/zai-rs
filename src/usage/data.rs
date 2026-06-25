@@ -50,8 +50,11 @@ fn parse_next_reset_time(raw: &str) -> Option<DateTime<Utc>> {
         .map(|datetime| datetime.with_timezone(&Utc))
 }
 
-fn beijing_offset() -> FixedOffset {
-    FixedOffset::east_opt(8 * 60 * 60).expect("UTC+08:00 is a valid fixed offset")
+fn beijing_offset() -> Option<FixedOffset> {
+    // UTC+08:00 (8*3600s east) is always a valid fixed offset; UTC (offset 0)
+    // is the panic-free fallback. Both are always `Some`, so callers always
+    // receive a timezone — the `Option` just keeps this helper panic-free.
+    FixedOffset::east_opt(8 * 60 * 60).or_else(|| FixedOffset::east_opt(0))
 }
 
 /// `data` payload returned by the quota-limit endpoint.
@@ -202,7 +205,7 @@ impl CodingPlanQuotaSummary {
     pub fn next_reset_at_beijing(&self) -> Option<DateTime<FixedOffset>> {
         self.next_reset_at
             .as_ref()
-            .map(|datetime| datetime.with_timezone(&beijing_offset()))
+            .and_then(|datetime| beijing_offset().map(|tz| datetime.with_timezone(&tz)))
     }
 }
 
@@ -449,7 +452,7 @@ impl CodingPlanQuotaLimit {
     /// Parsed reset time in UTC+08:00 (Beijing / Shanghai fixed offset).
     pub fn next_reset_at_beijing(&self) -> Option<DateTime<FixedOffset>> {
         self.next_reset_at()
-            .map(|datetime| datetime.with_timezone(&beijing_offset()))
+            .and_then(|datetime| beijing_offset().map(|tz| datetime.with_timezone(&tz)))
     }
 
     /// Build an easy-to-use normalized view for this quota window.

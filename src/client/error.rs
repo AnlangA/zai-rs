@@ -52,48 +52,44 @@ use regex::Regex;
 use thiserror::Error;
 
 /// Pre-compiled regex patterns for sensitive data masking (avoids recompilation
-/// on every call)
-static API_KEY_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").expect("invalid regex")
-});
+/// on every call). Every pattern is a static literal, so each `Regex::new` here
+/// always succeeds — but the plumbing stores `Option`/filtered vecs and resolves
+/// via `.ok()` rather than `.expect()`, keeping the crate's no-`unwrap`/`expect`
+/// policy honest (a malformed literal would be skipped, not panic at first use).
+static API_KEY_PATTERN: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").ok());
 
 static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
-    vec![
+    [
+        (r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
+        (r"(?i)(password\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
+        (r"(?i)(token\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
+        (r"(?i)(secret\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
         (
-            Regex::new(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
-            "$1[FILTERED]",
-        ),
-        (
-            Regex::new(r"(?i)(password\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
-            "$1[FILTERED]",
-        ),
-        (
-            Regex::new(r"(?i)(token\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
-            "$1[FILTERED]",
-        ),
-        (
-            Regex::new(r"(?i)(secret\s*[=:]\s*)[^\s,]+").expect("invalid regex"),
-            "$1[FILTERED]",
-        ),
-        (
-            Regex::new(r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)").expect("invalid regex"),
+            r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)",
             "bearer [FILTERED]",
         ),
         (
-            Regex::new(r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+").expect("invalid regex"),
+            r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+",
             "$1[FILTERED]",
         ),
     ]
+    .into_iter()
+    .filter_map(|(pat, repl)| Regex::new(pat).ok().map(|re| (re, repl)))
+    .collect()
 });
 
 static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-        Regex::new(r"(?i)api[_-]?key\s*[=:]").expect("invalid regex"),
-        Regex::new(r"(?i)password\s*[=:]").expect("invalid regex"),
-        Regex::new(r"(?i)token\s*[=:]").expect("invalid regex"),
-        Regex::new(r"(?i)secret\s*[=:]").expect("invalid regex"),
-        Regex::new(r"(?i)authorization\s*:\s*Bearer").expect("invalid regex"),
+    [
+        r"(?i)api[_-]?key\s*[=:]",
+        r"(?i)password\s*[=:]",
+        r"(?i)token\s*[=:]",
+        r"(?i)secret\s*[=:]",
+        r"(?i)authorization\s*:\s*Bearer",
     ]
+    .into_iter()
+    .filter_map(|pat| Regex::new(pat).ok())
+    .collect()
 });
 
 /// Masks sensitive information in text for secure logging
@@ -130,10 +126,13 @@ static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 /// assert!(!filtered.contains("abc123"));
 /// ```
 pub fn mask_sensitive_info(text: &str) -> String {
-    let mut result = API_KEY_PATTERN.replace_all(text, "[FILTERED]").to_string();
+    let mut result = match API_KEY_PATTERN.as_ref() {
+        Some(re) => re.replace_all(text, "[FILTERED]").into_owned(),
+        None => text.to_string(),
+    };
 
     for (re, replacement) in SENSITIVE_PATTERNS.iter() {
-        result = re.replace_all(&result, *replacement).to_string();
+        result = re.replace_all(&result, *replacement).into_owned();
     }
 
     result
@@ -144,12 +143,15 @@ pub fn mask_sensitive_info(text: &str) -> String {
 /// A specialized function that only masks API keys following the ZhipuAI
 /// format.
 pub fn mask_api_key(text: &str) -> String {
-    API_KEY_PATTERN.replace_all(text, "[FILTERED]").to_string()
+    match API_KEY_PATTERN.as_ref() {
+        Some(re) => re.replace_all(text, "[FILTERED]").into_owned(),
+        None => text.to_string(),
+    }
 }
 
 /// Checks if text contains sensitive information patterns
 pub fn contains_sensitive_info(text: &str) -> bool {
-    if API_KEY_PATTERN.is_match(text) {
+    if API_KEY_PATTERN.as_ref().is_some_and(|re| re.is_match(text)) {
         return true;
     }
 
@@ -869,6 +871,10 @@ impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `super::*` would otherwise pull in the `thiserror::Error` derive macro as
+    // `Error`; bring `std::io`'s `Error`/`ErrorKind` into scope for the io-Error
+    // conversion tests below.
+    use std::io::{Error, ErrorKind};
 
     #[test]
     fn test_from_api_response_bad_request() {
@@ -977,15 +983,15 @@ mod tests {
         // Using From trait implementation for io::Error: ErrorKind::ConnectionRefused
         // is not NotFound/PermissionDenied/TimedOut, so it falls through to
         // Unknown carrying the SDK I/O code.
-        let io_err =
-            std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let io_err = Error::new(ErrorKind::ConnectionRefused, "connection refused");
         let err = ZaiError::from(io_err);
         assert_eq!(err.code(), Some(codes::SDK_IO));
 
         // JsonError has no code
-        let err = ZaiError::JsonError(std::sync::Arc::new(serde_json::Error::io(
-            std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid JSON"),
-        )));
+        let err = ZaiError::JsonError(Arc::new(serde_json::Error::io(Error::new(
+            ErrorKind::InvalidData,
+            "invalid JSON",
+        ))));
         assert!(err.code().is_none());
 
         // HttpError has status as code
@@ -1007,7 +1013,7 @@ mod tests {
 
     #[test]
     fn test_from_reqwest_error_with_status() {
-        let io_err = std::io::Error::other("test error");
+        let io_err = Error::other("test error");
         let zai_err = ZaiError::from(io_err);
         match zai_err {
             ZaiError::Unknown { .. } => {},
@@ -1365,5 +1371,31 @@ mod tests {
         assert_eq!(unk.category(), ErrorCategory::Server);
         assert!(unk.is_server_error());
         assert!(!unk.is_retryable());
+    }
+
+    #[test]
+    fn test_business_code_band_boundaries() {
+        // 1306/1307 sit in the unmapped gap between content-policy
+        // (1300-1301) and rate-limit (1308-1313): they must classify as
+        // Unknown, NOT RateLimitError.
+        for code in [1306, 1307] {
+            let e = ZaiError::from_api_response(400, code, "gap".to_string());
+            assert!(
+                matches!(e, ZaiError::Unknown { .. }),
+                "code {code} -> Unknown"
+            );
+            assert!(!e.is_rate_limit());
+        }
+        // 1499 is the inclusive top of the FileError band (1400-1499).
+        let e = ZaiError::from_api_response(400, 1499, "file".to_string());
+        assert!(matches!(e, ZaiError::FileError { code, .. } if code == 1499));
+        // 1400 is the bottom of the FileError band.
+        let e = ZaiError::from_api_response(400, 1400, "file".to_string());
+        assert!(matches!(e, ZaiError::FileError { code, .. } if code == 1400));
+        // The rate-limit band edges (1302, 1305, 1308, 1313) are rate-limit.
+        for code in [1302, 1305, 1308, 1313] {
+            let e = ZaiError::from_api_response(429, code, "rl".to_string());
+            assert!(e.is_rate_limit(), "code {code} -> RateLimitError");
+        }
     }
 }
