@@ -91,14 +91,14 @@ where
     /// ## Returns
     ///
     /// A new `ChatCompletion` instance configured for non-streaming requests.
-    pub fn new(model: N, messages: M, key: String) -> ChatCompletion<N, M, StreamOff> {
+    pub fn new(model: N, messages: M, key: impl Into<String>) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::CHAT_COMPLETIONS);
         ChatCompletion {
             body,
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -315,7 +315,7 @@ where
 
         if matches!(self.body.stream, Some(true)) {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "stream=true detected; use enable_stream() and streaming APIs instead"
                     .to_string(),
             });

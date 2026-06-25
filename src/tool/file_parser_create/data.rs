@@ -68,7 +68,7 @@ impl FileParserCreateRequest {
     /// A new `FileParserCreateRequest` instance or an error if validation
     /// fails.
     pub fn new(
-        key: String,
+        key: impl Into<String>,
         file_path: &Path,
         tool_type: ToolType,
         file_type: FileType,
@@ -84,7 +84,7 @@ impl FileParserCreateRequest {
         // Validate that file type is supported by tool
         if !file_type.is_supported_by(&tool_type) {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!(
                     "File type {:?} is not supported by tool type {:?}",
                     file_type, tool_type
@@ -97,7 +97,7 @@ impl FileParserCreateRequest {
         let url = endpoint_config.url(&api_base, paths::FILE_PARSER_CREATE);
 
         Ok(Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -122,7 +122,7 @@ impl FileParserCreateRequest {
     /// A new `FileParserCreateRequest` instance or an error if validation
     /// fails.
     pub fn new_with_auto_type(
-        key: String,
+        key: impl Into<String>,
         file_path: &Path,
         tool_type: ToolType,
     ) -> crate::ZaiResult<Self> {

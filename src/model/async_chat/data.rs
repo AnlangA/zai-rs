@@ -41,14 +41,14 @@ where
 {
     /// Create a new async chat request from a model, the first message batch,
     /// and an API key.
-    pub fn new(model: N, messages: M, key: String) -> Self {
+    pub fn new(model: N, messages: M, key: impl Into<String>) -> Self {
         let body = ChatBody::new(model, messages);
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::ASYNC_CHAT_COMPLETIONS);
         Self {
             body,
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -197,7 +197,7 @@ where
             .map_err(crate::client::error::ZaiError::from)?;
         if matches!(self.body.stream, Some(true)) {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "stream=true detected; use enable_stream() and streaming APIs instead"
                     .to_string(),
             });

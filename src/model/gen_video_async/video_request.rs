@@ -170,7 +170,7 @@ where
             ImageUrl::from_two_urls(image_urls.remove(0), image_urls.remove(0))
         } else {
             return Err(crate::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "with_multiple_images requires 1 or 2 URLs".to_string(),
             });
         };

@@ -25,15 +25,15 @@ pub struct BatchesRetrieveRequest {
 
 impl BatchesRetrieveRequest {
     /// Create a new retrieve request with required path parameter `batch_id`.
-    pub fn new(key: String, batch_id: impl AsRef<str>) -> Self {
+    pub fn new(key: impl Into<String>, batch_id: impl Into<String>) -> Self {
         // Batch IDs are expected to be safe; if special chars appear, consider
         // encoding.
-        let batch_id = batch_id.as_ref().to_string();
+        let batch_id = batch_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, &join_url(paths::BATCHES, &batch_id));
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

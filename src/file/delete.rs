@@ -19,13 +19,13 @@ pub struct FileDeleteRequest {
 
 impl FileDeleteRequest {
     /// Create a new delete request for the given file id.
-    pub fn new(key: String, file_id: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, file_id: impl Into<String>) -> Self {
         let file_id = file_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, &join_url(paths::FILES, &file_id));
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

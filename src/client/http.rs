@@ -293,6 +293,12 @@ impl Default for HttpClientConfigBuilder {
 /// A global HTTP client registry for connection pooling and configuration
 /// caching. The cached value is the build *result* so a persistent init
 /// failure is remembered and surfaced rather than re-attempted per request.
+///
+/// The cache is keyed only by `(timeout, compression)` and is process-global
+/// and intentionally unbounded: realistic callers reuse a handful of distinct
+/// configs, so it stays small. A programmatic per-request timeout sweep would
+/// grow it without bound — callers doing that should construct one
+/// `reqwest::Client` directly instead of going through this registry.
 static HTTP_CLIENTS: OnceLock<dashmap::DashMap<String, Arc<Result<reqwest::Client, ZaiError>>>> =
     OnceLock::new();
 
@@ -380,15 +386,6 @@ where
 
 /// Send a JSON request through the shared transport pipeline.
 ///
-/// Emits a single always-on **`trace`** line carrying the raw sent JSON body
-/// (masked via [`mask_sensitive_info`]), so the wire payload is observable
-/// with `RUST_LOG=trace`. Per the library-silent logging policy, the success
-/// path produces no higher-level output; only retries are surfaced (`warn!`).
-///
-/// `enable_logging` on [`HttpClientConfig`] is retained for API stability but
-/// no longer adds output — the `trace` line already covers that need.
-/// Send a JSON request through the shared transport pipeline.
-///
 /// The body is serialized exactly once; the retry loop then clones cheap
 /// `Bytes`/`Arc<str>` handles per attempt rather than re-serializing or
 /// deep-copying the body string.
@@ -397,6 +394,9 @@ where
 /// (masked via [`mask_sensitive_info`]), so the wire payload is observable
 /// with `RUST_LOG=trace`. Per the library-silent logging policy, the success
 /// path produces no higher-level output; only retries are surfaced (`warn!`).
+///
+/// `enable_logging` on [`HttpClientConfig`] is retained for API stability but
+/// no longer adds output — the `trace` line already covers that need.
 pub async fn send_json_request<T>(
     method: Method,
     url: impl Into<String>,

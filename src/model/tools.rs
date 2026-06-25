@@ -274,7 +274,8 @@ impl Function {
     ///
     /// * `name` - The name of the function
     /// * `description` - A description of what the function does
-    /// * `parameters` - JSON schema string describing the function parameters
+    /// * `parameters` - JSON Schema describing the function parameters, as a
+    ///   `serde_json::Value` (e.g. built with `serde_json::json!`)
     ///
     /// # Returns
     ///
@@ -286,7 +287,10 @@ impl Function {
     /// let func = Function::new(
     ///     "get_weather",
     ///     "Get current weather for a location",
-    ///     r#"{"type": "object", "properties": {"location": {"type": "string"}}}"#
+    ///     serde_json::json!({
+    ///         "type": "object",
+    ///         "properties": { "location": { "type": "string" } }
+    ///     })
     /// );
     /// ```
     pub fn new(

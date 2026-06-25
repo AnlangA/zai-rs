@@ -31,14 +31,14 @@ pub struct CancelBatchRequest {
 
 impl CancelBatchRequest {
     /// Create a new cancel request for the given batch_id
-    pub fn new(key: String, batch_id: impl AsRef<str>) -> Self {
-        let batch_id = batch_id.as_ref().to_string();
+    pub fn new(key: impl Into<String>, batch_id: impl Into<String>) -> Self {
+        let batch_id = batch_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let path = join_url(&join_url(paths::BATCHES, &batch_id), "cancel");
         let url = endpoint_config.url(&api_base, &path);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

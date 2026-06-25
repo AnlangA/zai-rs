@@ -40,9 +40,19 @@ impl SseEventParser {
             consumed = newline + 1;
 
             if line.is_empty() {
-                if !self.event_data.is_empty() {
-                    events.push(join_event_data(&self.event_data));
-                    self.event_data.clear();
+                // Common case (exactly one `data:` line per event — the norm for
+                // chat token streams): move the single buffer straight out and
+                // skip the extra allocation+copy that `join_event_data` would
+                // do. Multi-line events still join (and keep buffer reuse).
+                match self.event_data.len() {
+                    0 => {},
+                    1 => {
+                        events.push(self.event_data.swap_remove(0));
+                    },
+                    _ => {
+                        events.push(join_event_data(&self.event_data));
+                        self.event_data.clear();
+                    },
                 }
                 continue;
             }

@@ -49,6 +49,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Processing...");
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             },
+            // `TaskStatus` is `#[non_exhaustive]`; `Some(_)` covers `Unknown`
+            // (an unrecognized value from a newer API) and any future variant —
+            // keep polling.
+            Some(_) => {
+                println!("Unrecognized task status; continuing to poll...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            },
             None => {
                 eprintln!("No task status found");
                 break;

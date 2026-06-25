@@ -70,12 +70,12 @@ pub struct DocumentListRequest {
 
 impl DocumentListRequest {
     /// Create a new document-list request (no query set yet).
-    pub fn new(key: String) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
         let url = endpoint_config.url(&api_base, paths::DOCUMENT);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,

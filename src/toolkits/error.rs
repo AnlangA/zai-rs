@@ -9,6 +9,7 @@ pub type ToolResult<T> = Result<T, ToolError>;
 
 /// Error severity levels for better error handling strategies
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ErrorSeverity {
     /// User error, no retry needed.
     User,
@@ -22,6 +23,7 @@ pub enum ErrorSeverity {
 
 /// Enhanced error type with better context and error chaining
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ToolError {
     /// The requested tool is not registered.
     #[error("Tool '{name}' not found")]

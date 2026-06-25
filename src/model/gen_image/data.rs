@@ -33,7 +33,7 @@ where
     N: ModelName + ImageGen + Serialize,
 {
     /// Create a new image generation request for the given model and API key
-    pub fn new(model: N, key: String) -> Self {
+    pub fn new(model: N, key: impl Into<String>) -> Self {
         let body = ImageGenBody {
             model,
             prompt: None,
@@ -46,7 +46,7 @@ where
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::IMAGES_GENERATIONS);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -123,7 +123,7 @@ where
         self.body
             .validate()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {:?}", e),
             })?;
         // Require prompt
@@ -135,7 +135,7 @@ where
             .unwrap_or(true)
         {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "prompt is required".to_string(),
             });
         }
@@ -145,7 +145,7 @@ where
             && !size.is_valid()
         {
             return Err(crate::client::error::ZaiError::ApiError {
-                        code: 1200,
+                        code: crate::client::error::codes::SDK_VALIDATION,
                         message: "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels".to_string(),
                     });
         }

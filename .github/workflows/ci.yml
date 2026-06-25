@@ -60,6 +60,12 @@ jobs:
       - name: cargo test (lib + integration)
         run: cargo test --all-features --tests
 
+      # Doc-tests are excluded by `--tests`; run them explicitly so runnable
+      # doc examples (the `assert_eq!` in src/lib.rs, the client::error docs,
+      # …) can't silently rot. Examples are covered by the build step below.
+      - name: cargo test --doc (all features)
+        run: cargo test --all-features --doc
+
       # Compile-check every example with all features. Examples are not built by
       # `cargo test`, so without this step they can silently rot. They only
       # compile here — running them needs a live ZHIPU_API_KEY.

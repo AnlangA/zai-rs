@@ -32,13 +32,13 @@ where
     N: ModelName + AsyncChat,
 {
     /// Create a new get-result request for the given task id.
-    pub fn new(_model: N, task_id: String, key: String) -> Self {
+    pub fn new(_model: N, task_id: String, key: impl Into<String>) -> Self {
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let path = join_url(paths::ASYNC_RESULT, &task_id);
         let url = endpoint_config.url(&api_base, &path);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -78,7 +78,7 @@ where
     pub fn validate(&self) -> crate::ZaiResult<()> {
         if self.url.trim().is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: "empty URL".to_string(),
             });
         }

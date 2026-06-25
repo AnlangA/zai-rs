@@ -354,12 +354,30 @@ impl RealtimeSession {
             .map_err(|_| RealtimeErrorKind::Closed.into())
     }
 
+    /// Signal the background task to close without awaiting it.
+    ///
+    /// Use when the session is shared (e.g. behind an `Arc`), driven from a
+    /// `tokio::select!`, or closed reactively on a shutdown signal. This only
+    /// enqueues `Command::Close`; the background loop observes it and exits.
+    /// For deterministic, awaited teardown use [`RealtimeSession::close`].
+    pub async fn request_close(&self) -> ZaiResult<()> {
+        self.cmd_tx
+            .send(Command::Close)
+            .await
+            .map_err(|_| RealtimeErrorKind::Closed.into())
+    }
+
     /// Close the session and wait for the event loop to finish.
     pub async fn close(self) -> ZaiResult<()> {
+        // Best-effort: enqueue Close even if the channel already tore down.
         let _ = self.cmd_tx.send(Command::Close).await;
         // Dropping the last Sender closes the command channel; the event loop
-        // observes `Command::Close` (sent above) and exits.
-        let _ = self.join.await;
+        // observes `Command::Close` (sent above) and exits. Surface a JoinError
+        // (a panicked event loop / runtime cancellation) via a warning instead
+        // of silently discarding it.
+        if let Err(join_err) = self.join.await {
+            warn!(error = %join_err, "realtime event loop ended abnormally");
+        }
         Ok(())
     }
 }
@@ -370,4 +388,63 @@ fn now_ms() -> i64 {
 
 fn new_event_id() -> String {
     format!("evt_{}", uuid::Uuid::new_v4().simple())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    /// A mock transport whose `recv` never resolves, so the only way the event
+    /// loop can exit is via the command branch — pinning the drop→teardown
+    /// invariant `RealtimeSession::close` depends on.
+    struct HangingTransport {
+        closed: Arc<Mutex<bool>>,
+    }
+
+    #[async_trait]
+    impl RealtimeTransport for HangingTransport {
+        async fn send(&mut self, _msg: String) -> crate::ZaiResult<()> {
+            Ok(())
+        }
+        async fn recv(&mut self) -> crate::ZaiResult<Option<WsMessage>> {
+            // Never resolves: forces the loop to exit via the command channel.
+            std::future::pending().await
+        }
+        async fn close(&mut self) -> crate::ZaiResult<()> {
+            *self.closed.lock().unwrap() = true;
+            Ok(())
+        }
+    }
+
+    /// Regression guard: dropping the last command `Sender` must terminate the
+    /// background loop AND close the transport. The consuming `close()` and the
+    /// implicit-drop teardown both rely on this; a future refactor that drops
+    /// the `None => close` arm would leak the task. Uses a 2s timeout so a
+    /// regression fails fast instead of hanging the test binary.
+    #[tokio::test]
+    async fn dropping_command_sender_terminates_loop_and_closes_transport() {
+        let closed = Arc::new(Mutex::new(false));
+        let transport = HangingTransport {
+            closed: Arc::clone(&closed),
+        };
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+
+        // Drop the last sender → `cmd_rx.recv()` returns `None` → the loop
+        // calls `transport.close()` and exits.
+        drop(cmd_tx);
+
+        let joined = tokio::time::timeout(std::time::Duration::from_secs(2), join)
+            .await
+            .expect("run_loop did not terminate after the command sender dropped");
+        joined.expect("run_loop task panicked");
+        assert!(
+            *closed.lock().unwrap(),
+            "transport.close() was not invoked on teardown"
+        );
+    }
 }

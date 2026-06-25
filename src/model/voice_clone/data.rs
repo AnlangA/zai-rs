@@ -34,7 +34,7 @@ where
     /// Create a new voice clone request with required fields
     pub fn new(
         model: N,
-        key: String,
+        key: impl Into<String>,
         voice_name: impl Into<String>,
         input: impl Into<String>,
         file_id: impl Into<String>,
@@ -44,7 +44,7 @@ where
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::VOICE_CLONE);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -99,7 +99,7 @@ where
         self.body
             .validate()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {:?}", e),
             })?;
         Ok(())

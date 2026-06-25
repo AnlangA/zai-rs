@@ -25,13 +25,13 @@ pub struct VoiceDeleteRequest {
 
 impl VoiceDeleteRequest {
     /// Create a new voice-delete request for the given voice id.
-    pub fn new(key: String, voice: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, voice: impl Into<String>) -> Self {
         let body = VoiceDeleteBody::new(voice);
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::PaasV4;
         let url = endpoint_config.url(&api_base, paths::VOICE_DELETE);
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
@@ -77,7 +77,7 @@ impl VoiceDeleteRequest {
         self.body
             .validate()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: 1200,
+                code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!("Validation error: {:?}", e),
             })?;
         Ok(())

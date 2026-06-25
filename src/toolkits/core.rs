@@ -320,9 +320,11 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
         let mut cache = SCHEMA_CACHE
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // Evict oldest entries if cache is full
+        // Evict a slice of entries if cache is full
         if cache.len() >= SCHEMA_CACHE_MAX_SIZE {
-            // Remove approximately 10% of entries (oldest by insertion order)
+            // Remove ~10% of entries to make room. `HashMap` iteration order is
+            // unspecified, so the evicted slice is arbitrary rather than the
+            // oldest — acceptable for a bounded, registration-time cache.
             let remove_count = (SCHEMA_CACHE_MAX_SIZE / 10).max(1);
             let keys: Vec<u64> = cache.keys().take(remove_count).copied().collect();
             for k in keys {

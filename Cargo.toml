@@ -58,9 +58,6 @@ thiserror = "2.0.18"
 futures = "0.3.32"
 dashmap = "6.2.1"
 rmcp = { version = "1.8.0", features = ["client"], optional = true }
-axum = { version = "0.8.9", optional = true }
-tower = { version = "0.5.3", optional = true }
-tower-http = { version = "0.7.0", features = ["fs", "cors"], optional = true }
 # Only used to mint realtime event ids (`evt_<uuid>`); gated under `realtime`
 # so the default chat/embeddings build doesn't pull it in. The `serde` feature
 # is intentionally NOT enabled — no `Uuid` field is (de)serialized anywhere.
@@ -80,10 +77,21 @@ tokio-stream = { version = "0.1.18", features = ["sync"], optional = true }
 bytes = "1.11.1"
 http = { version = "1.4.2", optional = true }
 
+[lints.rust]
+# The SDK is unsafe-free; enforce that invariant at compile time (and make it
+# self-documenting) rather than relying on review alone.
+unsafe_code = "deny"
+
+[lints.clippy]
+# Mirror the CI gate (`cargo clippy -- -D warnings`) locally so the same
+# correctness/style lints fire in IDEs and plain `cargo clippy`. NOTE:
+# `pedantic` is intentionally NOT enabled — the crate is only verified clean
+# against the default group, and pedantic would surface dozens of new lints.
+all = "warn"
+
 [features]
 default = []
 rmcp-kits = ["dep:rmcp"]
-web-example = ["dep:axum", "dep:tower", "dep:tower-http"]
 # WebSocket realtime (GLM-Realtime) client. Off by default — most users only
 # need the HTTP chat/embeddings surface. Pulls in tokio-tungstenite, the JWT
 # crypto stack (hmac/sha2), tokio-stream, and `tokio/net`.

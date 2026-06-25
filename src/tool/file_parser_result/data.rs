@@ -58,9 +58,9 @@ impl FileParserResultRequest {
     /// ## Returns
     ///
     /// A new `FileParserResultRequest` instance.
-    pub fn new(key: String, task_id: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, task_id: impl Into<String>) -> Self {
         Self {
-            key,
+            key: key.into(),
             endpoint_config: EndpointConfig::default(),
             api_base: ApiBase::PaasV4,
             http_config: Arc::new(HttpClientConfig::default()),

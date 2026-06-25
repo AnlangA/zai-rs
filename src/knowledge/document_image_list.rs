@@ -20,8 +20,8 @@ pub struct DocumentImageListRequest {
 
 impl DocumentImageListRequest {
     /// Create a new request with the target document id
-    pub fn new(key: String, document_id: impl AsRef<str>) -> Self {
-        let document_id = document_id.as_ref().to_string();
+    pub fn new(key: impl Into<String>, document_id: impl Into<String>) -> Self {
+        let document_id = document_id.into();
         let endpoint_config = EndpointConfig::default();
         let api_base = ApiBase::LlmApplication;
         let url = endpoint_config.url(
@@ -29,7 +29,7 @@ impl DocumentImageListRequest {
             &join_url(paths::DOCUMENT_SLICE_IMAGE_LIST, &document_id),
         );
         Self {
-            key,
+            key: key.into(),
             url,
             endpoint_config,
             api_base,
