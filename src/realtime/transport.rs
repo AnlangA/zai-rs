@@ -10,7 +10,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt};
 use http::{HeaderValue, header::AUTHORIZATION};
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async,

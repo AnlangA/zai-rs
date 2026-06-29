@@ -23,7 +23,7 @@ A: 在 `Cargo.toml` 中添加：
 
 ```toml
 [dependencies]
-zai-rs = "0.2"
+zai-rs = "0.3"
 ```
 
 ### Q: 如何配置 API 密钥？
@@ -245,7 +245,7 @@ A: 某些功能可能需要启用 feature：
 
 ```toml
 [dependencies]
-zai-rs = { version = "0.2", features = ["rmcp-kits"] }
+zai-rs = { version = "0.3", features = ["rmcp-kits"] }
 ```
 
 ### Q: 如何调试请求问题？

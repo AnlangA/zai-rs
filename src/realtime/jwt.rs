@@ -54,8 +54,26 @@ pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
         ));
     }
 
+    // Validate ttl: a non-positive or absurdly large value would otherwise wrap
+    // `exp` silently (unguarded `i64` add, inconsistent with the crate's
+    // saturating-math pass) and surface as an opaque auth rejection. Seven days
+    // is a generous ceiling for any realistic JWT lifetime.
+    const MAX_TTL_SECONDS: i64 = 7 * 24 * 3600;
+    if ttl_seconds <= 0 || ttl_seconds > MAX_TTL_SECONDS {
+        warn!(ttl_seconds, "Realtime JWT auth error: ttl_seconds out of range");
+        return Err(ZaiError::RealtimeAuthError(format!(
+            "jwt ttl_seconds must be in 1..={MAX_TTL_SECONDS}, got {ttl_seconds}"
+        )));
+    }
+
     let now = Utc::now();
-    let exp = now.timestamp() + ttl_seconds;
+    // Defense-in-depth: `now + ttl` can't overflow once ttl is bounded above, but
+    // use `checked_add` so a future change to the bound can't reintroduce a
+    // silent wrap.
+    let exp = now
+        .timestamp()
+        .checked_add(ttl_seconds)
+        .ok_or_else(|| ZaiError::RealtimeAuthError("jwt exp overflow".into()))?;
     let timestamp_ms = now.timestamp_millis();
 
     let header = json!({ "alg": "HS256", "sign_type": "SIGN" });
@@ -129,6 +147,18 @@ mod tests {
         assert!(generate("no-dot-here", 600).is_err());
         assert!(generate(".secret", 600).is_err());
         assert!(generate("id.", 600).is_err());
+    }
+
+    #[test]
+    fn rejects_out_of_range_ttl() {
+        // Non-positive and absurdly large values are rejected up front rather
+        // than producing a nonsense/overflowing `exp`.
+        assert!(generate("abcdefghij.0123456789abcdef", 0).is_err());
+        assert!(generate("abcdefghij.0123456789abcdef", -1).is_err());
+        assert!(generate("abcdefghij.0123456789abcdef", i64::MAX).is_err());
+        // The 7-day ceiling is inclusive; one second over is rejected.
+        assert!(generate("abcdefghij.0123456789abcdef", 7 * 24 * 3600).is_ok());
+        assert!(generate("abcdefghij.0123456789abcdef", 7 * 24 * 3600 + 1).is_err());
     }
 
     #[test]

@@ -23,7 +23,6 @@
 | glm-5.2 | `GLM5_2` | ✓ | ✓ | ✓ | ✓ |
 | glm-5.1 | `GLM5_1` | ✓ | ✗ | ✓ | ✓ |
 | glm-5 | `GLM5` | ✓ | ✗ | ✓ | ✓ |
-| glm-5v-turbo | `GLM5V_turbo` | ✓ | ✗ | ✓ | ✓ |
 | glm-5-turbo | `GLM5_turbo` | ✓ | ✗ | ✓ | ✓ |
 | glm-4.7 | `GLM4_7` | ✓ | ✗ | ✓ | ✓ |
 | glm-4.7-flash | `GLM4_7_flash` | ✓ | ✗ | ✓ | ✗ |

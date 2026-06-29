@@ -168,12 +168,17 @@ impl ToolCallCache {
             self.evict_oldest();
         }
 
-        // Track insertion order only for genuinely new keys so the eviction
-        // queue never carries duplicates. `contains_key` releases its read lock
-        // before the write lock is taken below, and the queue mutex is taken
-        // only after the entry write lock is released — so there is no
-        // lock-ordering cycle with `evict_oldest` (which holds the queue mutex
-        // then takes entry locks).
+        // Track insertion order only for genuinely new keys. This best-effort
+        // dedup is NOT airtight under concurrency: two threads inserting the
+        // same brand-new key can each observe `was_present == false` and both
+        // push, so the queue may transiently carry duplicates. That is harmless
+        // because `evict_oldest` removes by key (idempotent) and consumes a
+        // budget slot per pop, so duplicates only mean we may pop the same key
+        // twice — never incorrect eviction or a missing entry. The lock-ordering
+        // note below still holds: `contains_key` releases its read lock before
+        // the write lock is taken, and the queue mutex is taken only after the
+        // entry write lock is released — so there is no lock-ordering cycle with
+        // `evict_oldest` (which holds the queue mutex then takes entry locks).
         let was_present = self.state.entries.contains_key(&key);
         let entry = CacheEntry::new(result, ttl.unwrap_or(self.default_ttl));
         self.state.entries.insert(key.clone(), entry);

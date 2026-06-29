@@ -67,20 +67,10 @@ impl FileContentRequest {
 
     /// Send the request and return raw bytes of the file content.
     pub async fn send(&self) -> crate::ZaiResult<Vec<u8>> {
+        // `get()` routes through `send_with_retry_factory`, which returns `Ok`
+        // only for a 2xx response (any non-2xx is converted to `Err` there), so
+        // the response here is guaranteed successful — no status re-check needed.
         let resp: reqwest::Response = self.get().await?;
-
-        let status = resp.status();
-
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-
-            return Err(crate::client::error::ZaiError::from_api_response(
-                status.as_u16(),
-                0,
-                text,
-            ));
-        }
-
         let bytes = resp.bytes().await?;
         Ok(bytes.to_vec())
     }
@@ -92,14 +82,15 @@ impl FileContentRequest {
 
         let p = path.as_ref();
 
+        // Use `tokio::fs` so a slow/networked filesystem or a large file can't
+        // stall the async runtime worker (mirrors the upload-path fix).
         if let Some(parent) = p.parent()
             && !parent.as_os_str().is_empty()
         {
-            std::fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
-        use std::io::Write;
-        let mut f = std::fs::File::create(p)?;
-        f.write_all(&bytes)?;
+        let mut f = tokio::fs::File::create(p).await?;
+        tokio::io::AsyncWriteExt::write_all(&mut f, &bytes).await?;
         Ok(bytes.len())
     }
 }

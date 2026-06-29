@@ -152,9 +152,72 @@ impl OcrRequest {
         Ok(())
     }
 
+    /// Async counterpart of the file probes in [`validate`](Self::validate).
+    ///
+    /// [`validate`](Self::validate) is a public **sync** fn (kept that way for
+    /// backward compatibility) and uses blocking `std::fs` stats; calling it from
+    /// `async fn send` would stall the executor on a slow/networked filesystem.
+    /// This helper performs the same existence/size/extension checks via
+    /// `tokio::fs` so the async path stays non-blocking. Keep the two in sync.
+    async fn validate_file_async(&self) -> crate::ZaiResult<()> {
+        let p = self
+            .file_path
+            .as_ref()
+            .ok_or_else(|| crate::client::error::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_VALIDATION,
+                message: "file_path is required".to_string(),
+            })?;
+
+        // A single async `metadata` call covers both existence (a missing path
+        // yields `NotFound`) and size, replacing the sync `Path::exists()` +
+        // `std::fs::metadata` pair.
+        let metadata = match tokio::fs::metadata(p).await {
+            Ok(m) => m,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(crate::client::error::ZaiError::FileError {
+                    code: codes::SDK_FILE_NOT_FOUND,
+                    message: format!("file_path not found: {}", p),
+                });
+            },
+            Err(e) => return Err(crate::client::error::ZaiError::from(e)),
+        };
+
+        const MAX_SIZE: u64 = 8 * 1024 * 1024; // 8MB
+        let file_size = metadata.len();
+        if file_size > MAX_SIZE {
+            return Err(crate::client::error::ZaiError::FileError {
+                code: codes::SDK_FILE_TOO_LARGE,
+                message: format!("file_size exceeds 8MB limit: {} bytes", file_size),
+            });
+        }
+
+        // Pure-path extension check (no I/O).
+        let ext = Path::new(p)
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase);
+        let valid_ext = matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "bmp"));
+        if !valid_ext {
+            return Err(crate::client::error::ZaiError::FileError {
+                code: codes::SDK_FILE_TYPE_UNSUPPORTED,
+                message: format!(
+                    "invalid file format: {:?}. Only PNG, JPG, JPEG, BMP are supported",
+                    ext
+                ),
+            });
+        }
+        Ok(())
+    }
+
     /// Submit the multipart request and parse the typed OCR response.
     pub async fn send(&self) -> crate::ZaiResult<super::response::OcrResponse> {
-        self.validate()?;
+        // Field-level validation is cheap and I/O-free; run it inline. The file
+        // probes go through `validate_file_async` so no blocking std::fs stat
+        // runs on the async executor (the public sync `validate()` still does).
+        self.body
+            .validate()
+            .map_err(crate::client::error::ZaiError::from)?;
+        self.validate_file_async().await?;
 
         let resp = self.post().await?;
 
