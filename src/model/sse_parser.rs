@@ -69,6 +69,33 @@ impl SseEventParser {
         self.buf.drain(..consumed);
         events
     }
+
+    /// Flush any event buffered by `data:` lines that never saw a terminating
+    /// blank line.
+    ///
+    /// Per the SSE spec an event is dispatched on a blank line. If the transport
+    /// closes after a final `data: {...}\n` with **no** following blank line
+    /// (a reverse proxy stripping trailing whitespace, a truncated TLS frame at
+    /// connection close, a non-conformant emitter), [`SseEventParser::push`]
+    /// leaves that event buffered in `event_data` and it would otherwise be
+    /// silently dropped — including the last content/usage chunk, or even the
+    /// `[DONE]` marker if its trailing blank line was lost.
+    ///
+    /// Call this once the byte stream has ended to emit any such trailing event.
+    /// Returns an empty `Vec` when nothing is buffered. Any incomplete line
+    /// still in `buf` (a `data:` line with no trailing newline) is intentionally
+    /// NOT emitted — it is not a complete SSE line.
+    pub fn finish(&mut self) -> Vec<Vec<u8>> {
+        match self.event_data.len() {
+            0 => Vec::new(),
+            1 => vec![self.event_data.swap_remove(0)],
+            _ => {
+                let event = join_event_data(&self.event_data);
+                self.event_data.clear();
+                vec![event]
+            },
+        }
+    }
 }
 
 fn trim_one_leading_space(bytes: &[u8]) -> &[u8] {
@@ -241,5 +268,41 @@ mod tests {
         assert!(extract_sse_data_lines(&mut buf, b"data: hello\r").is_empty());
         let lines = extract_sse_data_lines(&mut buf, b"\n");
         assert_eq!(lines, vec![b"hello".to_vec()]);
+    }
+
+    #[test]
+    fn finish_flushes_trailing_event_without_blank_line() {
+        // Regression: a final `data:` line whose terminating blank line was
+        // lost (truncated frame, proxy stripping trailing whitespace, a
+        // non-conformant emitter) must still be emitted via finish() rather
+        // than silently dropped — including the last content/[DONE] chunk.
+        let mut parser = SseEventParser::new();
+        assert!(parser.push(b"data: hello\n").is_empty()); // no blank line -> buffered
+        assert_eq!(parser.finish(), vec![b"hello".to_vec()]);
+        // finish() is idempotent.
+        assert!(parser.finish().is_empty());
+    }
+
+    #[test]
+    fn finish_flushes_multi_data_trailing_event_joined() {
+        let mut parser = SseEventParser::new();
+        assert!(parser.push(b"data: {\"a\":\ndata: 1}\n").is_empty());
+        assert_eq!(parser.finish(), vec![b"{\"a\":\n1}".to_vec()]);
+    }
+
+    #[test]
+    fn finish_noop_when_event_already_dispatched() {
+        let mut parser = SseEventParser::new();
+        assert_eq!(parser.push(b"data: hello\n\n"), vec![b"hello".to_vec()]);
+        assert!(parser.finish().is_empty());
+    }
+
+    #[test]
+    fn finish_emits_trailing_done_marker_without_blank_line() {
+        // The terminal [DONE] can also lose its trailing blank line; it must
+        // still surface so consumers can stop.
+        let mut parser = SseEventParser::new();
+        assert!(parser.push(b"data: [DONE]\n").is_empty());
+        assert_eq!(parser.finish(), vec![b"[DONE]".to_vec()]);
     }
 }

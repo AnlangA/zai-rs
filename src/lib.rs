@@ -112,12 +112,11 @@
 //! | `realtime` | disabled | Real-time audio/video over WebSocket (GLM-Realtime) |
 //! | `rmcp-kits` | disabled | Enable RMCP protocol bridge for MCP tool calling |
 //! | `tool-validation` | disabled | Runtime validation of tool-call arguments against their JSON Schema |
-//! | `web-example` | disabled | Enable axum/tower dependencies for web examples |
 //!
 //! Enable in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! zai-rs = { version = "0.3", features = ["rmcp-kits"] }
+//! zai-rs = { version = "0.4", features = ["rmcp-kits"] }
 //! ```
 //!
 //! # Error Handling

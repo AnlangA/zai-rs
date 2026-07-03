@@ -13,7 +13,7 @@
 
 ```toml
 [dependencies]
-zai-rs = "0.2"
+zai-rs = "0.4"
 ```
 
 ## 配置
@@ -83,8 +83,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let client = ChatCompletion::new(model, messages, key);
     let resp = client.post().await?;
-    
-    println!("{}", resp.choices().first().unwrap().message.content());
+
+    println!("{}", resp.choices().first().unwrap().message.content_str().unwrap_or_default());
     Ok(())
 }
 ```
@@ -94,25 +94,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 对于实时响应，启用流式输出：
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::{client::http::*, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_flash {};
     let messages = TextMessage::user("讲一个短故事");
     let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let mut client = ChatCompletion::new(model, messages, key)
-        .enable_stream();
-    
-    let mut stream = client.sse_stream().await?;
-    
-    while let Some(chunk) = stream.next().await {
-        if let Some(content) = chunk.choices().first().unwrap().delta.content() {
-            print!("{}", content);
-        }
-    }
-    
+
+    let mut client = ChatCompletion::new(model, messages, key).enable_stream();
+
+    // `stream_sse_for_each` yields each SSE `data:` payload as raw bytes; the
+    // model streams token deltas there. See `stream_for_each` for typed chunks.
+    client
+        .stream_sse_for_each(|data| {
+            print!("{}", String::from_utf8_lossy(data));
+        })
+        .await?;
+
     Ok(())
 }
 ```
@@ -120,22 +119,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 3. 图像生成
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::model::gen_image::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = CogView {};
+    let model = CogView4 {};
     let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let request = GenImageRequest::new(
-        model,
-        "一只可爱的猫咪",
-        key
-    );
-    
-    let resp = request.post().await?;
-    println!("生成的图像URL: {:?}", resp.data().first().unwrap().url());
-    
+
+    let client = ImageGenRequest::new(model, key).with_prompt("一只可爱的猫咪");
+    let resp: ImageResponse = client.send().await?;
+    println!("生成的图像: {:#?}", resp);
+
     Ok(())
 }
 ```
@@ -143,23 +137,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 4. 语音转文字
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::model::audio_to_text::{model::GlmAsr, response::AudioToTextResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_Audio {};
+    let model = GlmAsr {};
     let key = std::env::var("ZHIPU_API_KEY")?;
-    let audio_file = std::fs::File::open("audio.mp3")?;
-    
-    let request = AudioToTextRequest::new(
-        model,
-        audio_file,
-        key
-    );
-    
-    let resp = request.post().await?;
-    println!("识别结果: {}", resp.text());
-    
+
+    let client = AudioToTextRequest::new(model, key)
+        .with_file_path("audio.mp3")
+        .with_stream(false);
+    let resp: AudioToTextResponse = client.send().await?;
+    println!("识别结果: {:#?}", resp);
+
     Ok(())
 }
 ```
@@ -179,7 +169,7 @@ async fn chat() -> ZaiResult<String> {
     let client = ChatCompletion::new(model, messages, key);
     let resp = client.post().await?;
     
-    Ok(resp.choices().first().unwrap().message.content())
+    Ok(resp.choices().first().unwrap().message.content_str().unwrap_or_default().to_string())
 }
 
 #[tokio::main]
@@ -237,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.body_mut().max_tokens = Some(1000);
     
     let resp = client.post().await?;
-    println!("{}", resp.choices().first().unwrap().message.content());
+    println!("{}", resp.choices().first().unwrap().message.content_str().unwrap_or_default());
     
     Ok(())
 }

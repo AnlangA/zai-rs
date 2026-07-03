@@ -35,6 +35,18 @@ use crate::{
 /// calls queue on the semaphore rather than spawning unbounded tasks.
 const MAX_CONCURRENT_TOOL_CALLS: usize = 8;
 
+fn task_panic_tool_message() -> TextMessage {
+    TextMessage::tool(
+        serde_json::json!({
+            "error": {
+                "type": "task_panic",
+                "message": "a tool execution task panicked or was cancelled"
+            }
+        })
+        .to_string(),
+    )
+}
+
 /// Enhanced retry configuration with exponential backoff
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
@@ -84,12 +96,27 @@ impl RetryConfig {
 #[derive(Debug, Clone)]
 pub struct ExecutionConfig {
     /// Per-call execution timeout (`None` = no timeout).
+    ///
+    /// When the deadline elapses the tool's execution future is dropped
+    /// (cancelled) and the call resolves to a [`ToolError::TimeoutError`]. The
+    /// timeout cancels only the *local* future — for a tool backed by a remote
+    /// service the request may already be on the wire (see
+    /// [`ToolError::TimeoutError`] for the full caveat).
     pub timeout: Option<Duration>,
     /// Retry/backoff configuration.
     pub retry_config: RetryConfig,
     /// Whether to validate input parameters against the tool schema.
+    ///
+    /// **Reserved:** schema validation currently fires whenever the
+    /// `tool-validation` Cargo feature is enabled (it lives inside
+    /// `FunctionTool::execute_json`). This flag is reserved for a future
+    /// per-call opt-out and does not yet suppress validation on its own.
     pub validate_parameters: bool,
     /// Whether to emit execution log events.
+    ///
+    /// **Reserved:** execution is instrumented with `tracing` spans whose output
+    /// is governed by the subscriber's filter (e.g. `RUST_LOG`), independent of
+    /// this flag. Kept for API stability; setting it has no effect today.
     pub enable_logging: bool,
 }
 
@@ -580,15 +607,7 @@ impl ToolExecutor {
                         error = %join_err,
                         "tool execution task panicked or was cancelled"
                     );
-                    messages.push(TextMessage::tool(
-                        serde_json::json!({
-                            "error": {
-                                "type": "task_panic",
-                                "message": "a tool execution task panicked or was cancelled"
-                            }
-                        })
-                        .to_string(),
-                    ));
+                    messages.push(task_panic_tool_message());
                 },
             }
         }
@@ -609,29 +628,65 @@ impl ToolExecutor {
     /// - Captures errors per-call and encodes them as JSON
     /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when
     ///   present
+    /// - Isolates panics/cancellation per call: a panicking handler surfaces as
+    ///   an in-band `task_panic` tool message in its slot (matching
+    ///   [`Self::execute_tool_calls_parallel`]) instead of unwinding out of this
+    ///   call and discarding every result.
     ///
     /// Returns:
     /// - `Vec<TextMessage>` in the same order as input calls, ready for
     ///   ChatCompletion
     pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
-        use futures::future::join_all;
-
+        let mut set = JoinSet::new();
         let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_TOOL_CALLS));
-        let futures: Vec<_> = calls
-            .iter()
-            .map(|tc| {
-                // Clone each call so it can be moved into the async block.
-                let tc = tc.clone();
-                let this = self.clone();
-                let permits = Arc::clone(&permits);
-                async move {
-                    let _permit = permits.acquire().await.ok();
-                    this.execute_single_tool_call(&tc).await
-                }
-            })
-            .collect();
 
-        join_all(futures).await
+        // Spawn each call carrying its original index, so results can be placed
+        // back in input order while still isolating panics per task (mirroring
+        // `execute_tool_calls_parallel`). Previously this used `join_all` over
+        // inline futures, so a panicking handler unwound the whole call and
+        // discarded every result.
+        for (idx, tc) in calls.iter().enumerate() {
+            let tc = tc.clone();
+            let this = self.clone();
+            let permits = Arc::clone(&permits);
+            set.spawn(async move {
+                let _permit = permits.acquire().await.ok();
+                (idx, this.execute_single_tool_call(&tc).await)
+            });
+        }
+
+        let mut results: Vec<Option<TextMessage>> = (0..calls.len()).map(|_| None).collect();
+        while let Some(res) = set.join_next().await {
+            match res {
+                // Completed (or in-band-errored) call: place at its original
+                // index so order is preserved.
+                Ok((idx, msg)) => results[idx] = Some(msg),
+                // The spawned task panicked or was cancelled before returning
+                // its index, so the exact slot is unknown. Any slot still `None`
+                // after the loop corresponds to such a task; fill it below with
+                // the same `task_panic` message used by the parallel path.
+                Err(join_err) => {
+                    warn!(
+                        error = %join_err,
+                        "tool execution task panicked or was cancelled"
+                    );
+                },
+            }
+        }
+
+        // Every slot whose task did not return a result gets the in-band panic
+        // message, preserving the invariant that the returned length ==
+        // calls.len() (matching `execute_tool_calls_parallel`).
+        for slot in results.iter_mut() {
+            if slot.is_none() {
+                *slot = Some(task_panic_tool_message());
+            }
+        }
+
+        results
+            .into_iter()
+            .map(|r| r.unwrap_or_else(task_panic_tool_message))
+            .collect()
     }
 
     /// Export a single registered tool as Tools::Function (for LLM function
@@ -684,6 +739,15 @@ impl ToolExecutor {
         let tool = self
             .get_tool(tool_name)
             .ok_or_else(|| error_context().with_tool(tool_name).tool_not_found())?;
+
+        // Honor `ToolMetadata::enabled`: a tool registered as disabled must not
+        // execute. (Default `enabled = true` preserves existing behavior.)
+        if !tool.metadata().enabled {
+            return Err(error_context()
+                .with_tool(tool_name)
+                .execution_failed(format!("tool '{}' is disabled", tool_name)));
+        }
+
         let execution_future = tool.execute_json(input.clone());
 
         match self.config.timeout {

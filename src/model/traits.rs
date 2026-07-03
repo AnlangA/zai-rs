@@ -148,8 +148,9 @@ pub struct StreamOff;
 impl StreamState for StreamOn {}
 impl StreamState for StreamOff {}
 
-use futures::StreamExt;
+use futures_util::StreamExt;
 use tracing::trace;
+use validator::Validate;
 
 use crate::client::http::HttpClient;
 
@@ -184,8 +185,16 @@ pub trait SseStreamable: HttpClient {
     ) -> impl core::future::Future<Output = crate::ZaiResult<()>> + 'a
     where
         F: FnMut(&[u8]) + 'a,
+        Self::Body: Validate,
     {
         async move {
+            // Field-level validation (temperature/top_p/max_tokens/…) before we
+            // open the connection, mirroring the non-streaming path and the
+            // sibling `stream_for_each`/`to_stream` entry points. Previously this
+            // low-level SSE API skipped validation while the typed ones did not.
+            self.body()
+                .validate()
+                .map_err(crate::client::error::ZaiError::from)?;
             let resp = self.post().await?;
             let mut stream = resp.bytes_stream();
             let mut parser = crate::model::sse_parser::SseEventParser::new();
@@ -210,6 +219,20 @@ pub trait SseStreamable: HttpClient {
                         ));
                     },
                 }
+            }
+            // Byte stream ended: flush any final SSE event that never saw a
+            // terminating blank line so the last content/[DONE] chunk isn't
+            // silently dropped (see `SseEventParser::finish`).
+            for event in parser.finish() {
+                trace!(
+                    parser = "sse",
+                    bytes = event.len(),
+                    "SSE final chunk flushed"
+                );
+                if event == b"[DONE]" {
+                    return Ok(());
+                }
+                on_data(&event);
             }
             Ok(())
         }

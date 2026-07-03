@@ -164,6 +164,11 @@ pub async fn call_mcp_tool(
 
 /// Batch-call multiple tools and collect results by tool name.
 /// If multiple calls share the same name, later results overwrite earlier ones.
+///
+/// **All-or-nothing:** returns `Err` on the first failing tool call, which
+/// cancels any still-in-flight calls; sibling results that have not yet been
+/// collected are discarded. If you need partial results across failures, drive
+/// the calls individually via [`call_mcp_tool`].
 pub async fn call_mcp_tools_collect<I>(
     server: &ServerSink,
     calls: I,
@@ -171,7 +176,7 @@ pub async fn call_mcp_tools_collect<I>(
 where
     I: IntoIterator<Item = (String, Option<Value>)>,
 {
-    use futures::stream::{FuturesUnordered, StreamExt};
+    use futures_util::stream::{FuturesUnordered, StreamExt};
     let mut futs = FuturesUnordered::new();
     for (name, args) in calls {
         futs.push(call_mcp_tool(server, name, args));

@@ -9,7 +9,7 @@
 use std::{pin::Pin, sync::Arc};
 
 use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use futures_util::{Stream, StreamExt};
 use tokio::{
     sync::{broadcast, mpsc},
     task::JoinHandle,

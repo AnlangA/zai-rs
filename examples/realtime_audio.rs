@@ -10,7 +10,7 @@
 
 use std::{env, fs::File, io::Write};
 
-use futures::StreamExt;
+use futures_util::StreamExt;
 use zai_rs::{
     ZaiResult,
     model::GLM4_voice,

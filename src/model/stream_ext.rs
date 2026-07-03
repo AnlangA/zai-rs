@@ -34,7 +34,7 @@
 
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
-use futures::{Stream, StreamExt, stream};
+use futures_util::{Stream, StreamExt, stream};
 use tracing::trace;
 use validator::Validate;
 
@@ -208,6 +208,20 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                     }
                 }
             }
+            // The byte stream ended: flush any final SSE event that never saw a
+            // terminating blank line so the last content/[DONE] chunk isn't
+            // silently dropped (see `SseEventParser::finish`).
+            for event in parser.finish() {
+                trace!(
+                    parser = "sse",
+                    bytes = event.len(),
+                    "SSE final chunk flushed"
+                );
+                match parse_chat_stream_event(&event)? {
+                    Some(chunk) => on_chunk(chunk).await?,
+                    None => return Ok(()),
+                }
+            }
             Ok(())
         }
     }
@@ -304,7 +318,23 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
                                     (s, parser, pending, done),
                                 ));
                             },
-                            None => return None,
+                            // Byte stream ended: flush any final SSE event that
+                            // never saw a terminating blank line, then drain any
+                            // flushed/pending items before stopping (see
+                            // `SseEventParser::finish`).
+                            None => {
+                                for event in parser.finish() {
+                                    match parse_chat_stream_event(&event) {
+                                        Ok(Some(item)) => pending.push_back(Ok(item)),
+                                        Ok(None) => {},
+                                        Err(e) => pending.push_back(Err(e)),
+                                    }
+                                }
+                                if let Some(item) = pending.pop_front() {
+                                    return Some((item, (s, parser, pending, true)));
+                                }
+                                return None;
+                            },
                         }
                     }
                 },

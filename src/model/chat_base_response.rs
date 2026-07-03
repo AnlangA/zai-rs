@@ -37,6 +37,28 @@ where
     }
 }
 
+/// Lenient deserializer for tool/MCP `arguments` fields.
+///
+/// The field is semantically a JSON-encoded string, but OpenAI-compatible
+/// streaming deltas and some edge payloads send `"arguments": {}` (empty
+/// object) or `null` on the first/empty delta rather than the string `""`.
+/// A bare `Option<String>` rejects an object value and fails the whole response
+/// with a `JsonError`. This accepts any JSON value — a string is stored as-is,
+/// `null` becomes `None`, and any other value (object/array/number/bool) is
+/// stored as its compact JSON string. It is strictly more permissive than the
+/// previous `Option<String>`: it only rescues payloads that currently fail.
+fn de_opt_arguments_lenient<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(deserializer)?;
+    match v {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::String(s) => Ok(Some(s)),
+        other => Ok(Some(serde_json::to_string(&other).unwrap_or_default())),
+    }
+}
+
 /// Successful business response (HTTP 200, application/json).
 /// Notes:
 /// - `choices` is often a single element in non-stream mode unless explicitly
@@ -225,7 +247,11 @@ pub struct ToolFunction {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// JSON-encoded arguments to pass to the function.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_arguments_lenient"
+    )]
     pub arguments: Option<String>,
 }
 
@@ -253,7 +279,11 @@ pub struct MCPMessage {
     pub tools: Option<Vec<MCPTool>>,
 
     /// Tool call arguments (JSON string) when type = mcp_call
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_opt_arguments_lenient"
+    )]
     pub arguments: Option<String>,
     /// Tool name when type = mcp_call
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -266,12 +296,18 @@ pub struct MCPMessage {
 /// MCP tool call type — either a tool-list request or an actual tool
 /// invocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum MCPCallType {
     /// Request the server to list its available MCP tools.
     McpListTools,
     /// Invoke a specific MCP tool.
     McpCall,
+    /// An unrecognized `type` returned by a newer API or a different MCP
+    /// transport. Deserialized via `#[serde(other)]` so a novel value no longer
+    /// fails the whole response.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Tool descriptor reported by an MCP server.
@@ -311,10 +347,15 @@ pub struct MCPInputSchema {
 /// Input schema type for MCP tools.
 /// Currently only `object` is observed; kept as an enum for forward
 /// compatibility.
+#[non_exhaustive]
 #[serde(rename_all = "lowercase")]
 pub enum MCPInputType {
     /// JSON-schema `object` type (the only value observed today).
     Object,
+    /// An unrecognized schema `type` from a newer MCP version. Deserialized via
+    /// `#[serde(other)]` so a novel value no longer fails the whole response.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Audio content returned for voice models.
@@ -727,5 +768,64 @@ impl ContentFilterInfo {
     /// Severity level (`0` most severe … `3` minor).
     pub fn level(&self) -> Option<i32> {
         self.level
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_function_arguments_accepts_string_object_and_null() {
+        // String form (the documented shape).
+        let tf: ToolFunction =
+            serde_json::from_str(r#"{"name":"f","arguments":"{\"a\":1}"}"#).unwrap();
+        assert_eq!(tf.arguments.as_deref(), Some(r#"{"a":1}"#));
+
+        // Object form (sent by some streaming deltas / edge payloads) — previously
+        // failed the whole response; now coerced to its compact JSON string.
+        let tf: ToolFunction = serde_json::from_str(r#"{"arguments":{}}"#).unwrap();
+        assert_eq!(tf.arguments.as_deref(), Some("{}"));
+
+        // null -> None.
+        let tf: ToolFunction = serde_json::from_str(r#"{"arguments":null}"#).unwrap();
+        assert!(tf.arguments.is_none());
+
+        // Absent -> None (field is default-Option).
+        let tf: ToolFunction = serde_json::from_str(r#"{"name":"f"}"#).unwrap();
+        assert!(tf.arguments.is_none());
+    }
+
+    #[test]
+    fn mcp_message_arguments_lenient() {
+        let m: MCPMessage = serde_json::from_str(r#"{"id":"x","arguments":{}}"#).unwrap();
+        assert_eq!(m.arguments.as_deref(), Some("{}"));
+        let m: MCPMessage = serde_json::from_str(r#"{"id":"x","arguments":null}"#).unwrap();
+        assert!(m.arguments.is_none());
+    }
+
+    #[test]
+    fn mcp_call_type_known_values_round_trip() {
+        let m: MCPMessage = serde_json::from_str(r#"{"id":"x","type":"mcp_call"}"#).unwrap();
+        assert!(matches!(m.type_, Some(MCPCallType::McpCall)));
+        let m: MCPMessage = serde_json::from_str(r#"{"id":"x","type":"mcp_list_tools"}"#).unwrap();
+        assert!(matches!(m.type_, Some(MCPCallType::McpListTools)));
+    }
+
+    #[test]
+    fn mcp_call_type_unknown_value_falls_back_to_unknown() {
+        // A novel `type` from a newer API/MCP transport must not fail the whole
+        // response — it maps to the `#[serde(other)]` catch-all.
+        let m: MCPMessage =
+            serde_json::from_str(r#"{"id":"x","type":"mcp_future_transport"}"#).unwrap();
+        assert!(matches!(m.type_, Some(MCPCallType::Unknown)));
+    }
+
+    #[test]
+    fn mcp_input_type_unknown_value_falls_back_to_unknown() {
+        let s: MCPInputSchema = serde_json::from_str(r#"{"type":"array"}"#).unwrap();
+        assert!(matches!(s.type_, Some(MCPInputType::Unknown)));
+        let s: MCPInputSchema = serde_json::from_str(r#"{"type":"object"}"#).unwrap();
+        assert!(matches!(s.type_, Some(MCPInputType::Object)));
     }
 }

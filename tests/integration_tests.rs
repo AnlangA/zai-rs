@@ -513,7 +513,7 @@ async fn test_concurrent_requests() {
         }),
     ];
 
-    let results = futures::future::join_all(handles).await;
+    let results = futures_util::future::join_all(handles).await;
     assert_eq!(results.len(), 3);
 }
 

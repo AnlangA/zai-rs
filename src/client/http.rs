@@ -381,7 +381,31 @@ where
     // Deserialize directly from the raw bytes: serde_json validates UTF-8
     // lazily as it parses, so we avoid the extra full-body `String` allocation
     // and the separate UTF-8 validation pass that `resp.text()` performs.
-    serde_json::from_slice::<T>(&body_bytes).map_err(ZaiError::from)
+    match serde_json::from_slice::<T>(&body_bytes) {
+        Ok(value) => Ok(value),
+        Err(json_err) => {
+            // Some Zhipu endpoints return HTTP 2xx with an error-shaped body
+            // (`{"error":{"code":1302,...}}` or a flat `{code,message}`). The
+            // unified error parser only runs on non-2xx, so without this the
+            // business code/category/message would be discarded and surfaced as
+            // an opaque `JsonError`, making `is_rate_limit()`/`is_sdk_error()`/
+            // `category()` all wrong for that response. Only upgrade when the
+            // body genuinely parses as an error envelope; otherwise preserve the
+            // original serde error (a real deserialization mismatch).
+            if status.is_success()
+                && let Ok(body_str) = std::str::from_utf8(&body_bytes)
+                && let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(body_str)
+            {
+                let (code, message) = parsed.into_parts();
+                return Err(ZaiError::from_api_response(
+                    status.as_u16(),
+                    to_api_code(&code),
+                    message,
+                ));
+            }
+            Err(ZaiError::from(json_err))
+        },
+    }
 }
 
 /// Send a JSON request through the shared transport pipeline.
@@ -657,6 +681,10 @@ where
                     return Ok(resp);
                 }
 
+                // Capture the server's `Retry-After` hint BEFORE `resp.text()`
+                // consumes the headers; on a rate-limit it is more accurate than
+                // our locally-computed backoff.
+                let retry_after = parse_retry_after(resp.headers());
                 let text = resp.text().await.unwrap_or_default();
                 let error = parse_api_error_response(status.as_u16(), text);
 
@@ -664,16 +692,21 @@ where
                     last_error = Some(error.clone());
                     let delay = calculate_retry_delay(attempt, &config.retry_delay);
                     let delay_with_jitter = add_jitter(delay);
+                    // Honor `Retry-After` when present (rate-limit / 503): never
+                    // retry sooner than the server asks or our own backoff,
+                    // whichever is longer, capped to stay bounded.
+                    let sleep = reconcile_retry_after(retry_after, delay_with_jitter);
                     warn!(
                         url = %url,
                         http_status = %status,
                         attempt = attempt + 1,
                         max_attempts = config.max_retries + 1,
-                        retry_delay = ?delay_with_jitter,
+                        retry_delay = ?sleep,
+                        retry_after = ?retry_after,
                         error = %error.compact(),
                         "Request failed, retrying"
                     );
-                    tokio::time::sleep(delay_with_jitter).await;
+                    tokio::time::sleep(sleep).await;
                 } else {
                     return Err(error);
                 }
@@ -752,6 +785,39 @@ fn add_jitter(delay: Duration) -> Duration {
     delay.saturating_add(Duration::from_millis(jitter_ms))
 }
 
+/// Upper bound on how long a single retry will honor a server `Retry-After`
+/// hint, so a hostile or absurdly large value can't stall the retry loop
+/// indefinitely. Five minutes comfortably covers any realistic rate-limit reset
+/// window while remaining bounded.
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(300);
+
+/// Parse the `Retry-After` response header (RFC 7231 §7.1.3).
+///
+/// Supports the dominant **delta-seconds** form (a non-negative integer). The
+/// HTTP-date form is deliberately not parsed to avoid pulling a date crate; if
+/// a server sends that form (rare for rate-limiting), `None` is returned and the
+/// caller falls back to its computed backoff — identical to today's behavior.
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let value = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+    let secs = value.trim().parse::<u64>().ok()?;
+    // A 0 (or absent meaningful) hint is treated as "no hint" so the computed
+    // backoff still applies; only a positive hint overrides it.
+    (secs > 0).then(|| Duration::from_secs(secs))
+}
+
+/// Reconcile the server's `Retry-After` hint with the locally-computed backoff.
+///
+/// On a rate-limit the server's hint is authoritative, but we never retry
+/// *sooner* than our own backoff would either (so a tiny/zero hint can't make us
+/// more aggressive than configured). The result is capped at
+/// [`MAX_RETRY_AFTER`] to keep the loop bounded.
+fn reconcile_retry_after(hint: Option<Duration>, computed: Duration) -> Duration {
+    match hint {
+        Some(h) => computed.max(h).min(MAX_RETRY_AFTER),
+        None => computed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -790,6 +856,58 @@ mod tests {
     fn test_to_api_code_num_overflow() {
         let code = ErrorCode::Num(99999);
         assert_eq!(to_api_code(&code), 0);
+    }
+
+    #[test]
+    fn retry_after_parses_delta_seconds() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "30".parse().unwrap());
+        assert_eq!(parse_retry_after(&headers), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn retry_after_absent_is_none() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert_eq!(parse_retry_after(&headers), None);
+    }
+
+    #[test]
+    fn retry_after_zero_or_garbage_is_none() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "0".parse().unwrap());
+        // A zero hint carries no information; treat as absent so the computed
+        // backoff still applies.
+        assert_eq!(parse_retry_after(&headers), None);
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        // HTTP-date form (unsupported) parses as None.
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            "Wed, 21 Oct 2026 07:28:00 GMT".parse().unwrap(),
+        );
+        assert_eq!(parse_retry_after(&headers), None);
+    }
+
+    #[test]
+    fn reconcile_retry_after_takes_max_and_caps() {
+        let computed = Duration::from_secs(2);
+        // No hint -> computed unchanged.
+        assert_eq!(reconcile_retry_after(None, computed), computed);
+        // Longer hint wins, but never below computed.
+        assert_eq!(
+            reconcile_retry_after(Some(Duration::from_secs(10)), computed),
+            Duration::from_secs(10)
+        );
+        // Shorter hint does NOT make us retry sooner than computed.
+        assert_eq!(
+            reconcile_retry_after(Some(Duration::from_secs(1)), computed),
+            computed
+        );
+        // Huge hint is capped.
+        assert_eq!(
+            reconcile_retry_after(Some(Duration::from_secs(3600)), computed),
+            MAX_RETRY_AFTER
+        );
     }
 
     #[test]

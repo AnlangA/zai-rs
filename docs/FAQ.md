@@ -23,24 +23,28 @@ A: 在 `Cargo.toml` 中添加：
 
 ```toml
 [dependencies]
-zai-rs = "0.2"
+zai-rs = "0.4"
 ```
 
 ### Q: 如何配置 API 密钥？
 A: 最简单的方式是使用环境变量：
 
 ```rust
-use zai_rs::client::ZaiClient;
+use zai_rs::model::*;
 
 // 从环境变量读取
-let api_key = std::env::var("ZAI_API_KEY").expect("ZAI_API_KEY must be set");
-let client = ZaiClient::new(api_key);
+let key = std::env::var("ZHIPU_API_KEY")?;
+let client = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"), key);
 ```
 
 或直接在代码中设置（不推荐）：
 
 ```rust
-let client = ZaiClient::new("your.id.secret".to_string());
+let client = ChatCompletion::new(
+    GLM4_5_flash {},
+    TextMessage::user("你好"),
+    "your.id.secret",
+);
 ```
 
 ### Q: API 密钥格式是什么？
@@ -59,28 +63,36 @@ if let Err(e) = validate_api_key(&api_key) {
 ## 使用问题
 
 ### Q: 如何进行流式聊天？
-A: 使用 `ChatCompletionRequest::streaming()` 方法：
+A: 对 `ChatCompletion` 调用 `enable_stream()`，然后消费 SSE / typed stream：
 
 ```rust
-use zai_rs::model::chat_completion::ChatCompletionRequest;
-use futures::StreamExt;
+use zai_rs::model::*;
 
-let request = ChatCompletionRequest::new("Hello", "glm-4")
-    .streaming(true)
-    .build()?;
+let key = std::env::var("ZHIPU_API_KEY")?;
+let mut client = ChatCompletion::new(
+    GLM4_5_flash {},
+    TextMessage::user("讲一个短故事"),
+    key,
+)
+.enable_stream();
 
-let mut stream = client.chat_completions_stream(&request).await?;
-
-while let Some(chunk) = stream.next().await {
-    println!("{}", chunk?.choices[0].delta.content);
-}
+client
+    .stream_sse_for_each(|data| {
+        print!("{}", String::from_utf8_lossy(data));
+    })
+    .await?;
 ```
 
 ### Q: 如何处理 API 错误？
 A: 所有 API 调用返回 `ZaiResult<T>`。使用 `?` 操作符或 `match` 处理错误：
 
 ```rust
-match client.chat_completions(&request).await {
+use zai_rs::{model::*, ZaiError};
+
+let key = std::env::var("ZHIPU_API_KEY")?;
+let client = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"), key);
+
+match client.send().await {
     Ok(response) => println!("{:?}", response),
     Err(ZaiError::AuthError { code, message }) => {
         tracing::error!("Authentication failed [{}]: {}", code, message);
@@ -97,24 +109,30 @@ A: 使用 `HttpClientConfig` 配置重试策略：
 
 ```rust
 use zai_rs::client::http::{HttpClientConfig, RetryDelay};
+use zai_rs::model::*;
 use std::time::Duration;
 
+let key = std::env::var("ZHIPU_API_KEY")?;
 let config = HttpClientConfig::builder()
     .max_retries(5)
     .timeout(Duration::from_secs(120))
     .retry_delay(RetryDelay::exponential(Duration::from_millis(100), Duration::from_secs(10)))
-    .enable_logging(true)
+    .logging(true)
     .build();
 
-let client = ZaiClient::new_with_config(api_key, config);
+let client = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"), key)
+    .with_http_config(config);
 ```
 
 ### Q: 如何启用请求日志？
 A: 在 `HttpClientConfig` 中启用日志记录：
 
 ```rust
+use zai_rs::client::http::HttpClientConfig;
+use std::time::Duration;
+
 let config = HttpClientConfig::builder()
-    .enable_logging(true)
+    .logging(true)
     .mask_sensitive_data(true)
     .build();
 ```
@@ -169,12 +187,14 @@ A: 使用 `tokio::spawn` 或 `futures` crate 并发执行：
 
 ```rust
 use futures::future::join_all;
+use zai_rs::model::*;
 
-let tasks = requests.iter()
-    .map(|req| client.chat_completions(req))
-    .collect::<Vec<_>>();
+let key = std::env::var("ZHIPU_API_KEY")?;
+let clients = ["问题 1", "问题 2"]
+    .into_iter()
+    .map(|prompt| ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(prompt), key.clone()));
 
-let results = join_all(tasks).await;
+let results = join_all(clients.map(|client| async move { client.send().await })).await;
 ```
 
 ### Q: 连接池是如何工作的？
@@ -188,43 +208,61 @@ A: SDK 使用 `reqwest::Client` 自动管理连接池。具有相同配置的请
 A: 定义工具并在请求中传递：
 
 ```rust
-use zai_rs::model::tools::{Tool, FunctionTool};
+use zai_rs::model::*;
 
-let tool = Tool::Function(
-    FunctionTool::new("get_weather")
-        .description("Get weather information")
-        .parameters(json!({"type": "object", "properties": {"location": {"type": "string"}}}))
+let key = std::env::var("ZHIPU_API_KEY")?;
+let weather = Function::new(
+    "get_weather",
+    "Get weather information",
+    serde_json::json!({
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"]
+    }),
 );
 
-let request = ChatCompletionRequest::new("What's the weather in Beijing?", "glm-4")
-    .tools(vec![tool])
-    .build()?;
+let client = ChatCompletion::new(
+    GLM4_5_flash {},
+    TextMessage::user("What's the weather in Beijing?"),
+    key,
+)
+.add_tool(Tools::Function { function: weather });
 ```
 
 ### Q: 如何上传文件？
 A: 使用文件上传 API：
 
 ```rust
-use zai_rs::file::upload_file;
-use tokio::fs::File;
+use zai_rs::file::*;
 
-let file = File::open("document.pdf").await?;
-let result = upload_file(&client, file, Some("application/pdf")).await?;
+let key = std::env::var("ZHIPU_API_KEY")?;
+let result: FileObject = FileUploadRequest::new(
+    key,
+    FilePurpose::FileExtract,
+    "document.pdf",
+)
+.with_content_type("application/pdf")
+.send()
+.await?;
 ```
 
 ### Q: 如何使用知识库功能？
-A: 首先上传文档，然后创建知识库：
+A: 对已有知识库上传文档，然后查询知识库详情：
 
 ```rust
-use zai_rs::knowledge::document_upload;
+use zai_rs::knowledge::*;
 
-// 上传文档
-let file_id = document_upload(&client, file).await?;
+let key = std::env::var("ZHIPU_API_KEY")?;
+let knowledge_id = "your-knowledge-id".to_string();
 
-// 使用知识库回答问题
-let request = ChatCompletionRequest::new("基于文档回答问题", "glm-4")
-    .knowledge_base(vec![file_id])
-    .build()?;
+let upload: UploadFileResponse = DocumentUploadFileRequest::new(key.clone(), knowledge_id.clone())
+    .add_file_path("document.pdf")
+    .send()
+    .await?;
+
+let retrieve: KnowledgeRetrieveResponse = KnowledgeRetrieveRequest::new(key, knowledge_id)
+    .send()
+    .await?;
 ```
 
 ---
@@ -235,6 +273,8 @@ let request = ChatCompletionRequest::new("基于文档回答问题", "glm-4")
 A: 增加超时时间配置：
 
 ```rust
+use zai_rs::client::http::HttpClientConfig;
+
 let config = HttpClientConfig::builder()
     .timeout(Duration::from_secs(300))
     .build();
@@ -245,15 +285,17 @@ A: 某些功能可能需要启用 feature：
 
 ```toml
 [dependencies]
-zai-rs = { version = "0.2", features = ["rmcp-kits"] }
+zai-rs = { version = "0.4", features = ["rmcp-kits"] }
 ```
 
 ### Q: 如何调试请求问题？
 A: 启用详细日志：
 
 ```rust
+use zai_rs::client::http::HttpClientConfig;
+
 let config = HttpClientConfig::builder()
-    .enable_logging(true)
+    .logging(true)
     .build();
 
 // 配置 tracing
