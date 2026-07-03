@@ -160,13 +160,13 @@ impl OcrRequest {
     /// This helper performs the same existence/size/extension checks via
     /// `tokio::fs` so the async path stays non-blocking. Keep the two in sync.
     async fn validate_file_async(&self) -> crate::ZaiResult<()> {
-        let p = self
-            .file_path
-            .as_ref()
-            .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "file_path is required".to_string(),
-            })?;
+        let p =
+            self.file_path
+                .as_ref()
+                .ok_or_else(|| crate::client::error::ZaiError::ApiError {
+                    code: crate::client::error::codes::SDK_VALIDATION,
+                    message: "file_path is required".to_string(),
+                })?;
 
         // A single async `metadata` call covers both existence (a missing path
         // yields `NotFound`) and size, replacing the sync `Path::exists()` +

@@ -212,7 +212,11 @@ pub trait StreamChatLikeExt: SseStreamable + HttpClient {
             // terminating blank line so the last content/[DONE] chunk isn't
             // silently dropped (see `SseEventParser::finish`).
             for event in parser.finish() {
-                trace!(parser = "sse", bytes = event.len(), "SSE final chunk flushed");
+                trace!(
+                    parser = "sse",
+                    bytes = event.len(),
+                    "SSE final chunk flushed"
+                );
                 match parse_chat_stream_event(&event)? {
                     Some(chunk) => on_chunk(chunk).await?,
                     None => return Ok(()),

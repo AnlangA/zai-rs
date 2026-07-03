@@ -60,7 +60,10 @@ pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
     // is a generous ceiling for any realistic JWT lifetime.
     const MAX_TTL_SECONDS: i64 = 7 * 24 * 3600;
     if ttl_seconds <= 0 || ttl_seconds > MAX_TTL_SECONDS {
-        warn!(ttl_seconds, "Realtime JWT auth error: ttl_seconds out of range");
+        warn!(
+            ttl_seconds,
+            "Realtime JWT auth error: ttl_seconds out of range"
+        );
         return Err(ZaiError::RealtimeAuthError(format!(
             "jwt ttl_seconds must be in 1..={MAX_TTL_SECONDS}, got {ttl_seconds}"
         )));

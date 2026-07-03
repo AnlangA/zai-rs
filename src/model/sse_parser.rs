@@ -93,7 +93,7 @@ impl SseEventParser {
                 let event = join_event_data(&self.event_data);
                 self.event_data.clear();
                 vec![event]
-            }
+            },
         }
     }
 }

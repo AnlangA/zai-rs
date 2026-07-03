@@ -160,7 +160,7 @@ impl ToolCallCache {
     /// Insert a result, evicting the oldest entries at capacity. No-op if
     /// disabled.
     pub fn insert(&self, key: CacheKey, result: Value, ttl: Option<Duration>) {
-        if !self.enable_cache {
+        if !self.enable_cache || self.max_size == 0 {
             return;
         }
 
@@ -593,6 +593,22 @@ mod tests {
                 .is_some()
         );
         assert!(cache.stats().total_entries <= 3);
+    }
+
+    #[test]
+    fn test_cache_max_size_zero_stores_nothing() {
+        let cache = ToolCallCache::new().with_max_size(0);
+        let args = serde_json::json!({"input": "test"});
+        let key = CacheKey::new("tool".to_string(), args.clone());
+
+        cache.insert_with_key(
+            "tool".to_string(),
+            args,
+            serde_json::json!({"result": true}),
+        );
+
+        assert!(cache.get(&key).is_none());
+        assert_eq!(cache.stats().total_entries, 0);
     }
 
     #[test]

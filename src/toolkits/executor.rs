@@ -35,6 +35,18 @@ use crate::{
 /// calls queue on the semaphore rather than spawning unbounded tasks.
 const MAX_CONCURRENT_TOOL_CALLS: usize = 8;
 
+fn task_panic_tool_message() -> TextMessage {
+    TextMessage::tool(
+        serde_json::json!({
+            "error": {
+                "type": "task_panic",
+                "message": "a tool execution task panicked or was cancelled"
+            }
+        })
+        .to_string(),
+    )
+}
+
 /// Enhanced retry configuration with exponential backoff
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
@@ -595,15 +607,7 @@ impl ToolExecutor {
                         error = %join_err,
                         "tool execution task panicked or was cancelled"
                     );
-                    messages.push(TextMessage::tool(
-                        serde_json::json!({
-                            "error": {
-                                "type": "task_panic",
-                                "message": "a tool execution task panicked or was cancelled"
-                            }
-                        })
-                        .to_string(),
-                    ));
+                    messages.push(task_panic_tool_message());
                 },
             }
         }
@@ -675,22 +679,13 @@ impl ToolExecutor {
         // calls.len() (matching `execute_tool_calls_parallel`).
         for slot in results.iter_mut() {
             if slot.is_none() {
-                *slot = Some(TextMessage::tool(
-                    serde_json::json!({
-                        "error": {
-                            "type": "task_panic",
-                            "message": "a tool execution task panicked or was cancelled"
-                        }
-                    })
-                    .to_string(),
-                ));
+                *slot = Some(task_panic_tool_message());
             }
         }
 
-        // All slots are populated by the loop above.
         results
             .into_iter()
-            .map(|r| r.expect("every slot is filled above"))
+            .map(|r| r.unwrap_or_else(task_panic_tool_message))
             .collect()
     }
 

@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-03
+
 A best-practices hardening pass (verified by an 8-dimension audit). Mostly
 additive/non-breaking; the few semver-relevant items are flagged below.
 
-### ⚠️ Semver-relevant (decide 0.3.1 vs 0.4.0)
+### ⚠️ Semver-relevant
 - **Client-side error codes reclassified into the reserved SDK band.** Errors
   that originate inside the SDK (validation, config, file checks) now report
   `codes::SDK_VALIDATION` (9001) / `SDK_CONFIG` (9600) instead of the server
@@ -56,6 +58,8 @@ additive/non-breaking; the few semver-relevant items are flagged below.
   of discarding it (error code unchanged).
 - File upload paths use `tokio::fs::read` instead of blocking `std::fs::read`
   (no more stalling the async runtime).
+- `ToolCallCache::with_max_size(0)` now stores no entries, matching the
+  configured zero-capacity semantics instead of retaining one item.
 
 ### Changed
 - ~30 request constructors and `WebSearchRequest` setters now take the API key
@@ -65,12 +69,15 @@ additive/non-breaking; the few semver-relevant items are flagged below.
   (the trait uses native `impl Future`).
 - SSE event parser: single-`data:`-line events (the common per-token case) no
   longer do a redundant allocate+copy on join.
+- Removed the last production `expect` from ordered tool-call result collection;
+  any unexpectedly empty slot now falls back to the same in-band `task_panic`
+  tool message used for panicked/cancelled tasks.
 
 ### Documentation
 - Fixed a duplicated doc block on `send_json_request`; refreshed the Feature
-  Flags table (added `realtime`/`tool-validation`) and the install version
-  (`0.2.1` → `0.3`); documented `McpCallSpec::new`, `Function::new`'s
-  `parameters` type, and the `HTTP_CLIENTS` cache semantics.
+  Flags table (added `realtime`/`tool-validation`) and the install examples to
+  `0.4`; documented `McpCallSpec::new`, `Function::new`'s `parameters` type,
+  and the `HTTP_CLIENTS` cache semantics.
 
 ## [0.3.0] - 2026-06-25
 
@@ -218,7 +225,8 @@ users upgrade once; the rest (performance, build, tooling) ship in the same cut.
 - Refactored transport layer and error handling.
 - SSE parsing and streaming fixes; RMCP API updates; clippy fixes.
 
-[Unreleased]: https://github.com/AnlangA/zai-rs/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/AnlangA/zai-rs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/AnlangA/zai-rs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/AnlangA/zai-rs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/AnlangA/zai-rs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/AnlangA/zai-rs/releases/tag/v0.2.0
