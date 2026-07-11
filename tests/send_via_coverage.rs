@@ -1232,8 +1232,7 @@ fn embedding_with_dimensions() {
 fn response_minimal_no_id() {
     let r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
         serde_json::from_str(r#"{}"#);
-    // Empty object should fail — id is required
-    // empty object may succeed if all fields are optional
+    let _ = r.is_ok();
 }
 
 #[test]
@@ -1289,4 +1288,124 @@ fn retry_override_serializable() {
     // Just ensure it's constructible and Copy
     let o2 = o;
     let _ = o2;
+}
+
+// --- Coverage push: final 61 lines ---
+#[test]
+fn usage_all_zeros() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}"#,
+    ).unwrap();
+    let u = r.usage().unwrap();
+    assert_eq!(u.prompt_tokens(), Some(0));
+}
+
+#[test]
+fn choice_message_no_role() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"content":"hi"},"finish_reason":null}]}"#,
+    ).unwrap();
+    let msg = r.choices().unwrap()[0].message();
+    assert!(msg.role().is_none());
+    assert!(msg.content().is_some());
+}
+
+#[test]
+fn choice_with_delta_null() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant"},"finish_reason":"stop"}]}"#,
+    ).unwrap();
+    let msg = r.choices().unwrap()[0].message();
+    assert!(msg.content().is_none());
+    assert!(msg.content_str().is_none());
+    assert!(msg.reasoning_content().is_none());
+}
+
+#[test]
+fn zai_client_secret_redacted() {
+    use zai_rs::client::ZaiClient;
+    let c = ZaiClient::builder("test.key0123456789abcdef")
+        .build()
+        .unwrap();
+    let dbg = format!("{c:?}");
+    assert!(dbg.contains("[REDACTED]"));
+}
+
+#[test]
+fn endpoint_resolve_empty_segments() {
+    use zai_rs::client::EndpointConfig;
+    let ec = EndpointConfig::defaults().unwrap();
+    let url = ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[]).unwrap();
+    assert!(url.ends_with("/paas/v4"));
+}
+
+#[test]
+fn endpoint_all_families_resolvable() {
+    use zai_rs::client::{ApiFamily, EndpointConfig};
+    let ec = EndpointConfig::defaults().unwrap();
+    for family in [
+        ApiFamily::PaasV4,
+        ApiFamily::CodingPaasV4,
+        ApiFamily::AgentV1,
+        ApiFamily::LlmApplication,
+        ApiFamily::ApplicationV2,
+        ApiFamily::ApplicationV3,
+        ApiFamily::Zrag,
+        ApiFamily::Monitor,
+    ] {
+        let url = ec.resolve(family, &[]).unwrap();
+        assert!(!url.is_empty(), "family {family:?} should resolve");
+    }
+}
+
+#[test]
+fn endpoint_realtime_is_wss() {
+    use zai_rs::client::{ApiFamily, EndpointConfig};
+    let ec = EndpointConfig::defaults().unwrap();
+    let url = ec.resolve(ApiFamily::Realtime, &[]).unwrap();
+    assert!(url.starts_with("wss://"));
+}
+
+#[test]
+fn model_id_non_empty_trimmed() {
+    use zai_rs::model::*;
+    let id: String = GLM5_2 {}.into();
+    assert!(!id.is_empty());
+    assert_eq!(id, id.trim());
+    assert_eq!(id, "glm-5.2");
+}
+
+#[test]
+fn transport_config_builder_connect_timeout() {
+    use zai_rs::client::HttpTransportConfig;
+    let cfg = HttpTransportConfig::default()
+        .with_connect_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(cfg.connect_timeout, std::time::Duration::from_secs(5));
+}
+
+#[test]
+fn transport_config_builder_reject_high_connect() {
+    use zai_rs::client::HttpTransportConfig;
+    assert!(
+        HttpTransportConfig::default()
+            .with_connect_timeout(std::time::Duration::from_secs(30))
+            .is_err()
+    );
+}
+
+#[test]
+fn additional_header_with_name_and_value() {
+    use zai_rs::client::AdditionalHeader;
+    let h = AdditionalHeader::new("X-Correlation-ID", "abc123").unwrap();
+    assert_eq!(h.name(), "X-Correlation-ID");
+    assert_eq!(h.value(), "abc123");
+}
+
+#[test]
+fn additional_header_disallowed_names() {
+    use zai_rs::client::AdditionalHeader;
+    assert!(AdditionalHeader::new("Content-Type", "x").is_err());
+    assert!(AdditionalHeader::new("Accept", "x").is_err());
+    assert!(AdditionalHeader::new("Authorization", "x").is_err());
 }
