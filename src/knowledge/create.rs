@@ -43,8 +43,7 @@ impl<'de> Deserialize<'de> for EmbeddingId {
             3 => Ok(EmbeddingId::Embedding2),
             11 => Ok(EmbeddingId::Embedding3New),
             other => Err(serde::de::Error::custom(format!(
-                "unsupported embedding_id: {} (expected 3 or 11)",
-                other
+                "unsupported embedding_id: {other} (expected 3 or 11)"
             ))),
         }
     }

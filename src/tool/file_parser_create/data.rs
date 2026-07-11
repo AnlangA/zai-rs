@@ -86,8 +86,7 @@ impl FileParserCreateRequest {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
                 message: format!(
-                    "File type {:?} is not supported by tool type {:?}",
-                    file_type, tool_type
+                    "File type {file_type:?} is not supported by tool type {tool_type:?}"
                 ),
             });
         }
@@ -192,8 +191,8 @@ impl FileParserCreateRequest {
                 .mime_str("application/octet-stream")?;
             Ok(reqwest::multipart::Form::new()
                 .part("file", file_part)
-                .text("tool_type", format!("{:?}", tool_type).to_lowercase())
-                .text("file_type", format!("{:?}", file_type)))
+                .text("tool_type", format!("{tool_type:?}").to_lowercase())
+                .text("file_type", format!("{file_type:?}")))
         })
         .await
         .map_err(|e| e.context("file parser create"))?;

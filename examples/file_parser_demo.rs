@@ -3,8 +3,6 @@
 //! This example demonstrates how to use the file parser API with a real API
 //! key.
 
-use std::path::Path;
-
 use zai_rs::tool::{
     file_parser_create::{FileParserCreateRequest, FileType, ToolType},
     file_parser_result::{FileParserResultRequest, FormatType},
@@ -14,22 +12,22 @@ use zai_rs::tool::{
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("ZHIPU_API_KEY")?;
 
-    // Create test file
-    let test_file_path = Path::new("data/demo_document.txt");
+    // Create a test file in a temp location (no longer under `data/`).
+    let test_file_path = std::env::temp_dir().join("zai_demo_document.txt");
     let test_content = r#"# Sample Document
 # Content:
 This demonstrates the file parsing capabilities of the Zhipu AI API.
 The parser should extract and return the text content.
 "#;
 
-    std::fs::write(test_file_path, test_content)?;
+    std::fs::write(&test_file_path, test_content)?;
 
     // === Method 1: Basic file parsing with wait for result ===
     println!("\n=== Method 1: File parsing with polling ===");
 
     let create_request = FileParserCreateRequest::new(
         api_key.clone(),
-        test_file_path,
+        &test_file_path,
         ToolType::Lite,
         FileType::TXT,
     )?;
@@ -61,11 +59,11 @@ The parser should extract and return the text content.
             }
 
             if let Some(download_url) = result_response.download_url() {
-                println!("Download URL: {}", download_url);
+                println!("Download URL: {download_url}");
             }
         },
         Err(e) => {
-            eprintln!("Error waiting for result: {}", e);
+            eprintln!("Error waiting for result: {e}");
         },
     }
 

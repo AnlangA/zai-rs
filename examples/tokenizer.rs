@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("prompt_tokens: {}", resp.usage.prompt_tokens);
     println!("created: {}", resp.created);
     if let Some(rid) = resp.request_id {
-        println!("request_id: {}", rid);
+        println!("request_id: {rid}");
     }
 
     Ok(())

@@ -78,7 +78,7 @@ impl VoiceDeleteRequest {
             .validate()
             .map_err(|e| crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("Validation error: {:?}", e),
+                message: format!("Validation error: {e:?}"),
             })?;
         Ok(())
     }

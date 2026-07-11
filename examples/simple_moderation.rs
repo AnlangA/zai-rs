@@ -19,13 +19,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Moderation Result:");
 
     if let Some(id) = &result.id {
-        println!("Task ID: {}", id);
+        println!("Task ID: {id}");
     }
     if let Some(request_id) = &result.request_id {
-        println!("Request ID: {}", request_id);
+        println!("Request ID: {request_id}");
     }
     if let Some(created) = &result.created {
-        println!("Created: {}", created);
+        println!("Created: {created}");
     }
 
     if let Some(results) = &result.result_list {

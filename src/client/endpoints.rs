@@ -135,7 +135,7 @@ pub fn join_url(base: &str, path: &str) -> String {
     if path.is_empty() {
         base.to_string()
     } else {
-        format!("{}/{}", base, path)
+        format!("{base}/{path}")
     }
 }
 

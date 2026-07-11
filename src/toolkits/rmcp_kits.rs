@@ -156,7 +156,7 @@ pub async fn call_mcp_tool(
         );
         crate::client::error::ZaiError::Unknown {
             code: codes::SDK_EXTERNAL_TOOL,
-            message: format!("RMCP service error: {}", e),
+            message: format!("RMCP service error: {e}"),
         }
     })?;
     Ok((name, call_tool_result_to_json(&res)))
@@ -298,7 +298,7 @@ pub async fn execute_tool_calls_as_messages(
             caller.call(name, args_value).await.map_err(|e| {
                 crate::client::error::ZaiError::Unknown {
                     code: codes::SDK_EXTERNAL_TOOL,
-                    message: format!("RMCP call_tool failed: {}", e),
+                    message: format!("RMCP call_tool failed: {e}"),
                 }
             })?;
 

@@ -195,7 +195,7 @@ impl TranslationBot {
                         .and_then(|c| c.delta.as_ref())
                         .and_then(|d| d.content.as_deref())
                     {
-                        print!("{}", content);
+                        print!("{content}");
                         let _ = std::io::stdout().flush();
 
                         // Store the result

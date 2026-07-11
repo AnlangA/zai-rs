@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Err(e) => {
-            eprintln!("✗ Search failed: {}", e);
+            eprintln!("✗ Search failed: {e}");
         },
     }
 

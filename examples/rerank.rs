@@ -32,14 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("created: {}", resp.created);
     println!("id: {}", resp.id);
     if let Some(rid) = &resp.request_id {
-        println!("request_id: {}", rid);
+        println!("request_id: {rid}");
     }
 
     println!("results: {}", resp.results.len());
     for r in &resp.results {
         println!("- index={} score={:.6}", r.index, r.relevance_score);
         if let Some(doc) = &r.document {
-            println!("  doc: {}", doc);
+            println!("  doc: {doc}");
         }
     }
 

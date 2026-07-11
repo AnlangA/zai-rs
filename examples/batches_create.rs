@@ -24,10 +24,11 @@ fn make_jsonl_line(custom_id: &str, user_content: &str) -> String {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    // Step 1: Prepare a .jsonl file (each line is a request JSON)
-    std::fs::create_dir_all("data")?;
-    let path = "data/batch_demo.jsonl";
-    let mut f = File::create(path)?;
+    // Step 1: Prepare a .jsonl file (each line is a request JSON) in a temp
+    // location — this example no longer commits real media under `data/`.
+    let path = std::env::temp_dir().join("zai_batch_demo.jsonl");
+    let path_str = path.to_str().expect("temp path is valid utf-8");
+    let mut f = File::create(&path)?;
     let lines = vec![
         make_jsonl_line("request-1", "订单处理速度太慢，等了很久才发货。"),
         make_jsonl_line(
@@ -38,11 +39,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         make_jsonl_line("request-4", "说明书写得不清楚，看了半天也不知道怎么用。"),
     ];
     for line in lines {
-        writeln!(f, "{}", line)?;
+        writeln!(f, "{line}")?;
     }
 
     // Step 2: Upload the .jsonl file with purpose=batch
-    let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
+    let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path_str)
         .with_content_type("application/jsonl");
     let file: FileObject = upload.send().await?;
     let file_id = file

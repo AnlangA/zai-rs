@@ -12,7 +12,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = CogVideoX3 {};
     let key =
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
-    println!("{key}");
     let user_text = "可爱小猫叠在一起";
 
     // 提交视频生成请求
@@ -21,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body: ChatCompletionResponse = resp.json().await?;
 
     let task_id = body.id().ok_or("Task ID not found in response")?;
-    println!("Task ID: {}", task_id);
+    println!("Task ID: {task_id}");
 
     // 使用 async_chat_get 轮询结果
     let get_request = AsyncChatGetRequest::new(CogVideoX3 {}, task_id.to_string(), key);

@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "1757561531_ec561569199641b3a5c556503a72cb79".to_string());
 
     let body: FileDeleteResponse = FileDeleteRequest::new(key, file_id).send().await?;
-    println!("{:#?}", body);
+    println!("{body:#?}");
 
     Ok(())
 }

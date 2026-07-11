@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(extract_text_from_content)
             .unwrap_or_else(|| "<empty>".to_string());
 
-        println!("AI> {}\n", ai_text);
+        println!("AI> {ai_text}\n");
 
         // 将 AI 回复也追加进对话上下文
         client = client.add_messages(TextMessage::assistant(ai_text));

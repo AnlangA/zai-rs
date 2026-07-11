@@ -66,12 +66,17 @@ static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(
         (r"(?i)(token\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
         (r"(?i)(secret\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
         (
-            r"(?i)(bearer\s+[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)",
-            "bearer [FILTERED]",
+            r"(?i)(bearer\s+)[a-zA-Z0-9_-]+\.([a-zA-Z0-9_-]{10,})",
+            "$1[FILTERED]",
         ),
         (
-            r"(?i)(authorization\s*:\s*Bearer\s+)[^\s,]+",
-            "$1[FILTERED]",
+            // Redact the entire `Authorization: Bearer <token>` — including the
+            // `Authorization` header name and `Bearer` scheme word — so neither
+            // the scheme nor the value nor the header name is ever emitted in a
+            // trace/log line (plan P01.4 acceptance: trace must contain neither
+            // `Authorization` nor `Bearer`).
+            r"(?i)authorization\s*:\s*Bearer\s+[^\s,]+",
+            "[AUTH_REDACTED]",
         ),
     ]
     .into_iter()
@@ -504,7 +509,12 @@ impl ZaiError {
             };
         }
 
-        // Fall back to HTTP status when no business code is present.
+        // Fall back to HTTP status when no business code is present (plan P01.8).
+        // Every 5xx — including 502/503/504, which previously fell through to
+        // `Unknown` and broke the retry/classification chain — is kept as an
+        // `HttpError` carrying the real status. 401/403 are classified as auth
+        // and 429 as rate-limit so `is_auth_error()`/`is_rate_limit()` hold on
+        // status-only responses (the ApiCode string redesign is deferred to P03).
         match status {
             400 => ZaiError::HttpError {
                 status,
@@ -514,16 +524,20 @@ impl ZaiError {
                     api_message
                 },
             },
-            401 => ZaiError::HttpError {
-                status,
-                message: "Unauthorized - check your API key".to_string(),
+            401 | 403 => ZaiError::AuthError {
+                code: status,
+                message: if api_message.is_empty() {
+                    "Unauthorized - check your API key".to_string()
+                } else {
+                    api_message
+                },
             },
             404 => ZaiError::HttpError {
                 status,
                 message: "Not found - requested resource doesn't exist".to_string(),
             },
-            429 => ZaiError::HttpError {
-                status,
+            429 => ZaiError::RateLimitError {
+                code: status,
                 message: if api_message.is_empty() {
                     "Too many requests - rate limit exceeded".to_string()
                 } else {
@@ -538,9 +552,16 @@ impl ZaiError {
                 status,
                 message: "File size exceeds 100MB limit".to_string(),
             },
-            500 => ZaiError::HttpError {
+            // All 5xx keep the status (502/503/504 no longer fall through to
+            // Unknown). `is_retryable()` / `is_server_error()` derive from the
+            // carried status via classify_status.
+            s if (500..600).contains(&s) => ZaiError::HttpError {
                 status,
-                message: "Internal server error - try again later".to_string(),
+                message: if api_message.is_empty() {
+                    format!("Server error (HTTP {status}) - try again later")
+                } else {
+                    api_message
+                },
             },
             _ => ZaiError::Unknown {
                 code: status,
@@ -651,40 +672,40 @@ impl ZaiError {
     pub fn compact(&self) -> String {
         match self {
             ZaiError::HttpError { status, message } => {
-                format!("HTTP[{}]: {}", status, message)
+                format!("HTTP[{status}]: {message}")
             },
             ZaiError::AuthError { code, message } => {
-                format!("AUTH[{}]: {}", code, message)
+                format!("AUTH[{code}]: {message}")
             },
             ZaiError::AccountError { code, message } => {
-                format!("ACCOUNT[{}]: {}", code, message)
+                format!("ACCOUNT[{code}]: {message}")
             },
             ZaiError::ApiError { code, message } => {
-                format!("API[{}]: {}", code, message)
+                format!("API[{code}]: {message}")
             },
             ZaiError::RateLimitError { code, message } => {
-                format!("RATE_LIMIT[{}]: {}", code, message)
+                format!("RATE_LIMIT[{code}]: {message}")
             },
             ZaiError::ContentPolicyError { code, message } => {
-                format!("POLICY[{}]: {}", code, message)
+                format!("POLICY[{code}]: {message}")
             },
             ZaiError::FileError { code, message } => {
-                format!("FILE[{}]: {}", code, message)
+                format!("FILE[{code}]: {message}")
             },
             ZaiError::NetworkError(err) => {
-                format!("NETWORK: {}", err)
+                format!("NETWORK: {err}")
             },
             ZaiError::JsonError(err) => {
-                format!("JSON: {}", err)
+                format!("JSON: {err}")
             },
             ZaiError::RealtimeError(kind) => {
-                format!("REALTIME: {}", kind)
+                format!("REALTIME: {kind}")
             },
             ZaiError::RealtimeAuthError(msg) => {
-                format!("REALTIME_AUTH: {}", msg)
+                format!("REALTIME_AUTH: {msg}")
             },
             ZaiError::Unknown { code, message } => {
-                format!("UNKNOWN[{}]: {}", code, message)
+                format!("UNKNOWN[{code}]: {message}")
             },
         }
     }
@@ -818,7 +839,7 @@ impl From<validator::ValidationErrors> for ZaiError {
     fn from(err: validator::ValidationErrors) -> Self {
         ZaiError::ApiError {
             code: codes::SDK_VALIDATION,
-            message: format!("Validation error: {:?}", err),
+            message: format!("Validation error: {err:?}"),
         }
     }
 }
@@ -1264,8 +1285,12 @@ mod tests {
     fn test_mask_sensitive_info_bearer() {
         let text = "Authorization: Bearer abc123.abc1234567890";
         let filtered = mask_sensitive_info(text);
-        assert!(filtered.contains("[FILTERED]"));
+        // P01.4: the whole Authorization header (name + Bearer scheme + value)
+        // is redacted — no `Authorization`, no `Bearer`, no key material.
+        assert!(filtered.contains("[AUTH_REDACTED]"));
         assert!(!filtered.contains("abc123"));
+        assert!(!filtered.contains("Bearer"));
+        assert!(!filtered.contains("Authorization"));
     }
 
     #[test]
@@ -1401,5 +1426,63 @@ mod tests {
             let e = ZaiError::from_api_response(429, code, "rl".to_string());
             assert!(e.is_rate_limit(), "code {code} -> RateLimitError");
         }
+    }
+
+    // ----- P01.8: HTTP status classification (status-only responses) -----
+
+    #[test]
+    fn status_502_503_504_classify_as_server_and_carry_status() {
+        // P01.7/§2.2.6: 502/503/504 previously fell through to Unknown; they
+        // must now keep the status and classify as Server.
+        for status in [502, 503, 504] {
+            let e = ZaiError::from_api_response(status, 0, String::new());
+            match &e {
+                ZaiError::HttpError {
+                    status: s,
+                    message: _,
+                } => {
+                    assert_eq!(*s, status, "HTTP {status} lost its status code");
+                    assert!(e.is_server_error(), "HTTP {status} not classified Server");
+                    assert!(
+                        e.is_retryable(),
+                        "HTTP {status} should be retryable as a 5xx"
+                    );
+                },
+                other => panic!("HTTP {status} classified as {other:?}, expected HttpError"),
+            }
+        }
+        // 500 stays Server too.
+        let e = ZaiError::from_api_response(500, 0, String::new());
+        assert!(matches!(e, ZaiError::HttpError { status: 500, .. }));
+        assert!(e.is_server_error());
+    }
+
+    #[test]
+    fn status_401_403_classify_as_auth() {
+        for status in [401, 403] {
+            let e = ZaiError::from_api_response(status, 0, String::new());
+            assert!(
+                e.is_auth_error(),
+                "HTTP {status} should classify as auth, got {e:?}"
+            );
+            assert!(
+                e.is_client_error(),
+                "HTTP {status} should be a client error"
+            );
+            assert!(
+                !e.is_retryable(),
+                "HTTP {status} (auth) should not be retryable"
+            );
+        }
+    }
+
+    #[test]
+    fn status_429_classifies_as_rate_limit() {
+        let e = ZaiError::from_api_response(429, 0, String::new());
+        assert!(
+            e.is_rate_limit(),
+            "HTTP 429 should classify as rate limit, got {e:?}"
+        );
+        assert!(e.is_retryable(), "HTTP 429 should be retryable");
     }
 }

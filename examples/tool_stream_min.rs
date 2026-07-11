@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|choice| choice.delta.as_ref())
                 .and_then(|delta| delta.tool_calls.as_ref())
             {
-                println!("{:#?}", tool_calls);
+                println!("{tool_calls:#?}");
             }
             Ok(())
         })

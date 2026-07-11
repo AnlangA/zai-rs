@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_text(text);
 
     let body: VoiceCloneResponse = client.send().await?;
-    println!("{:#?}", body);
+    println!("{body:#?}");
 
     Ok(())
 }

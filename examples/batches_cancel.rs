@@ -7,10 +7,11 @@ use zai_rs::{batches::*, file::*};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    // 1) Prepare a minimal .jsonl with a single chat.completions request
-    std::fs::create_dir_all("data")?;
-    let path = "data/batch_cancel_demo.jsonl";
-    let mut f = File::create(path)?;
+    // 1) Prepare a minimal .jsonl with a single chat.completions request in a
+    // temp location (no longer under the removed `data/` directory).
+    let path = std::env::temp_dir().join("zai_batch_cancel_demo.jsonl");
+    let path_str = path.to_str().expect("temp path is valid utf-8");
+    let mut f = File::create(&path)?;
     let line = json!({
         "custom_id": "cancel-demo-1",
         "method": "POST",
@@ -23,10 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ]
         }
     });
-    writeln!(f, "{}", line)?;
+    writeln!(f, "{line}")?;
 
     // 2) Upload the .jsonl file as purpose=batch
-    let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
+    let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path_str)
         .with_content_type("application/jsonl");
     let file: FileObject = upload.send().await?;
     let file_id = file

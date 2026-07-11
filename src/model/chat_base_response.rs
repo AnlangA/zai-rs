@@ -31,8 +31,7 @@ where
         serde_json::Value::String(s) => Ok(Some(s)),
         serde_json::Value::Number(n) => Ok(Some(n.to_string())),
         other => Err(serde::de::Error::custom(format!(
-            "expected string or number, got {}",
-            other
+            "expected string or number, got {other}"
         ))),
     }
 }

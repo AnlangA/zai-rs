@@ -129,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // First round
     let last_resp: ChatCompletionResponse = client.send().await?;
-    println!("📨 LLM Response: {:#?}", last_resp);
+    println!("📨 LLM Response: {last_resp:#?}");
 
     if let Some(calls) = last_resp
         .choices()
@@ -147,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client = client.add_messages(sys);
 
         let next_body: ChatCompletionResponse = client.send().await?;
-        println!("Model after tool: {:#?}", next_body);
+        println!("Model after tool: {next_body:#?}");
     }
 
     Ok(())

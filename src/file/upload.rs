@@ -137,7 +137,7 @@ impl HttpClient for FileUploadRequest {
                     part = part.mime_str(ct).map_err(|e| {
                         crate::client::error::ZaiError::ApiError {
                             code: crate::client::error::codes::SDK_VALIDATION,
-                            message: format!("invalid content-type: {}", e),
+                            message: format!("invalid content-type: {e}"),
                         }
                     })?;
                 }

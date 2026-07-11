@@ -20,7 +20,12 @@ use crate::{
 };
 
 /// Central SDK configuration.
-#[derive(Debug, Clone, Default)]
+///
+/// `Debug` is hand-written (not derived) so the API key is never printed in
+/// plaintext; `Default` is intentionally **not** implemented — a config is only
+/// valid once it carries an API key, so the builder / `from_env` enforce that
+/// invariant at construction (plan P01.3).
+#[derive(Clone)]
 pub struct ZaiConfig {
     /// Zhipu API key in `<id>.<secret>` form.
     pub api_key: String,
@@ -32,11 +37,35 @@ pub struct ZaiConfig {
     pub reqwest: Option<reqwest::Client>,
 }
 
+impl std::fmt::Debug for ZaiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never emit the API key. All other fields use their own Debug.
+        f.debug_struct("ZaiConfig")
+            .field("api_key", &"[REDACTED]")
+            .field("endpoints", &self.endpoints)
+            .field("http", &self.http)
+            .field("reqwest", &self.reqwest)
+            .finish()
+    }
+}
+
 impl ZaiConfig {
+    /// A config skeleton with empty key and default endpoints/http, used only
+    /// as the builder's starting state. Not exposed publicly because an
+    /// api_key-less config is invalid.
+    fn skeleton() -> Self {
+        Self {
+            api_key: String::new(),
+            endpoints: EndpointConfig::default(),
+            http: HttpClientConfig::default(),
+            reqwest: None,
+        }
+    }
+
     /// Start a builder.
     pub fn builder() -> ZaiConfigBuilder {
         ZaiConfigBuilder {
-            config: ZaiConfig::default(),
+            config: Self::skeleton(),
         }
     }
 
@@ -47,16 +76,14 @@ impl ZaiConfig {
     }
 
     /// Read `ZHIPU_API_KEY` from the environment and use default endpoints/HTTP
-    /// settings.
+    /// settings. A missing/empty env var is classified the same way as a builder
+    /// missing its key (plan P01.3: unify error classification).
     pub fn from_env() -> ZaiResult<Self> {
-        let api_key = std::env::var("ZHIPU_API_KEY").map_err(|_| ZaiError::AuthError {
-            code: crate::client::error::codes::SDK_CONFIG,
-            message: "ZHIPU_API_KEY environment variable not set".to_string(),
-        })?;
-        Ok(Self {
-            api_key,
-            ..ZaiConfig::default()
-        })
+        let api_key = std::env::var("ZHIPU_API_KEY").map_err(|_| missing_api_key_error())?;
+        if api_key.trim().is_empty() {
+            return Err(missing_api_key_error());
+        }
+        Self::builder().api_key(api_key).build()
     }
 
     /// Resolve the realtime WebSocket URL from this config's endpoints.
@@ -87,9 +114,17 @@ impl ZaiConfig {
 }
 
 /// Builder for [`ZaiConfig`].
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 pub struct ZaiConfigBuilder {
     config: ZaiConfig,
+}
+
+/// Unified "missing API key" error used by both `from_env` and `build`.
+fn missing_api_key_error() -> ZaiError {
+    ZaiError::ApiError {
+        code: crate::client::error::codes::SDK_CONFIG,
+        message: "ZaiConfig requires an api_key".to_string(),
+    }
 }
 
 impl ZaiConfigBuilder {
@@ -147,13 +182,10 @@ impl ZaiConfigBuilder {
         self
     }
 
-    /// Finalize. Fails if `api_key` was never set.
+    /// Finalize. Fails if `api_key` was never set or is blank.
     pub fn build(self) -> ZaiResult<ZaiConfig> {
-        if self.config.api_key.is_empty() {
-            return Err(ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_CONFIG,
-                message: "ZaiConfig requires an api_key".to_string(),
-            });
+        if self.config.api_key.trim().is_empty() {
+            return Err(missing_api_key_error());
         }
         Ok(self.config)
     }
@@ -167,8 +199,29 @@ mod tests {
     #[test]
     fn builder_requires_api_key() {
         assert!(ZaiConfig::builder().build().is_err());
+        // Blank/whitespace-only keys are also rejected (P01.3 unified error).
+        assert!(ZaiConfig::builder().api_key("   ").build().is_err());
         let cfg = ZaiConfig::new("abcdefghij.0123456789abcdef").unwrap();
         assert_eq!(cfg.api_key, "abcdefghij.0123456789abcdef");
+    }
+
+    #[test]
+    fn debug_output_redacts_api_key() {
+        // P01.3: the API key must never appear in the Debug output.
+        let cfg = ZaiConfig::new("secret-id.secret-payload-0123456789").unwrap();
+        let debug = format!("{cfg:?}");
+        assert!(
+            debug.contains("[REDACTED]"),
+            "Debug missing redaction marker"
+        );
+        assert!(
+            !debug.contains("secret-id"),
+            "Debug leaked the key id: {debug}"
+        );
+        assert!(
+            !debug.contains("secret-payload"),
+            "Debug leaked the key secret: {debug}"
+        );
     }
 
     #[test]

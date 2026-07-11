@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .status
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
-        println!("poll[{}]: status={}", attempt, status);
+        println!("poll[{attempt}]: status={status}");
         if status == "completed" || status == "failed" || attempt >= max_attempts {
             break batch;
         }
@@ -37,14 +37,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         final_batch.output_file_id, final_batch.error_file_id
     );
 
-    std::fs::create_dir_all("data")?;
+    // Download into a temp location (no longer under the removed `data/` dir).
+    let out_path = std::env::temp_dir().join("zai_batch_output.jsonl");
+    let out_path_str = out_path.to_str().expect("temp path is valid utf-8");
+    let err_path = std::env::temp_dir().join("zai_batch_errors.jsonl");
+    let err_path_str = err_path.to_str().expect("temp path is valid utf-8");
 
     // Download output_file_id if present
     if let Some(out_id) = final_batch.output_file_id.clone() {
         FileContentRequest::new(key.clone(), out_id)
-            .send_to("data/batch_output.jsonl")
+            .send_to(out_path_str)
             .await?;
-        println!("saved: data/batch_output.jsonl");
+        println!("saved: {out_path_str}");
     } else {
         println!("no output_file_id yet");
     }
@@ -52,9 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Download error_file_id if present
     if let Some(err_id) = final_batch.error_file_id.clone() {
         FileContentRequest::new(key.clone(), err_id)
-            .send_to("data/batch_errors.jsonl")
+            .send_to(err_path_str)
             .await?;
-        println!("saved: data/batch_errors.jsonl");
+        println!("saved: {err_path_str}");
     } else {
         println!("no error_file_id");
     }

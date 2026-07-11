@@ -76,7 +76,7 @@ impl EmbeddingRequest {
         self.body.validate_model_constraints().map_err(|e| {
             crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("Validation error: {:?}", e),
+                message: format!("Validation error: {e:?}"),
             }
         })
     }
@@ -87,7 +87,7 @@ impl EmbeddingRequest {
         if let Err(e) = self.validate() {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("validation failed: {}", e),
+                message: format!("validation failed: {e}"),
             });
         }
         let resp: reqwest::Response = self.post().await?;

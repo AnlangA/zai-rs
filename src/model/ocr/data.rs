@@ -118,7 +118,7 @@ impl OcrRequest {
         if !Path::new(p).exists() {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_NOT_FOUND,
-                message: format!("file_path not found: {}", p),
+                message: format!("file_path not found: {p}"),
             });
         }
 
@@ -129,7 +129,7 @@ impl OcrRequest {
         if file_size > MAX_SIZE {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_TOO_LARGE,
-                message: format!("file_size exceeds 8MB limit: {} bytes", file_size),
+                message: format!("file_size exceeds 8MB limit: {file_size} bytes"),
             });
         }
 
@@ -143,8 +143,7 @@ impl OcrRequest {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_TYPE_UNSUPPORTED,
                 message: format!(
-                    "invalid file format: {:?}. Only PNG, JPG, JPEG, BMP are supported",
-                    ext
+                    "invalid file format: {ext:?}. Only PNG, JPG, JPEG, BMP are supported"
                 ),
             });
         }
@@ -176,7 +175,7 @@ impl OcrRequest {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Err(crate::client::error::ZaiError::FileError {
                     code: codes::SDK_FILE_NOT_FOUND,
-                    message: format!("file_path not found: {}", p),
+                    message: format!("file_path not found: {p}"),
                 });
             },
             Err(e) => return Err(crate::client::error::ZaiError::from(e)),
@@ -187,7 +186,7 @@ impl OcrRequest {
         if file_size > MAX_SIZE {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_TOO_LARGE,
-                message: format!("file_size exceeds 8MB limit: {} bytes", file_size),
+                message: format!("file_size exceeds 8MB limit: {file_size} bytes"),
             });
         }
 
@@ -201,8 +200,7 @@ impl OcrRequest {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_TYPE_UNSUPPORTED,
                 message: format!(
-                    "invalid file format: {:?}. Only PNG, JPG, JPEG, BMP are supported",
-                    ext
+                    "invalid file format: {ext:?}. Only PNG, JPG, JPEG, BMP are supported"
                 ),
             });
         }

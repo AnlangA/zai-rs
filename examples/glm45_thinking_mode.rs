@@ -21,11 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}", reasoning);
+            println!("🤔 Thinking Process:\n{reasoning}");
             println!("\n---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            println!("💡 Answer: {content}\n");
         }
     }
 
@@ -39,11 +39,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}", reasoning);
+            println!("🤔 Thinking Process:\n{reasoning}");
             println!("\n---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            println!("💡 Answer: {content}\n");
         }
     }
 
@@ -59,11 +59,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}", reasoning);
+            println!("🤔 Thinking Process:\n{reasoning}");
             println!("\n---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            println!("💡 Answer: {content}\n");
         }
     }
 
@@ -71,13 +71,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(usage) = response.usage {
         println!("\n📊 Token Usage:");
         if let Some(prompt) = usage.prompt_tokens() {
-            println!("  Prompt tokens: {}", prompt);
+            println!("  Prompt tokens: {prompt}");
         }
         if let Some(completion) = usage.completion_tokens() {
-            println!("  Completion tokens: {}", completion);
+            println!("  Completion tokens: {completion}");
         }
         if let Some(total) = usage.total_tokens() {
-            println!("  Total tokens: {}", total);
+            println!("  Total tokens: {total}");
         }
     }
 

@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_text = "Explain how mixture-of-experts (MoE) models work, and why \
                      they might be more efficient than dense models.";
 
-    println!("📝 Question: {}\n", user_text);
+    println!("📝 Question: {user_text}\n");
 
     // Enable thinking and request the maximum reasoning depth. Higher effort
     // yields deeper reasoning at the cost of latency and tokens — recommended
@@ -52,11 +52,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         && let Some(choice) = choices.first()
     {
         if let Some(reasoning) = choice.message().reasoning_content() {
-            println!("🤔 Thinking Process:\n{}\n", reasoning);
+            println!("🤔 Thinking Process:\n{reasoning}\n");
             println!("---\n");
         }
         if let Some(content) = choice.message().content() {
-            println!("💡 Answer: {}\n", content);
+            println!("💡 Answer: {content}\n");
         }
     }
 
@@ -64,13 +64,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(usage) = response.usage {
         println!("📊 Token Usage:");
         if let Some(prompt) = usage.prompt_tokens() {
-            println!("  Prompt tokens: {}", prompt);
+            println!("  Prompt tokens: {prompt}");
         }
         if let Some(completion) = usage.completion_tokens() {
-            println!("  Completion tokens: {}", completion);
+            println!("  Completion tokens: {completion}");
         }
         if let Some(total) = usage.total_tokens() {
-            println!("  Total tokens: {}", total);
+            println!("  Total tokens: {total}");
         }
     }
 

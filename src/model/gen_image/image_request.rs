@@ -104,7 +104,7 @@ impl serde::Serialize for ImageSize {
             ImageSize::Size1152x864 => "1152x864".to_string(),
             ImageSize::Size1440x720 => "1440x720".to_string(),
             ImageSize::Size720x1440 => "720x1440".to_string(),
-            ImageSize::Custom { width, height } => format!("{}x{}", width, height),
+            ImageSize::Custom { width, height } => format!("{width}x{height}"),
         };
         serializer.serialize_str(&s)
     }

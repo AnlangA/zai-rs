@@ -43,13 +43,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match client.send().await {
             Ok(body) => {
                 if let Some(task_id) = body.id() {
-                    println!("问题: {}", message);
-                    println!("任务ID: {}", task_id);
+                    println!("问题: {message}");
+                    println!("任务ID: {task_id}");
                     task_ids.push((message, task_id.to_string()));
                 }
             },
             Err(e) => {
-                eprintln!("提交失败: {}", e);
+                eprintln!("提交失败: {e}");
             },
         }
     }

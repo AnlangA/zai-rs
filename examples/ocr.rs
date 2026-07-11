@@ -9,19 +9,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set your API key in env: ZHIPU_API_KEY
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    // Use local image file as input
-    let file_path = "data/ocr_example.png";
+    // Read the input image path from the first CLI argument.
+    let file_path = match std::env::args().nth(1) {
+        Some(p) => p,
+        None => {
+            eprintln!("usage: ocr <image-file.png|jpg>");
+            std::process::exit(2);
+        },
+    };
 
     println!("=== OCR Handwriting Recognition Example ===\n");
 
     // Build and send OCR request
     let client = OcrRequest::new(key)
-        .with_file_path(file_path)
+        .with_file_path(&file_path)
         .with_tool_type(OcrToolType::HandWrite)
         .with_language_type(OcrLanguageType::ChnEng)
         .with_probability(true);
 
-    println!("Sending OCR request for image: {}\n", file_path);
+    println!("Sending OCR request for image: {file_path}\n");
 
     let response: OcrResponse = client.send().await?;
 
@@ -36,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("--- Text Block {} ---", idx + 1);
 
             if let Some(words) = &item.words {
-                println!("Text: {}", words);
+                println!("Text: {words}");
             }
 
             if let Some(location) = &item.location {

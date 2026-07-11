@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .embedding
             .iter()
             .take(8)
-            .map(|x| format!("{:.6}", x))
+            .map(|x| format!("{x:.6}"))
             .collect();
         println!(
             "  preview: [{}]{}",

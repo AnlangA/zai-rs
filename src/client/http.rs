@@ -80,9 +80,9 @@ enum ErrorCode {
 impl std::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ErrorCode::Str(s) => write!(f, "{}", s),
+            ErrorCode::Str(s) => write!(f, "{s}"),
 
-            ErrorCode::Num(n) => write!(f, "{}", n),
+            ErrorCode::Num(n) => write!(f, "{n}"),
         }
     }
 }
@@ -378,33 +378,70 @@ where
         "Received HTTP response body"
     );
 
+    // Probe the official error envelope BEFORE attempting to decode the success
+    // type (plan P01.7 / §2.2.4). Some success types (e.g. the all-optional
+    // knowledge responses) would otherwise absorb an error body — a 2xx with
+    // `{"code":1302,"msg":"..."}` or `{"error":{...}}` would decode into a
+    // default-constructed success and hide the business error. An envelope is
+    // treated as a genuine error when:
+    //   - it carries an `error` object (Nested variant), or
+    //   - it is the flat `{code, message}` form with `code != 200`.
+    // A flat `code == 200` envelope is the knowledge success shape and flows
+    // through to the typed decoder.
+    if let Ok(body_str) = std::str::from_utf8(&body_bytes)
+        && let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(body_str)
+        && is_error_envelope(&parsed)
+    {
+        let (code, message) = parsed.into_parts();
+        return Err(ZaiError::from_api_response(
+            status.as_u16(),
+            to_api_code(&code),
+            message,
+        ));
+    }
+
     // Deserialize directly from the raw bytes: serde_json validates UTF-8
     // lazily as it parses, so we avoid the extra full-body `String` allocation
     // and the separate UTF-8 validation pass that `resp.text()` performs.
     match serde_json::from_slice::<T>(&body_bytes) {
         Ok(value) => Ok(value),
         Err(json_err) => {
-            // Some Zhipu endpoints return HTTP 2xx with an error-shaped body
-            // (`{"error":{"code":1302,...}}` or a flat `{code,message}`). The
-            // unified error parser only runs on non-2xx, so without this the
-            // business code/category/message would be discarded and surfaced as
-            // an opaque `JsonError`, making `is_rate_limit()`/`is_sdk_error()`/
-            // `category()` all wrong for that response. Only upgrade when the
-            // body genuinely parses as an error envelope; otherwise preserve the
-            // original serde error (a real deserialization mismatch).
-            if status.is_success()
+            // A non-2xx status that did not parse as a typed success and did
+            // not match the error envelope above: surface the raw body so the
+            // caller sees the server's message instead of an opaque serde error.
+            if !status.is_success()
                 && let Ok(body_str) = std::str::from_utf8(&body_bytes)
-                && let Ok(parsed) = serde_json::from_str::<ApiErrorEnvelope>(body_str)
             {
-                let (code, message) = parsed.into_parts();
                 return Err(ZaiError::from_api_response(
                     status.as_u16(),
-                    to_api_code(&code),
-                    message,
+                    0,
+                    body_str.to_string(),
                 ));
             }
             Err(ZaiError::from(json_err))
         },
+    }
+}
+
+/// Decide whether a parsed [`ApiErrorEnvelope`] represents a genuine business
+/// error rather than a success that happens to use the `{code, ...}` envelope.
+///
+/// - `Nested { error }` → always an error (the `error` object only appears on
+///   failures).
+/// - `Flat { code, .. }` → an error only when `code != 200` (knowledge success
+///   bodies use `code: 200`).
+fn is_error_envelope(env: &ApiErrorEnvelope) -> bool {
+    match env {
+        ApiErrorEnvelope::Nested { .. } => true,
+        ApiErrorEnvelope::Flat { code, .. } => !is_success_code(code),
+    }
+}
+
+/// `true` when `code` is the knowledge success sentinel `200`.
+fn is_success_code(code: &ErrorCode) -> bool {
+    match code {
+        ErrorCode::Num(n) => *n == 200,
+        ErrorCode::Str(s) => s == "200",
     }
 }
 
@@ -825,13 +862,13 @@ mod tests {
     #[test]
     fn test_error_code_display_num() {
         let code = ErrorCode::Num(123);
-        assert_eq!(format!("{}", code), "123");
+        assert_eq!(format!("{code}"), "123");
     }
 
     #[test]
     fn test_error_code_display_str() {
         let code = ErrorCode::Str("auth_error".to_string());
-        assert_eq!(format!("{}", code), "auth_error");
+        assert_eq!(format!("{code}"), "auth_error");
     }
 
     #[test]
@@ -952,13 +989,15 @@ mod tests {
     #[test]
     fn test_parse_api_error_response_unparseable_body() {
         let error = parse_api_error_response(500, "not json".to_string());
-        assert!(matches!(
-            error,
-            ZaiError::HttpError {
-                status: 500,
-                message
-            } if message == "Internal server error - try again later"
-        ));
+        // P01.8: a 5xx with an unparseable body keeps the status and surfaces
+        // the raw body as the message (rather than falling through to Unknown).
+        assert!(matches!(error, ZaiError::HttpError { status: 500, .. }));
+        // The raw body is preserved so the caller can see what the server sent.
+        let msg = match error {
+            ZaiError::HttpError { message, .. } => message,
+            _ => unreachable!(),
+        };
+        assert_eq!(msg, "not json");
     }
 
     #[test]
@@ -1190,5 +1229,68 @@ mod tests {
         let with_jitter = add_jitter(delay);
         assert!(with_jitter >= delay);
         assert!(with_jitter <= delay + Duration::from_millis(250));
+    }
+
+    // ----- P01.7: error-envelope probe ordering -----
+
+    #[test]
+    fn nested_error_envelope_is_an_error() {
+        // `{"error":{"code":1302,"message":"rate limited"}}` → error.
+        let body = r#"{"error":{"code":1302,"message":"rate limited"}}"#;
+        let parsed: ApiErrorEnvelope = serde_json::from_str(body).unwrap();
+        assert!(is_error_envelope(&parsed));
+    }
+
+    #[test]
+    fn flat_error_envelope_with_non_200_code_is_an_error() {
+        // Knowledge-style error: `{code,message}` with code != 200 → error.
+        // P01.7: a 2xx body carrying code=500 must NOT decode into an
+        // all-optional success type.
+        let body = r#"{"code":500,"message":"internal error"}"#;
+        let parsed: ApiErrorEnvelope = serde_json::from_str(body).unwrap();
+        assert!(is_error_envelope(&parsed));
+    }
+
+    #[test]
+    fn flat_envelope_with_code_200_is_not_an_error() {
+        // A flat `{code,message}` envelope where code == 200 is treated as a
+        // success (the knowledge business-success sentinel) and flows through to
+        // the typed decoder rather than being reported as an error.
+        let body = r#"{"code":200,"message":"ok"}"#;
+        let parsed: ApiErrorEnvelope = serde_json::from_str(body).unwrap();
+        assert!(!is_error_envelope(&parsed));
+    }
+
+    #[test]
+    fn flat_envelope_with_string_code_200_is_not_an_error() {
+        // Some envelopes serialize code as a string ("200"); still a success.
+        let body = r#"{"code":"200","message":"ok"}"#;
+        let parsed: ApiErrorEnvelope = serde_json::from_str(body).unwrap();
+        assert!(!is_error_envelope(&parsed));
+    }
+
+    #[test]
+    fn non_envelope_body_does_not_parse_as_envelope() {
+        // A chat success body has no `code`/`error`/`message` envelope fields,
+        // so it fails to parse as ApiErrorEnvelope and the typed decoder runs.
+        let body = r#"{"id":"chatcmpl-1","choices":[]}"#;
+        let parsed: Result<ApiErrorEnvelope, _> = serde_json::from_str(body);
+        // The untagged enum requires either {error} or {code,message}; a body
+        // with neither does not match, so the typed decoder gets the body.
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn knowledge_success_body_without_message_is_not_an_envelope() {
+        // The real knowledge success shape is `{code:200, data:{...}}` — it has
+        // no `message` field, so it does NOT match the Flat variant (which
+        // requires `message`), and the typed decoder runs on it. This pins that
+        // a 200 success is never mis-classified as an error envelope.
+        let body = r#"{"code":200,"data":{"id":"kb1","name":"docs"}}"#;
+        let parsed: Result<ApiErrorEnvelope, _> = serde_json::from_str(body);
+        assert!(
+            parsed.is_err(),
+            "knowledge success body should not match the error envelope"
+        );
     }
 }

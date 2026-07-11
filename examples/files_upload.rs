@@ -4,10 +4,14 @@ use zai_rs::file::*;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
 
-    // Choose a local file to upload
-    let path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "data/file_test.md".to_string());
+    // Choose a local file to upload (passed as the first CLI argument).
+    let path = match std::env::args().nth(1) {
+        Some(p) => p,
+        None => {
+            eprintln!("usage: files_upload <local-file>");
+            std::process::exit(2);
+        },
+    };
 
     // purpose: choose one from
     // batch/file-extract/code-interpreter/agent/voice-clone-input

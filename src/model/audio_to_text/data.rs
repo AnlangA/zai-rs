@@ -124,7 +124,7 @@ where
         if !Path::new(p).exists() {
             return Err(crate::client::error::ZaiError::FileError {
                 code: codes::SDK_FILE_NOT_FOUND,
-                message: format!("file_path not found: {}", p),
+                message: format!("file_path not found: {p}"),
             });
         }
 

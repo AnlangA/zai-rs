@@ -10,8 +10,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
 
     let text_contxt = VoiceRichContent::text("复述一遍");
+    // Read the input WAV path from the first CLI argument.
+    let audio_path = match std::env::args().nth(1) {
+        Some(p) => p,
+        None => {
+            eprintln!("usage: chat_voice <audio-input.wav>");
+            std::process::exit(2);
+        },
+    };
     // Read the audio file
-    let audio_data = std::fs::read("data/你好.wav")?;
+    let audio_data = std::fs::read(&audio_path)?;
     // Create audio content from the local WAV file
     let audio_content = VoiceRichContent::input_audio(audio_data, VoiceFormat::WAV);
     let voice_message = VoiceMessage::new_user()
@@ -32,9 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(b64) = audio_b64 {
                 let audio_bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
-                let filename = format!("data/response_{}.wav", chrono::Utc::now().timestamp());
+                let filename = format!("response_{}.wav", chrono::Utc::now().timestamp());
                 File::create(&filename)?.write_all(&audio_bytes)?;
-                println!("Audio saved to: {}", filename);
+                println!("Audio saved to: {filename}");
             }
         },
         Ok(Err(e)) => {

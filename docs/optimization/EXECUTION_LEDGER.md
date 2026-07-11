@@ -11,6 +11,60 @@ this file records parent commits and results, not the task's own hash.
 | Task | Commit title | Parent | Verification | Result | Residual |
 |---|---|---|---|---|---|
 | P00 | `test(contract): freeze 2026-07-11 upstream specifications` | `175cd04` | `xtask contract verify`, `xtask contract check`, `cargo test -p xtask`, `git diff --check` | see P00 notes below | — |
+| P01 | `fix(safety): close confirmed correctness and secret leaks` | `8edb0dd` | `cargo test --all-features --all-targets`, `cargo clippy --all-features --all-targets -D warnings`, `cargo audit`, `xtask forbidden check P01` | see P01 notes below | — |
+
+## P01 — close confirmed correctness, secret leaks and supply-chain gaps
+
+- **Status:** complete
+- **Commit title (fixed):** `fix(safety): close confirmed correctness and secret leaks`
+- **Parent commit:** `8edb0dd test(contract): freeze 2026-07-11 upstream specifications`
+
+### Deliverables
+
+1. `glm-asr-2512 ` trailing space removed (P01.1); `tempfile = 3.27.0` added.
+2. Full model-ID snapshot test (27 models, asserts non-empty + untrimmed +
+   manual-constraint pin) — `tests/model_id_snapshot.rs`.
+3. `ZaiConfig` hand-written `Debug` (api_key → `[REDACTED]`); `Default` removed;
+   `from_env`/`build` unified on the missing-key error; blank keys rejected.
+4. `examples/gen_video.rs` key `println!` removed; `mask_sensitive_info` hardened
+   to redact the whole `Authorization: Bearer …` header (scheme + value);
+   tracing-capture test asserts no key/Authorization/Bearer in output
+   (`tests/tracing_redaction.rs`).
+5. `examples/chat_vision.rs` expired signed URL replaced by a CLI-arg media URL.
+6. `data/` real media (7.9 MiB, 5 files) removed; media-dependent examples now
+   read paths from CLI args or write temp files.
+7. `parse_typed_response` now probes the error envelope BEFORE decoding the
+   success type; a 2xx body carrying `code != 200` or a nested `error` object
+   returns `Err` (not an all-optional success). Integration acceptance tests in
+   `tests/p01_acceptance.rs`.
+8. HTTP status classification fixed: 502/503/504 (all 5xx) keep the status
+   instead of falling to `Unknown`; 401/403 → auth; 429 → rate limit.
+9. `validator_derive` pinned to 0.20.1; `proc-macro-error2` (RUSTSEC-2026-0173)
+   removed from the dependency tree.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `cargo test --locked --all-features --all-targets` | 385 passed, 0 failed |
+| `cargo clippy --locked --all-features --all-targets -- -D warnings` | clean |
+| `cargo fmt --all -- --check` | clean |
+| `xtask forbidden check P01` | clean |
+| `cargo audit` (proc-macro-error2 in tree) | 0 occurrences of the advisory target |
+
+### Notes
+
+- Baseline clippy showed 59 `uninlined_format_args` style lints on pre-existing
+  0.4 code (a clippy-version drift vs plan §2.1). Fixed mechanically in this
+  task so the P01 clippy gate passes; semantics unchanged.
+- The success-invariant for empty/unknown chat bodies (plan §2.2.5: "陌生对象
+  和空对象能够变成空成功响应") is addressed at the envelope-probe layer for
+  error-shaped bodies; the stricter per-response "unknown object ≠ success"
+  invariant is a P03 concern (plan §4 defers it).
+- `cargo audit` could not refresh its advisory DB during this run due to a
+  transient network error fetching the git DB; the decisive evidence is that
+  the RUSTSEC-2026-0173 target crate (`proc-macro-error2`) is absent from
+  `Cargo.lock`.
 
 ## P00 — freeze upstream specifications and reproducible baseline
 
