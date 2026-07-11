@@ -1,0 +1,2013 @@
+[
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "agents.invoke",
+    "method": "POST",
+    "path": "/v1/agents",
+    "api_family": "AgentV1",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AgentRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AgentResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json_or_stream",
+    "requires_done": true,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "Completed: id+agent_id+non-empty choices; Pending: agent_id+async_id",
+    "service_method": "client.agents().invoke / stream",
+    "request_type": "AgentInvokeRequest",
+    "response_type": "AgentInvokeResponse / AgentEventStream",
+    "stream_item": "AgentEvent",
+    "open_map_fields": [
+      "custom_variables"
+    ]
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "agents.async_result",
+    "method": "POST",
+    "path": "/v1/agents/async-result",
+    "api_family": "AgentV1",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AgentAsyncResultResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "Pending: agent_id+async_id; Succeeded: +non-empty choices",
+    "service_method": "client.agents().async_result",
+    "request_type": "AgentAsyncResultRequest",
+    "response_type": "AgentAsyncResult",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "agents.conversation",
+    "method": "POST",
+    "path": "/v1/agents/conversation",
+    "api_family": "AgentV1",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "GlmSlideAgentConversationRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "GlmSlideAgentConversationResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "conversation_id+agent_id+non-empty choices",
+    "service_method": "client.agents().conversation",
+    "request_type": "AgentConversationRequest",
+    "response_type": "AgentConversationResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.history",
+    "method": "GET",
+    "path": "/llm-application/open/history_session_record/{app_id}/{conversation_id}",
+    "api_family": "ApplicationV2",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "HistorySessionRecordResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().history",
+    "request_type": "ApplicationHistoryRequest",
+    "response_type": "ApplicationHistoryResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.file_stats",
+    "method": "POST",
+    "path": "/llm-application/open/v2/application/file_stat",
+    "api_family": "ApplicationV2",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ApplicationFileStatRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ApplicationFileStatResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().file_stats",
+    "request_type": "ApplicationFileStatsRequest",
+    "response_type": "ApplicationFileStatsResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.upload_file",
+    "method": "POST",
+    "path": "/llm-application/open/v2/application/file_upload",
+    "api_family": "ApplicationV2",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ApplicationFileUploadResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().upload_file",
+    "request_type": "ApplicationFileUploadRequest",
+    "response_type": "ApplicationFileUploadResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.slice_info",
+    "method": "POST",
+    "path": "/llm-application/open/v2/application/slice_info",
+    "api_family": "ApplicationV2",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ApplicationSliceInfoRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ApplicationSliceInfoResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().slice_info",
+    "request_type": "ApplicationSliceInfoRequest",
+    "response_type": "ApplicationSliceInfoResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.create_conversation",
+    "method": "POST",
+    "path": "/llm-application/open/v2/application/{app_id}/conversation",
+    "api_family": "ApplicationV2",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ApplicationConversationResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().create_conversation",
+    "request_type": "ApplicationConversationCreateRequest",
+    "response_type": "ApplicationConversationCreateResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.variables",
+    "method": "GET",
+    "path": "/llm-application/open/v2/application/{app_id}/variables",
+    "api_family": "ApplicationV2",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ApplicationVariablesResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().variables",
+    "request_type": "ApplicationVariablesRequest",
+    "response_type": "ApplicationVariablesResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "applications.invoke",
+    "method": "POST",
+    "path": "/llm-application/open/v3/application/invoke",
+    "api_family": "ApplicationV3",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ApplicationInvokeRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ApplicationInvokeResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.applications().invoke",
+    "request_type": "ApplicationInvokeRequest",
+    "response_type": "ApplicationInvokeResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.list_documents",
+    "method": "GET",
+    "path": "/llm-application/open/document",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeDocumentListResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().list_documents",
+    "request_type": "DocumentListRequest",
+    "response_type": "DocumentListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.reembed_document",
+    "method": "POST",
+    "path": "/llm-application/open/document/embedding/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ReEmbeddingRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ReEmbeddingResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().reembed_document",
+    "request_type": "DocumentReembedRequest",
+    "response_type": "DocumentReembedResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.list_document_images",
+    "method": "POST",
+    "path": "/llm-application/open/document/slice/image_list/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeImageListResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().list_document_images",
+    "request_type": "DocumentImageListRequest",
+    "response_type": "DocumentImageListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.upload_document",
+    "method": "POST",
+    "path": "/llm-application/open/document/upload_document/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "DocumentUploadRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "DocumentUploadResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().upload_document",
+    "request_type": "DocumentUploadRequest",
+    "response_type": "DocumentUploadResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.upload_document_url",
+    "method": "POST",
+    "path": "/llm-application/open/document/upload_url",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "UploadUrlKnowledgeRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "UploadUrlKnowledgeResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().upload_document_url",
+    "request_type": "DocumentUrlUploadRequest",
+    "response_type": "DocumentUrlUploadResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.delete_document",
+    "method": "DELETE",
+    "path": "/llm-application/open/document/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "DeleteKnowledgeResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().delete_document",
+    "request_type": "DocumentDeleteRequest",
+    "response_type": "DocumentDeleteResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.get_document",
+    "method": "GET",
+    "path": "/llm-application/open/document/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeDocumentDetailResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.knowledge().get_document",
+    "request_type": "DocumentGetRequest",
+    "response_type": "DocumentGetResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.list",
+    "method": "GET",
+    "path": "/llm-application/open/knowledge",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeListResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().list",
+    "request_type": "KnowledgeListRequest",
+    "response_type": "KnowledgeListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.create",
+    "method": "POST",
+    "path": "/llm-application/open/knowledge",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "KnowledgeCreateRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeCreateResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().create",
+    "request_type": "KnowledgeCreateRequest",
+    "response_type": "KnowledgeCreateResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.capacity",
+    "method": "GET",
+    "path": "/llm-application/open/knowledge/capacity",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeCapacityResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().capacity",
+    "request_type": "KnowledgeCapacityRequest",
+    "response_type": "KnowledgeCapacityResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.retrieve",
+    "method": "POST",
+    "path": "/llm-application/open/knowledge/retrieve",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "KnowledgeRetrieveRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeRetrieveResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().retrieve",
+    "request_type": "KnowledgeSearchRequest",
+    "response_type": "KnowledgeSearchResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.delete",
+    "method": "DELETE",
+    "path": "/llm-application/open/knowledge/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeDeleteResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().delete",
+    "request_type": "KnowledgeDeleteRequest",
+    "response_type": "KnowledgeDeleteResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.get",
+    "method": "GET",
+    "path": "/llm-application/open/knowledge/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeDetailResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().get",
+    "request_type": "KnowledgeGetRequest",
+    "response_type": "KnowledgeGetResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "knowledge.update",
+    "method": "PUT",
+    "path": "/llm-application/open/knowledge/{id}",
+    "api_family": "LlmApplication",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "KnowledgeEditRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "KnowledgeEditResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "envelope code == 200 and data present",
+    "service_method": "client.knowledge().update",
+    "request_type": "KnowledgeUpdateRequest",
+    "response_type": "KnowledgeUpdateResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "assistants.invoke",
+    "method": "POST",
+    "path": "/paas/v4/assistant",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AssistantRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AssistantResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.assistants().invoke",
+    "request_type": "AssistantInvokeRequest",
+    "response_type": "AssistantInvokeResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "assistants.conversations",
+    "method": "POST",
+    "path": "/paas/v4/assistant/conversation/list",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ConversationListRequest"
+    },
+    "success_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.assistants().conversations",
+    "request_type": "AssistantConversationListRequest",
+    "response_type": "AssistantConversationListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "assistants.list",
+    "method": "POST",
+    "path": "/paas/v4/assistant/list",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AssistantListRequest"
+    },
+    "success_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.assistants().list",
+    "request_type": "AssistantListRequest",
+    "response_type": "AssistantListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "tasks.get",
+    "method": "GET",
+    "path": "/paas/v4/async-result/{id}",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ChatCompletionResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.tasks().get",
+    "request_type": "AsyncTaskGetRequest",
+    "response_type": "AsyncTaskResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "chat.complete_async",
+    "method": "POST",
+    "path": "/paas/v4/async/chat/completions",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AsyncChatCompletionTextRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AsyncResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.chat().complete_async",
+    "request_type": "AsyncChatRequest",
+    "response_type": "AsyncTaskResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "images.generate_async",
+    "method": "POST",
+    "path": "/paas/v4/async/images/generations",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AsyncCreateImageRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AsyncResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.images().generate_async",
+    "request_type": "AsyncImageGenerationRequest",
+    "response_type": "AsyncTaskResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "audio.synthesize",
+    "method": "POST",
+    "path": "/paas/v4/audio/speech",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/octet-stream",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AudioSpeechRequest"
+    },
+    "success_schema": {
+      "type": "string",
+      "name": "string"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "binary_or_stream",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.audio().synthesize / synthesize_stream",
+    "request_type": "TextToSpeechRequest",
+    "response_type": "Bytes / AudioByteStream",
+    "stream_item": "AudioByteStream",
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "audio.transcribe",
+    "method": "POST",
+    "path": "/paas/v4/audio/transcriptions",
+    "api_family": "PaasV4",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AudioTranscriptionRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AudioTranscriptionResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json_or_stream",
+    "requires_done": true,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.audio().transcribe / transcribe_stream",
+    "request_type": "SpeechToTextRequest",
+    "response_type": "SpeechToTextResponse / SpeechToTextStream",
+    "stream_item": "SpeechToTextEvent",
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "batches.list",
+    "method": "GET",
+    "path": "/paas/v4/batches",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "BatchListResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.batches().list",
+    "request_type": "BatchListRequest",
+    "response_type": "BatchListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "batches.create",
+    "method": "POST",
+    "path": "/paas/v4/batches",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "BatchCreateRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "Batch"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.batches().create",
+    "request_type": "BatchCreateRequest",
+    "response_type": "BatchCreateResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "batches.get",
+    "method": "GET",
+    "path": "/paas/v4/batches/{batch_id}",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "Batch"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.batches().get",
+    "request_type": "BatchGetRequest",
+    "response_type": "BatchGetResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "batches.cancel",
+    "method": "POST",
+    "path": "/paas/v4/batches/{batch_id}/cancel",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "Batch"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.batches().cancel",
+    "request_type": "BatchCancelRequest",
+    "response_type": "BatchCancelResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "chat.complete",
+    "method": "POST",
+    "path": "/paas/v4/chat/completions",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ChatCompletionTextRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ChatCompletionResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json_or_stream",
+    "requires_done": true,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.chat().complete / stream",
+    "request_type": "ChatRequest",
+    "response_type": "ChatResponse / ChatEventStream",
+    "stream_item": "ChatEvent",
+    "open_map_fields": [
+      "tools",
+      "response_format"
+    ]
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "embeddings.create",
+    "method": "POST",
+    "path": "/paas/v4/embeddings",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "EmbeddingCreateRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "EmbeddingResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.embeddings().create",
+    "request_type": "EmbeddingRequest",
+    "response_type": "EmbeddingResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.list",
+    "method": "GET",
+    "path": "/paas/v4/files",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "FileListResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().list",
+    "request_type": "FileListRequest",
+    "response_type": "FileListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.upload",
+    "method": "POST",
+    "path": "/paas/v4/files",
+    "api_family": "PaasV4",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "FileUploadRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "FileObject"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().upload",
+    "request_type": "FileUploadRequest",
+    "response_type": "FileUploadResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.ocr",
+    "method": "POST",
+    "path": "/paas/v4/files/ocr",
+    "api_family": "PaasV4",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "OCRResultResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().ocr",
+    "request_type": "OcrRequest",
+    "response_type": "OcrResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.parse",
+    "method": "POST",
+    "path": "/paas/v4/files/parser/create",
+    "api_family": "PaasV4",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "success_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().parse",
+    "request_type": "FileParseRequest",
+    "response_type": "AsyncTaskResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.parse_result",
+    "method": "GET",
+    "path": "/paas/v4/files/parser/result/{taskId}/{format_type}",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "FileParseResultResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().parse_result",
+    "request_type": "FileParseResultRequest",
+    "response_type": "FileParseResultResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.parse_sync",
+    "method": "POST",
+    "path": "/paas/v4/files/parser/sync",
+    "api_family": "PaasV4",
+    "request_content_type": "multipart/form-data",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "object",
+      "name": "object"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "FileParseResultResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().parse_sync",
+    "request_type": "FileParseSyncRequest",
+    "response_type": "FileResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.delete",
+    "method": "DELETE",
+    "path": "/paas/v4/files/{file_id}",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "FileDeletedResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().delete",
+    "request_type": "FileDeleteRequest",
+    "response_type": "FileDeleteResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "files.content",
+    "method": "GET",
+    "path": "/paas/v4/files/{file_id}/content",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/octet-stream",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "string",
+      "name": "string"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "binary_stream",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.files().content",
+    "request_type": "FileContentRequest",
+    "response_type": "ByteStream",
+    "stream_item": "Bytes",
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "images.generate",
+    "method": "POST",
+    "path": "/paas/v4/images/generations",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "CreateImageRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ImageGenerationResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.images().generate",
+    "request_type": "ImageGenerationRequest",
+    "response_type": "ImageGenerationResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "tools.parse_layout",
+    "method": "POST",
+    "path": "/paas/v4/layout_parsing",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "LayoutParsingRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "LayoutParsingResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.tools().parse_layout",
+    "request_type": "LayoutParsingRequest",
+    "response_type": "LayoutParsingResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "moderation.check",
+    "method": "POST",
+    "path": "/paas/v4/moderations",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ModerationRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ModerationResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.moderation().check",
+    "request_type": "ModerationRequest",
+    "response_type": "ModerationResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "tools.read_document",
+    "method": "POST",
+    "path": "/paas/v4/reader",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ReaderRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ReaderResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.tools().read_document",
+    "request_type": "ReaderRequest",
+    "response_type": "ReaderResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "rerank.create",
+    "method": "POST",
+    "path": "/paas/v4/rerank",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "RerankRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "RerankResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.rerank().create",
+    "request_type": "RerankRequest",
+    "response_type": "RerankResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "tokenizer.count",
+    "method": "POST",
+    "path": "/paas/v4/tokenizer",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "TokenizerRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "TokenizerResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.tokenizer().count",
+    "request_type": "TokenizerRequest",
+    "response_type": "TokenizerResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "videos.generate",
+    "method": "POST",
+    "path": "/paas/v4/videos/generations",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "CogVideoX3Request"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AsyncResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.videos().generate",
+    "request_type": "VideoGenerationRequest",
+    "response_type": "AsyncTaskResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "audio.clone_voice",
+    "method": "POST",
+    "path": "/paas/v4/voice/clone",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "VoiceCloneRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "VoiceCloneResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.audio().clone_voice",
+    "request_type": "VoiceCloneRequest",
+    "response_type": "VoiceCloneResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "audio.delete_voice",
+    "method": "POST",
+    "path": "/paas/v4/voice/delete",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "VoiceSaveRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "VoiceSaveResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.audio().delete_voice",
+    "request_type": "VoiceDeleteRequest",
+    "response_type": "VoiceDeleteResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "audio.list_voices",
+    "method": "GET",
+    "path": "/paas/v4/voice/list",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "none",
+      "name": "none"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "VoiceListResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "Idempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.audio().list_voices",
+    "request_type": "VoiceListRequest",
+    "response_type": "VoiceListResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "tools.web_search",
+    "method": "POST",
+    "path": "/paas/v4/web_search",
+    "api_family": "PaasV4",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "WebSearchRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "WebSearchResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.tools().web_search",
+    "request_type": "WebSearchRequest",
+    "response_type": "WebSearchResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "zrag.chat",
+    "method": "POST",
+    "path": "/zrag/agent/chat",
+    "api_family": "Zrag",
+    "request_content_type": "application/json",
+    "accept": "text/event-stream",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "AgentChatRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "AgentStreamEvent"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "stream",
+    "requires_done": true,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.zrag().chat",
+    "request_type": "ZragChatRequest",
+    "response_type": "ZragEventStream",
+    "stream_item": "AgentStreamEvent",
+    "open_map_fields": []
+  },
+  {
+    "source": "openapi-2026-07-11",
+    "operation_id": "zrag.retrieve",
+    "method": "POST",
+    "path": "/zrag/retrieval/retrieve",
+    "api_family": "Zrag",
+    "request_content_type": "application/json",
+    "accept": "application/json",
+    "success_statuses": [
+      200
+    ],
+    "auth": "bearer",
+    "request_schema": {
+      "type": "ref",
+      "name": "ZragRetrieveRequest"
+    },
+    "success_schema": {
+      "type": "ref",
+      "name": "ZragRetrieveResponse"
+    },
+    "error_schema": {
+      "type": "ref",
+      "name": "ApiErrorEnvelope"
+    },
+    "response_mode": "json",
+    "requires_done": false,
+    "retry_safety": "NonIdempotent",
+    "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
+    "service_method": "client.zrag().retrieve",
+    "request_type": "ZragRetrieveRequest",
+    "response_type": "ZragRetrieveResponse",
+    "stream_item": null,
+    "open_map_fields": []
+  }
+]

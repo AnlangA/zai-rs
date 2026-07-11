@@ -1,0 +1,223 @@
+# spec/contracts/manual-constraints.toml
+#
+# Hand-encoded constraints from the frozen manual reference pages (plan section
+# 13). These values OVERRIDE the machine specs (OpenAPI/AsyncAPI) wherever they
+# conflict for the listed fields; unlisted fields continue to use the frozen
+# OpenAPI/AsyncAPI. They MUST NOT be re-derived from a live web page — the
+# source markdown snapshots under spec/upstream/manual/ are authoritative
+# (hash-verified by `xtask contract verify`).
+
+frozen_at = "2026-07-11"
+sources = [
+    "spec/upstream/manual/agent-2026-07-11.md",
+    "spec/upstream/manual/asr-2026-07-11.md",
+    "spec/upstream/manual/tts-2026-07-11.md",
+    "spec/upstream/manual/knowledge-2026-07-11.md",
+    "spec/upstream/manual/api-errors-2026-07-11.md",
+    "spec/upstream/manual/coding-plan-usage-2026-07-11.md",
+]
+
+# ---------------------------------------------------------------------------
+# 13.1 General wire & public-type rules.
+# ---------------------------------------------------------------------------
+[general]
+# OpenAPI constraints carried verbatim into the private wire model.
+wire_constraints_from_openapi = [
+    "required", "enum", "minimum", "maximum", "minLength", "maxLength",
+    "minItems", "maxItems", "format", "success status", "MIME",
+]
+# Fields where serde_json::Value/Map is permitted (everything else must be typed).
+open_map_only_when = [
+    "additionalProperties=true",
+    "empty schema",
+    "JSON Schema itself",
+    "custom_variables",
+]
+# Built-in retry safety by method (no built-in idempotent POST).
+retry_safety_by_method = { GET = "Idempotent", HEAD = "Idempotent", OPTIONS = "Idempotent", PUT = "Idempotent", DELETE = "Idempotent", POST = "NonIdempotent", PATCH = "NonIdempotent" }
+success_mime_json = ["application/json", "+json"]
+success_mime_sse = ["text/event-stream"]
+
+# ---------------------------------------------------------------------------
+# 13.2 Agent v1.
+# ---------------------------------------------------------------------------
+[agent_v1.invoke]
+method = "POST"
+path = "/v1/agents"
+request_type = "AgentInvokeRequest<S>"
+required = ["agent_id (non-empty)", "messages (>=1)"]
+message_role_enum = ["system", "user", "assistant"]
+content_union = "string | object | array (per official schema)"
+custom_variables = "open Map<String, Value>"
+
+[agent_v1.invoke_nonstream_success]
+completed_required = ["id", "agent_id", "choices (non-empty)"]
+pending_required = ["agent_id", "async_id"]
+
+[agent_v1.invoke_stream]
+request_type = "AgentInvokeRequest<Streaming>"
+serializes_stream_true = true
+mime = "text/event-stream"
+done_marker = "data: [DONE]"
+
+[agent_v1.async_result_request]
+required = ["async_id (non-empty)", "agent_id (non-empty)"]
+
+[agent_v1.async_result]
+status_enum = ["pending", "success", "failed"]
+pending_required = ["agent_id", "async_id"]
+succeeded_extra = ["choices (non-empty)"]
+failed = "task result, not a transport error"
+
+[agent_v1.conversation]
+required = ["agent_id", "conversation_id"]
+success_required = ["conversation_id", "agent_id", "choices (non-empty)"]
+embedded_error = "convert to ZaiError"
+
+# ---------------------------------------------------------------------------
+# 13.3 ASR (speech-to-text).
+# ---------------------------------------------------------------------------
+[asr]
+model_enum = ["glm-asr-2512"]
+input_exclusivity = "file XOR file_base64 (both present -> Validation, not server file-precedence)"
+file_format = ["wav", "mp3"]
+file_max_bytes = 26214400 # 25 MiB
+audio_duration_server_checked = "30 seconds enforced server-side"
+prompt = "optional; 8000-char limit is advisory, client does NOT hard-reject"
+hotwords_max = 100
+request_id_len = "6..=64"
+user_id_len = "6..=128"
+
+[asr.nonstream]
+stream_value = false
+mime = "application/json"
+response_required = ["id", "model", "text"]
+
+[asr.stream]
+stream_value = true
+mime = "text/event-stream"
+stream_item = "SpeechToTextEvent"
+done_marker = "data: [DONE]"
+
+# ---------------------------------------------------------------------------
+# 13.4 TTS (text-to-speech).
+# ---------------------------------------------------------------------------
+[tts]
+model_enum = ["glm-tts"]
+input_required = true
+input_unicode_scalar_range = "1..=1024"
+voice_required = "VoiceId"
+voice_builtin_constants = ["tongtong", "chuichui", "xiaochen", "jam", "kazi", "douji", "luodo"]
+voice_clone = "non-empty string accepted as cloned voice id"
+speed_range = "0.5..=2 (default 1)"
+volume_range = "0 < value <= 10 (default 1)"
+response_format_enum = ["wav", "pcm"]
+response_format_default = "pcm"
+stream_only_format = "pcm"
+encode_format_enum = ["base64", "hex"]
+encode_format_only_in_stream = true
+watermark_enabled = "optional bool"
+
+[tts.nonstream]
+accept = ["audio/wav", "audio/x-wav", "audio/pcm", "application/octet-stream"]
+returns = "Bytes"
+
+[tts.stream]
+mime = "text/event-stream"
+decoding = "base64/hex decoded to Bytes"
+done_marker = "data: [DONE]"
+
+# ---------------------------------------------------------------------------
+# 13.5 Knowledge & business envelope.
+# ---------------------------------------------------------------------------
+[knowledge]
+create_required = ["embedding_id", "name"]
+
+[[knowledge.embedding]]
+id = 3
+model = "Embedding-2"
+[[knowledge.embedding]]
+id = 11
+model = "Embedding-3"
+[[knowledge.embedding]]
+id = 12
+model = "Embedding-3-pro"
+
+[knowledge.embedding_rule]
+"embedding_id + embedding_model both given" = "must match"
+contextual_enum = [0, 1]
+
+[knowledge.envelope]
+code_must_equal = 200
+code_missing = "Err"
+code_not_200 = "Err"
+data_missing = "Err"
+
+[knowledge.detail_names]
+get_by_id = "KnowledgeGetRequest / client.knowledge().get"
+search = "KnowledgeSearchRequest / client.knowledge().retrieve"
+
+# ---------------------------------------------------------------------------
+# 13.6 Streaming, Realtime & Coding Plan.
+# ---------------------------------------------------------------------------
+[streaming.sse]
+multiline_data_join = "\n"
+comment = "ignored"
+metadata_fields = ["event", "id", "retry"] # private metadata, no auto-reconnect
+done_markers = { chat = "data: [DONE]", agent_v1 = "data: [DONE]", asr = "data: [DONE]", tts = "data: [DONE]", zrag = "event payload type=done" }
+stream_error = "exactly one Err item, then terminate"
+
+[zrag]
+agent_chat_path = "POST /zrag/agent/chat"
+stream_only = true
+agent_stream_event_types = [
+    "session_created", "reasoning", "thought", "tool_call", "tool_result",
+    "answer", "done", "error",
+]
+
+[realtime]
+client_heartbeat = "none (no proactive heartbeat)"
+pong_on_ping_within = "10s"
+channel_capacities = { command = 8, event = 8, audio = 8 }
+lagged_consumer = "one Err item then terminate"
+
+[coding_plan]
+release_scope = "only GET /monitor/usage/quota/limit"
+excluded = ["model-usage", "tool-usage (not part of this release surface)"]
+
+# ---------------------------------------------------------------------------
+# 13.7 API error classification (codes & statuses).
+# ---------------------------------------------------------------------------
+[error_classification.auth]
+http_status = [401, 403]
+business_code = [1000, 1001, 1003, 1005, 1220]
+
+[error_classification.rate_limit_helper]
+http_status = [429]
+business_code = [
+    1113, 1302, 1305, 1308, 1309, 1310, 1311,
+    1313, 1314, 1315, 1316, 1317, 1318, 1319, 1320, 1321,
+]
+
+[error_classification.retryable_rate]
+condition = "HTTP 429 with NO business code, OR business code 1302/1305"
+business_code = [1302, 1305]
+
+[error_classification.non_retryable_quota_billing]
+business_code = [
+    1113, 1308, 1309, 1310, 1311, 1313, 1314,
+    1315, 1316, 1317, 1318, 1319, 1320, 1321,
+]
+
+[error_classification.server]
+http_status_range = "500..=599"
+excludes = [501, 505]
+business_code = [1200, 1230, 1234]
+
+[error_classification.validation_content]
+business_code = [1210, 1211, 1212, 1213, 1214, 1215, 1221, 1222, 1261, 1301]
+retry = false
+
+[error_classification.precedence]
+rule = "non_retryable_quota_billing and validation_content take precedence over status retry sets; then effective RetrySafety + max_attempts apply"
+number_text_equivalence = "ApiCode::Number(1001) == ApiCode::Text(\"1001\") for classification"

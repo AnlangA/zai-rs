@@ -1,0 +1,16 @@
+# Pinned toolchain for zai-rs (plan P00.10).
+#
+# Default channel is the fixed MSRV 1.88.0 — every CI quality gate and the
+# release workflow run against this exact toolchain. The components are what
+# the bootstrap script and local `cargo`/`rustc`/`clippy`/`cargo-llvm-cov`
+# paths depend on.
+#
+# The nightly toolchain pinned below is used only for docs.rs-equivalent
+# rustdoc (`--cfg docsrs`, `doc_cfg`) and the fuzz harness (P11). It is
+# declared in scripts/bootstrap-tools.sh and CI via `+nightly-2026-07-10`
+# rather than installed automatically by this file.
+
+[toolchain]
+channel = "1.88.0"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+profile = "minimal"

@@ -1,3 +1,23 @@
+# ---------------------------------------------------------------------------
+# Workspace definition (plan P00.4).
+#
+# resolver = 3 (2024 edition default) for the new 0.5 layout. Members are the
+# root `zai-rs` package and the `xtask` build-automation crate. The four nested
+# example projects (examples/web_chat and the three under examples/mcp) are
+# excluded here and brought into the workspace in P12; the fuzz workspace stays
+# a fully separate nested workspace (created in P11) and is excluded too.
+# ---------------------------------------------------------------------------
+[workspace]
+resolver = "3"
+members = ["xtask"]
+exclude = [
+    "fuzz",
+    "examples/web_chat",
+    "examples/mcp/client",
+    "examples/mcp/servers",
+    "examples/mcp/list_remote_mcp_tools",
+]
+
 [package]
 name = "zai-rs"
 version = "0.4.0"

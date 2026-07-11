@@ -1,0 +1,1434 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "GLM-Realtime API",
+    "description": "GLM-Realtime API 能够提供实时的视频通话功能，具有跨文本、音频和视频进行实时推理的能力，AI可以进行流畅的通话，人可以实时打断AI。除了实时音频交互外，Realtime还可通过手机或AIPC的摄像头与人互动，通过共享电脑屏幕阅读页面信息，通过视频流理解对话当前的环境。模型编码：glm-realtime-air、glm-realtime-flash；产品价格：限时免费。",
+    "license": {
+      "name": "ZHIPU AI 开发者协议和政策",
+      "url": "https://chat.z.ai/legal-agreement/terms-of-service"
+    },
+    "version": "1.0.0",
+    "contact": {
+      "name": "ZHIPU AI 开发者",
+      "url": "https://chat.z.ai/legal-agreement/privacy-policy",
+      "email": "user_feedback@z.ai"
+    }
+  },
+  "servers": {
+    "production": {
+      "host": "open.bigmodel.cn",
+      "protocol": "wss"
+    }
+  },
+  "channels": {
+    "realtime": {
+      "tags": [
+        {
+          "name": "实时 API"
+        }
+      ],
+      "title": "音视频通话与多模态交互",
+      "description": "[GLM-Realtime](/cn/guide/models/sound-and-video/glm-realtime) 提供实时音视频通话和多模态交互能力，支持实时语音对话、视频理解、函数调用等功能。由于浏览器安全考虑禁止 `WebSocket` 添加鉴权认证请求头，无法在此直接体验，使用详情请参考[Realtime 指南使用](/cn/guide/models/sound-and-video/glm-realtime)。",
+      "address": "/api/paas/v4/realtime",
+      "bindings": {
+        "ws": {
+          "bindingVersion": "0.1.0",
+          "headers": {
+            "type": "object",
+            "properties": {
+              "Authorization": {
+                "type": "string",
+                "description": "鉴权信息，支持JWT（客户端）或Bearer API Key（服务端）。格式：'Bearer YOUR_API_KEY'",
+                "pattern": "^Bearer .+$"
+              }
+            },
+            "required": [
+              "Authorization"
+            ]
+          }
+        }
+      },
+      "messages": {
+        "SessionUpdate": {
+          "$ref": "#/components/messages/SessionUpdate"
+        },
+        "InputAudioBufferAppend": {
+          "$ref": "#/components/messages/InputAudioBufferAppend"
+        },
+        "InputAudioBufferCommit": {
+          "$ref": "#/components/messages/InputAudioBufferCommit"
+        },
+        "ResponseCreate": {
+          "$ref": "#/components/messages/ResponseCreate"
+        },
+        "ResponseCancel": {
+          "$ref": "#/components/messages/ResponseCancel"
+        },
+        "ServerError": {
+          "$ref": "#/components/messages/ServerError"
+        },
+        "SessionUpdated": {
+          "$ref": "#/components/messages/SessionUpdated"
+        },
+        "ResponseCreated": {
+          "$ref": "#/components/messages/ResponseCreated"
+        },
+        "ResponseDone": {
+          "$ref": "#/components/messages/ResponseDone"
+        },
+        "ResponseAudioDelta": {
+          "$ref": "#/components/messages/ResponseAudioDelta"
+        },
+        "ResponseTextDelta": {
+          "$ref": "#/components/messages/ResponseTextDelta"
+        },
+        "Heartbeat": {
+          "$ref": "#/components/messages/Heartbeat"
+        }
+      }
+    }
+  },
+  "operations": {
+    "sendSessionUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "发送会话配置更新",
+      "description": "客户端发送会话配置信息，包括模型选择、音频格式、指令等配置参数",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/SessionUpdate"
+        }
+      ]
+    },
+    "sendAudioBuffer": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "发送音频数据",
+      "description": "客户端向服务器发送音频数据流",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/InputAudioBufferAppend"
+        }
+      ]
+    },
+    "commitAudioBuffer": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "提交音频缓冲区",
+      "description": "客户端提交音频缓冲区，触发服务器处理",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/InputAudioBufferCommit"
+        }
+      ]
+    },
+    "createResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "创建响应请求",
+      "description": "客户端请求服务器生成响应",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ResponseCreate"
+        }
+      ]
+    },
+    "cancelResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "取消响应请求",
+      "description": "客户端取消正在进行的响应生成",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ResponseCancel"
+        }
+      ]
+    },
+    "receiveSessionUpdated": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收会话更新确认",
+      "description": "服务器发送会话配置更新确认",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/SessionUpdated"
+        }
+      ]
+    },
+    "receiveResponseCreated": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收响应创建确认",
+      "description": "服务器发送响应创建确认",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ResponseCreated"
+        }
+      ]
+    },
+    "receiveAudioDelta": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收音频增量数据",
+      "description": "服务器发送实时音频响应数据流",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ResponseAudioDelta"
+        }
+      ]
+    },
+    "receiveTextDelta": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收文本增量数据",
+      "description": "服务器发送实时文本响应数据流",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ResponseTextDelta"
+        }
+      ]
+    },
+    "receiveResponseDone": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收响应完成通知",
+      "description": "服务器发送响应生成完成通知",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ResponseDone"
+        }
+      ]
+    },
+    "receiveError": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收错误信息",
+      "description": "服务器发送错误信息和异常通知",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/ServerError"
+        }
+      ]
+    },
+    "receiveHeartbeat": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/realtime"
+      },
+      "summary": "接收心跳信号",
+      "description": "服务器发送心跳信号以保持连接",
+      "messages": [
+        {
+          "$ref": "#/channels/realtime/messages/Heartbeat"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "SessionUpdate": {
+        "title": "会话配置更新",
+        "summary": "客户端发送会话配置更新",
+        "description": "客户端发送会话配置信息，用于设置模型、音频格式、指令等参数",
+        "payload": {
+          "$ref": "#/components/schemas/SessionUpdate"
+        }
+      },
+      "InputAudioBufferAppend": {
+        "title": "音频数据上传",
+        "summary": "客户端发送音频数据",
+        "description": "客户端向服务器发送音频数据块，用于实时语音输入",
+        "payload": {
+          "$ref": "#/components/schemas/InputAudioBufferAppend"
+        }
+      },
+      "InputAudioBufferCommit": {
+        "title": "音频缓冲区提交",
+        "summary": "客户端提交音频缓冲区",
+        "description": "客户端提交音频缓冲区，指示服务器处理已上传的音频数据",
+        "payload": {
+          "$ref": "#/components/schemas/InputAudioBufferCommit"
+        }
+      },
+      "ResponseCreate": {
+        "title": "创建响应请求",
+        "summary": "客户端请求创建响应",
+        "description": "客户端请求服务器生成新的响应",
+        "payload": {
+          "$ref": "#/components/schemas/ResponseCreate"
+        }
+      },
+      "ResponseCancel": {
+        "title": "取消响应请求",
+        "summary": "客户端取消响应",
+        "description": "客户端取消正在进行的响应生成",
+        "payload": {
+          "$ref": "#/components/schemas/ResponseCancel"
+        }
+      },
+      "ServerError": {
+        "title": "服务器错误",
+        "summary": "服务器发送错误信息",
+        "description": "服务器向客户端发送错误信息和异常通知",
+        "payload": {
+          "$ref": "#/components/schemas/ServerError"
+        }
+      },
+      "SessionUpdated": {
+        "title": "会话更新确认",
+        "summary": "服务器确认会话更新",
+        "description": "服务器确认会话配置已更新",
+        "payload": {
+          "$ref": "#/components/schemas/SessionUpdated"
+        }
+      },
+      "ResponseCreated": {
+        "title": "响应创建确认",
+        "summary": "服务器确认响应创建",
+        "description": "服务器确认已开始生成响应",
+        "payload": {
+          "$ref": "#/components/schemas/ResponseCreated"
+        }
+      },
+      "ResponseDone": {
+        "title": "响应完成通知",
+        "summary": "服务器发送响应完成",
+        "description": "服务器通知响应生成已完成",
+        "payload": {
+          "$ref": "#/components/schemas/ResponseDone"
+        }
+      },
+      "ResponseAudioDelta": {
+        "title": "音频增量数据",
+        "summary": "服务器发送音频数据流",
+        "description": "服务器发送实时音频响应增量数据，Base64编码的PCM格式",
+        "payload": {
+          "$ref": "#/components/schemas/ResponseAudioDelta"
+        }
+      },
+      "ResponseTextDelta": {
+        "title": "文本增量数据",
+        "summary": "服务器发送文本数据流",
+        "description": "服务器发送实时文本响应增量数据",
+        "payload": {
+          "$ref": "#/components/schemas/ResponseTextDelta"
+        }
+      },
+      "Heartbeat": {
+        "title": "心跳信号",
+        "summary": "服务器发送心跳",
+        "description": "服务器发送心跳信号以保持WebSocket连接活跃",
+        "payload": {
+          "$ref": "#/components/schemas/Heartbeat"
+        }
+      }
+    },
+    "schemas": {
+      "BaseEvent": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "由客户端生成的事件ID，用于标识此事件"
+          },
+          "type": {
+            "type": "string",
+            "description": "事件类型"
+          },
+          "client_timestamp": {
+            "type": "integer",
+            "description": "调用端发起调用的时间戳，毫秒"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "SessionUpdate": {
+        "title": "会话配置更新事件",
+        "description": "客户端发送此事件以配置或更新会话参数，包括模型选择、音频格式、语音类型、指令等",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "session.update"
+              },
+              "session": {
+                "$ref": "#/components/schemas/SessionConfig"
+              }
+            },
+            "required": [
+              "session"
+            ]
+          }
+        ]
+      },
+      "SessionConfig": {
+        "title": "会话配置",
+        "description": "GLM-Realtime API 的会话配置参数，用于设置模型、音频格式、语音类型、指令等参数",
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "glm-realtime-flash",
+              "glm-realtime-air"
+            ],
+            "description": "模型编码"
+          },
+          "input_audio_format": {
+            "type": "string",
+            "description": "音频输入格式，支持wav、pcm；输入PCM格式需要增加采样率，例如pcm16、pcm24",
+            "default": "wav"
+          },
+          "output_audio_format": {
+            "type": "string",
+            "const": "pcm",
+            "description": "音频输出格式，当前仅支持pcm，采样率24kHz，单声道，16位深"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "系统指令，用于引导模型生成期望的响应"
+          },
+          "voice": {
+            "type": "string",
+            "enum": [
+              "tongtong",
+              "female-tianmei",
+              "male-qn-daxuesheng",
+              "male-qn-jingying",
+              "lovely_girl",
+              "female-shaonv"
+            ],
+            "default": "tongtong",
+            "description": "声音类型"
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "模型温度，控制输出的随机性和创造性"
+          },
+          "max_response_output_tokens": {
+            "type": "string",
+            "description": "回复的最大长度，对应文本token计数，范围0-1024"
+          },
+          "turn_detection": {
+            "$ref": "#/components/schemas/TurnDetection"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "description": "可用的工具列表，当前仅audio模式支持tools调用"
+          },
+          "modalities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text",
+                "audio"
+              ]
+            },
+            "default": [
+              "text",
+              "audio"
+            ],
+            "description": "输出模态，可选择文本和/或音频输出"
+          },
+          "input_audio_noise_reduction": {
+            "$ref": "#/components/schemas/NoiseReduction"
+          },
+          "beta_fields": {
+            "$ref": "#/components/schemas/BetaFields"
+          },
+          "greeting_config": {
+            "$ref": "#/components/schemas/GreetingConfig"
+          }
+        },
+        "required": [
+          "input_audio_format",
+          "output_audio_format",
+          "turn_detection"
+        ]
+      },
+      "TurnDetection": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "server_vad",
+              "client_vad"
+            ],
+            "default": "client_vad",
+            "description": "VAD检测类型"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "Tool": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "function",
+            "description": "工具类型"
+          },
+          "name": {
+            "type": "string",
+            "description": "函数名称"
+          },
+          "description": {
+            "type": "string",
+            "description": "函数功能描述"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "函数参数的JSON Schema对象"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "description"
+        ]
+      },
+      "NoiseReduction": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "near_field",
+              "far_field"
+            ],
+            "description": "降噪类型，near_field适用于近距离麦克风，far_field适用于远距离麦克风"
+          }
+        }
+      },
+      "BetaFields": {
+        "type": "object",
+        "properties": {
+          "chat_mode": {
+            "type": "string",
+            "enum": [
+              "audio",
+              "video_passive"
+            ],
+            "default": "audio",
+            "description": "通话模式"
+          },
+          "tts_source": {
+            "type": "string",
+            "const": "e2e",
+            "description": "文本转语音方式"
+          },
+          "auto_search": {
+            "type": "boolean",
+            "default": true,
+            "description": "是否开启内置的自动搜索，仅在audio模式下生效"
+          }
+        },
+        "required": [
+          "chat_mode"
+        ]
+      },
+      "GreetingConfig": {
+        "type": "object",
+        "properties": {
+          "enable": {
+            "type": "boolean",
+            "description": "是否开启开场白"
+          },
+          "content": {
+            "type": "string",
+            "description": "开场白内容"
+          }
+        }
+      },
+      "InputAudioBufferAppend": {
+        "title": "音频数据上传事件",
+        "description": "客户端发送音频数据块到服务器，用于实时语音输入。音频数据以Base64编码格式传输",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "input_audio_buffer.append"
+              },
+              "audio": {
+                "type": "string",
+                "description": "音频(wav or pcm)二进制的base64编码字符串"
+              }
+            },
+            "required": [
+              "audio"
+            ]
+          }
+        ]
+      },
+      "InputAudioBufferAppendVideoFrame": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "input_audio_buffer.append_video_frame"
+              },
+              "video_frame": {
+                "type": "string",
+                "description": "支持base64编码的.jpg格式图片"
+              }
+            },
+            "required": [
+              "video_frame"
+            ]
+          }
+        ]
+      },
+      "InputAudioBufferCommit": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "input_audio_buffer.commit"
+              }
+            }
+          }
+        ]
+      },
+      "InputAudioBufferClear": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "input_audio_buffer.clear"
+              }
+            }
+          }
+        ]
+      },
+      "ConversationItemCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "conversation.item.create"
+              },
+              "item": {
+                "$ref": "#/components/schemas/ConversationItem"
+              }
+            },
+            "required": [
+              "item"
+            ]
+          }
+        ]
+      },
+      "ConversationItemDelete": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "conversation.item.delete"
+              },
+              "item_id": {
+                "type": "string",
+                "description": "要删除的对话项的item_id"
+              }
+            },
+            "required": [
+              "item_id"
+            ]
+          }
+        ]
+      },
+      "ConversationItemRetrieve": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "conversation.item.retrieve"
+              },
+              "item_id": {
+                "type": "string",
+                "description": "要查询的对话项的item_id"
+              }
+            },
+            "required": [
+              "item_id"
+            ]
+          }
+        ]
+      },
+      "ResponseCreate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "response.create"
+              }
+            }
+          }
+        ]
+      },
+      "ResponseCancel": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BaseEvent"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "response.cancel"
+              }
+            }
+          }
+        ]
+      },
+      "ConversationItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "项的唯一ID"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "message",
+              "function_call",
+              "function_call_output"
+            ],
+            "description": "项的类型"
+          },
+          "object": {
+            "type": "string",
+            "const": "realtime.item"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "incomplete"
+            ],
+            "description": "项的状态"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "description": "消息发送者的角色，仅在message类型时适用"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "input_audio",
+                    "text"
+                  ]
+                }
+              }
+            },
+            "description": "消息内容数组"
+          },
+          "name": {
+            "type": "string",
+            "description": "函数调用的名称，用于function_call类型"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "函数调用的参数，用于function_call类型"
+          },
+          "output": {
+            "type": "string",
+            "description": "函数调用的输出，用于function_call_output类型"
+          }
+        },
+        "required": [
+          "type",
+          "object"
+        ]
+      },
+      "ServerError": {
+        "title": "服务器错误事件",
+        "description": "服务器发送给客户端的错误信息，包含错误类型、代码和详细消息",
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "服务器事件的唯一ID"
+          },
+          "type": {
+            "type": "string",
+            "const": "error"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "错误类型"
+              },
+              "code": {
+                "type": "string",
+                "description": "错误代码"
+              },
+              "message": {
+                "type": "string",
+                "description": "用户可读的错误消息"
+              }
+            },
+            "required": [
+              "type",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "error"
+        ]
+      },
+      "SessionUpdated": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "session.updated"
+          },
+          "session": {
+            "$ref": "#/components/schemas/SessionConfig"
+          }
+        },
+        "required": [
+          "type",
+          "session"
+        ]
+      },
+      "ConversationCreated": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "conversation.created"
+          },
+          "conversation": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "对话的唯一ID"
+              },
+              "object": {
+                "type": "string",
+                "const": "realtime.conversation"
+              }
+            },
+            "required": [
+              "id",
+              "object"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "conversation"
+        ]
+      },
+      "ConversationItemCreated": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "conversation.item.created"
+          },
+          "item": {
+            "$ref": "#/components/schemas/ConversationItem"
+          }
+        },
+        "required": [
+          "type",
+          "item"
+        ]
+      },
+      "InputAudioBufferCommitted": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "input_audio_buffer.committed"
+          },
+          "item_id": {
+            "type": "string",
+            "description": "创建的用户消息项的ID"
+          }
+        },
+        "required": [
+          "type",
+          "item_id"
+        ]
+      },
+      "InputAudioBufferCleared": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "input_audio_buffer.cleared"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "InputAudioBufferSpeechStarted": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "input_audio_buffer.speech_started"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "InputAudioBufferSpeechStopped": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "input_audio_buffer.speech_stopped"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "ResponseCreated": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.created"
+          },
+          "response": {
+            "$ref": "#/components/schemas/RealtimeResponse"
+          }
+        },
+        "required": [
+          "type",
+          "response"
+        ]
+      },
+      "ResponseDone": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.done"
+          },
+          "response": {
+            "$ref": "#/components/schemas/RealtimeResponse"
+          }
+        },
+        "required": [
+          "type",
+          "response"
+        ]
+      },
+      "ResponseCancelled": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.cancelled"
+          },
+          "response": {
+            "$ref": "#/components/schemas/RealtimeResponse"
+          }
+        },
+        "required": [
+          "type",
+          "response"
+        ]
+      },
+      "ResponseAudioDelta": {
+        "title": "音频响应增量",
+        "description": "服务器发送的音频响应增量数据，包含Base64编码的PCM音频数据块",
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.audio.delta"
+          },
+          "response_id": {
+            "type": "string",
+            "description": "响应的唯一ID"
+          },
+          "item_id": {
+            "type": "string",
+            "description": "响应会话项的ID"
+          },
+          "output_index": {
+            "type": "integer",
+            "description": "响应中的输出项的索引"
+          },
+          "content_index": {
+            "type": "integer",
+            "description": "项内容数组中的内容部分的索引"
+          },
+          "delta": {
+            "type": "string",
+            "description": "Base64编码的PCM音频数据增量，24kHz，单声道"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "item_id",
+          "delta"
+        ]
+      },
+      "ResponseAudioDone": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.audio.done"
+          },
+          "response_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "output_index": {
+            "type": "integer"
+          },
+          "content_index": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "item_id"
+        ]
+      },
+      "ResponseAudioTranscriptDelta": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.audio_transcript.delta"
+          },
+          "response_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "output_index": {
+            "type": "integer"
+          },
+          "content_index": {
+            "type": "integer"
+          },
+          "delta": {
+            "type": "string",
+            "description": "模型输出的语音转文本结果"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "item_id",
+          "delta"
+        ]
+      },
+      "ResponseAudioTranscriptDone": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.audio_transcript.done"
+          },
+          "response_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "output_index": {
+            "type": "integer"
+          },
+          "content_index": {
+            "type": "integer"
+          },
+          "transcript": {
+            "type": "string",
+            "description": "音频的最终转文本结果"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "item_id",
+          "transcript"
+        ]
+      },
+      "ResponseTextDelta": {
+        "title": "文本响应增量",
+        "description": "服务器发送的文本响应增量数据，包含模型生成的文本片段",
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.text.delta"
+          },
+          "response_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "output_index": {
+            "type": "integer"
+          },
+          "content_index": {
+            "type": "integer"
+          },
+          "delta": {
+            "type": "string",
+            "description": "模型生成的文本增量"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "item_id",
+          "delta"
+        ]
+      },
+      "ResponseTextDone": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.text.done"
+          },
+          "response_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "output_index": {
+            "type": "integer"
+          },
+          "content_index": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string",
+            "description": "完整的文本内容"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "item_id"
+        ]
+      },
+      "ResponseFunctionCallArgumentsDone": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.function_call_arguments.done"
+          },
+          "response_id": {
+            "type": "string"
+          },
+          "output_index": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string",
+            "description": "函数名称"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "函数调用参数，JSON字符串格式"
+          }
+        },
+        "required": [
+          "type",
+          "response_id",
+          "name",
+          "arguments"
+        ]
+      },
+      "ResponseFunctionCallSimpleBrowser": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "response.function_call.simple_browser"
+          },
+          "name": {
+            "type": "string",
+            "const": "simple_browser"
+          },
+          "session": {
+            "type": "object",
+            "properties": {
+              "beta_fields": {
+                "type": "object",
+                "properties": {
+                  "simple_browser": {
+                    "type": "object",
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "description": "搜索前的拖延话术"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ]
+      },
+      "Heartbeat": {
+        "title": "心跳事件",
+        "description": "服务器定期发送的心跳信号，用于保持WebSocket连接活跃状态",
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "heartbeat"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "RealtimeResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "响应的唯一ID"
+          },
+          "object": {
+            "type": "string",
+            "const": "realtime.response"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "cancelled",
+              "failed",
+              "incomplete",
+              "in_progress"
+            ],
+            "description": "响应的状态"
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "total_tokens": {
+                "type": "integer",
+                "description": "总共使用的令牌数量"
+              },
+              "input_tokens": {
+                "type": "integer",
+                "description": "输入令牌数量"
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "输出令牌数量"
+              },
+              "input_token_details": {
+                "type": "object",
+                "properties": {
+                  "cached_tokens": {
+                    "type": "integer",
+                    "description": "使用缓存令牌的数量"
+                  },
+                  "text_tokens": {
+                    "type": "integer",
+                    "description": "使用文本令牌的数量"
+                  },
+                  "audio_tokens": {
+                    "type": "integer",
+                    "description": "使用音频令牌的数量"
+                  }
+                }
+              },
+              "output_token_details": {
+                "type": "object",
+                "properties": {
+                  "text_tokens": {
+                    "type": "integer",
+                    "description": "输出的文本令牌数量"
+                  },
+                  "audio_tokens": {
+                    "type": "integer",
+                    "description": "输出的音频令牌数量"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "status"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,76 @@
+# spec/forbidden-patterns.toml
+#
+# Negative rules, grouped by the phase that first enforces them (plan P00.13
+# and section 11). xtask `forbidden check <phase>` applies every group whose
+# name equals the requested phase OR is named "all" (always-on). The checker
+# scans `src` (and `examples`/`docs` for later phases) and fails on any match.
+#
+# Phases are cumulative: a rule registered under P01 stays enforced in P02+.
+# Callers run `forbidden check <current-phase>` to apply everything up to it.
+
+# ---------------------------------------------------------------------------
+# "all" — always-on invariants. Kept empty at P00 because every section-11
+# negative rule is removed by a specific later task; until that task lands the
+# pattern legitimately still exists in src. Each rule is registered under the
+# phase that removes it (cumulative from there).
+# ---------------------------------------------------------------------------
+[[phase]]
+name = "all"
+forbidden_substrings = []
+
+# ---------------------------------------------------------------------------
+# P01 — close confirmed correctness / secret leaks / supply-chain hotfix.
+# ---------------------------------------------------------------------------
+[[phase]]
+name = "P01"
+forbidden_substrings = [
+    # Examples must not print secrets (plan 2.3, P01.4).
+    # NOTE: literal println of the key is caught by the gitleaks job; this is a
+    # backstop for obvious patterns. The committed signed URL must be gone.
+    "https://aigc-files.bigmodel.cn",  # expired signed media URL (plan 2.3.9 / P01.5)
+]
+
+# ---------------------------------------------------------------------------
+# P03 — transport/error/retry/limits/redaction rebuild.
+# ---------------------------------------------------------------------------
+[[phase]]
+name = "P03"
+forbidden_substrings = [
+    "HTTP_CLIENTS",                  # global HTTP client cache — removed in P03
+    "reqwest::Client::new",          # no ad-hoc client construction outside Transport
+    "tracing::info!(.*body",         # never log request/response body
+]
+
+# ---------------------------------------------------------------------------
+# P04 — agent/async/audio/knowledge contract alignment.
+# ---------------------------------------------------------------------------
+[[phase]]
+name = "P04"
+forbidden_substrings = [
+    "/paas/v4/agents",               # wrong Agent CRUD path (removed in P04)
+    "create_agent",
+    "update_agent",
+    "delete_agent",
+]
+
+# ---------------------------------------------------------------------------
+# P05 — full RequestSpec migration; per-request key/config gone.
+# ---------------------------------------------------------------------------
+[[phase]]
+name = "P05"
+forbidden_substrings = [
+    "with_base_url",
+    "with_endpoint_config",
+    "with_http_config",
+    "HttpClientConfig",
+    "EndpointConfig",
+]
+
+# ---------------------------------------------------------------------------
+# P10 — public API / module / feature / dependency convergence.
+# ---------------------------------------------------------------------------
+[[phase]]
+name = "P10"
+forbidden_substrings = [
+    "pub trait HttpClient",          # no public raw HTTP trait (plan 2.4.3)
+]
