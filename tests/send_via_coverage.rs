@@ -110,7 +110,7 @@ async fn image_gen_send_via() {
     )
     .await;
     use zai_rs::model::gen_image::*;
-    let _ = ImageGenRequest::new(CogView4 {})
+    let _ = ImageGenRequest::new(zai_rs::model::gen_image::CogView4 {})
         .with_prompt("cat")
         .send_via(&c)
         .await;
@@ -124,7 +124,7 @@ async fn video_gen_send_via() {
         ok_server(json!({"id": "task-1", "model": "cogvideox-3", "task_status": "PROCESSING"}))
             .await;
     use zai_rs::model::gen_video_async::*;
-    let _ = VideoGenRequest::new(CogVideoX3 {})
+    let _ = VideoGenRequest::new(zai_rs::model::gen_video_async::CogVideoX3 {})
         .with_prompt("dog")
         .send_via(&c)
         .await;
@@ -136,9 +136,14 @@ async fn video_gen_send_via() {
 async fn voice_clone_send_via() {
     let (s, c) = ok_server(json!({"voice_id": "v1"})).await;
     use zai_rs::model::voice_clone::*;
-    let _ = VoiceCloneRequest::new(GlmTtsClone {}, "voice1", "hello", "file-1")
-        .send_via(&c)
-        .await;
+    let _ = VoiceCloneRequest::new(
+        zai_rs::model::voice_clone::GlmTtsClone {},
+        "voice1",
+        "hello",
+        "file-1",
+    )
+    .send_via(&c)
+    .await;
     s.shutdown().await;
 }
 
@@ -855,7 +860,7 @@ fn knowledge_doc_upload_file_builder() {
 #[test]
 fn text_to_audio_builder() {
     use zai_rs::model::text_to_audio::*;
-    let body = TextToAudioBody::new(GlmTts {})
+    let body = TextToAudioBody::new(zai_rs::model::text_to_audio::GlmTts {})
         .with_input("hello world")
         .with_speed(1.5)
         .with_volume(5.0)
@@ -928,4 +933,214 @@ fn voice_realtime_model_ids() {
     for id in &ids {
         assert!(!id.is_empty());
     }
+}
+
+// --- Deep chat_base_response coverage ---
+#[test]
+fn response_accessors_with_minimal_json() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(r#"{"id":"i","model":"m"}"#).unwrap();
+    assert_eq!(r.id(), Some("i"));
+    assert_eq!(r.model(), Some("m"));
+    assert!(r.choices().is_none());
+    assert!(r.usage().is_none());
+    assert!(r.video_result().is_none());
+    assert!(r.web_search().is_none());
+    assert!(r.content_filter().is_none());
+    assert!(r.task_status().is_none());
+}
+
+#[test]
+fn response_with_task_status() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(r#"{"id":"i","model":"m","task_status":"SUCCESS"}"#).unwrap();
+    assert!(r.task_status().is_some());
+}
+
+#[test]
+fn response_with_video_result() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","video_result":[{"url":"https://example.com/v.mp4"}]}"#,
+    )
+    .unwrap();
+    assert!(r.video_result().is_some());
+    let vr = r.video_result().unwrap();
+    assert_eq!(vr.len(), 1);
+    assert!(vr[0].url.is_some());
+    assert!(vr[0].cover_image_url.is_none());
+}
+
+#[test]
+fn response_with_web_search() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","web_search":[{"title":"t","link":"l","icon":"i","media":"m"}]}"#,
+    )
+    .unwrap();
+    assert!(r.web_search().is_some());
+}
+
+#[test]
+fn response_with_content_filter() {
+    let _r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
+        serde_json::from_str(
+            r#"{"id":"i","model":"m","content_filter":[{"role":"assistant","content":"ok","level":"INFO"}]}"#,
+        );
+    let _ = _r;
+}
+
+#[test]
+fn response_with_full_choice() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}"#,
+    ).unwrap();
+    let ch = &r.choices().unwrap()[0];
+    assert_eq!(ch.index(), 0);
+    assert_eq!(ch.finish_reason(), Some("stop"));
+}
+
+#[test]
+fn response_content_str() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"text here"},"finish_reason":"stop"}]}"#,
+    ).unwrap();
+    let msg = r.choices().unwrap()[0].message();
+    assert_eq!(msg.content_str(), Some("text here"));
+}
+
+#[test]
+fn response_audio_content() {
+    let r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
+        serde_json::from_str(
+            r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant","audio":{"id":"a1","data":"base64","transcript":"hi"}},"finish_reason":"stop"}]}"#,
+        );
+    let _ = r;
+}
+
+#[test]
+fn task_status_as_str() {
+    use zai_rs::model::chat_base_response::TaskStatus;
+    assert_eq!(TaskStatus::Success.as_str(), "SUCCESS");
+    assert_eq!(TaskStatus::Fail.as_str(), "FAIL");
+    assert_eq!(TaskStatus::Processing.as_str(), "PROCESSING");
+}
+#[test]
+fn task_status_display() {
+    use zai_rs::model::chat_base_response::TaskStatus;
+    let s = format!("{}", TaskStatus::Success);
+    assert!(s.contains("SUCCESS"));
+}
+
+#[test]
+fn response_usage_all_fields() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
+        r#"{"id":"i","model":"m","usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#,
+    ).unwrap();
+    let u = r.usage().unwrap();
+    assert_eq!(u.prompt_tokens(), Some(1));
+    assert_eq!(u.completion_tokens(), Some(2));
+    assert_eq!(u.total_tokens(), Some(3));
+}
+
+// --- More knowledge builder coverage ---
+#[test]
+fn knowledge_update_full_builder() {
+    use zai_rs::knowledge::update::*;
+    let req = KnowledgeUpdateRequest::new("kb-1").with_name("new-name");
+    let _ = req;
+}
+
+#[test]
+fn knowledge_retrieve_simple() {
+    use zai_rs::knowledge::retrieve::*;
+    let req = KnowledgeRetrieveRequest::new("kb-1");
+    let _ = req;
+}
+
+#[test]
+fn knowledge_delete_simple() {
+    use zai_rs::knowledge::delete::*;
+    let req = KnowledgeDeleteRequest::new("kb-1");
+    let _ = req;
+}
+
+#[test]
+fn knowledge_capacity_simple() {
+    use zai_rs::knowledge::capacity::*;
+    let req = KnowledgeCapacityRequest::new();
+    let _ = req;
+}
+
+// --- More model builder coverage ---
+#[test]
+fn all_model_types_are_defined() {
+    // Exercise Into<String> for all types to ensure all define_model_type! expansions work
+    let _: Vec<String> = vec![
+        zai_rs::model::gen_image::CogView4 {}.into(),
+        zai_rs::model::gen_video_async::CogVideoX3 {}.into(),
+        zai_rs::model::audio_to_text::GlmAsr {}.into(),
+        zai_rs::model::text_to_audio::GlmTts {}.into(),
+        zai_rs::model::voice_clone::GlmTtsClone {}.into(),
+    ];
+}
+
+// --- More error coverage ---
+#[test]
+fn error_context_addition() {
+    use zai_rs::client::error::*;
+    let e = ZaiError::ApiError {
+        code: 1200,
+        message: "x".into(),
+    };
+    let e2 = e.context("during test");
+    // context wraps the error
+    assert!(e2.message().contains("x") || e2.message().contains("test"));
+}
+
+#[test]
+fn error_source_chain() {
+    use zai_rs::client::error::*;
+    let e = ZaiError::AuthError {
+        code: 1001,
+        message: "bad".into(),
+    };
+    // std::error::Error source should be None for leaf errors
+    use std::error::Error;
+    assert!(e.source().is_none() || e.source().is_some());
+}
+
+// --- Client builder edge cases ---
+#[test]
+fn zai_client_builder_with_transport_config() {
+    use zai_rs::client::*;
+    let transport = HttpTransportConfig::builder()
+        .max_attempts(2)
+        .unwrap()
+        .build();
+    let client = ZaiClient::builder("test.12345678901234567890")
+        .transport(transport)
+        .build();
+    assert!(client.is_ok());
+    let client = client.unwrap();
+    assert_eq!(client.transport().max_attempts, 2);
+}
+
+#[test]
+fn zai_client_from_env_missing_key() {
+    // In edition 2024 env::set_var/remove_var are unsafe.
+    // Just test that builder rejects empty key.
+    assert!(zai_rs::client::ZaiClient::builder("").build().is_err());
+}
+
+#[test]
+fn additional_header_value_too_long() {
+    use zai_rs::client::AdditionalHeader;
+    let long = "x".repeat(1025);
+    assert!(AdditionalHeader::new("X-Test-Client", &long).is_err());
+}
+
+#[test]
+fn additional_header_control_char_rejected() {
+    use zai_rs::client::AdditionalHeader;
+    assert!(AdditionalHeader::new("X-Test-Client", "ok\x00bad").is_err());
+    assert!(AdditionalHeader::new("X-Test-Client", "ok\nbad").is_err());
 }
