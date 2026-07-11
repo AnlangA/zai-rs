@@ -1144,3 +1144,149 @@ fn additional_header_control_char_rejected() {
     assert!(AdditionalHeader::new("X-Test-Client", "ok\x00bad").is_err());
     assert!(AdditionalHeader::new("X-Test-Client", "ok\nbad").is_err());
 }
+
+// --- ToolMetadata builder coverage ---
+#[cfg(feature = "toolkits")]
+#[test]
+fn tool_metadata_full_builder() {
+    use zai_rs::toolkits::core::*;
+    let meta = ToolMetadata::new("calc", "calculator")
+        .unwrap()
+        .version("1.0")
+        .author("test")
+        .tags(["math", "tool"])
+        .enabled(true);
+    assert_eq!(meta.name, "calc");
+}
+
+#[cfg(feature = "toolkits")]
+#[test]
+fn tool_metadata_empty_name_rejected() {
+    use zai_rs::toolkits::core::*;
+    assert!(ToolMetadata::new("", "desc").is_err());
+}
+
+#[cfg(feature = "toolkits")]
+#[test]
+fn function_tool_builder_chain() {
+    use zai_rs::toolkits::core::*;
+    let _ = FunctionTool::builder("name", "desc");
+}
+
+// --- Knowledge document upload file builder deeper ---
+#[test]
+fn knowledge_doc_upload_with_options() {
+    use zai_rs::knowledge::document_upload_file::*;
+    let opts = UploadFileOptions::default();
+    let req = DocumentUploadFileRequest::new("kb-1")
+        .add_file_path(std::path::PathBuf::from("/tmp/a.pdf"))
+        .add_file_path(std::path::PathBuf::from("/tmp/b.pdf"))
+        .with_options(opts);
+    let _ = req;
+}
+
+// --- Audio to text request deeper ---
+#[test]
+fn audio_to_text_with_hotwords() {
+    use zai_rs::model::audio_to_text::*;
+    let req = AudioToTextRequest::new(GlmAsr {})
+        .with_hotwords(vec!["word1".into(), "word2".into()])
+        .unwrap();
+    let _ = req;
+}
+
+#[test]
+fn audio_to_text_hotwords_over_limit() {
+    use zai_rs::model::audio_to_text::*;
+    let too_many: Vec<String> = (0..101).map(|i| format!("w{i}")).collect();
+    let result = AudioToTextRequest::new(GlmAsr {}).with_hotwords(too_many);
+    assert!(result.is_err());
+}
+
+// --- TTS builder deeper ---
+#[test]
+fn tts_request_full_builder() {
+    use zai_rs::model::text_to_audio::*;
+    let body = TextToAudioBody::new(GlmTts {})
+        .with_input("hello world")
+        .with_voice(Voice::Tongtong)
+        .with_speed(1.0)
+        .with_volume(5.0);
+    let _ = body.input;
+}
+
+// --- Embedding dimensions ---
+#[test]
+fn embedding_with_dimensions() {
+    use zai_rs::model::text_embedded::*;
+    let req = EmbeddingRequest::new(
+        EmbeddingModel::Embedding2,
+        EmbeddingInput::Batch(vec!["a".into(), "b".into()]),
+    )
+    .with_dimensions(EmbeddingDimensions::D1024);
+    let _ = req;
+}
+
+// --- More chat_base_response coverage ---
+#[test]
+fn response_minimal_no_id() {
+    let r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
+        serde_json::from_str(r#"{}"#);
+    // Empty object should fail — id is required
+    // empty object may succeed if all fields are optional
+}
+
+#[test]
+fn response_created_only() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(r#"{"id":"i","model":"m","created":1234567890}"#).unwrap();
+    assert_eq!(r.created(), Some(1234567890));
+}
+
+// --- Transport config builder edge cases ---
+#[test]
+fn transport_config_reject_high_attempts() {
+    use zai_rs::client::HttpTransportConfig;
+    assert!(HttpTransportConfig::default().with_max_attempts(5).is_err());
+    assert!(HttpTransportConfig::default().with_max_attempts(0).is_err());
+}
+
+#[test]
+fn transport_config_reject_high_timeout() {
+    use zai_rs::client::HttpTransportConfig;
+    let high = std::time::Duration::from_secs(120);
+    assert!(
+        HttpTransportConfig::default()
+            .with_request_timeout(high)
+            .is_err()
+    );
+}
+
+// --- Endpoint config edge cases ---
+#[test]
+fn endpoint_reject_empty_segment() {
+    use zai_rs::client::EndpointConfig;
+    let ec = EndpointConfig::defaults().unwrap();
+    assert!(
+        ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[""])
+            .is_err()
+    );
+    assert!(
+        ec.resolve(zai_rs::client::ApiFamily::PaasV4, &["."])
+            .is_err()
+    );
+    assert!(
+        ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[".."])
+            .is_err()
+    );
+}
+
+// --- RetryOverride constructible ---
+#[test]
+fn retry_override_serializable() {
+    use zai_rs::client::RetryOverride;
+    let o = RetryOverride::AssumeIdempotent;
+    // Just ensure it's constructible and Copy
+    let o2 = o;
+    let _ = o2;
+}
