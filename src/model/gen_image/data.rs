@@ -7,8 +7,8 @@ use super::{
     super::traits::*,
     image_request::{ImageGenBody, ImageQuality, ImageSize},
 };
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Image generation request structure
 /// Provides a typed builder around the image generation API body
@@ -120,10 +120,9 @@ where
         N: serde::Serialize,
     {
         self.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
-            &["images", "generations"],
-        )?;
+        let url = client
+            .endpoints()
+            .resolve(crate::client::ApiFamily::PaasV4, &["images", "generations"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

@@ -14,7 +14,7 @@
 //! `complete`/`generate`/… methods land in P04–P06. P02 establishes the facade
 //! structure so every family has a single, owned-by-`ZaiClient` entry point.
 
-use crate::client::v2::ZaiClient;
+use crate::client::ZaiClient;
 
 /// The collection of service facades. Obtain via [`ZaiClient::services`].
 ///

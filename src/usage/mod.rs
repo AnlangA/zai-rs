@@ -15,7 +15,7 @@
 //! ## Quick start
 //!
 //! ```rust,no_run
-//! use zai_rs::client::v2::ZaiClient;
+//! use zai_rs::client::ZaiClient;
 //! use zai_rs::usage::CodingPlanUsageRequest;
 //!
 //! # async fn go(client: ZaiClient) -> zai_rs::ZaiResult<()> {
@@ -52,7 +52,7 @@
 //! Override the monitor family base on the [`ZaiClient`] builder:
 //!
 //! ```rust,no_run
-//! use zai_rs::client::v2::{ApiFamily, ZaiClient};
+//! use zai_rs::client::{ApiFamily, ZaiClient};
 //! use zai_rs::usage::CodingPlanUsageRequest;
 //!
 //! # async fn go() -> zai_rs::ZaiResult<()> {
@@ -72,7 +72,7 @@ pub use data::{
     CodingPlanUsageDetail, CodingPlanUsageRequest, CodingPlanUsageResponse, CodingPlanUsageSummary,
 };
 
-use crate::{ZaiResult, client::v2::ZaiClient};
+use crate::{ZaiResult, client::ZaiClient};
 
 /// Query the Coding Plan usage endpoint via `client` and return the typed raw
 /// response.

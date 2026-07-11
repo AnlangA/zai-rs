@@ -24,7 +24,7 @@
 //! cargo run --example gen_image
 //! ```
 
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::gen_image::*;
 
 #[tokio::main]

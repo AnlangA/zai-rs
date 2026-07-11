@@ -4,8 +4,8 @@ use super::{
     request::{TokenizerBody, TokenizerMessage, TokenizerModel},
     response::TokenizerResponse,
 };
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Text Tokenizer request client (JSON POST)
 ///
@@ -51,7 +51,7 @@ impl TokenizerRequest {
         self.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["tokenizer"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["tokenizer"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

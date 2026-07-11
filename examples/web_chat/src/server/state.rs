@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use serde::Serialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_models::GLM4_6, TextMessage};
 
 use crate::server::{config::Config, error::AppResult};

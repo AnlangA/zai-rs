@@ -17,7 +17,7 @@ use crate::{
     ZaiResult,
     client::{
         http::{HttpClientConfig, parse_typed_response, send_empty_request},
-        v2::{ApiFamily, ZaiClient},
+        {ApiFamily, ZaiClient},
     },
 };
 use std::sync::Arc;
@@ -586,7 +586,7 @@ impl fmt::Display for CodingPlanUsageResponse {
 ///
 /// ```rust,no_run
 /// use zai_rs::usage::CodingPlanUsageRequest;
-/// use zai_rs::client::v2::ZaiClient;
+/// use zai_rs::client::ZaiClient;
 ///
 /// # async fn go(client: ZaiClient) -> zai_rs::ZaiResult<()> {
 /// let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
@@ -806,10 +806,10 @@ mod tests {
 
     #[test]
     fn monitor_family_resolves_official_endpoint() {
-        let ec = crate::client::v2::endpoint::EndpointConfig::defaults().unwrap();
+        let ec = crate::client::endpoint::EndpointConfig::defaults().unwrap();
         let url = ec
             .resolve(
-                crate::client::v2::ApiFamily::Monitor,
+                crate::client::ApiFamily::Monitor,
                 &["usage", "quota", "limit"],
             )
             .unwrap();
@@ -821,7 +821,7 @@ mod tests {
 
     #[test]
     fn monitor_family_resolves_custom_base_via_builder() {
-        use crate::client::v2::endpoint::{ApiFamily, EndpointConfig};
+        use crate::client::endpoint::{ApiFamily, EndpointConfig};
         let ec = EndpointConfig::builder()
             .monitor("https://api.z.ai/api/monitor")
             .build(false)

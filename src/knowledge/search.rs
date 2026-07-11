@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::ZaiResult;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::{ApiFamily, ZaiClient};
+use crate::client::{ApiFamily, ZaiClient};
 use serde::Serialize;
 
 /// POST /knowledge/retrieve search request (P06 knowledge.retrieve).

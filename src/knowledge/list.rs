@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use super::types::KnowledgeListResponse;
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Query parameters for knowledge list API
 #[derive(Debug, Clone, Default, serde::Serialize, validator::Validate)]
@@ -81,7 +81,7 @@ impl KnowledgeListRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeListResponse> {
         let params = self.query.pairs();
         let url = client.endpoints().resolve_with_query(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["knowledge"],
             &params
                 .iter()

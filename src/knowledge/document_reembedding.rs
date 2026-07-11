@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Request body for re-embedding a document
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, Default)]
@@ -53,7 +53,7 @@ impl DocumentReembeddingRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<DocumentReembeddingResponse> {
         self.body.validate()?;
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document", "embedding", &self.document_id],
         )?;
         let config = transport_config_from_client(client);

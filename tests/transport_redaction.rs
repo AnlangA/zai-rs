@@ -4,10 +4,10 @@
 //! sanitization, content-type validation, error-envelope probing) never leaks a
 //! URL, header value, query value, or body.
 
-use zai_rs::client::v2::transport::decode::{
+use zai_rs::client::transport::decode::{
     ExpectedKind, probe_error_envelope, validate_content_type,
 };
-use zai_rs::client::v2::transport::redaction::{has_usable_id, sanitize_request_id};
+use zai_rs::client::transport::redaction::{has_usable_id, sanitize_request_id};
 
 const TEST_KEY: &str = "1234567890.abcdefghijklmnop";
 

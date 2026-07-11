@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::knowledge::*;
 
 #[tokio::main]

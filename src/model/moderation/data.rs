@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use super::models::*;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Content moderation client.
 ///
@@ -76,7 +76,7 @@ impl Moderation {
         self.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["moderations"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["moderations"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

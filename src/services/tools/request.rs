@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::ZaiResult;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::{ApiFamily, ZaiClient};
+use crate::client::{ApiFamily, ZaiClient};
 
 use super::response::{LayoutParsingResponse, ReaderResponse};
 

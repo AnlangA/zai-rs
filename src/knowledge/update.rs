@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::create::{BackgroundColor, EmbeddingId, KnowledgeIcon};
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Update body for editing a knowledge base
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
@@ -112,7 +112,7 @@ impl KnowledgeUpdateRequest {
         }
         self.body.validate()?;
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["knowledge", &self.id],
         )?;
         let config = transport_config_from_client(client);

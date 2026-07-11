@@ -1,5 +1,5 @@
 use zai_rs::{
-    client::v2::ZaiClient,
+    client::ZaiClient,
     model::{
         async_chat_get::AsyncChatGetRequest, chat_base_response::TaskStatus, gen_video_async::*,
     },

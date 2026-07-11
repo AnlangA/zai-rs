@@ -10,7 +10,7 @@
 
 use std::path::Path;
 
-use crate::client::v2::transport::limits::{
+use crate::client::transport::limits::{
     MULTIPART_FIELD_BYTES_MAX, MULTIPART_FILE_BYTES_MAX, MULTIPART_MAX_FILE_PARTS,
 };
 use crate::{ZaiError, ZaiResult, client::error::codes};

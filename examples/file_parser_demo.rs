@@ -1,4 +1,4 @@
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::tool::{
     file_parser_create::{FileParserCreateRequest, FileType, ToolType},
     file_parser_result::{FileParserResultRequest, FormatType},

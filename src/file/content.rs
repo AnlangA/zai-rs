@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::client::{
     http::{HttpClientConfig, send_empty_request},
-    v2::{ApiFamily, ZaiClient},
+    {ApiFamily, ZaiClient},
 };
 
 /// File content request (GET /paas/v4/files/{file_id}/content)

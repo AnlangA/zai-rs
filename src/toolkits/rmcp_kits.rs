@@ -320,7 +320,7 @@ pub async fn execute_tool_calls_as_messages(
 #[cfg(feature = "rmcp-kits")]
 pub async fn run_mcp_tool_roundtrip<N>(
     caller: &McpToolCaller,
-    client: &crate::client::v2::ZaiClient,
+    client: &crate::client::ZaiClient,
     mut chat: crate::model::chat::data::ChatCompletion<
         N,
         crate::model::chat_message_types::TextMessage,

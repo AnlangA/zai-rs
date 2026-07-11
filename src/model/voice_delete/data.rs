@@ -3,8 +3,8 @@ use std::sync::Arc;
 use validator::Validate;
 
 use super::request::VoiceDeleteBody;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Voice delete request using JSON body
 ///
@@ -54,7 +54,7 @@ impl VoiceDeleteRequest {
         self.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["voice", "delete"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["voice", "delete"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::client::{
     http::{HttpClientConfig, parse_typed_response, send_empty_request},
-    v2::{ApiFamily, ZaiClient},
+    {ApiFamily, ZaiClient},
 };
 
 /// File delete request (DELETE /paas/v4/files/{file_id})

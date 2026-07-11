@@ -9,7 +9,7 @@
 //! `request_id` is sanitized to at most [`REQUEST_ID_MAX`] printable ASCII
 //! bytes (control chars replaced).
 
-use crate::client::v2::transport::limits::REQUEST_ID_MAX;
+use crate::client::transport::limits::REQUEST_ID_MAX;
 
 /// Sanitize a server correlation `request_id`: keep at most 128 bytes of
 /// printable ASCII, replacing control characters with `_`.

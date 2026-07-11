@@ -10,8 +10,8 @@
 
 use std::any::type_name;
 
-use crate::client::v2::RetryOverride;
-use crate::client::v2::transport::retry::RetrySafety;
+use crate::client::RetryOverride;
+use crate::client::transport::retry::RetrySafety;
 
 /// A request body kind the Transport knows how to encode and size-limit.
 #[derive(Debug)]

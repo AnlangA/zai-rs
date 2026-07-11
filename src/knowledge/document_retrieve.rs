@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use super::types::DocumentDetailResponse;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Retrieve document detail by id.
 ///
@@ -23,7 +23,7 @@ impl DocumentRetrieveRequest {
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDetailResponse> {
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document", &self.document_id],
         )?;
         let config = transport_config_from_client(client);

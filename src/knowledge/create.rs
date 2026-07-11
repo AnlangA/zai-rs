@@ -4,8 +4,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Embedding model id enum mapped to integer ids (plan §13.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,7 +171,7 @@ impl CreateKnowledgeRequest {
         self.body.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::LlmApplication, &["knowledge"])?;
+            .resolve(crate::client::ApiFamily::LlmApplication, &["knowledge"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

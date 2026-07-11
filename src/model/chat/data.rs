@@ -7,8 +7,8 @@ use validator::Validate;
 use super::super::{
     chat_base_request::*, chat_base_response::ChatCompletionResponse, tools::*, traits::*,
 };
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Chat-completion request builder (plan P05: migrated to route through
 /// [`ZaiClient`]).
@@ -171,10 +171,9 @@ where
         M: serde::Serialize,
     {
         self.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
-            &["chat", "completions"],
-        )?;
+        let url = client
+            .endpoints()
+            .resolve(crate::client::ApiFamily::PaasV4, &["chat", "completions"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,
@@ -198,7 +197,7 @@ where
     {
         self.validate()?;
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::CodingPaasV4,
+            crate::client::ApiFamily::CodingPaasV4,
             &["chat", "completions"],
         )?;
         let config = transport_config_from_client(client);
@@ -257,10 +256,9 @@ where
         self.body
             .validate()
             .map_err(crate::client::error::ZaiError::from)?;
-        let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
-            &["chat", "completions"],
-        )?;
+        let url = client
+            .endpoints()
+            .resolve(crate::client::ApiFamily::PaasV4, &["chat", "completions"])?;
         let body_bytes =
             serde_json::to_vec(&self.body).map_err(|e| crate::ZaiError::JsonError(Arc::new(e)))?;
         Ok((url, body_bytes, client.secret().expose().to_string()))

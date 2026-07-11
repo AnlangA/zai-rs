@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use super::request::FilePurpose;
 use crate::client::{
     http::{HttpClientConfig, parse_typed_response, send_multipart_request},
-    v2::{ApiFamily, ZaiClient},
+    {ApiFamily, ZaiClient},
 };
 
 /// File upload request (multipart/form-data)

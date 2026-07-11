@@ -1,12 +1,12 @@
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, RetryDelay, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 use super::response::{
     AssistantConversationListResponse, AssistantInvokeResponse, AssistantListResponse,
 };
 
-fn transport_config(client: &crate::client::v2::ZaiClient) -> HttpClientConfig {
+fn transport_config(client: &crate::client::ZaiClient) -> HttpClientConfig {
     let t = client.transport();
     HttpClientConfig {
         timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
@@ -35,7 +35,7 @@ impl AssistantInvokeRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AssistantInvokeResponse> {
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["assistant"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["assistant"])?;
         let config = transport_config(client);
         let resp = send_json_request(
             reqwest::Method::POST,
@@ -65,7 +65,7 @@ impl AssistantListRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AssistantListResponse> {
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["assistant", "list"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["assistant", "list"])?;
         let config = transport_config(client);
         let resp = send_json_request(
             reqwest::Method::POST,
@@ -103,7 +103,7 @@ impl AssistantConversationListRequest {
         client: &ZaiClient,
     ) -> ZaiResult<AssistantConversationListResponse> {
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
+            crate::client::ApiFamily::PaasV4,
             &["assistant", "conversation", "list"],
         )?;
         let config = transport_config(client);

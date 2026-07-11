@@ -15,7 +15,7 @@
 
 use url::Url;
 
-use crate::client::v2::transport::retry::RetrySafety;
+use crate::client::transport::retry::RetrySafety;
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
 /// Maximum redirect hops counted against the overall deadline (plan §4).

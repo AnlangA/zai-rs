@@ -3,7 +3,7 @@ use rmcp::{
     ServiceExt, model::ClientInfo, service::ServerSink, transport::StreamableHttpClientTransport,
 };
 // ZAI (zai-rs) imports
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 // rmcp-kits bridge imports
 use zai_rs::toolkits::rmcp_kits::{

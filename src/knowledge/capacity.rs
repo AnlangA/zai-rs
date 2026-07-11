@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use super::types::KnowledgeCapacityResponse;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Knowledge capacity request (GET /llm-application/open/knowledge/capacity)
 ///
@@ -26,7 +26,7 @@ impl KnowledgeCapacityRequest {
         client: &ZaiClient,
     ) -> crate::ZaiResult<KnowledgeCapacityResponse> {
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["knowledge", "capacity"],
         )?;
         let config = transport_config_from_client(client);

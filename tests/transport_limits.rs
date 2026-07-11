@@ -1,6 +1,6 @@
 //! P03 acceptance: payload limits (plan P03 验证 — transport_limits).
 
-use zai_rs::client::v2::transport::limits::*;
+use zai_rs::client::transport::limits::*;
 
 #[test]
 fn json_limits_match_plan_fixed_values() {

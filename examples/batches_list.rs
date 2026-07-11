@@ -1,5 +1,5 @@
 use zai_rs::batches::*;
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

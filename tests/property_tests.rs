@@ -9,8 +9,8 @@
 
 use proptest::prelude::*;
 
-use zai_rs::client::v2::transport::decode::probe_error_envelope;
-use zai_rs::client::v2::transport::retry::{full_jitter_cap, is_retryable_outcome};
+use zai_rs::client::transport::decode::probe_error_envelope;
+use zai_rs::client::transport::retry::{full_jitter_cap, is_retryable_outcome};
 use zai_rs::model::sse_parser::SseEventParser;
 
 // ---------------------------------------------------------------------------
@@ -20,10 +20,10 @@ use zai_rs::model::sse_parser::SseEventParser;
 proptest! {
     #[test]
     fn endpoint_resolve_percent_encodes_special_chars(s in "[a-zA-Z0-9_.%/?#]{1,20}") {
-        let ec = zai_rs::client::v2::endpoint::EndpointConfig::defaults().unwrap();
+        let ec = zai_rs::client::endpoint::EndpointConfig::defaults().unwrap();
         // Empty/dot/dotdot are rejected — filter them out.
         prop_assume!(!s.is_empty() && s != "." && s != "..");
-        let result = ec.resolve(zai_rs::client::v2::ApiFamily::PaasV4, &[&s]);
+        let result = ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[&s]);
         // Should either succeed (producing a valid URL) or fail (for truly
         // invalid segments) — but never panic.
         let _ = result;

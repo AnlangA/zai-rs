@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write};
 
 use base64::Engine;
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::*;
 
 #[tokio::main]

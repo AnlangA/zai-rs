@@ -16,7 +16,7 @@ use hyper_util::{rt::TokioIo, server::conn::auto::Builder as ConnBuilder};
 use serde_json::json;
 use tokio::{net::TcpListener, sync::oneshot, time::sleep};
 use zai_rs::{
-    client::v2::{ApiFamily, ZaiClient},
+    client::{ApiFamily, ZaiClient},
     file::{FileListQuery, FileListRequest, FilePurpose, FileUploadRequest},
     model::{ChatCompletion, GLM5_2, TextMessage},
     usage::CodingPlanUsageRequest,

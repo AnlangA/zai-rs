@@ -37,12 +37,12 @@ use tracing::warn;
 use crate::ZaiError;
 use crate::ZaiResult;
 use crate::client::error::codes;
-use crate::client::v2::transport::limits::{ERROR_BODY_MAX, JSON_REQUEST_MAX, JSON_RESPONSE_MAX};
-use crate::client::v2::transport::redirect::follow as follow_redirect;
-use crate::client::v2::transport::request::PreparedRequest;
-use crate::client::v2::transport::retry::{JitterSource, RetrySafety, backoff_delay};
+use crate::client::transport::limits::{ERROR_BODY_MAX, JSON_REQUEST_MAX, JSON_RESPONSE_MAX};
+use crate::client::transport::redirect::follow as follow_redirect;
+use crate::client::transport::request::PreparedRequest;
+use crate::client::transport::retry::{JitterSource, RetrySafety, backoff_delay};
 #[allow(unused_imports)]
-use crate::client::v2::transport::retry::{
+use crate::client::transport::retry::{
     is_retryable_outcome, parse_retry_after, reconcile_retry_after,
 };
 

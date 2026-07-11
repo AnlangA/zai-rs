@@ -1,6 +1,6 @@
 //! P07 acceptance: download streaming and atomic-download tests (plan P07.5).
 use tempfile::tempdir;
-use zai_rs::client::v2::transport::download::atomic_download;
+use zai_rs::client::transport::download::atomic_download;
 
 #[tokio::test]
 async fn atomic_download_writes_and_no_part_residue() {

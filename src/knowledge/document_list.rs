@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use super::types::DocumentListResponse;
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Query parameters for listing documents under a knowledge base
 #[derive(Debug, Clone, serde::Serialize, validator::Validate, Default)]
@@ -104,7 +104,7 @@ impl DocumentListRequest {
             })?;
         let params = q.pairs();
         let url = client.endpoints().resolve_with_query(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document"],
             &params
                 .iter()

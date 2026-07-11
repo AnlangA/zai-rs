@@ -5,8 +5,8 @@ use super::{
     response::RerankResponse,
 };
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Text Rerank request client (JSON POST)
 ///
@@ -66,7 +66,7 @@ impl RerankRequest {
         self.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["rerank"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["rerank"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

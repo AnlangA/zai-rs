@@ -5,8 +5,8 @@ use validator::Validate;
 
 use super::types::UploadUrlResponse;
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Single URL upload detail
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -129,7 +129,7 @@ impl DocumentUploadUrlRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<UploadUrlResponse> {
         self.body.validate()?;
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document", "upload_url"],
         )?;
         let config = transport_config_from_client(client);

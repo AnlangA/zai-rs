@@ -18,7 +18,7 @@ use hyper_util::{
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
-use zai_rs::client::v2::{ApiFamily, ZaiClient};
+use zai_rs::client::{ApiFamily, ZaiClient};
 use zai_rs::model::{ChatCompletion, GLM5_2, TextMessage};
 
 /// Start an inline mock that responds to one request with HTTP 200 and the

@@ -4,10 +4,10 @@ use tempfile::tempdir;
 
 mod support;
 
-use zai_rs::client::v2::transport::limits::{
+use zai_rs::client::transport::limits::{
     MULTIPART_FIELD_BYTES_MAX, MULTIPART_FILE_BYTES_MAX, MULTIPART_MAX_FILE_PARTS,
 };
-use zai_rs::client::v2::transport::multipart::{FilePart, MultipartBodyFactory};
+use zai_rs::client::transport::multipart::{FilePart, MultipartBodyFactory};
 
 #[test]
 fn file_part_rejects_symlink_and_nonregular() {

@@ -1,8 +1,8 @@
 //! P03 acceptance: redirect policy (plan P03 验证 — redirect_policy).
 
 use url::Url;
-use zai_rs::client::v2::transport::redirect::{MAX_REDIRECTS, follow};
-use zai_rs::client::v2::transport::retry::RetrySafety;
+use zai_rs::client::transport::redirect::{MAX_REDIRECTS, follow};
+use zai_rs::client::transport::retry::RetrySafety;
 
 fn url(s: &str) -> Url {
     Url::parse(s).unwrap()

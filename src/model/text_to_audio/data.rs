@@ -7,8 +7,8 @@ use super::{
     super::traits::*,
     request::{TextToAudioBody, TtsAudioFormat, Voice},
 };
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Text-to-speech request wrapper using JSON body
 ///
@@ -93,7 +93,7 @@ where
         self.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["audio", "speech"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["audio", "speech"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

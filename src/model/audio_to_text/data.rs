@@ -4,9 +4,9 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::AudioToTextBody};
+use crate::client::ZaiClient;
 use crate::client::error::codes;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_multipart_request};
-use crate::client::v2::ZaiClient;
 
 /// Audio transcription request (multipart/form-data)
 ///
@@ -113,7 +113,7 @@ where
         self.validate()?;
 
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
+            crate::client::ApiFamily::PaasV4,
             &["audio", "transcriptions"],
         )?;
         let config = Arc::new(transport_config_from_client(client));

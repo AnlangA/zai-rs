@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Document delete request (DELETE /llm-application/open/document/{id})
 ///
@@ -20,7 +20,7 @@ impl DocumentDeleteRequest {
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDeleteResponse> {
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document", &self.id],
         )?;
         let config = transport_config_from_client(client);

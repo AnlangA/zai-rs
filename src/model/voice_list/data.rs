@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use super::request::VoiceListQuery;
 use crate::ZaiResult;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// GET voice list request
 ///
@@ -58,7 +58,7 @@ impl VoiceListRequest {
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
         let url = client.endpoints().resolve_with_query(
-            crate::client::v2::ApiFamily::PaasV4,
+            crate::client::ApiFamily::PaasV4,
             &["voice", "list"],
             &query_refs,
         )?;

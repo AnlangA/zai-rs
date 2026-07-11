@@ -8,7 +8,7 @@ use crate::{
     ZaiResult,
     client::{
         http::{HttpClientConfig, parse_typed_response, send_empty_request},
-        v2::{ApiFamily, ZaiClient},
+        {ApiFamily, ZaiClient},
     },
 };
 

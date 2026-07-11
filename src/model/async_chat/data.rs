@@ -4,8 +4,8 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::super::{chat_base_request::*, tools::*, traits::*};
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Asynchronous (queued) chat-completion request builder (P05: routes through
 /// [`ZaiClient`]).
@@ -124,7 +124,7 @@ where
     {
         self.validate()?;
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
+            crate::client::ApiFamily::PaasV4,
             &["async", "chat", "completions"],
         )?;
         let config = transport_config_from_client(client);

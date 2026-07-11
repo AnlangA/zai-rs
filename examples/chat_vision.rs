@@ -1,4 +1,4 @@
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]

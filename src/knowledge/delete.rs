@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Knowledge delete request (DELETE /llm-application/open/knowledge/{id})
 ///
@@ -20,7 +20,7 @@ impl KnowledgeDeleteRequest {
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeDeleteResponse> {
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["knowledge", &self.id],
         )?;
         let config = transport_config_from_client(client);

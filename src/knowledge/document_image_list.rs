@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use super::types::DocumentImageListResponse;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Retrieve parsed image index-url mapping for a document (POST, no body)
 ///
@@ -26,7 +26,7 @@ impl DocumentImageListRequest {
         client: &ZaiClient,
     ) -> crate::ZaiResult<DocumentImageListResponse> {
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document", "slice", "image_list", &self.document_id],
         )?;
         let config = transport_config_from_client(client);

@@ -119,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tool_defs = executor.export_all_tools_as_functions();
 
     // Setup LLM client (P05: ZaiClient provides credentials/transport)
-    let zai_client = zai_rs::client::v2::ZaiClient::from_env()?;
+    let zai_client = zai_rs::client::ZaiClient::from_env()?;
     let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
 
     let mut request = ChatCompletion::new(model(), TextMessage::user(user_text))

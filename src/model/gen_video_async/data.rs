@@ -7,8 +7,8 @@ use super::{
     super::traits::*,
     video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize},
 };
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
-use crate::client::v2::ZaiClient;
 
 /// Video generation request structure
 /// Handles HTTP requests for video generation API
@@ -122,10 +122,9 @@ where
         N: serde::Serialize,
     {
         self.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
-            &["videos", "generations"],
-        )?;
+        let url = client
+            .endpoints()
+            .resolve(crate::client::ApiFamily::PaasV4, &["videos", "generations"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,

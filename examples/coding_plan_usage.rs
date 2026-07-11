@@ -19,7 +19,7 @@
 //! RUST_LOG=trace cargo run --example coding_plan_usage
 //! ```
 
-use zai_rs::{ZaiResult, client::v2::ZaiClient, usage::CodingPlanUsageRequest};
+use zai_rs::{ZaiResult, client::ZaiClient, usage::CodingPlanUsageRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

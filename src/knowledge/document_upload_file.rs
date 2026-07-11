@@ -3,8 +3,8 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use validator::Validate;
 
 use super::types::UploadFileResponse;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_multipart_request};
-use crate::client::v2::ZaiClient;
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -127,7 +127,7 @@ impl DocumentUploadFileRequest {
         self.validate_cross()?;
 
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::LlmApplication,
+            crate::client::ApiFamily::LlmApplication,
             &["document", "upload_document", &self.knowledge_id],
         )?;
         let config = Arc::new(transport_config_from_client(client));

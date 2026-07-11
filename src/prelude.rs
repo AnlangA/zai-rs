@@ -10,8 +10,7 @@
 //! let response = client.services().chat();
 //! ```
 
-pub use crate::client::v2::{HttpTransportConfig, ZaiClient, ZaiClientBuilder};
-pub use crate::client::{ZaiConfig, ZaiError, ZaiResult};
+pub use crate::client::{HttpTransportConfig, ZaiClient, ZaiClientBuilder, ZaiError, ZaiResult};
 
 // Essential model types for chat construction.
 pub use crate::model::traits::{ModelName, StreamOff as NonStreaming, StreamOn as Streaming};

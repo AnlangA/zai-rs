@@ -10,9 +10,7 @@ use support::http_server::{ScriptedResponse, TestServer};
 use std::time::Duration;
 
 use bytes::Bytes;
-use zai_rs::client::v2::{
-    AdditionalHeader, ApiFamily, HttpTransportConfig, RetryOverride, ZaiClient,
-};
+use zai_rs::client::{AdditionalHeader, ApiFamily, HttpTransportConfig, RetryOverride, ZaiClient};
 
 const KEY: &str = "abcdefghij.0123456789abcdef";
 

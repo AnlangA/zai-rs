@@ -9,8 +9,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use zai_rs::client::v2::RetryOverride;
-use zai_rs::client::v2::transport::retry::{
+use zai_rs::client::RetryOverride;
+use zai_rs::client::transport::retry::{
     JitterSource, NON_RETRYABLE_QUOTA_CODES, NON_RETRYABLE_VALIDATION_CODES, RETRYABLE_STATUSES,
     RetrySafety, backoff_delay, full_jitter_cap, is_retryable_outcome, parse_retry_after,
     reconcile_retry_after,

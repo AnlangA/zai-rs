@@ -149,7 +149,7 @@
 pub mod agent;
 pub mod batches;
 pub mod client;
-pub use client::{config::ZaiConfig, error::*};
+pub use client::{ZaiClient, error::*};
 pub mod file;
 pub mod knowledge;
 
@@ -163,8 +163,4 @@ pub mod tool;
 pub mod toolkits;
 pub mod usage;
 
-// --- P10.1: minimal 0.5 root surface ---
-// The crate root directly exports only ZaiClient, ZaiConfig, ZaiError, ZaiResult
-// and the prelude. Everything else is accessed via modules or `prelude::*`.
-pub use client::v2::ZaiClient;
 pub mod prelude;

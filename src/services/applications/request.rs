@@ -21,7 +21,7 @@ use crate::client::http::{
     HttpClientConfig, parse_typed_response, send_empty_request, send_json_request,
     send_multipart_request,
 };
-use crate::client::v2::{ApiFamily, ZaiClient};
+use crate::client::{ApiFamily, ZaiClient};
 use crate::services::applications::response::{
     ApplicationConversationCreateResponse, ApplicationFileStatsResponse,
     ApplicationFileUploadResponse, ApplicationHistoryResponse, ApplicationInvokeResponse,

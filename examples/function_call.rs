@@ -1,5 +1,5 @@
 use tracing::warn;
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat::data::ChatCompletion, chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]

@@ -200,7 +200,7 @@ fn error_compact_and_message() {
 // --- Transport ---
 #[test]
 fn transport_retry_matrix() {
-    use zai_rs::client::v2::transport::retry::*;
+    use zai_rs::client::transport::retry::*;
     for s in RETRYABLE_STATUSES {
         assert!(is_retryable_outcome(*s, None));
     }
@@ -219,7 +219,7 @@ fn transport_retry_matrix() {
 
 #[test]
 fn transport_decode_content_types() {
-    use zai_rs::client::v2::transport::decode::*;
+    use zai_rs::client::transport::decode::*;
     assert!(validate_content_type("application/json", ExpectedKind::Json).is_ok());
     assert!(validate_content_type("application/json; charset=utf-8", ExpectedKind::Json).is_ok());
     assert!(validate_content_type("text/plain", ExpectedKind::Json).is_err());
@@ -230,7 +230,7 @@ fn transport_decode_content_types() {
 
 #[test]
 fn transport_decode_envelope() {
-    use zai_rs::client::v2::transport::decode::*;
+    use zai_rs::client::transport::decode::*;
     assert!(probe_error_envelope(r#"{"code":500,"message":"x"}"#));
     assert!(probe_error_envelope(
         r#"{"error":{"code":1302,"message":"x"}}"#
@@ -241,8 +241,8 @@ fn transport_decode_envelope() {
 
 #[test]
 fn transport_redirect_combos() {
-    use zai_rs::client::v2::transport::redirect::*;
-    use zai_rs::client::v2::transport::retry::RetrySafety;
+    use zai_rs::client::transport::redirect::*;
+    use zai_rs::client::transport::retry::RetrySafety;
     let cur = url::Url::parse("https://open.bigmodel.cn/a").unwrap();
     for s in [301, 302, 303, 307, 308] {
         assert!(
@@ -276,7 +276,7 @@ fn transport_redirect_combos() {
 
 #[tokio::test]
 async fn transport_download() {
-    use zai_rs::client::v2::transport::download::atomic_download;
+    use zai_rs::client::transport::download::atomic_download;
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("cov.bin");
     let body = bytes::Bytes::from_static(b"cov test");

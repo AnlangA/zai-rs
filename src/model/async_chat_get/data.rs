@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::super::traits::*;
+use crate::client::ZaiClient;
 use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
-use crate::client::v2::ZaiClient;
 
 /// Retrieve the result of an asynchronous chat task by its task id (P05: routes
 /// through [`ZaiClient`]).
@@ -45,7 +45,7 @@ where
     ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse> {
         self.validate()?;
         let url = client.endpoints().resolve(
-            crate::client::v2::ApiFamily::PaasV4,
+            crate::client::ApiFamily::PaasV4,
             &["async-result", &self.task_id],
         )?;
         let config = transport_config_from_client(client);

@@ -11,7 +11,7 @@
 
 use std::time::Duration;
 
-use crate::client::v2::RetryOverride;
+use crate::client::RetryOverride;
 
 /// Fixed retry-safety classification (plan §4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

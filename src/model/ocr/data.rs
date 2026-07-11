@@ -3,7 +3,7 @@ use std::{path::Path, sync::Arc};
 use validator::Validate;
 
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
-use crate::client::v2::ZaiClient;
+use crate::client::ZaiClient;
 use crate::client::{
     error::codes,
     http::{HttpClientConfig, parse_typed_response, send_multipart_request},
@@ -197,7 +197,7 @@ impl OcrRequest {
 
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["files", "ocr"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["files", "ocr"])?;
         let config = transport_config_from_client(client);
 
         let file_path =

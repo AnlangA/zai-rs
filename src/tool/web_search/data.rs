@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     ZaiResult,
+    client::ZaiClient,
     client::http::{HttpClientConfig, parse_typed_response, send_json_request},
-    client::v2::ZaiClient,
     tool::web_search::{request::*, response::*},
 };
 
@@ -60,7 +60,7 @@ impl WebSearchRequest {
         self.validate()?;
         let url = client
             .endpoints()
-            .resolve(crate::client::v2::ApiFamily::PaasV4, &["web_search"])?;
+            .resolve(crate::client::ApiFamily::PaasV4, &["web_search"])?;
         let config = transport_config_from_client(client);
         let resp = send_json_request(
             reqwest::Method::POST,
