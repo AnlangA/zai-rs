@@ -3613,7 +3613,7 @@ dependencies = [
 
 [[package]]
 name = "zai-rs"
-version = "0.5.0-alpha.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "base64",
