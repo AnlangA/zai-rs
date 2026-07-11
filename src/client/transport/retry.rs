@@ -60,12 +60,11 @@ pub const NON_RETRYABLE_VALIDATION_CODES: &[u16] =
 /// Precedence (plan §13.7): non-retryable quota/billing and validation/content
 /// codes override the status-retry set; otherwise the status-retry set applies.
 pub fn is_retryable_outcome(status: u16, business_code: Option<u16>) -> bool {
-    if let Some(code) = business_code {
-        if NON_RETRYABLE_QUOTA_CODES.contains(&code)
-            || NON_RETRYABLE_VALIDATION_CODES.contains(&code)
-        {
-            return false;
-        }
+    if let Some(code) = business_code
+        && (NON_RETRYABLE_QUOTA_CODES.contains(&code)
+            || NON_RETRYABLE_VALIDATION_CODES.contains(&code))
+    {
+        return false;
     }
     RETRYABLE_STATUSES.contains(&status)
 }

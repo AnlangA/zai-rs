@@ -119,10 +119,10 @@ impl Transport {
         prepped: &PreparedRequest<'_>,
     ) -> ZaiResult<(u16, reqwest::header::HeaderMap, Bytes)> {
         // Enforce request body limit up front.
-        if let request::BodyKind::Bytes(b) = &prepped.body {
-            if (b.len() as u64) > JSON_REQUEST_MAX {
-                return Err(payload_too_large(JSON_REQUEST_MAX));
-            }
+        if let request::BodyKind::Bytes(b) = &prepped.body
+            && (b.len() as u64) > JSON_REQUEST_MAX
+        {
+            return Err(payload_too_large(JSON_REQUEST_MAX));
         }
 
         let safety = prepped.retry_safety.effective(prepped.retry_override);
@@ -196,11 +196,11 @@ impl Transport {
                     body,
                 } => {
                     // Probe error envelope on the body.
-                    if let Ok(text) = std::str::from_utf8(&body) {
-                        if decode::probe_error_envelope(text) {
-                            // It's a business error; surface it (caller decodes).
-                            return Ok((status, headers, body));
-                        }
+                    if let Ok(text) = std::str::from_utf8(&body)
+                        && decode::probe_error_envelope(text)
+                    {
+                        // It's a business error; surface it (caller decodes).
+                        return Ok((status, headers, body));
                     }
                     return Ok((status, headers, body));
                 },

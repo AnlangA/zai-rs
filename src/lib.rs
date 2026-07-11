@@ -81,7 +81,7 @@
 //!
 //! # Configuration
 //!
-//! [`ZaiConfig`] is the central place for credentials, endpoint families, and
+//! `ZaiConfig` is the central place for credentials, endpoint families, and
 //! HTTP transport settings. It mirrors the API families exposed by
 //! [`client::EndpointConfig`], including the dedicated Coding Plan
 //! endpoint required by official Zhipu AI documentation.

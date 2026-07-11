@@ -5,7 +5,7 @@
 //! relative URLs, userinfo, query strings and fragments; the scheme is checked
 //! against the family (HTTPS/WSS by default, HTTP/WS only when insecure
 //! transport is explicitly allowed AND the host is loopback/localhost). Dynamic
-//! path segments go through [`EndpointConfig::push_path_segment`], which
+//! path segments go through [`EndpointConfig::resolve`], which
 //! percent-encodes via `url::PathSegmentsMut` and rejects empty / `.` / `..`
 //! segments — never raw string concatenation.
 

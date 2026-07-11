@@ -112,7 +112,7 @@ where
     /// typed response.
     ///
     /// The async video endpoint returns a task-bearing body shaped like a
-    /// [`ChatCompletionResponse`] (with `id`/`task_status`/`video_result`);
+    /// `ChatCompletionResponse` (with `id`/`task_status`/`video_result`);
     /// poll it to completion via [`AsyncChatGetRequest`](crate::model::async_chat_get::AsyncChatGetRequest).
     pub async fn send_via(
         &self,

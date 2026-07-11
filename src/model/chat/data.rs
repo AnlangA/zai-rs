@@ -20,7 +20,7 @@ use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_requ
 /// **P05**: the `key`/`url`/`endpoint_config`/`api_base`/`http_config` fields
 /// and the `with_base_url`/`with_endpoint_config`/`with_http_config`/`with_url`
 /// methods are REMOVED. Credentials and transport live on the `ZaiClient`,
-/// passed to [`send`](Self::send)/[`send_via`](Self::send_via).
+/// passed to `send`/`send_via` on the client.
 pub struct ChatCompletion<N, M, S = StreamOff>
 where
     N: ModelName + Chat,
