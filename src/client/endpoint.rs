@@ -1,6 +1,6 @@
 //! Validated, URL-based endpoint configuration (plan P02.5–P02.8).
 //!
-//! Unlike the legacy string-concatenating `client::endpoints::EndpointConfig`,
+//! Unlike the legacy string-concatenating `client::EndpointConfig (0.4 legacy)`,
 //! this stores each family's base as a parsed [`url::Url`]. Building rejects
 //! relative URLs, userinfo, query strings and fragments; the scheme is checked
 //! against the family (HTTPS/WSS by default, HTTP/WS only when insecure

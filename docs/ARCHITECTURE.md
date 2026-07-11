@@ -22,7 +22,7 @@
 | Realtime WebSocket | `Realtime` | `wss://open.bigmodel.cn/api/paas/v4/realtime` | `realtime` |
 | Monitor / usage | `Monitor` | `https://open.bigmodel.cn/api/monitor` | `usage` |
 
-需要代理或国际站时，优先覆盖 `EndpointConfig` 或 `ZaiConfig::builder()` 中对应的 base，而不是在业务模块里手写完整 URL。
+需要代理或国际站时，优先覆盖 `EndpointConfig` 或 `ZaiClient::builder()` 中对应的 base，而不是在业务模块里手写完整 URL。
 
 ## 分层
 

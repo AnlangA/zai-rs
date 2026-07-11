@@ -31,7 +31,7 @@
 //!     .with_count(10)
 //!     .with_search_intent(true);
 //!
-//!     let response = request.send().await?;
+//!     let response = request.send_via(&client).await?;
 //!     println!("Found {} results", response.result_count());
 //!
 //!     Ok(())

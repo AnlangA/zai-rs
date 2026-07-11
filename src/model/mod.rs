@@ -41,7 +41,7 @@
 //!
 //! - [`chat_models`] — Model type definitions and capability markers
 //! - [`tools`] — Tool/function definitions, `ThinkingType`, web-search tools
-//! - [`traits`] — Core traits (`Chat`, `AsyncChat`, `Bounded`, `SseStreamable`,
+//! - [`traits`] — Core traits (`Chat`, `AsyncChat`, `Bounded`, `ModelName`,
 //!   etc.)
 //! - [`model_validate`] — Request validation helpers
 //! - [`sse_parser`] — SSE protocol parser
@@ -111,7 +111,7 @@ pub mod text_to_audio;
 pub mod text_tokenizer;
 /// Tool/function definitions, `ThinkingType`, web-search tools.
 pub mod tools;
-/// Core traits (`Chat`, `AsyncChat`, `Bounded`, `SseStreamable`, …).
+/// Core traits (`Chat`, `AsyncChat`, `Bounded`, `ModelName`, …).
 pub mod traits;
 /// Voice cloning.
 pub mod voice_clone;

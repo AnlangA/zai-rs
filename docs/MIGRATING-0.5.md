@@ -22,7 +22,7 @@ let resp = client.send().await?;
 
 **After (0.5):**
 ```rust,ignore
-use zai_rs::client::v2::ZaiClient;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::*;
 
 let client = ZaiClient::from_env()?;
