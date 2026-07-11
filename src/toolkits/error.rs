@@ -192,7 +192,7 @@ impl ErrorContext {
     pub fn invalid_parameters(self, message: impl Into<String>) -> ToolError {
         let mut msg = message.into();
         if let Some(ref op) = self.operation {
-            msg = format!("[{}] {}", op, msg);
+            msg = format!("[{op}] {msg}");
         }
         ToolError::InvalidParameters {
             tool: Cow::Owned(self.get_tool_name()),
@@ -204,7 +204,7 @@ impl ErrorContext {
     pub fn execution_failed(self, message: impl Into<String>) -> ToolError {
         let mut msg = message.into();
         if let Some(ref op) = self.operation {
-            msg = format!("[{}] {}", op, msg);
+            msg = format!("[{op}] {msg}");
         }
         ToolError::ExecutionFailed {
             tool: Cow::Owned(self.get_tool_name()),
@@ -216,7 +216,7 @@ impl ErrorContext {
     pub fn schema_validation(self, message: impl Into<String>) -> ToolError {
         let mut msg = message.into();
         if let Some(ref op) = self.operation {
-            msg = format!("[{}] {}", op, msg);
+            msg = format!("[{op}] {msg}");
         }
         ToolError::SchemaValidation {
             tool: Cow::Owned(self.get_tool_name()),
@@ -228,7 +228,7 @@ impl ErrorContext {
     pub fn serialization_error(self, source: serde_json::Error) -> ToolError {
         let mut tool_name = self.get_tool_name();
         if let Some(ref op) = self.operation {
-            tool_name = format!("{} [{}]", tool_name, op);
+            tool_name = format!("{tool_name} [{op}]");
         }
         ToolError::SerializationError {
             tool: Cow::Owned(tool_name),

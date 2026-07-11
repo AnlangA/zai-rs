@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use serde::Serialize;
 use validator::Validate;
 
@@ -7,23 +5,16 @@ use super::{
     super::traits::*,
     video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize},
 };
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, paths},
-    http::{HttpClient, HttpClientConfig},
-};
+use crate::client::ZaiClient;
 
 /// Video generation request structure
 /// Handles HTTP requests for video generation API
+///
+/// (plan P05: migrated to route through [`ZaiClient`].)
 pub struct VideoGenRequest<N>
 where
     N: ModelName + VideoGen + Serialize,
 {
-    /// API key for authentication
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     /// Request Body
     body: VideoBody<N>,
 }
@@ -36,47 +27,9 @@ where
     ///
     /// # Arguments
     /// * `model` - Video generation model implementing VideoGen trait
-    /// * `body` - Video generation parameters and configuration
-    /// * `key` - API key for authentication
-    pub fn new(model: N, key: impl Into<String>) -> Self {
+    pub fn new(model: N) -> Self {
         let body = VideoBody::new(model);
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let url = endpoint_config.url(&api_base, paths::VIDEOS_GENERATIONS);
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::VIDEOS_GENERATIONS);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+        Self { body }
     }
 
     /// Set the prompt for video generation
@@ -151,35 +104,28 @@ where
             .map_err(crate::client::error::ZaiError::from)?;
         Ok(())
     }
-}
 
-impl<N> HttpClient for VideoGenRequest<N>
-where
-    N: ModelName + VideoGen + Serialize,
-{
-    type Body = VideoBody<N>;
-    /// API URL type
-    type ApiUrl = String;
-    /// API key type
-    type ApiKey = String;
-
-    /// Get the API endpoint URL
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-
-    /// Get the API key for authentication
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-
-    /// Get the request body containing video generation parameters
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+    /// Submit the video-generation request via a [`ZaiClient`] and parse the
+    /// typed response.
+    ///
+    /// The async video endpoint returns a task-bearing body shaped like a
+    /// `ChatCompletionResponse` (with `id`/`task_status`/`video_result`);
+    /// poll it to completion via [`AsyncChatGetRequest`](crate::model::async_chat_get::AsyncChatGetRequest).
+    pub async fn send_via(
+        &self,
+        client: &ZaiClient,
+    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
+    where
+        N: serde::Serialize,
+    {
+        self.validate()?;
+        let url = client
+            .endpoints()
+            .resolve(crate::client::ApiFamily::PaasV4, &["videos", "generations"])?;
+        client
+            .send_json::<_, crate::model::chat_base_response::ChatCompletionResponse>(
+                "POST", url, &self.body,
+            )
+            .await
     }
 }

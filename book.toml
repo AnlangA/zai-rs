@@ -1,0 +1,10 @@
+[book]
+title = "zai-rs — Zhipu AI Rust SDK"
+language = "zh"
+src = "docs"
+
+[rust]
+edition = "2024"
+
+[output.html]
+git-repository-url = "https://github.com/AnlangA/zai-rs"

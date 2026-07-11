@@ -272,7 +272,7 @@ impl ToolExecutor {
         let name = tool.name().to_string();
         if self.tools.contains_key(&name) {
             return Err(ToolError::RegistrationError {
-                message: format!("Tool '{}' is already registered", name).into(),
+                message: format!("Tool '{name}' is already registered").into(),
             });
         }
         self.tools.insert(name, Arc::from(tool));
@@ -446,9 +446,7 @@ impl ToolExecutor {
             let entry = match entry {
                 Ok(e) => e,
                 Err(e) => {
-                    return Err(
-                        error_context().invalid_parameters(format!("Dir entry error: {}", e))
-                    );
+                    return Err(error_context().invalid_parameters(format!("Dir entry error: {e}")));
                 },
             };
             let path = entry.path();
@@ -745,7 +743,7 @@ impl ToolExecutor {
         if !tool.metadata().enabled {
             return Err(error_context()
                 .with_tool(tool_name)
-                .execution_failed(format!("tool '{}' is disabled", tool_name)));
+                .execution_failed(format!("tool '{tool_name}' is disabled")));
         }
 
         let execution_future = tool.execute_json(input.clone());

@@ -1,13 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::create::{BackgroundColor, EmbeddingId, KnowledgeIcon};
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, join_url, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
-};
+use crate::client::ZaiClient;
 
 /// Update body for editing a knowledge base
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
@@ -50,59 +47,21 @@ impl UpdateKnowledgeBody {
 }
 
 /// Knowledge update request (PUT /llm-application/open/knowledge/{id})
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct KnowledgeUpdateRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
     id: String,
-    http_config: Arc<HttpClientConfig>,
     body: UpdateKnowledgeBody,
 }
 
 impl KnowledgeUpdateRequest {
-    /// Build update request targeting a specific id with empty body
-    pub fn new(key: impl Into<String>, id: impl Into<String>) -> Self {
-        let id = id.into();
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, &join_url(paths::KNOWLEDGE, &id));
+    /// Build update request targeting a specific id with empty body.
+    pub fn new(id: impl Into<String>) -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            id,
-            http_config: Arc::new(HttpClientConfig::default()),
+            id: id.into(),
             body: UpdateKnowledgeBody::default(),
         }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, &join_url(paths::KNOWLEDGE, &self.id));
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base_url.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
     }
 
     /// Setters to update individual fields
@@ -142,49 +101,22 @@ impl KnowledgeUpdateRequest {
         self
     }
 
-    /// Send the update request and parse the typed response.
-    pub async fn send(&self) -> crate::ZaiResult<KnowledgeUpdateResponse> {
+    /// Send the update request via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeUpdateResponse> {
         if self.body.is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
                 message: "update body is empty; set at least one field".to_string(),
             });
         }
-
         self.body.validate()?;
-        let resp = self.put().await?;
-        parse_typed_response::<KnowledgeUpdateResponse>(resp).await
-    }
-
-    /// Issue the underlying PUT request.
-    pub fn put(
-        &self,
-    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
-        HttpClient::put(self)
-    }
-}
-
-impl HttpClient for KnowledgeUpdateRequest {
-    type Body = UpdateKnowledgeBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        self.http_config.clone()
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::LlmApplication,
+            &["knowledge", &self.id],
+        )?;
+        client
+            .send_json::<_, KnowledgeUpdateResponse>("PUT", url, &self.body)
+            .await
     }
 }
 

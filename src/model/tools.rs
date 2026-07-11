@@ -37,7 +37,7 @@ use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyF
 ///
 /// ## Usage
 ///
-/// ```rust,ignore
+/// ```text
 /// let client = ChatCompletion::new(model, messages, api_key)
 ///     .with_thinking(ThinkingType::enabled());
 ///
@@ -125,7 +125,7 @@ impl ThinkingType {
 ///
 /// ## Usage
 ///
-/// ```rust,ignore
+/// ```text
 /// use zai_rs::model::tools::ReasoningEffort;
 ///
 /// let client = ChatCompletion::new(GLM5_2 {}, messages, api_key)
@@ -185,7 +185,7 @@ pub enum ReasoningEffort {
 ///
 /// ## Usage
 ///
-/// ```rust,ignore
+/// ```text
 /// // Function tool
 /// let function_tool = Tools::Function {
 ///     function: Function::new("get_weather", "Get weather data", parameters)
@@ -283,7 +283,7 @@ impl Function {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let func = Function::new(
     ///     "get_weather",
     ///     "Get current weather for a location",
@@ -323,7 +323,7 @@ impl Function {
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```text
 /// use zai_rs::model::tools::{Retrieval, Tools};
 ///
 /// let tool = Tools::Retrieval {
@@ -694,7 +694,7 @@ struct ToolChoiceFunctionRef {
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```text
 /// use zai_rs::model::tools::ToolChoice;
 ///
 /// // Let the model decide (default behaviour):

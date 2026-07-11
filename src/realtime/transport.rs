@@ -1,12 +1,10 @@
 //! Realtime transport abstraction.
 //!
-//! [`RealtimeTransport`] is the realtime analogue of the HTTP [`HttpClient`]
-//! trait: it isolates the WebSocket transport behind a small async interface so
-//! the session/event-loop logic is testable and transport-agnostic. The default
+//! [`RealtimeTransport`] is the realtime analogue of the HTTP client trait: it
+//! isolates the WebSocket transport behind a small async interface so the
+//! session/event-loop logic is testable and transport-agnostic. The default
 //! implementation, [`TungsteniteTransport`], uses `tokio-tungstenite` over TLS
 //! (rustls).
-//!
-//! [`HttpClient`]: crate::client::http::HttpClient
 
 use async_trait::async_trait;
 use bytes::Bytes;

@@ -1,90 +1,33 @@
-use std::sync::Arc;
-
 use super::types::KnowledgeCapacityResponse;
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
-};
+use crate::client::ZaiClient;
 
 /// Knowledge capacity request (GET /llm-application/open/knowledge/capacity)
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
+#[allow(clippy::new_without_default)]
+#[derive(Default)]
 pub struct KnowledgeCapacityRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     _body: (),
 }
 
 impl KnowledgeCapacityRequest {
-    /// Build a capacity request
-    pub fn new(key: impl Into<String>) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, paths::KNOWLEDGE_CAPACITY);
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            _body: (),
-        }
+    /// Build a capacity request.
+    pub fn new() -> Self {
+        Self { _body: () }
     }
 
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::KNOWLEDGE_CAPACITY);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Send and parse typed response
-    pub async fn send(&self) -> crate::ZaiResult<KnowledgeCapacityResponse> {
-        let resp = self.get().await?;
-
-        let parsed = parse_typed_response::<KnowledgeCapacityResponse>(resp).await?;
-
-        Ok(parsed)
-    }
-}
-
-impl HttpClient for KnowledgeCapacityRequest {
-    type Body = ();
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+    /// Send via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(
+        &self,
+        client: &ZaiClient,
+    ) -> crate::ZaiResult<KnowledgeCapacityResponse> {
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::LlmApplication,
+            &["knowledge", "capacity"],
+        )?;
+        client
+            .send_empty::<KnowledgeCapacityResponse>("GET", url)
+            .await
     }
 }

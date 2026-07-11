@@ -1,95 +1,30 @@
-use std::sync::Arc;
-
 use super::types::DocumentDetailResponse;
-use crate::{
-    ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, join_url, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
-};
+use crate::client::ZaiClient;
 
-/// Retrieve document detail by id
+/// Retrieve document detail by id.
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct DocumentRetrieveRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
     document_id: String,
-    http_config: Arc<HttpClientConfig>,
-    _body: (),
 }
 
 impl DocumentRetrieveRequest {
-    /// Create a new request
-    pub fn new(key: impl Into<String>, document_id: impl Into<String>) -> Self {
-        let document_id = document_id.into();
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, &join_url(paths::DOCUMENT, &document_id));
+    /// Create a new request targeting the given document id.
+    pub fn new(document_id: impl Into<String>) -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            document_id,
-            http_config: Arc::new(HttpClientConfig::default()),
-            _body: (),
+            document_id: document_id.into(),
         }
     }
 
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(
-            &self.api_base,
-            &join_url(paths::DOCUMENT, &self.document_id),
-        );
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Send GET request and parse typed response
-    pub async fn send(&self) -> ZaiResult<DocumentDetailResponse> {
-        let resp = self.get().await?;
-        let parsed = parse_typed_response::<DocumentDetailResponse>(resp).await?;
-        Ok(parsed)
-    }
-}
-
-impl HttpClient for DocumentRetrieveRequest {
-    type Body = (); // unused
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+    /// Send via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDetailResponse> {
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::LlmApplication,
+            &["document", &self.document_id],
+        )?;
+        client
+            .send_empty::<DocumentDetailResponse>("GET", url)
+            .await
     }
 }

@@ -1,12 +1,9 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use validator::Validate;
 
 use super::types::UploadFileResponse;
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, join_url, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response, send_multipart_request},
-};
+use crate::client::ZaiClient;
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -55,67 +52,23 @@ pub struct UploadFileOptions {
 }
 
 /// File upload request (multipart/form-data)
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct DocumentUploadFileRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
     knowledge_id: String,
-    http_config: Arc<HttpClientConfig>,
     files: Vec<PathBuf>,
     options: UploadFileOptions,
-    _body: (),
 }
 
 impl DocumentUploadFileRequest {
     /// Create a new request for a specific knowledge base id
-    pub fn new(key: impl Into<String>, knowledge_id: impl Into<String>) -> Self {
-        let knowledge_id = knowledge_id.into();
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(
-            &api_base,
-            &join_url(paths::DOCUMENT_UPLOAD_DOCUMENT, &knowledge_id),
-        );
+    pub fn new(knowledge_id: impl Into<String>) -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            knowledge_id,
-            http_config: Arc::new(HttpClientConfig::default()),
+            knowledge_id: knowledge_id.into(),
             files: Vec::new(),
             options: UploadFileOptions::default(),
-            _body: (),
         }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(
-            &self.api_base,
-            &join_url(paths::DOCUMENT_UPLOAD_DOCUMENT, &self.knowledge_id),
-        );
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base_url.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
     }
 
     /// Add a local file path to upload
@@ -167,94 +120,46 @@ impl DocumentUploadFileRequest {
         Ok(())
     }
 
-    /// Send multipart request and parse typed response
-    pub async fn send(&self) -> crate::ZaiResult<UploadFileResponse> {
-        // Field validations
+    /// Send the multipart request via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<UploadFileResponse> {
         self.options.validate()?;
         self.validate_cross()?;
 
-        let resp = self.post().await?;
-        parse_typed_response::<UploadFileResponse>(resp).await
-    }
-}
-
-impl HttpClient for DocumentUploadFileRequest {
-    type Body = (); // unused
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    // Override POST to send multipart/form-data
-
-    fn post(
-        &self,
-    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
-        let url = self.url.clone();
-        let key = self.key.clone();
-        let config = self.http_config.clone();
-        let files = self.files.clone();
-        let opts = self.options.clone();
-        async move {
-            let mut file_parts = Vec::new();
-            for path in files.iter() {
-                let fname = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .map(std::string::ToString::to_string)
-                    .unwrap_or_else(|| "upload.bin".to_string());
-                file_parts.push((fname, tokio::fs::read(path).await?));
-            }
-            send_multipart_request(reqwest::Method::POST, url, key, config, move || {
-                let mut form = reqwest::multipart::Form::new();
-
-                if let Some(t) = opts.knowledge_type {
-                    form = form.text("knowledge_type", t.as_i64().to_string());
-                }
-                if let Some(seps) = opts.custom_separator.as_ref() {
-                    let s = serde_json::to_string(seps).unwrap_or_else(|_| "[]".to_string());
-                    form = form.text("custom_separator", s);
-                }
-                if let Some(sz) = opts.sentence_size {
-                    form = form.text("sentence_size", sz.to_string());
-                }
-                if let Some(pi) = opts.parse_image {
-                    form = form.text("parse_image", if pi { "true" } else { "false" }.to_string());
-                }
-                if let Some(u) = opts.callback_url.as_ref() {
-                    form = form.text("callback_url", u.clone());
-                }
-                if let Some(h) = opts.callback_header.as_ref() {
-                    let s = serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string());
-                    form = form.text("callback_header", s);
-                }
-                if let Some(w) = opts.word_num_limit.as_ref() {
-                    form = form.text("word_num_limit", w.clone());
-                }
-                if let Some(r) = opts.req_id.as_ref() {
-                    form = form.text("req_id", r.clone());
-                }
-
-                for (fname, bytes) in file_parts.iter() {
-                    let part =
-                        reqwest::multipart::Part::bytes(bytes.clone()).file_name(fname.clone());
-                    form = form.part("files", part);
-                }
-                Ok(form)
-            })
-            .await
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::LlmApplication,
+            &["document", "upload_document", &self.knowledge_id],
+        )?;
+        let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new();
+        if let Some(t) = self.options.knowledge_type {
+            factory = factory.field("knowledge_type", t.as_i64().to_string())?;
         }
-    }
-
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        self.http_config.clone()
+        if let Some(seps) = self.options.custom_separator.as_ref() {
+            factory = factory.field("custom_separator", serde_json::to_string(seps)?)?;
+        }
+        if let Some(sz) = self.options.sentence_size {
+            factory = factory.field("sentence_size", sz.to_string())?;
+        }
+        if let Some(pi) = self.options.parse_image {
+            factory = factory.field("parse_image", pi.to_string())?;
+        }
+        if let Some(url) = self.options.callback_url.as_ref() {
+            factory = factory.field("callback_url", url.clone())?;
+        }
+        if let Some(header) = self.options.callback_header.as_ref() {
+            factory = factory.field("callback_header", serde_json::to_string(header)?)?;
+        }
+        if let Some(limit) = self.options.word_num_limit.as_ref() {
+            factory = factory.field("word_num_limit", limit.clone())?;
+        }
+        if let Some(req_id) = self.options.req_id.as_ref() {
+            factory = factory.field("req_id", req_id.clone())?;
+        }
+        for path in &self.files {
+            let part = crate::client::transport::multipart::FilePart::from_path(path)?;
+            factory = factory.file_named("files", part)?;
+        }
+        client
+            .send_multipart::<UploadFileResponse>("POST", url, &factory)
+            .await
     }
 }

@@ -22,7 +22,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! let mut client = ChatCompletion::new(model, messages, api_key).enable_stream();
 //! client.stream_for_each(|chunk| async move {
 //!     if let Some(delta) = &chunk.choices[0].delta {
@@ -59,8 +59,7 @@ where
         serde_json::Value::String(s) => Ok(Some(s)),
         serde_json::Value::Number(n) => Ok(Some(n.to_string())),
         other => Err(serde::de::Error::custom(format!(
-            "expected string or number, got {}",
-            other
+            "expected string or number, got {other}"
         ))),
     }
 }

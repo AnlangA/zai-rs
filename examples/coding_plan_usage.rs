@@ -19,7 +19,7 @@
 //! RUST_LOG=trace cargo run --example coding_plan_usage
 //! ```
 
-use zai_rs::{client::http::HttpClientConfig, usage::CodingPlanUsageRequest};
+use zai_rs::{ZaiResult, client::ZaiClient, usage::CodingPlanUsageRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,18 +35,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
 
-    // `enable_logging(true)` turns on the request-body log emitted by the
-    // transport. The raw response body is logged at `trace` inside
-    // `parse_typed_response`, so run with `RUST_LOG=trace` to see it.
-    let config = HttpClientConfig::builder().logging(enable_logging).build();
-
-    // Query the official monitor endpoint.
-    // Use `.with_monitor_base("https://api.z.ai/api/monitor")` for the
+    // Build the shared ZaiClient. The Monitor family defaults to the official
+    // endpoint; override it with `.endpoint(ApiFamily::Monitor, base)` for the
     // international endpoint.
-    let resp = CodingPlanUsageRequest::new(key)
-        .with_http_config(config)
-        .send()
-        .await?;
+    let client: ZaiResult<ZaiClient> = ZaiClient::builder(key).build();
+    let client = client?;
+
+    // Query the monitor endpoint. The raw response body is logged at `trace`
+    // inside the transport decoder, so run with `RUST_LOG=trace` to see it.
+    let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
 
     // Pretty-print the normalized summary (also available via
     // `query_coding_plan_usage_summary` at the crate root).

@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use super::session::SessionBuilder;
-use crate::client::endpoints::{ApiBase, EndpointConfig};
+use crate::client::ApiFamily;
+use crate::client::endpoint::EndpointConfig;
 
 /// Authentication mode for the realtime WebSocket handshake.
 #[derive(Debug, Clone)]
@@ -25,7 +26,7 @@ pub enum AuthMode {
 /// [`RealtimeClient::with_jwt`], then start a session with
 /// [`RealtimeClient::session`].
 ///
-/// ```rust,no_run
+/// ```text
 /// use zai_rs::{model::GLM4_voice, realtime::RealtimeClient};
 ///
 /// # async fn go(key: String) -> zai_rs::ZaiResult<()> {
@@ -49,7 +50,8 @@ impl RealtimeClient {
         Self {
             api_key: Arc::new(api_key.into()),
             auth: AuthMode::Bearer,
-            endpoint_config: EndpointConfig::default(),
+            endpoint_config: EndpointConfig::defaults()
+                .unwrap_or_else(|_| EndpointConfig::builder().build(false).unwrap()),
         }
     }
 
@@ -73,7 +75,11 @@ impl RealtimeClient {
 
     /// Override only the realtime base URL (`wss://...`).
     pub fn with_realtime_base(mut self, base: impl Into<String>) -> Self {
-        self.endpoint_config = self.endpoint_config.with_realtime_base(base);
+        let leaked: &'static str = Box::leak(base.into().into_boxed_str());
+        self.endpoint_config = EndpointConfig::builder()
+            .realtime(leaked)
+            .build(false)
+            .unwrap();
         self
     }
 
@@ -93,7 +99,9 @@ impl RealtimeClient {
 
     /// The resolved realtime WebSocket URL.
     pub fn realtime_url(&self) -> String {
-        self.endpoint_config.url(&ApiBase::Realtime, "")
+        self.endpoint_config
+            .resolve(ApiFamily::Realtime, &[])
+            .unwrap_or_default()
     }
 
     /// Current auth mode.

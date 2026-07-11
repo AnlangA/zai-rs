@@ -1,0 +1,112 @@
+# spec/upstream/SOURCES.toml
+#
+# Frozen provenance manifest for the 2026-07-11 upstream contract snapshots.
+# Every entry records the exact URL, git commit (where applicable), fetch date,
+# byte length and SHA-256 of the committed blob under spec/upstream.
+#
+# The xtask `contract verify` command reads this file and re-checks each
+# length/SHA-256 against the on-disk file, so any drift is caught before a
+# merge. These values are fixed by the optimization plan (section 3) and MUST
+# NOT be regenerated from a live web page — see docs/AI_AGENT_OPTIMIZATION_PLAN.md
+# section 3 and section 13.
+#
+# All byte lengths and hashes below were produced by:
+#   wc -c < <file>     (byte length)
+#   shasum -a 256 <file>   (SHA-256)
+
+frozen_at = "2026-07-11"
+plan_baseline_commit = "e82be86"
+
+# ---------------------------------------------------------------------------
+# Primary machine-readable contract: OpenAPI 3.0.1 (Zhipu AI).
+# ---------------------------------------------------------------------------
+[[openapi]]
+name = "openapi"
+url = "https://docs.bigmodel.cn/openapi/openapi.json"
+fetched_at = "2026-07-11"
+path = "spec/upstream/openapi-2026-07-11.json"
+byte_length = 452097
+sha256 = "c3754a1265e6f88dbba1404520d50773f7f7bd586fb2d676dde62d1c1bfe377e"
+path_count = 53
+operation_count = 59
+api_version = "1.0.0"
+title = "ZHIPU AI API"
+
+# ---------------------------------------------------------------------------
+# Realtime WebSocket contract: AsyncAPI (single realtime channel).
+# ---------------------------------------------------------------------------
+[[openapi]]
+name = "asyncapi"
+url = "https://docs.bigmodel.cn/asyncapi/asyncapi.json"
+fetched_at = "2026-07-11"
+path = "spec/upstream/asyncapi-2026-07-11.json"
+byte_length = 39553
+sha256 = "01fa9bb1c6845650d55ed7e3b18aa249774988329d7a8d6aeb20835c33620490"
+channel_count = 1
+
+# ---------------------------------------------------------------------------
+# Human-readable manual reference pages. These encode field-level constraints
+# that the machine specs under-specify (ASR/TTS/Knowledge) and the canonical
+# Agent v1 surface. Encoded into spec/contracts/manual-constraints.toml by P00.
+# ---------------------------------------------------------------------------
+[[manual]]
+name = "agent"
+url = "https://docs.bigmodel.cn/api-reference/agent-api/%E6%99%BA%E8%83%BD%E4%BD%93%E5%AF%B9%E8%AF%9D.md"
+fetched_at = "2026-07-11"
+path = "spec/upstream/manual/agent-2026-07-11.md"
+byte_length = 16862
+sha256 = "71b6e21adb0b6705d90db772e9155564809a4f8eed15928c98775f2335b4a266"
+
+[[manual]]
+name = "asr"
+url = "https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E8%AF%AD%E9%9F%B3%E8%BD%AC%E6%96%87%E6%9C%AC.md"
+fetched_at = "2026-07-11"
+path = "spec/upstream/manual/asr-2026-07-11.md"
+byte_length = 6527
+sha256 = "bb43aae64ebd6189193586a73a132a14147e0fec53a86b1d24ec70704cbfca18"
+
+[[manual]]
+name = "tts"
+url = "https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E6%96%87%E6%9C%AC%E8%BD%AC%E8%AF%AD%E9%9F%B3.md"
+fetched_at = "2026-07-11"
+path = "spec/upstream/manual/tts-2026-07-11.md"
+byte_length = 5713
+sha256 = "4563fee12a3e0868bba43837e68816cd80b43deef37e5439067d15c0b733faf4"
+
+[[manual]]
+name = "knowledge"
+url = "https://docs.bigmodel.cn/api-reference/%E7%9F%A5%E8%AF%86%E5%BA%93-api/%E5%88%9B%E5%BB%BA%E7%9F%A5%E8%AF%86%E5%BA%93.md"
+fetched_at = "2026-07-11"
+path = "spec/upstream/manual/knowledge-2026-07-11.md"
+byte_length = 4498
+sha256 = "d8bc15e3cb478268e2d55268ea86f59d57294165b78eed931ce265341874953d"
+
+[[manual]]
+name = "api-errors"
+url = "https://docs.bigmodel.cn/cn/faq/api-code.md"
+fetched_at = "2026-07-11"
+path = "spec/upstream/manual/api-errors-2026-07-11.md"
+byte_length = 7639
+sha256 = "745b2a789a34e9ec1e1b021fcbeff472bd716b95facaee28e4388990a0e8afdf"
+
+[[manual]]
+name = "coding-plan-usage"
+url = "https://docs.bigmodel.cn/cn/coding-plan/extension/usage-query-plugin.md"
+fetched_at = "2026-07-11"
+path = "spec/upstream/manual/coding-plan-usage-2026-07-11.md"
+byte_length = 1973
+sha256 = "d0f3e150b7b29bb63acfe9032a50f8c3975e9b752784f66a9b82d4cf7ccbceee"
+
+# ---------------------------------------------------------------------------
+# Coding Plan usage-monitor endpoint source. Pinned to a fixed git commit so
+# the quota/limit query path is reproducible. The file is vendored verbatim.
+# ---------------------------------------------------------------------------
+[[coding_plan]]
+name = "query-usage"
+url = "https://raw.githubusercontent.com/zai-org/zai-coding-plugins/0446d0bb0bc537d97d3ab3664c4b8b9c4a0e1254/plugins/glm-plan-usage/skills/usage-query-skill/scripts/query-usage.mjs"
+repo = "zai-org/zai-coding-plugins"
+commit = "0446d0bb0bc537d97d3ab3664c4b8b9c4a0e1254"
+fetched_at = "2026-07-11"
+path = "spec/upstream/coding-plan/query-usage.mjs"
+byte_length = 5445
+sha256 = "9708b71af925fcf32bc9f611842e37f543ce38de4bebf09544bdf161cfdf8bae"

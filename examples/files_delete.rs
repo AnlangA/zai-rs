@@ -1,16 +1,13 @@
+use zai_rs::client::ZaiClient;
 use zai_rs::file::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
-
-    // file id to delete, pass as arg or hardcode for testing
+    let client = ZaiClient::from_env()?;
     let file_id = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "1757561531_ec561569199641b3a5c556503a72cb79".to_string());
-
-    let body: FileDeleteResponse = FileDeleteRequest::new(key, file_id).send().await?;
-    println!("{:#?}", body);
-
+        .expect("usage: files_delete <file_id>");
+    let resp = FileDeleteRequest::new(file_id).send_via(&client).await?;
+    println!("{resp:#?}");
     Ok(())
 }

@@ -20,7 +20,7 @@
 //!
 //! ## Usage Examples
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::model::model_validate::*;
 //! use validator::Validate;
 //!
@@ -77,7 +77,7 @@ use validator::ValidationError;
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Valid JSON Schema
 /// let valid_schema = r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#;
 /// assert!(validate_json_schema(valid_schema).is_ok());
@@ -132,7 +132,7 @@ pub fn validate_json_schema(_parameters: &str) -> Result<(), ValidationError> {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// use serde_json::json;
 ///
 /// // Valid JSON Schema

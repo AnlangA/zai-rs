@@ -33,7 +33,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::knowledge::*;
 //!
 //! // Create a knowledge base
@@ -70,6 +70,8 @@ pub mod document_upload_url;
 pub mod list;
 /// Retrieve knowledge-base details / semantic search.
 pub mod retrieve;
+/// Search knowledge-base (POST /knowledge/retrieve, P06).
+pub mod search;
 /// Shared knowledge-base data types.
 pub mod types;
 /// Update knowledge-base metadata.
@@ -92,6 +94,7 @@ pub use document_upload_file::{DocumentSliceType, DocumentUploadFileRequest, Upl
 pub use document_upload_url::{DocumentUploadUrlRequest, UploadUrlBody, UploadUrlDetail};
 pub use list::{KnowledgeListQuery, KnowledgeListRequest};
 pub use retrieve::{KnowledgeRetrieveRequest, KnowledgeRetrieveResponse};
+pub use search::{KnowledgeSearchBody, KnowledgeSearchRequest, KnowledgeSearchResponse};
 pub use types::{
     DocumentDetailResponse, DocumentFailInfo, DocumentImageItem, DocumentImageListData,
     DocumentImageListResponse, DocumentItem, DocumentListData, DocumentListResponse,

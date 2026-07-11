@@ -2,31 +2,45 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::super::traits::*;
+use crate::ZaiResult;
+use crate::{ZaiError, client::error::codes};
 
-/// Body parameters holder for audio transcription (used to build multipart
-/// form)
+/// Body parameters holder for audio transcription (used to build the multipart
+/// form).
+///
+/// **P04.8**: aligns with the official ASR contract (plan §13.3):
+/// - `temperature` is REMOVED (it is not a valid ASR parameter);
+/// - `prompt` is optional (the documented 8000-char limit is advisory — the
+///   client does NOT hard-reject, the server enforces it);
+/// - `hotwords` ≤ 100 entries;
+/// - `request_id` length 6..=64; `user_id` length 6..=128.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct AudioToTextBody<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
-    /// Model code (e.g., glm-asr)
+    /// Model code (e.g., `glm-asr-2512`).
     pub model: N,
 
-    /// Sampling temperature [0.0, 1.0], default 0.95
+    /// Optional prompt (advisory 8000-char limit; the server enforces it).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[validate(range(min = 0.0, max = 1.0))]
-    pub temperature: Option<f32>,
+    pub prompt: Option<String>,
 
-    /// Stream mode flag (sync call should keep false or omit)
+    /// Hot-word list, at most 100 entries.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[validate(length(max = 100))]
+    pub hotwords: Vec<String>,
+
+    /// Stream mode flag (sync call should keep `false` or omit).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 
-    /// Client-provided unique request id
+    /// Client-provided unique request id (6..=64 chars).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(length(min = 6, max = 64))]
     pub request_id: Option<String>,
 
-    /// End user id (6..=128 chars)
+    /// End-user id (6..=128 chars).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 6, max = 128))]
     pub user_id: Option<String>,
@@ -36,22 +50,34 @@ impl<N> AudioToTextBody<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
-    /// Create a new transcription body for the given model (all options
-    /// `None`).
+    /// Create a new transcription body for the given model (all options empty).
     pub fn new(model: N) -> Self {
         Self {
             model,
-            temperature: None,
+            prompt: None,
+            hotwords: Vec::new(),
             stream: None,
             request_id: None,
             user_id: None,
         }
     }
 
-    /// Set the sampling temperature (`0.0`–`1.0`).
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.temperature = Some(temperature);
+    /// Set an optional prompt (advisory 8000-char limit; not hard-rejected).
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = Some(prompt.into());
         self
+    }
+
+    /// Set the hot-word list (at most 100 entries).
+    pub fn with_hotwords(mut self, hotwords: Vec<String>) -> ZaiResult<Self> {
+        if hotwords.len() > 100 {
+            return Err(ZaiError::ApiError {
+                code: codes::SDK_VALIDATION,
+                message: "hotwords must contain at most 100 entries".to_string(),
+            });
+        }
+        self.hotwords = hotwords;
+        Ok(self)
     }
 
     /// Enable/disable streaming responses.
@@ -60,7 +86,7 @@ where
         self
     }
 
-    /// Set the client-side request id.
+    /// Set the client-side request id (6..=64 chars).
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
         self

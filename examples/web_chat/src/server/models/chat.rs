@@ -194,7 +194,6 @@ pub struct StreamMetadata {
 pub struct ChatCompletionBuilder {
     model: GLM4_6,
     messages: Vec<TextMessage>,
-    api_key: String,
     temperature: f64,
     top_p: f64,
     thinking: ThinkingType,
@@ -203,11 +202,13 @@ pub struct ChatCompletionBuilder {
 
 impl ChatCompletionBuilder {
     /// Create a new chat completion builder
-    pub fn new(api_key: String) -> Self {
+    ///
+    /// (P05 migration: the API key no longer lives on the request builder; the
+    /// shared `ZaiClient` owns it and is supplied at send time via `send_via`.)
+    pub fn new() -> Self {
         Self {
             model: GLM4_6 {},
             messages: Vec::new(),
-            api_key,
             temperature: 0.7,
             top_p: 0.9,
             thinking: ThinkingType::disabled(),
@@ -258,11 +259,10 @@ impl ChatCompletionBuilder {
             .into());
         }
 
-        let mut client =
-            zai_rs::model::ChatCompletion::new(self.model, self.messages[0].clone(), self.api_key)
-                .with_temperature(self.temperature)
-                .with_top_p(self.top_p)
-                .with_thinking(self.thinking);
+        let mut client = zai_rs::model::ChatCompletion::new(self.model, self.messages[0].clone())
+            .with_temperature(self.temperature)
+            .with_top_p(self.top_p)
+            .with_thinking(self.thinking);
 
         // Add remaining messages
         for message in self.messages.into_iter().skip(1) {
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn test_chat_completion_builder() {
-        let builder = ChatCompletionBuilder::new("test-key".to_string())
+        let builder = ChatCompletionBuilder::new()
             .temperature(0.8)
             .top_p(0.95)
             .with_thinking(true)

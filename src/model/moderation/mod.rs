@@ -13,12 +13,12 @@
 //!
 //! ## Examples
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::model::moderation::*;
 //!
 //! // Text moderation
 //! let moderation = Moderation::new_text("审核内容安全样例字符串。", api_key);
-//! let result = moderation.send().await?;
+//! let result = moderation.send_via(&client).await?;
 //!
 //! // Multimedia moderation
 //! let moderation = Moderation::new_multimedia(
@@ -26,7 +26,7 @@
 //!     "https://example.com/image.jpg",
 //!     api_key
 //! );
-//! let result = moderation.send().await?;
+//! let result = moderation.send_via(&client).await?;
 //! ```
 
 /// Request builder and client for content moderation.

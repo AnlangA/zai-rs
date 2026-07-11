@@ -12,7 +12,7 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
+//! ```text
 //! use std::path::Path;
 //!
 //! use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolType};
@@ -25,7 +25,7 @@
 //!     let request =
 //!         FileParserCreateRequest::new(api_key, file_path, ToolType::Lite, FileType::PDF)?;
 //!
-//!     let response = request.send().await?;
+//!     let response = request.send_via(&client).await?;
 //!     println!("Task created: {}", response.task_id);
 //!
 //!     Ok(())

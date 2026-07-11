@@ -1,8 +1,10 @@
+use zai_rs::client::ZaiClient;
 use zai_rs::model::voice_list::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    // Credentials and transport come from the environment via ZaiClient (P05).
+    let client = ZaiClient::from_env()?;
 
     // Build request: optionally filter by name/type
     let query = VoiceListQuery::new()
@@ -10,9 +12,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // .with_voice_type(VoiceType::Private)
         ;
 
-    let client = VoiceListRequest::new(key).with_query(query);
+    let request = VoiceListRequest::new().with_query(query);
 
-    let body: VoiceListResponse = client.send().await?;
+    let body: VoiceListResponse = request.send_via(&client).await?;
     if let Some(list) = body.voice_list.as_ref() {
         println!("voices: {}", list.len());
         for (i, item) in list.iter().enumerate() {

@@ -1,22 +1,32 @@
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5v {};
-    let key =
-        std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
+    // The media URL is read from the first CLI argument instead of a hardcoded
+    // (and, in the prior revision, expired/signed) URL. Missing the argument
+    // prints usage and exits 2 — never a panic.
+    let media_url = match std::env::args().nth(1) {
+        Some(url) => url,
+        None => {
+            eprintln!("usage: chat_vision <media-url>");
+            eprintln!("       pass an https URL to an image or video for the vision model");
+            std::process::exit(2);
+        },
+    };
 
-    // Create video content from the local file
-    let video_content = VisionRichContent::video(
-        "https://maas-watermark-prod.cn-wlcb.ufileos.com/1757254909722_watermark.mp4?UCloudPublicKey=TOKEN_75a9ae85-4f15-4045-940f-e94c0f82ae90&Signature=zYLD3mC%2FxDlL%2F4N%2FuDQJQ%2Fp%2F5%2BI%3D&Expires=1757341309",
-    );
+    let model = GLM4_5v {};
+    let client = ZaiClient::from_env()?;
+
+    // Create video content from the user-provided media URL.
+    let video_content = VisionRichContent::video(&media_url);
     let text_content = VisionRichContent::text("这个视频描述了什么?，用中文回复我");
     let vision_message = VisionMessage::new_user()
         .add_content(video_content)
         .add_content(text_content);
-    let client = ChatCompletion::new(model, vision_message, key);
+    let request = ChatCompletion::new(model, vision_message);
 
-    let body: ChatCompletionResponse = client.send().await?;
-    println!("{:#?}", body);
+    let body: ChatCompletionResponse = request.send_via(&client).await?;
+    println!("{body:#?}");
     Ok(())
 }

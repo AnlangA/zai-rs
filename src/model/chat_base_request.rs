@@ -27,7 +27,7 @@ use super::{tools::*, traits::*};
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// use crate::model::base::{ChatBody, TextMessage};
 ///
 /// // Create a basic chat request
@@ -275,7 +275,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let chat_body = ChatBody::new(model, messages)
     ///     .with_thinking("Let me think step by step about this problem...");
     /// ```
@@ -301,7 +301,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// use zai_rs::model::tools::ReasoningEffort;
     ///
     /// let chat_body = ChatBody::new(GLM5_2 {}, messages)

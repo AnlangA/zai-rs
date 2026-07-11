@@ -9,7 +9,7 @@
 //! All APIs are feature-gated behind `rmcp-kits`.
 //!
 //! Example: convert RMCP tools and wire them into a chat request
-//! ```rust,ignore
+//! ```text
 //! use rmcp::{ServiceExt, model::ClientInfo, transport::SseClientTransport};
 //! use zai_rs::{model::{Tools, Function}, toolkits::rmcp_kits};
 //! # async fn demo() -> anyhow::Result<()> {
@@ -23,7 +23,7 @@
 //! ```
 //!
 //! Example: execute a tool call and collect results by tool name
-//! ```rust,ignore
+//! ```text
 //! use rmcp::service::ServerSink;
 //! use zai_rs::toolkits::rmcp_kits::{call_mcp_tool, call_mcp_tools_collect};
 //! # async fn run(server: &ServerSink) -> anyhow::Result<()> {
@@ -156,7 +156,7 @@ pub async fn call_mcp_tool(
         );
         crate::client::error::ZaiError::Unknown {
             code: codes::SDK_EXTERNAL_TOOL,
-            message: format!("RMCP service error: {}", e),
+            message: format!("RMCP service error: {e}"),
         }
     })?;
     Ok((name, call_tool_result_to_json(&res)))
@@ -298,7 +298,7 @@ pub async fn execute_tool_calls_as_messages(
             caller.call(name, args_value).await.map_err(|e| {
                 crate::client::error::ZaiError::Unknown {
                     code: codes::SDK_EXTERNAL_TOOL,
-                    message: format!("RMCP call_tool failed: {}", e),
+                    message: format!("RMCP call_tool failed: {e}"),
                 }
             })?;
 
@@ -320,6 +320,7 @@ pub async fn execute_tool_calls_as_messages(
 #[cfg(feature = "rmcp-kits")]
 pub async fn run_mcp_tool_roundtrip<N>(
     caller: &McpToolCaller,
+    client: &crate::client::ZaiClient,
     mut chat: crate::model::chat::data::ChatCompletion<
         N,
         crate::model::chat_message_types::TextMessage,
@@ -333,7 +334,7 @@ where
 {
     use crate::model::chat_message_types::TextMessage;
 
-    let first_resp = chat.send().await?;
+    let first_resp = chat.send_via(client).await?;
 
     let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> =
         execute_tool_calls_as_messages(caller, &first_resp).await?;
@@ -353,7 +354,7 @@ where
         chat = chat.add_messages(TextMessage::system(hint));
     }
 
-    let final_resp = chat.send().await?;
+    let final_resp = chat.send_via(client).await?;
     Ok(final_resp)
 }
 

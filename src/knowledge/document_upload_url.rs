@@ -1,16 +1,9 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::types::UploadUrlResponse;
-use crate::{
-    ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
-};
+use crate::ZaiResult;
+use crate::client::ZaiClient;
 
 /// Single URL upload detail
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -111,56 +104,17 @@ impl UploadUrlBody {
 }
 
 /// Upload URL request (POST /llm-application/open/document/upload_url)
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct DocumentUploadUrlRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     body: UploadUrlBody,
 }
 
 impl DocumentUploadUrlRequest {
     /// Create a new upload-by-URL request with the given body.
-    pub fn new(key: impl Into<String>, body: UploadUrlBody) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, paths::DOCUMENT_UPLOAD_URL);
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::DOCUMENT_UPLOAD_URL);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+    pub fn new(body: UploadUrlBody) -> Self {
+        Self { body }
     }
 
     /// Borrow the underlying [`UploadUrlBody`] mutably.
@@ -168,35 +122,15 @@ impl DocumentUploadUrlRequest {
         &mut self.body
     }
 
-    /// Validate and send
-    pub async fn send(&self) -> ZaiResult<UploadUrlResponse> {
+    /// Validate and send via a [`ZaiClient`], returning the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<UploadUrlResponse> {
         self.body.validate()?;
-        let resp = self.post().await?;
-        let parsed = parse_typed_response::<UploadUrlResponse>(resp).await?;
-        Ok(parsed)
-    }
-}
-
-impl HttpClient for DocumentUploadUrlRequest {
-    type Body = UploadUrlBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::LlmApplication,
+            &["document", "upload_url"],
+        )?;
+        client
+            .send_json::<_, UploadUrlResponse>("POST", url, &self.body)
+            .await
     }
 }

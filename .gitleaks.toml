@@ -1,0 +1,10 @@
+# gitleaks configuration (plan P14.5).
+# Inherits default rules; only overrides the global allowlist.
+
+title = "zai-rs gitleaks config"
+
+[allowlist]
+description = "Global allowlist — exclude build output and caches."
+paths = [
+    '''(?:^|/)(?:target|node_modules)(?:/|$)''',
+]

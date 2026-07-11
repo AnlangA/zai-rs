@@ -472,7 +472,7 @@ mod tests {
         for i in 0..10 {
             let cache_clone = Arc::clone(&cache);
             handles.push(thread::spawn(move || {
-                let key_name = format!("tool_{}", i);
+                let key_name = format!("tool_{i}");
                 let args = serde_json::json!({"input": i});
                 let result = serde_json::json!({"output": format!("result_{}", i)});
                 cache_clone.insert_with_key(key_name.clone(), args.clone(), result);
@@ -501,11 +501,7 @@ mod tests {
         // Insert 5 entries to fill the cache
         for i in 0..5 {
             let args = serde_json::json!({"input": i});
-            cache.insert_with_key(
-                format!("tool_{}", i),
-                args,
-                serde_json::json!({"result": i}),
-            );
+            cache.insert_with_key(format!("tool_{i}"), args, serde_json::json!({"result": i}));
         }
 
         assert_eq!(cache.stats().total_entries, 5);

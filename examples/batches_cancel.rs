@@ -1,62 +1,27 @@
-use std::{fs::File, io::Write};
-
-use serde_json::json;
-use zai_rs::{batches::*, file::*};
+use zai_rs::batches::*;
+use zai_rs::client::ZaiClient;
+use zai_rs::file::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
-
-    // 1) Prepare a minimal .jsonl with a single chat.completions request
-    std::fs::create_dir_all("data")?;
-    let path = "data/batch_cancel_demo.jsonl";
-    let mut f = File::create(path)?;
-    let line = json!({
-        "custom_id": "cancel-demo-1",
-        "method": "POST",
-        "url": "/v4/chat/completions",
-        "body": {
-            "model": "glm-4",
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Say hello"}
-            ]
-        }
-    });
-    writeln!(f, "{}", line)?;
-
-    // 2) Upload the .jsonl file as purpose=batch
-    let upload = FileUploadRequest::new(key.clone(), FilePurpose::Batch, path)
-        .with_content_type("application/jsonl");
-    let file: FileObject = upload.send().await?;
-    let file_id = file
-        .id
-        .ok_or_else(|| Box::<dyn std::error::Error>::from("missing file id"))?;
-
-    // 3) Create a batch task using the uploaded file
-    let created: CreateBatchResponse =
-        CreateBatchRequest::new(key.clone(), file_id, BatchEndpoint::ChatCompletions)
-            .with_auto_delete_input_file(true)
-            .send()
-            .await?;
-
-    let batch_id = created
-        .id
-        .clone()
-        .ok_or_else(|| Box::<dyn std::error::Error>::from("create returned no batch id"))?;
-    println!(
-        "created batch: id={:?} status={:?}",
-        created.id, created.status
-    );
-
-    // 4) Immediately cancel the batch
-    let cancelled: CancelBatchResponse = CancelBatchRequest::new(key.clone(), batch_id)
-        .send()
+    let client = ZaiClient::from_env()?;
+    let path = std::env::temp_dir().join("zai_batch_cancel.jsonl");
+    let path_str = path.to_str().unwrap();
+    std::fs::write(
+        &path,
+        r#"{"custom_id":"d","method":"POST","url":"/v4/chat/completions","body":{"model":"glm-4","messages":[{"role":"user","content":"hi"}]}}"#,
+    )?;
+    let file: FileObject = FileUploadRequest::new(FilePurpose::Batch, path_str)
+        .send_via(&client)
         .await?;
-
-    println!(
-        "cancelled? id={:?} status={:?}",
-        cancelled.id, cancelled.status
-    );
+    let file_id = file.id.ok_or("no id")?;
+    let created: CreateBatchResponse =
+        CreateBatchRequest::new(file_id, BatchEndpoint::ChatCompletions)
+            .send_via(&client)
+            .await?;
+    let batch_id = created.id.ok_or("no batch id")?;
+    let cancelled: CancelBatchResponse =
+        CancelBatchRequest::new(batch_id).send_via(&client).await?;
+    println!("{cancelled:#?}");
     Ok(())
 }

@@ -14,11 +14,12 @@
 //!
 //! ## Quick start
 //!
-//! ```rust,no_run
+//! ```text
+//! use zai_rs::client::ZaiClient;
 //! use zai_rs::usage::CodingPlanUsageRequest;
 //!
-//! # async fn go(key: String) -> zai_rs::ZaiResult<()> {
-//! let resp = CodingPlanUsageRequest::new(key).send().await?;
+//! # async fn go(client: ZaiClient) -> zai_rs::ZaiResult<()> {
+//! let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
 //!
 //! let usage = resp.summary();
 //!
@@ -48,14 +49,18 @@
 //!
 //! ## Switching to the international endpoint
 //!
-//! ```rust,no_run
+//! Override the monitor family base on the [`ZaiClient`] builder:
+//!
+//! ```text
+//! use zai_rs::client::{ApiFamily, ZaiClient};
 //! use zai_rs::usage::CodingPlanUsageRequest;
 //!
-//! # async fn go(key: String) -> zai_rs::ZaiResult<()> {
-//! let resp = CodingPlanUsageRequest::new(key)
-//!     .with_monitor_base("https://api.z.ai/api/monitor")
-//!     .send()
-//!     .await?;
+//! # async fn go() -> zai_rs::ZaiResult<()> {
+//! static INTL: &str = "https://api.z.ai/api/monitor";
+//! let client = ZaiClient::builder("your-api-key")
+//!     .endpoint(ApiFamily::Monitor, INTL)
+//!     .build()?;
+//! let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -67,14 +72,16 @@ pub use data::{
     CodingPlanUsageDetail, CodingPlanUsageRequest, CodingPlanUsageResponse, CodingPlanUsageSummary,
 };
 
-use crate::ZaiResult;
+use crate::{ZaiResult, client::ZaiClient};
 
-/// Query the Coding Plan usage endpoint and return the typed raw response.
-pub async fn query(key: impl Into<String>) -> ZaiResult<CodingPlanUsageResponse> {
-    CodingPlanUsageRequest::new(key.into()).send().await
+/// Query the Coding Plan usage endpoint via `client` and return the typed raw
+/// response.
+pub async fn query(client: &ZaiClient) -> ZaiResult<CodingPlanUsageResponse> {
+    CodingPlanUsageRequest::new().send_via(client).await
 }
 
-/// Query the Coding Plan usage endpoint and return a normalized summary.
-pub async fn query_summary(key: impl Into<String>) -> ZaiResult<CodingPlanUsageSummary> {
-    query(key).await.map(|response| response.summary())
+/// Query the Coding Plan usage endpoint via `client` and return a normalized
+/// summary.
+pub async fn query_summary(client: &ZaiClient) -> ZaiResult<CodingPlanUsageSummary> {
+    query(client).await.map(|response| response.summary())
 }

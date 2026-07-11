@@ -276,10 +276,10 @@ impl FunctionTool {
         Fut: std::future::Future<Output = ToolResult<serde_json::Value>> + Send + 'static,
     {
         let content = std::fs::read_to_string(path).map_err(|e| {
-            error_context().invalid_parameters(format!("Failed to read spec file: {}", e))
+            error_context().invalid_parameters(format!("Failed to read spec file: {e}"))
         })?;
         let spec: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| error_context().invalid_parameters(format!("Invalid JSON: {}", e)))?;
+            .map_err(|e| error_context().invalid_parameters(format!("Invalid JSON: {e}")))?;
         Self::from_function_spec(spec, f)
     }
 }
@@ -310,9 +310,8 @@ fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschem
     }
 
     // Compile and cache
-    let validator = jsonschema::validator_for(schema).map_err(|e| {
-        error_context().schema_validation(format!("Failed to compile schema: {}", e))
-    })?;
+    let validator = jsonschema::validator_for(schema)
+        .map_err(|e| error_context().schema_validation(format!("Failed to compile schema: {e}")))?;
 
     let validator = Arc::new(validator);
 
@@ -546,7 +545,7 @@ impl FunctionToolBuilder {
         let compiled_schema: CompiledSchema = compile_schema_cached(&schema).map_err(|e| {
             error_context()
                 .with_tool(self.metadata.name.clone())
-                .schema_validation(format!("Failed to compile schema: {}", e))
+                .schema_validation(format!("Failed to compile schema: {e}"))
         })?;
         // Without `tool-validation` there is no compiled validator; the
         // argument-validation step in `execute_json` is skipped.
@@ -574,7 +573,7 @@ impl DynTool for FunctionTool {
         if let Err(validation_error) = self.compiled_schema.validate(&input) {
             return Err(error_context()
                 .with_tool(self.name())
-                .invalid_parameters(format!("Input validation failed: {}", validation_error)));
+                .invalid_parameters(format!("Input validation failed: {validation_error}")));
         }
 
         // If validation passes (or is disabled), execute the handler

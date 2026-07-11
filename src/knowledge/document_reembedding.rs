@@ -1,15 +1,10 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::{
-    ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, join_url, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
-};
+use crate::ZaiResult;
+use crate::client::ZaiClient;
 
 /// Request body for re-embedding a document
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, Default)]
@@ -24,63 +19,21 @@ pub struct DocumentReembeddingBody {
 }
 
 /// Re-embedding request (POST /llm-application/open/document/embedding/{id})
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct DocumentReembeddingRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
     document_id: String,
-    http_config: Arc<HttpClientConfig>,
     body: DocumentReembeddingBody,
 }
 
 impl DocumentReembeddingRequest {
     /// Create a new request for the specified document id
-    pub fn new(key: impl Into<String>, document_id: impl Into<String>) -> Self {
-        let document_id = document_id.into();
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(
-            &api_base,
-            &join_url(paths::DOCUMENT_EMBEDDING, &document_id),
-        );
+    pub fn new(document_id: impl Into<String>) -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            document_id,
-            http_config: Arc::new(HttpClientConfig::default()),
+            document_id: document_id.into(),
             body: DocumentReembeddingBody::default(),
         }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(
-            &self.api_base,
-            &join_url(paths::DOCUMENT_EMBEDDING, &self.document_id),
-        );
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
     }
 
     /// Set callback URL
@@ -95,37 +48,16 @@ impl DocumentReembeddingRequest {
         self
     }
 
-    /// Send POST request with JSON body and parse typed response
-    pub async fn send(&self) -> ZaiResult<DocumentReembeddingResponse> {
-        // validate body
+    /// Send the POST request via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<DocumentReembeddingResponse> {
         self.body.validate()?;
-        let resp = self.post().await?;
-        let parsed = parse_typed_response::<DocumentReembeddingResponse>(resp).await?;
-        Ok(parsed)
-    }
-}
-
-impl HttpClient for DocumentReembeddingRequest {
-    type Body = DocumentReembeddingBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::LlmApplication,
+            &["document", "embedding", &self.document_id],
+        )?;
+        client
+            .send_json::<_, DocumentReembeddingResponse>("POST", url, &self.body)
+            .await
     }
 }
 

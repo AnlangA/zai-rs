@@ -1,34 +1,28 @@
 use zai_rs::{
-    client::http::*,
+    client::ZaiClient,
     model::{
-        async_chat_get::AsyncChatGetRequest,
-        chat_base_response::{ChatCompletionResponse, TaskStatus},
-        gen_video_async::*,
+        async_chat_get::AsyncChatGetRequest, chat_base_response::TaskStatus, gen_video_async::*,
     },
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = CogVideoX3 {};
-    let key =
-        std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
-    println!("{key}");
+    let client = ZaiClient::from_env()?;
     let user_text = "可爱小猫叠在一起";
 
-    // 提交视频生成请求
-    let client = VideoGenRequest::new(model, key.clone()).with_prompt(user_text);
-    let resp = client.post().await?;
-    let body: ChatCompletionResponse = resp.json().await?;
+    // 提交视频生成请求 (P05: credentials live on the ZaiClient).
+    let request = VideoGenRequest::new(model).with_prompt(user_text);
+    let body = request.send_via(&client).await?;
 
     let task_id = body.id().ok_or("Task ID not found in response")?;
-    println!("Task ID: {}", task_id);
+    println!("Task ID: {task_id}");
 
     // 使用 async_chat_get 轮询结果
-    let get_request = AsyncChatGetRequest::new(CogVideoX3 {}, task_id.to_string(), key);
+    let get_request = AsyncChatGetRequest::new(CogVideoX3 {}, task_id.to_string());
 
     loop {
-        let get_resp = get_request.get().await?;
-        let get_body: ChatCompletionResponse = get_resp.json().await?;
+        let get_body = get_request.send_via(&client).await?;
 
         match get_body.task_status() {
             Some(TaskStatus::Success) => {

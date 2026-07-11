@@ -6,3 +6,9 @@ target/
 /.claude
 /.zcode
 /realtime_out.bin
+
+# Generated artifacts — never commit
+*.cdx.json
+target/sbom/
+target/coverage*.json
+target/release-evidence/

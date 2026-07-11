@@ -9,9 +9,8 @@ use axum::{
     Json, Router,
 };
 use futures::stream::{self, Stream};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use validator::Validate;
-use zai_rs::model::StreamChatLikeExt;
 
 use crate::server::{
     error::{AppError, AppResult},
@@ -52,11 +51,11 @@ pub async fn send_message(
     let user_message = zai_rs::model::TextMessage::user(&request.message);
     session.add_message(user_message.clone());
 
-    // Build chat completion client
-    let api_key = state.config.api_key.clone();
+    // Build chat completion client (P05: the ZaiClient owns the key and is
+    // supplied to `.send_via` at send time; the builder no longer takes a key).
     let messages = session.get_recent_messages(50); // Keep last 50 messages for context
 
-    let client = crate::server::models::ChatCompletionBuilder::new(api_key)
+    let client = crate::server::models::ChatCompletionBuilder::new()
         .messages(messages)
         .temperature(request.get_temperature())
         .top_p(request.get_top_p())
@@ -64,7 +63,10 @@ pub async fn send_message(
         .build()?;
 
     // Get AI response
-    let response = client.send().await.map_err(AppError::from)?;
+    let response = client
+        .send_via(&state.zai_client)
+        .await
+        .map_err(AppError::from)?;
     let ai_text = crate::server::models::chat_utils::extract_text_from_response(&response)
         .unwrap_or_else(|| "抱歉，我现在无法回复。".to_string());
 
@@ -127,79 +129,53 @@ pub async fn stream_message(
     let user_message = zai_rs::model::TextMessage::user(&request.message);
     session.add_message(user_message.clone());
 
-    // Build streaming chat completion client
-    let api_key = state.config.api_key.clone();
+    // Build chat completion client (P05: the ZaiClient owns the key and is
+    // supplied via `.send_via`; P08: streaming was removed temporarily, so the
+    // SSE stream now emits the full response as a single content chunk plus a
+    // terminal `done` chunk instead of incrementally per-stream-delta).
     let messages = session.get_recent_messages(50);
 
-    let client = crate::server::models::ChatCompletionBuilder::new(api_key)
+    let client = crate::server::models::ChatCompletionBuilder::new()
         .messages(messages)
         .temperature(request.get_temperature())
         .top_p(request.get_top_p())
         .with_thinking(request.is_think_mode())
         .build()?;
 
-    let mut streaming_client = client.enable_stream();
-
-    // Create channel for streaming chunks
+    // Create channel for SSE chunks
     let (tx, mut rx) = mpsc::channel::<StreamChunk>(100);
 
-    // Spawn streaming task
+    // Spawn send task: fetch the full response, then push it as a single chunk.
     let state_clone = state.clone();
     let request_clone = request.clone();
+    let zai_client = state.zai_client.clone();
 
     tokio::spawn(async move {
-        let accumulated_response = Arc::new(Mutex::new(String::new()));
+        let send_result = client.send_via(&zai_client).await;
 
-        let stream_result = streaming_client
-            .stream_for_each(|chunk: zai_rs::model::ChatStreamResponse| {
-                let tx = tx.clone();
-                let session_id = session_id_clone.clone();
-                let accumulated_response = accumulated_response.clone();
+        match send_result {
+            Ok(response) => {
+                // Emit the full text as one content chunk.
+                let content =
+                    crate::server::models::chat_utils::extract_text_from_response(&response)
+                        .unwrap_or_else(|| "抱歉，我现在无法回复。".to_string());
 
-                async move {
-                    // Extract content from chunk
-                    if let Some(content) =
-                        crate::server::models::chat_utils::extract_text_from_chunk(&chunk)
-                    {
-                        accumulated_response.lock().await.push_str(&content);
+                let content_chunk = StreamChunk {
+                    content: content.clone(),
+                    session_id: session_id_clone.clone(),
+                    done: false,
+                    metadata: Some(StreamMetadata {
+                        finish_reason: response
+                            .choices()
+                            .and_then(|c| c.first())
+                            .and_then(|choice| choice.finish_reason.clone()),
+                        model: response.model.clone(),
+                        has_reasoning: request_clone.is_think_mode(),
+                    }),
+                    usage: None,
+                };
+                let _ = tx.send(content_chunk).await;
 
-                        let stream_chunk = StreamChunk {
-                            content: content.clone(),
-                            session_id: session_id.clone(),
-                            done: false,
-                            metadata: Some(StreamMetadata {
-                                finish_reason: chunk
-                                    .choices
-                                    .first()
-                                    .and_then(|c| c.finish_reason.clone()),
-                                model: chunk.model.clone(),
-                                has_reasoning: chunk
-                                    .choices
-                                    .first()
-                                    .and_then(|c| c.delta.as_ref())
-                                    .and_then(|d| d.reasoning_content.as_ref())
-                                    .is_some(),
-                            }),
-                            usage: None, // Usage typically comes in final chunk
-                        };
-
-                        if let Err(e) = tx.send(stream_chunk).await {
-                            tracing::error!("Failed to send stream chunk: {}", e);
-                            return Err(zai_rs::ZaiError::ApiError {
-                                code: 1200,
-                                message: "Channel send failed".to_string(),
-                            });
-                        }
-                    }
-
-                    Ok(())
-                }
-            })
-            .await;
-
-        // Handle stream completion or error
-        match stream_result {
-            Ok(_) => {
                 // Send final completion chunk
                 let final_chunk = StreamChunk {
                     content: String::new(),
@@ -212,24 +188,22 @@ pub async fn stream_message(
                     }),
                     usage: None,
                 };
-
                 let _ = tx.send(final_chunk).await;
 
                 // Update session with complete response
-                let final_response = accumulated_response.lock().await.clone();
-                let assistant_message = zai_rs::model::TextMessage::assistant(&final_response);
+                let assistant_message = zai_rs::model::TextMessage::assistant(&content);
                 if let Err(e) = state_clone
                     .sessions
                     .add_message(&session_id_clone, assistant_message)
                 {
-                    tracing::error!("Failed to update session after streaming: {}", e);
+                    tracing::error!("Failed to update session after response: {}", e);
                 }
             },
             Err(e) => {
-                tracing::error!("Streaming error: {}", e);
+                tracing::error!("Chat request error: {}", e);
                 // Send error chunk
                 let error_chunk = StreamChunk {
-                    content: "抱歉，流式响应出现错误。".to_string(),
+                    content: "抱歉，响应出现错误。".to_string(),
                     session_id: session_id_clone.clone(),
                     done: true,
                     metadata: Some(StreamMetadata {

@@ -1,0 +1,6737 @@
+# spec/contracts/public-api.toml
+#
+# Public-API surface classification (plan P00.9 / P10.4).
+#
+# Every 0.4 baseline symbol identity is marked `removed`; every 0.5 target
+# symbol identity is marked `added`. xtask `public-api check` (full live gate
+# from P10) rejects any current-crate symbol that is not classified here.
+# No Rust compatibility alias is kept for 0.5.
+#
+# Signature identity = path + kind.
+# The baseline was captured from the 0.4 rustdoc JSON snapshot
+# (spec/contracts/public-api-0.4.json).
+
+# 0.4 baseline symbols (all removed in 0.5): 1332
+# 0.5 target surface (added): ZaiClient/ZaiConfig/ZaiError/ZaiResult + prelude
+
+[[symbol]]
+path = "zai_rs.ZaiClient"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.ZaiConfig"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.ZaiError"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.ZaiResult"
+kind = "type_alias"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.ZaiClientBuilder"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude"
+kind = "module"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude.ChatRequest"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude.ChatMessage"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude.ChatEventStream"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude.NonStreaming"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude.Streaming"
+kind = "struct"
+status = "added"
+
+[[symbol]]
+path = "zai_rs.prelude.ModelName"
+kind = "trait"
+status = "added"
+
+[[symbol]]
+path = "Auto"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "BatchItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "NoneChoice"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "add_content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "add_content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "as_i64"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "as_str"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "as_str"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "as_str"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "as_str"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "as_str"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant_audio_only"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant_with_audio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant_with_content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "assistant_with_tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "auto"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "base64"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "category"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "code"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "compact"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "context"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "dimensions"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "exponential"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "extension"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "file"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "fixed"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "from_api_response"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "from_extension"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "from_mime_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "from_path"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "from_two_urls"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "from_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "function"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "image"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "input_audio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_auth_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_client_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_rate_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_retryable"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_retryable"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_sdk_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_server_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_supported_by"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "is_valid"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "message"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "new_user"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "new_user"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "none"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "none"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "severity"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "system"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "system"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "system"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "text"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "text"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "tool_with_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "user"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "video"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AGENT_API_PATH"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.chat"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.create_agent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.delete_agent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.get_agent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.get_history"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.update_agent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.AgentClient.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentChatParameters"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentChatRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentConfig"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequest.builder"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.build"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.description"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.model"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.system_prompt"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentCreateRequestBuilder.tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.request.AgentUpdateRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentChatResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentCreateResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentDeleteResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentDetails"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentMessage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentToolCall"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentUpdateResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.AgentUsage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.agent.response.ConversationHistory"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.cancel.CancelBatchResponse"
+kind = "type_alias"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.BatchEndpoint"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchBody.with_auto_delete_input_file"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchBody.with_metadata"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.with_auto_delete_input_file"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchRequest.with_metadata"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.create.CreateBatchResponse"
+kind = "type_alias"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListQuery"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListQuery.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListQuery.with_after"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListQuery.with_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListRequest.with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.BatchesListResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.list.ListObject"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.batches.retrieve.BatchesRetrieveResponse"
+kind = "type_alias"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.builder"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.coding_paas_v4_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.from_env"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.llm_application_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.monitor_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.paas_v4_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfig.realtime_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.api_key"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.build"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.coding_paas_v4_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.llm_application_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.monitor_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.paas_v4_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.realtime_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.config.ZaiConfigBuilder.reqwest_client"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.ApiBase"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.CODING_PAAS_V4_BASE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.with_coding_paas_v4_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.with_llm_application_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.with_monitor_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.with_paas_v4_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.EndpointConfig.with_realtime_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.LLM_APPLICATION_BASE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.MONITOR_BASE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.PAAS_V4_BASE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.REALTIME_BASE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.build_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.join_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.AGENTS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.ASYNC_CHAT_COMPLETIONS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.ASYNC_RESULT"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.AUDIO_SPEECH"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.AUDIO_TRANSCRIPTIONS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.BATCHES"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.CHAT_COMPLETIONS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.DOCUMENT"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.DOCUMENT_EMBEDDING"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.DOCUMENT_SLICE_IMAGE_LIST"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.DOCUMENT_UPLOAD_DOCUMENT"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.DOCUMENT_UPLOAD_URL"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.EMBEDDINGS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.FILES"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.FILES_OCR"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.FILE_PARSER_CREATE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.FILE_PARSER_RESULT"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.IMAGES_GENERATIONS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.KNOWLEDGE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.KNOWLEDGE_CAPACITY"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.MODERATIONS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.MONITOR_USAGE_QUOTA_LIMIT"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.RERANK"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.TOKENIZER"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.VIDEOS_GENERATIONS"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.VOICE_CLONE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.VOICE_DELETE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.VOICE_LIST"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.endpoints.paths.WEB_SEARCH"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.ErrorCategory"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.RealtimeErrorKind"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.ZaiError"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.ZaiResult"
+kind = "type_alias"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_CONFIG"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_EXTERNAL_TOOL"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_FILE_NOT_FOUND"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_FILE_TOO_LARGE"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_FILE_TYPE_UNSUPPORTED"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_IO"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_TIMEOUT"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.codes.SDK_VALIDATION"
+kind = "constant"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.contains_sensitive_info"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.mask_api_key"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.mask_sensitive_info"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.error.validate_api_key"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClient"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfig"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfig.builder"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.build"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.compression"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.logging"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.mask_sensitive_data"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.max_retries"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.retry_delay"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.HttpClientConfigBuilder.timeout"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.RetryDelay"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.http_client_with_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.parse_api_error_response"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.parse_typed_response"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.send_empty_request"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.send_json_request"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.client.http.send_multipart_request"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.define_model_type"
+kind = "macro"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest.send_to"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.content.FileContentRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest.delete"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.delete.FileDeleteRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.send_with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.list.FileListRequest.with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileListQuery"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileListQuery.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileListQuery.with_after"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileListQuery.with_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileListQuery.with_order"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileListQuery.with_purpose"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FileOrder"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.request.FilePurpose"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.response.FileDeleteResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.response.FileListResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.response.FileObject"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.with_content_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.with_file_name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.file.upload.FileUploadRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.impl_message_binding"
+kind = "macro"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.impl_model_markers"
+kind = "macro"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity.KnowledgeCapacityRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity.KnowledgeCapacityRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity.KnowledgeCapacityRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity.KnowledgeCapacityRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity.KnowledgeCapacityRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.capacity.KnowledgeCapacityRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.BackgroundColor"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.with_background"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.with_description"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeRequest.with_icon"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.CreateKnowledgeResponseData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.EmbeddingId"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.create.KnowledgeIcon"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest.delete"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.delete.KnowledgeDeleteResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest.delete"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_delete.DocumentDeleteResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list.DocumentImageListRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list.DocumentImageListRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list.DocumentImageListRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list.DocumentImageListRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list.DocumentImageListRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_image_list.DocumentImageListRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListQuery"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListQuery.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListQuery.with_page"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListQuery.with_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListQuery.with_word"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.send_with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_list.DocumentListRequest.with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.with_callback_header"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.with_callback_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_reembedding.DocumentReembeddingResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve.DocumentRetrieveRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve.DocumentRetrieveRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve.DocumentRetrieveRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve.DocumentRetrieveRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve.DocumentRetrieveRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_retrieve.DocumentRetrieveRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentSliceType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.add_file_path"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.options_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.DocumentUploadFileRequest.with_options"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_file.UploadFileOptions"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.DocumentUploadUrlRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlBody.add_detail"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlBody.add_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail.with_callback_header"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail.with_callback_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail.with_custom_separator"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail.with_knowledge_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.document_upload_url.UploadUrlDetail.with_sentence_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListQuery"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListQuery.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListQuery.with_page"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListQuery.with_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.send_with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.list.KnowledgeListRequest.with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.retrieve.KnowledgeRetrieveResponse"
+kind = "type_alias"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentDetailResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentFailInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentImageItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentImageListData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentImageListResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentListData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.DocumentListResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeCapacityData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeCapacityResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeDetailResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeListData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeListResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.KnowledgeUsageCounts"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadFileData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadFileFailedInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadFileResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadFileSuccessInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadUrlData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadUrlFailedInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadUrlResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.types.UploadUrlSuccessInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.put"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_background"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_callback_header"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_callback_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_description"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_embedding_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_icon"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateRequest.with_name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.KnowledgeUpdateResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.knowledge.update.UpdateKnowledgeBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.add_messages"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.add_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.add_tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.disable_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.enable_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_do_sample"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_max_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_reasoning_effort"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_stop"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_temperature"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_thinking"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_tool_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_tool_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_top_p"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat.data.AsyncChatCompletion.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.async_chat_get.data.AsyncChatGetRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_file_path"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_temperature"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.data.AudioToTextRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.model.GlmAsr"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request.AudioToTextBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request.AudioToTextBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request.AudioToTextBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request.AudioToTextBody.with_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request.AudioToTextBody.with_temperature"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.request.AudioToTextBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.response.AudioToTextResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.audio_to_text.response.SegmentItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.add_messages"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.add_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.add_tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.disable_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.enable_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_coding_plan"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_do_sample"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_max_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_reasoning_effort"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_response_format"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_stop"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_temperature"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_thinking"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_tool_choice"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_tool_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_top_p"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat.data.ChatCompletion.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.add_message"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.add_messages"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.add_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.extend_messages"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.extend_tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_do_sample"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_max_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_reasoning_effort"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_response_format"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_stop"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_temperature"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_thinking"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_tool_choice"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_tool_stream"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_top_p"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_request.ChatBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.AudioContent"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.AudioContent.data"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.AudioContent.expires_at"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.AudioContent.id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.choices"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.content_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.created"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.model"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.task_status"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.usage"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.video_result"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ChatCompletionResponse.web_search"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Choice"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Choice.finish_reason"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Choice.index"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Choice.message"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ContentFilterInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ContentFilterInfo.level"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ContentFilterInfo.role"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPCallType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPInputSchema"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPInputSchema.additional_properties"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPInputSchema.properties"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPInputSchema.required"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPInputSchema.type_"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPInputType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.arguments"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.output"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.server_label"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPMessage.type_"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPTool"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPTool.annotations"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPTool.description"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPTool.input_schema"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.MCPTool.name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message.audio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message.content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message.content_str"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message.reasoning_content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message.role"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Message.tool_calls"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.PromptTokensDetails"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.PromptTokensDetails.cached_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.TaskStatus"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolCallMessage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolCallMessage.function"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolCallMessage.id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolCallMessage.mcp"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolCallMessage.type_"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolFunction"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolFunction.arguments"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.ToolFunction.name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Usage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Usage.completion_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Usage.prompt_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Usage.prompt_tokens_details"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.Usage.total_tokens"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.VideoResultItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.VideoResultItem.cover_image_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.VideoResultItem.url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.icon"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.link"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.media"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.publish_date"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.refer"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_base_response.WebSearchInfo.title"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.Audio"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.Audio.clear_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.Audio.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.Audio.set_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.Audio.with_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.FileUrlInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.FunctionParams"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.FunctionParams.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.ImageUrlInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.InputAudioData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.TextMessage"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.TextMessages"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.TextMessages.add_message"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.TextMessages.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.ToolCall"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.ToolCall.new_function"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.ToolCall.new_retrieval"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.ToolCall.new_web_search"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.ToolCallType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.VideoUrlInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.VisionMessage"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.VisionRichContent"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.VoiceFormat"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.VoiceMessage"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_message_types.VoiceRichContent"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5_air"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5_airx"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5_flash"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5_voice"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5_x"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_5v"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_6"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_6v"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_6v_flash"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_6v_flashx"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_7"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_7_flash"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_7_flashx"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM4_voice"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM5"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM5V_turbo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM5_1"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM5_2"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM5_turbo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.GLM_realtime"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_models.autoglm_phone"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_stream_response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_stream_response.ChatStreamResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_stream_response.Delta"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.chat_stream_response.StreamChoice"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_prompt"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_quality"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.data.ImageGenRequest.with_watermark_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_model.CogView4"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_request.ImageGenBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_request.ImageQuality"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_request.ImageSize"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response.ImageDataItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response.ImageDataItem.url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response.ImageResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response.ImageResponse.content_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response.ImageResponse.created"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_image.image_response.ImageResponse.data"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_audio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_duration"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_fps"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_image_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_prompt"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_quality"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.data.VideoGenRequest.with_watermark_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_model.CogVideoX3"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.Fps"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.ImageUrl"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.prompt_only"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.validate_body"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_audio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_duration"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_fps"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_image_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_multiple_images"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_prompt"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_quality"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_single_image"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoBody.with_watermark_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoDuration"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoQuality"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.gen_video_async.video_request.VideoSize"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.model_validate"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.model_validate.validate_json_schema"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.model_validate.validate_json_schema_value"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.new_multimedia"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.new_text"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.data.Moderation.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.MediaType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationInput"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationModel"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationRequest.new_multimedia"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationRequest.new_text"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationResult"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationTextUsage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.ModerationUsage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.MultimediaInput"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.moderation.models.RiskLevel"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_file_path"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_language_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_probability"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_tool_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.data.OcrRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody.with_language_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody.with_probability"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody.with_tool_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrLanguageType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.request.OcrToolType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.response.Location"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.response.OcrResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.response.Probability"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.ocr.response.WordsResultItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.sse_parser"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.sse_parser.SseEventParser"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.sse_parser.SseEventParser.finish"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.sse_parser.SseEventParser.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.sse_parser.SseEventParser.push"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.sse_parser.extract_sse_data_lines"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.stream_ext"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.stream_ext.ChatStreamAccumulator"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.stream_ext.ChatStreamAccumulator.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.stream_ext.ChatStreamAccumulator.push_chunk"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.stream_ext.StreamChatLikeExt"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.stream_ext.parse_chat_stream_event"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.execute"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.with_dimensions"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.data.EmbeddingRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingBody.validate_model_constraints"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingBody.with_dimensions"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingDimensions"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingInput"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.request.EmbeddingModel"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.response.EmbeddingData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.response.EmbeddingObjectKind"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.response.EmbeddingResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.response.EmbeddingUsage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_embedded.response.ResponseObjectKind"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.execute"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_return_documents"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_return_raw_scores"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_top_n"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.data.RerankRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.validate_constraints"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.with_return_documents"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.with_return_raw_scores"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.with_top_n"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.request.RerankModel"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.response.RerankResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.response.RerankResult"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_rerank.response.RerankUsage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_input"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_response_format"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_speed"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_voice"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_volume"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.data.TextToAudioRequest.with_watermark_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.model.GlmTts"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.with_input"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.with_response_format"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.with_speed"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.with_voice"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.with_volume"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TextToAudioBody.with_watermark_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.TtsAudioFormat"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_to_audio.request.Voice"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.execute"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.data.TokenizerRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request.TokenizerBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request.TokenizerBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request.TokenizerBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request.TokenizerBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request.TokenizerMessage"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.request.TokenizerModel"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.response.TokenizerResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.text_tokenizer.response.TokenizerUsage"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Function"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Function.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.add_allowed_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.with_allowed_tools"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.with_header"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.with_headers"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.with_server_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCP.with_transport_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.MCPTransportType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ReasoningEffort"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ResponseFormat"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ResultSequence"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Retrieval"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Retrieval.builder"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Retrieval.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Retrieval.with_prompt_template"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ThinkingMode"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ThinkingType"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ThinkingType.disabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ThinkingType.enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ThinkingType.with_clear_thinking"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ToolChoice"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ToolChoiceFunction"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.ToolChoiceFunction.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.Tools"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_content_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_count"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_enable"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_require_search"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_result_sequence"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_search_domain_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_search_intent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_search_prompt"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_search_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_search_recency_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.tools.WebSearch.with_search_result"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.AsyncChat"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.AudioToText"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.Bounded"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.Chat"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.ImageGen"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.ModelName"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.Ocr"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.ReasoningEffortEnable"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.SseStreamable"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.StreamOff"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.StreamOn"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.StreamState"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.TextToAudio"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.ThinkEnable"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.ToolStreamEnable"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.VideoGen"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.traits.VoiceClone"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.body_mut"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.data.VoiceCloneRequest.with_text"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.model"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.model.GlmTtsClone"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.request.VoiceCloneBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.request.VoiceCloneBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.request.VoiceCloneBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.request.VoiceCloneBody.with_text"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_clone.response.VoiceCloneResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.data.VoiceDeleteRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.request.VoiceDeleteBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.request.VoiceDeleteBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.request.VoiceDeleteBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_delete.response.VoiceDeleteResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.data.VoiceListRequest.with_query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.request.VoiceListQuery"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.request.VoiceListQuery.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.request.VoiceListQuery.with_voice_name"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.request.VoiceListQuery.with_voice_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.request.VoiceType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.response.VoiceItem"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.model.voice_list.response.VoiceListResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest.new_with_auto_type"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.data.FileParserCreateRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.request.FileType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.request.ToolType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.response.FileParserCreateResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.response.FileParserCreateResponse.is_success"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_create.response.FileParserCreateResponse.task_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.get_all_results"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.get_result"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.wait_for_result"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.data.FileParserResultRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.request.FormatType"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.content"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.download_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.get_result"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.is_failed"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.is_processing"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.is_success"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.FileParserResultResponse.task_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.file_parser_result.response.ParserStatus"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.validate"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_body"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_content_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_count"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_domain_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_recency_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_search_intent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.data.WebSearchRequest.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.ContentSize"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.SearchEngine"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.SearchIntent"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.SearchRecencyFilter"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.SearchResult"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.validate_constraints"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_content_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_count"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_domain_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_recency_filter"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_search_intent"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.request.WebSearchBody.with_user_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.SearchIntent"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.SearchResult"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchInfo"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse.created_at"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse.intents"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse.request_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse.result_count"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse.results"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.tool.web_search.response.WebSearchResponse.task_id"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheEntry"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheEntry.hit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheEntry.is_expired"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheEntry.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheKey"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheKey.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.CacheStats"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.clear"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.get"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.insert"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.insert_with_key"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.invalidate_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.stats"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.with_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.with_max_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.cache.ToolCallCache.with_ttl"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.DynTool"
+kind = "trait"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionTool"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionTool.builder"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionTool.from_function_spec"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionTool.from_function_spec_file"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionTool.from_schema"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.build"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.handler"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.metadata"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.property"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.required"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.FunctionToolBuilder.schema"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata.author"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata.enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata.tags"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata.version"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.ToolMetadata.with_metadata"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.conversions"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.conversions.from_json_bool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.conversions.from_json_f64"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.conversions.from_json_i32"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.conversions.from_json_string"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.core.conversions.to_json"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.concurrent_access_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.execution_failed"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.invalid_parameters"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.retry_limit_exceeded"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.schema_validation"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.serialization_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.timeout_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.tool_not_found"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.validation_error"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.with_operation"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorContext.with_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ErrorSeverity"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ToolError"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.ToolResult"
+kind = "type_alias"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.error.error_context"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutionConfig"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutionResult"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutionResult.failure"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutionResult.success"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutionResult.with_metadata"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.build"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.cache_max_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.cache_ttl"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.disable_cache"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.enable_cache"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.logging"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.retries"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ExecutorBuilder.timeout"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.RetryConfig"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.RetryConfig.calculate_delay"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.add_dyn_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.add_functions_from_dir_with_registry"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.builder"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.cache_stats"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.clear_cache"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.execute"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.execute_simple"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.execute_tool_calls_ordered"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.execute_tool_calls_parallel"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.export_all_tools_as_functions"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.export_tool_as_function"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.export_tools_filtered"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.has_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.input_schema"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.invalidate_cache_for_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.tool_names"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.try_add_dyn_tool"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.unregister"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.with_cache_enabled"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.with_cache_max_size"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.executor.ToolExecutor.with_cache_ttl"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm.LlmToolCall"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm.normalize_arguments"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm.parse_first_tool_call"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm.parse_tool_calls"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm.parse_tool_calls_from_message"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.llm.parse_tool_calls_robust"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.toolkits.prelude"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data"
+kind = "module"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaKind"
+kind = "enum"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.consumed"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.is_time_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.is_tokens_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.kind"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.next_reset_at"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.next_reset_at_beijing"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.quota"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.remaining"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.remaining_ratio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.summary"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.usage_for_model"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaLimit.used"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaSummary"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaSummary.is_time_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaSummary.is_tokens_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaSummary.next_reset_at_beijing"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaSummary.usage_for_model"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanQuotaSummary.used_ratio"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageData"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageDetail"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.new"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.send"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.with_base_url"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.with_endpoint_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.with_http_config"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageRequest.with_monitor_base"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.find_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.level"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.limits"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.summary"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.time_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.time_limit_summary"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.tokens_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageResponse.tokens_limit_summary"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageSummary"
+kind = "struct"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageSummary.find_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageSummary.time_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.data.CodingPlanUsageSummary.tokens_limit"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.query"
+kind = "function"
+status = "removed"
+
+[[symbol]]
+path = "zai_rs.usage.query_summary"
+kind = "function"
+status = "removed"
+
+# total: 1332 removed (0.4 baseline), 12 added (0.5 target)

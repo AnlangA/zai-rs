@@ -46,47 +46,42 @@
 //!
 //! # Quick Start
 //!
-//! ```rust,no_run
-//! use zai_rs::{client::http::*, model::*};
+//! ```text
+//! use zai_rs::{client::ZaiClient, model::*};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY")?;
-//!     let client = ChatCompletion::new(model, TextMessage::user("Hello"), key);
-//!     let _resp = client.post().await?;
+//!     let client = ZaiClient::from_env()?;
+//!     let request = ChatCompletion::new(model, TextMessage::user("Hello"));
+//!     let _resp = request.send_via(&client).await?;
 //!     Ok(())
 //! }
 //! ```
 //!
-//! # Streaming Responses
+//! # Streaming Requests
 //!
-//! ```rust,no_run
-//! use zai_rs::{client::http::*, model::*};
+//! ```text
+//! use zai_rs::{client::ZaiClient, model::*};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY")?;
-//!     let mut client =
-//!         ChatCompletion::new(model, TextMessage::user("Hello"), key).enable_stream();
-//!     client
-//!         .stream_sse_for_each(|data| {
-//!             print!("{}", String::from_utf8_lossy(data));
-//!         })
-//!         .await?;
+//!     let client = ZaiClient::from_env()?;
+//!     let request = ChatCompletion::new(model, TextMessage::user("Hello"));
+//!     let _response = request.send_via(&client).await?;
 //!     Ok(())
 //! }
 //! ```
 //!
 //! # Configuration
 //!
-//! [`ZaiConfig`] is the central place for credentials, endpoint families, and
+//! `ZaiConfig` is the central place for credentials, endpoint families, and
 //! HTTP transport settings. It mirrors the API families exposed by
-//! [`client::endpoints::EndpointConfig`], including the dedicated Coding Plan
+//! [`client::EndpointConfig`], including the dedicated Coding Plan
 //! endpoint required by official Zhipu AI documentation.
 //!
-//! ```rust
+//! ```text
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use zai_rs::ZaiConfig;
 //!
@@ -137,8 +132,8 @@
 //!   model/message compatibility at compile time
 //! - **Zero-cost abstractions** — marker traits and type-state patterns impose
 //!   no runtime overhead
-//! - **Consistent API style** — all API clients follow a uniform builder
-//!   pattern and implement the `HttpClient` trait
+//! - **Consistent API style** — request builders carry typed payloads and all
+//!   network operations are dispatched with `send_via(&ZaiClient)`
 
 // On docs.rs (which builds with `--cfg docsrs`, see `[package.metadata.docs.rs]`
 // in Cargo.toml), enable the nightly `doc_cfg` feature so feature-gated items
@@ -149,7 +144,7 @@
 pub mod agent;
 pub mod batches;
 pub mod client;
-pub use client::{config::ZaiConfig, error::*};
+pub use client::{ZaiClient, error::*};
 pub mod file;
 pub mod knowledge;
 
@@ -158,11 +153,9 @@ pub mod model;
 /// Gated behind the `realtime` Cargo feature (off by default).
 #[cfg(feature = "realtime")]
 pub mod realtime;
+pub mod services;
 pub mod tool;
 pub mod toolkits;
 pub mod usage;
-pub use usage::{
-    CodingPlanQuotaKind, CodingPlanQuotaLimit, CodingPlanQuotaSummary, CodingPlanUsageData,
-    CodingPlanUsageDetail, CodingPlanUsageRequest, CodingPlanUsageResponse, CodingPlanUsageSummary,
-    query as query_coding_plan_usage, query_summary as query_coding_plan_usage_summary,
-};
+
+pub mod prelude;

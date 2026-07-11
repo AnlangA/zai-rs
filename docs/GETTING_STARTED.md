@@ -13,7 +13,7 @@
 
 ```toml
 [dependencies]
-zai-rs = "0.4"
+zai-rs = "0.5"
 ```
 
 ## 配置
@@ -28,25 +28,19 @@ export ZHIPU_API_KEY="your-api-key-here"
 
 ### 高级配置
 
-可以使用 `HttpClientConfig` 自定义 HTTP 客户端行为：
+使用 `HttpTransportConfig` 配置统一传输层。配置只允许收紧 SDK 的安全上限：
 
 ```rust,ignore
-use zai_rs::client::http::{HttpClientConfig, RetryDelay};
+use zai_rs::client::{HttpTransportConfig, ZaiClient};
 use std::time::Duration;
 
-// 使用自定义配置
-let config = HttpClientConfig::builder()
-    .max_retries(5)                    // 最多重试5次
-    .timeout(Duration::from_secs(120))   // 超时时间120秒
-    .retry_delay(
-        RetryDelay::exponential(
-            Duration::from_millis(100),  // 基础延迟100ms
-            Duration::from_secs(10)       // 最大延迟10秒
-        )
-    )
-    .logging(true)                     // 启用详细日志
-    .mask_sensitive_data(true)           // 过滤敏感信息
+let transport = HttpTransportConfig::builder()
+    .max_attempts(2)?
+    .request_timeout(Duration::from_secs(30))?
     .build();
+let client = ZaiClient::builder(std::env::var("ZHIPU_API_KEY")?)
+    .transport(transport)
+    .build()?;
 ```
 
 ### 日志配置
@@ -73,16 +67,15 @@ fn init_logging() {
 最简单的文本聊天：
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::{client::ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_flash {};
     let messages = TextMessage::user("你好，请介绍一下你自己");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let client = ChatCompletion::new(model, messages, key);
-    let resp = client.post().await?;
+    let client = ZaiClient::from_env()?;
+    let request = ChatCompletion::new(model, messages);
+    let resp = request.send_via(&client).await?;
 
     println!("{}", resp.choices().first().unwrap().message.content_str().unwrap_or_default());
     Ok(())
@@ -94,23 +87,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 对于实时响应，启用流式输出：
 
 ```rust,ignore
-use zai_rs::{client::http::*, model::*};
+use zai_rs::{client::ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_flash {};
     let messages = TextMessage::user("讲一个短故事");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-
-    let mut client = ChatCompletion::new(model, messages, key).enable_stream();
-
-    // `stream_sse_for_each` yields each SSE `data:` payload as raw bytes; the
-    // model streams token deltas there. See `stream_for_each` for typed chunks.
-    client
-        .stream_sse_for_each(|data| {
-            print!("{}", String::from_utf8_lossy(data));
-        })
-        .await?;
+    let client = ZaiClient::from_env()?;
+    // 0.5 当前请使用非流式统一传输路径；SSE 接口将在后续版本恢复。
+    let response = ChatCompletion::new(model, messages).send_via(&client).await?;
+    println!("{:?}", response);
 
     Ok(())
 }

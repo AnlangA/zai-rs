@@ -108,7 +108,7 @@ impl RerankBody {
             if d.chars().count() > 4096 {
                 return Err(crate::client::error::ZaiError::ApiError {
                     code: crate::client::error::codes::SDK_VALIDATION,
-                    message: format!("document at index {} exceeds 4096 characters", i),
+                    message: format!("document at index {i} exceeds 4096 characters"),
                 });
             }
         }

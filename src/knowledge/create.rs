@@ -1,23 +1,18 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
-use crate::{
-    ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
-};
+use crate::ZaiResult;
+use crate::client::ZaiClient;
 
-/// Embedding model id enum mapped to integer ids
+/// Embedding model id enum mapped to integer ids (plan §13.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingId {
     /// 3: Embedding-2
     Embedding2,
-    /// 11: Embedding-3-new
+    /// 11: Embedding-3
     Embedding3New,
+    /// 12: Embedding-3-pro
+    Embedding3Pro,
 }
 
 impl EmbeddingId {
@@ -26,6 +21,7 @@ impl EmbeddingId {
         match self {
             EmbeddingId::Embedding2 => 3,
             EmbeddingId::Embedding3New => 11,
+            EmbeddingId::Embedding3Pro => 12,
         }
     }
 }
@@ -42,9 +38,9 @@ impl<'de> Deserialize<'de> for EmbeddingId {
         match v {
             3 => Ok(EmbeddingId::Embedding2),
             11 => Ok(EmbeddingId::Embedding3New),
+            12 => Ok(EmbeddingId::Embedding3Pro),
             other => Err(serde::de::Error::custom(format!(
-                "unsupported embedding_id: {} (expected 3 or 11)",
-                other
+                "unsupported embedding_id: {other} (expected 3, 11 or 12)"
             ))),
         }
     }
@@ -93,7 +89,7 @@ pub enum KnowledgeIcon {
 /// Request body for creating a knowledge base
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateKnowledgeBody {
-    /// Embedding model id (3 or 11)
+    /// Embedding model id (3, 11 or 12; plan §13.5).
     pub embedding_id: EmbeddingId,
     /// Knowledge base name
     #[validate(length(min = 1))]
@@ -107,64 +103,36 @@ pub struct CreateKnowledgeBody {
     /// Icon name (optional; default question on server)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<KnowledgeIcon>,
+    /// Embedding model name (optional). When given alongside `embedding_id`,
+    /// the two must be consistent (plan §13.5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
+    /// Contextual retrieval flag (0/1; plan §13.5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contextual: Option<u8>,
 }
 
 /// Create knowledge request (POST /llm-application/open/knowledge)
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct CreateKnowledgeRequest {
-    /// Bearer key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     body: CreateKnowledgeBody,
 }
 
 impl CreateKnowledgeRequest {
     /// Build a create request with required fields
-    pub fn new(key: impl Into<String>, embedding_id: EmbeddingId, name: impl Into<String>) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, paths::KNOWLEDGE);
+    pub fn new(embedding_id: EmbeddingId, name: impl Into<String>) -> Self {
         let body = CreateKnowledgeBody {
             embedding_id,
             name: name.into(),
             description: None,
             background: None,
             icon: None,
+            embedding_model: None,
+            contextual: None,
         };
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(&self.api_base, paths::KNOWLEDGE);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+        Self { body }
     }
 
     /// Optional fields setters
@@ -183,39 +151,27 @@ impl CreateKnowledgeRequest {
         self.body.icon = Some(icon);
         self
     }
+    /// Set the embedding model name (optional). When given alongside
+    /// `embedding_id`, the two must be consistent (plan §13.5).
+    pub fn with_embedding_model(mut self, model: impl Into<String>) -> Self {
+        self.body.embedding_model = Some(model.into());
+        self
+    }
+    /// Set the contextual-retrieval flag (0 or 1; plan §13.5).
+    pub fn with_contextual(mut self, contextual: u8) -> Self {
+        self.body.contextual = Some(contextual);
+        self
+    }
 
-    /// Validate and send, returning typed response
-    pub async fn send(&self) -> ZaiResult<CreateKnowledgeResponse> {
+    /// Validate and send via a [`ZaiClient`], returning the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CreateKnowledgeResponse> {
         self.body.validate()?;
-
-        let resp: reqwest::Response = self.post().await?;
-
-        let parsed = parse_typed_response::<CreateKnowledgeResponse>(resp).await?;
-        Ok(parsed)
-    }
-}
-
-impl HttpClient for CreateKnowledgeRequest {
-    type Body = CreateKnowledgeBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+        let url = client
+            .endpoints()
+            .resolve(crate::client::ApiFamily::LlmApplication, &["knowledge"])?;
+        client
+            .send_json::<_, CreateKnowledgeResponse>("POST", url, &self.body)
+            .await
     }
 }
 

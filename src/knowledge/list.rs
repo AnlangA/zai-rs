@@ -1,16 +1,10 @@
-use std::sync::Arc;
-
 use super::types::KnowledgeListResponse;
-use crate::{
-    ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, build_query, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
-};
+use crate::ZaiResult;
+use crate::client::ZaiClient;
 
 /// Query parameters for knowledge list API
 #[derive(Debug, Clone, Default, serde::Serialize, validator::Validate)]
+#[allow(clippy::new_without_default)]
 pub struct KnowledgeListQuery {
     /// Page index starting from 1 (default 1)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -24,6 +18,7 @@ pub struct KnowledgeListQuery {
 
 impl KnowledgeListQuery {
     /// Create a new query (page 1, size 10).
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             page: Some(1),
@@ -40,116 +35,69 @@ impl KnowledgeListQuery {
         self.size = Some(size);
         self
     }
+
+    /// Build the `(&str, String)` query pairs (in stable order) used to form
+    /// the request URL.
+    fn pairs(&self) -> Vec<(&'static str, String)> {
+        let mut params: Vec<(&'static str, String)> = Vec::new();
+        if let Some(page) = self.page.as_ref() {
+            params.push(("page", page.to_string()));
+        }
+        if let Some(size) = self.size.as_ref() {
+            params.push(("size", size.to_string()));
+        }
+        params
+    }
 }
 
 /// Knowledge list request (GET /llm-application/open/knowledge)
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
+#[allow(clippy::new_without_default)]
 pub struct KnowledgeListRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     query: KnowledgeListQuery,
-    _body: (),
 }
 
 impl KnowledgeListRequest {
     /// Create a new knowledge-list request (default query: page 1, size 10).
-    pub fn new(key: impl Into<String>) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, paths::KNOWLEDGE);
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
             query: KnowledgeListQuery::new(),
-            _body: (),
         }
     }
 
-    fn rebuild_url(&mut self) {
-        let endpoint = self.endpoint_config.url(&self.api_base, paths::KNOWLEDGE);
-        let mut params: Vec<(&str, String)> = Vec::new();
-        if let Some(page) = self.query.page.as_ref() {
-            params.push(("page", page.to_string()));
-        }
-        if let Some(size) = self.query.size.as_ref() {
-            params.push(("size", size.to_string()));
-        }
-        self.url = build_query(&endpoint, params);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Apply query by rebuilding internal URL
+    /// Apply a query (replaces the current one).
     pub fn with_query(mut self, q: KnowledgeListQuery) -> Self {
         self.query = q;
-        self.rebuild_url();
         self
     }
 
-    /// Send request and parse typed response
-    pub async fn send(&self) -> ZaiResult<KnowledgeListResponse> {
-        let resp = self.get().await?;
-        let parsed = parse_typed_response::<KnowledgeListResponse>(resp).await?;
-        Ok(parsed)
+    /// Send via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeListResponse> {
+        let params = self.query.pairs();
+        let url = client.endpoints().resolve_with_query(
+            crate::client::ApiFamily::LlmApplication,
+            &["knowledge"],
+            &params
+                .iter()
+                .map(|(k, v)| (*k, v.as_str()))
+                .collect::<Vec<_>>(),
+        )?;
+        client.send_empty::<KnowledgeListResponse>("GET", url).await
     }
 
-    /// Validate query, rebuild URL then send
-    pub async fn send_with_query(
+    /// Validate the query then send via a [`ZaiClient`] and parse the typed
+    /// response.
+    pub async fn send_via_with_query(
         mut self,
+        client: &ZaiClient,
         q: &KnowledgeListQuery,
     ) -> ZaiResult<KnowledgeListResponse> {
         use validator::Validate;
         q.validate()?;
         self.query = q.clone();
-        self.rebuild_url();
-        self.send().await
-    }
-}
-
-impl HttpClient for KnowledgeListRequest {
-    type Body = ();
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL (with query string) for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Empty body placeholder (GET request).
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+        self.send_via(client).await
     }
 }

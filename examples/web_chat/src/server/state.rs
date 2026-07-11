@@ -7,6 +7,7 @@ use dashmap::DashMap;
 use serde::Serialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_models::GLM4_6, TextMessage};
 
 use crate::server::{config::Config, error::AppResult};
@@ -17,6 +18,10 @@ pub struct AppState {
     /// Application configuration
     pub config: Config,
 
+    /// Shared ZAI client (P05 migration): owns the API key and connection pool,
+    /// and is passed to chat requests via `.send_via(&zai_client)`.
+    pub zai_client: ZaiClient,
+
     /// Session store for managing chat sessions
     pub sessions: Arc<SessionStore>,
 
@@ -26,12 +31,14 @@ pub struct AppState {
 
 impl AppState {
     /// Create a new application state
-    pub fn new(config: Config) -> Self {
-        Self {
+    pub fn new(config: Config) -> AppResult<Self> {
+        let zai_client = ZaiClient::builder(&config.api_key).build()?;
+        Ok(Self {
             sessions: Arc::new(SessionStore::new(config.session_timeout)),
             rate_limiter: Arc::new(RateLimiter::new()),
+            zai_client,
             config,
-        }
+        })
     }
 }
 

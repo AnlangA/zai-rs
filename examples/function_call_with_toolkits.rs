@@ -118,18 +118,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create LLM function definitions (both tools)
     let tool_defs = executor.export_all_tools_as_functions();
 
-    // Setup LLM client
-    let key = get_key()?;
+    // Setup LLM client (P05: ZaiClient provides credentials/transport)
+    let zai_client = zai_rs::client::ZaiClient::from_env()?;
     let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
 
-    let mut client = ChatCompletion::new(model(), TextMessage::user(user_text), key)
+    let mut request = ChatCompletion::new(model(), TextMessage::user(user_text))
         .with_thinking(ThinkingType::disabled())
         .add_tools(tool_defs)
         .with_max_tokens(512);
 
     // First round
-    let last_resp: ChatCompletionResponse = client.send().await?;
-    println!("📨 LLM Response: {:#?}", last_resp);
+    let last_resp: ChatCompletionResponse = request.send_via(&zai_client).await?;
+    println!("📨 LLM Response: {last_resp:#?}");
 
     if let Some(calls) = last_resp
         .choices()
@@ -138,16 +138,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let tool_msgs = executor.execute_tool_calls_parallel(calls).await;
         for msg in tool_msgs {
-            client = client.add_messages(msg);
+            request = request.add_messages(msg);
         }
-        // Remove tools to avoid repeated calls, and nudge model to answer
-        client.body_mut().tools = None;
+        request.body_mut().tools = None;
         let sys =
             TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
-        client = client.add_messages(sys);
+        request = request.add_messages(sys);
 
-        let next_body: ChatCompletionResponse = client.send().await?;
-        println!("Model after tool: {:#?}", next_body);
+        let next_body: ChatCompletionResponse = request.send_via(&zai_client).await?;
+        println!("Model after tool: {next_body:#?}");
     }
 
     Ok(())
@@ -155,18 +154,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn model() -> GLM4_5_flash {
     GLM4_5_flash {}
-}
-
-fn get_key() -> Result<String, Box<dyn std::error::Error>> {
-    match std::env::var("ZHIPU_API_KEY") {
-        Ok(key) => Ok(key),
-        Err(_) => {
-            use std::io::Write;
-            println!("Please enter your ZHIPU_API_KEY:");
-            std::io::stdout().flush().ok();
-            let mut key = String::new();
-            std::io::stdin().read_line(&mut key)?;
-            Ok(key.trim().to_string())
-        },
-    }
 }

@@ -14,7 +14,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::file::*;
 //!
 //! // Upload
@@ -42,12 +42,15 @@ pub mod content;
 pub mod delete;
 /// List files with metadata (`GET …/files`).
 pub mod list;
+/// Synchronous file parsing (`POST …/files/parser/sync`, P06).
+pub mod parse_sync;
 /// Upload files (`POST …/files`, multipart).
 pub mod upload;
 
 pub use content::*;
 pub use delete::*;
 pub use list::*;
+pub use parse_sync::*;
 pub use request::*;
 pub use response::*;
 pub use upload::*;

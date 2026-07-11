@@ -1,29 +1,15 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use super::super::traits::*;
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, join_url, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
-};
-/// Retrieve the result of an asynchronous chat task by its task id.
-///
-/// Generic over the model `N` for compile-time consistency with the original
-/// async request. Construct with [`AsyncChatGetRequest::new`], then call
-/// [`AsyncChatGetRequest::send`].
+use crate::client::ZaiClient;
+
+/// Retrieve the result of an asynchronous chat task by its task id (P05: routes
+/// through [`ZaiClient`]).
 pub struct AsyncChatGetRequest<N>
 where
     N: ModelName + AsyncChat,
 {
-    /// Zhipu AI API key used for `Authorization: Bearer …`.
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
     task_id: String,
-    http_config: Arc<HttpClientConfig>,
-    // Empty body placeholder to satisfy HttpClient::Body
-    _body: (),
-    // Phantom placeholder to carry generic N for compile-time constraints
     _marker: PhantomData<N>,
 }
 
@@ -32,100 +18,36 @@ where
     N: ModelName + AsyncChat,
 {
     /// Create a new get-result request for the given task id.
-    pub fn new(_model: N, task_id: String, key: impl Into<String>) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let path = join_url(paths::ASYNC_RESULT, &task_id);
-        let url = endpoint_config.url(&api_base, &path);
+    pub fn new(_model: N, task_id: String) -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
             task_id,
-            http_config: Arc::new(HttpClientConfig::default()),
-            _body: (),
             _marker: PhantomData,
         }
     }
 
-    fn rebuild_url(&mut self) {
-        let path = join_url(paths::ASYNC_RESULT, &self.task_id);
-        self.url = self.endpoint_config.url(&self.api_base, &path);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base_url.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Validate that the request URL is non-empty.
+    /// Validate that the task id is non-empty.
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        if self.url.trim().is_empty() {
+        if self.task_id.trim().is_empty() {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
-                message: "empty URL".to_string(),
+                message: "task_id must be non-empty".to_string(),
             });
         }
         Ok(())
     }
 
-    /// Fetch the asynchronous task result.
-    pub async fn send(
+    /// Fetch the asynchronous task result via a [`ZaiClient`].
+    pub async fn send_via(
         &self,
+        client: &ZaiClient,
     ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse> {
         self.validate()?;
-
-        let resp = self.get().await?;
-
-        let parsed =
-            parse_typed_response::<crate::model::chat_base_response::ChatCompletionResponse>(resp)
-                .await?;
-
-        Ok(parsed)
-    }
-}
-
-impl<N> HttpClient for AsyncChatGetRequest<N>
-where
-    N: ModelName + AsyncChat,
-{
-    type Body = ();
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-
-    /// Empty body placeholder (GET request).
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        self.http_config.clone()
+        let url = client.endpoints().resolve(
+            crate::client::ApiFamily::PaasV4,
+            &["async-result", &self.task_id],
+        )?;
+        client
+            .send_empty::<crate::model::chat_base_response::ChatCompletionResponse>("GET", url)
+            .await
     }
 }

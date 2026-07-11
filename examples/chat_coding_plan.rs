@@ -1,48 +1,15 @@
-//! # Chat Coding Plan Example
-//!
-//! This example demonstrates how to use the ZAI-RS SDK with the coding plan API
-//! endpoint for specialized coding assistance with the Zhipu AI API.
-//!
-//! ## Features Demonstrated
-//!
-//! - Model selection (GLM-4.5-Flash)
-//! - Text message creation
-//! - Coding plan endpoint configuration
-//! - Request parameter configuration
-//! - Response handling and parsing
-//!
-//! ## Prerequisites
-//!
-//! Set the `ZHIPU_API_KEY` environment variable with your API key:
-//! ```bash
-//! export ZHIPU_API_KEY="your-api-key-here"
-//! ```
-//!
-//! ## Running the Example
-//!
-//! ```bash
-//! cargo run --example chat_coding_plan
-//! ```
-
+//! Chat via the Coding Plan endpoint (P05: routes through ZaiClient).
+use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Select the AI model - GLM-4.5-Flash for fast, efficient responses
-    let model = GLM4_6 {};
+    let model = GLM4_5 {};
+    let client = ZaiClient::from_env()?;
+    let user_text = "写一个 Rust hello world";
 
-    // Get API key from environment variable
-    let key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
-
-    // User input for coding assistance (Chinese: "Help me write a Rust function to
-    // calculate factorial")
-    let user_text = "帮我写一个计算阶乘的 Rust 函数。只返回函数。其他内容不要返回";
-
-    // Build the chat completion request with coding plan endpoint
-    let client = ChatCompletion::new(model, TextMessage::user(user_text), key).with_coding_plan();
-    // Send the request and await response (non-stream)
-    let body: ChatCompletionResponse = client.send().await?;
-    println!("{:#?}", body);
-
+    let request = ChatCompletion::new(model, TextMessage::user(user_text));
+    let body: ChatCompletionResponse = request.send_via_coding_plan(&client).await?;
+    println!("{body:#?}");
     Ok(())
 }
