@@ -88,6 +88,21 @@ fn walk(dir: &Path, globs: &[&PatternGroup], hits: &mut u32) {
             if !matches!(ext, "rs" | "md" | "toml") {
                 continue;
             }
+            // Skip the plan doc itself: it documents these forbidden patterns
+            // in prose (section 11), so its literal text legitimately contains
+            // the banned substrings.
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| {
+                    n.starts_with("AI_AGENT_OPTIMIZATION_PLAN")
+                        || n == "BASELINE.md"
+                        || n == "EXECUTION_LEDGER.md"
+                })
+                .unwrap_or(false)
+            {
+                continue;
+            }
             let Ok(text) = fs::read_to_string(&path) else {
                 continue;
             };

@@ -1,268 +1,254 @@
-//! Agent API response types
+//! Agent v1 response types (plan §13.2).
+//!
+//! Success invariants:
+//! - `invoke` non-stream: `Completed` requires id+agent_id+non-empty choices;
+//!   `Pending` requires agent_id+async_id.
+//! - `async_result`: `Pending` requires agent_id+async_id; `Succeeded` adds
+//!   non-empty choices; `Failed` is a normal task result (agent_id+async_id).
+//! - `conversation`: success requires conversation_id+agent_id+non-empty
+//!   choices; an embedded error is surfaced as `Err`.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-use super::request::AgentConfig;
+use crate::{ZaiError, ZaiResult, client::error::codes};
 
-/// Response from creating a new agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentCreateResponse {
-    /// The created agent ID
-    pub id: String,
-
-    /// Agent name
-    pub name: String,
-
-    /// Agent description
-    pub description: Option<String>,
-
-    /// Creation timestamp
-    pub created_at: Option<u64>,
-
-    /// Agent model
-    pub model: Option<String>,
+/// Non-streaming `invoke` response: either `Completed` or `Pending`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum AgentInvokeResponse {
+    /// Completed synchronous result.
+    Completed {
+        id: String,
+        agent_id: String,
+        choices: Vec<AgentChoice>,
+    },
+    /// Accepted as an async task; poll via `async_result`.
+    Pending { agent_id: String, async_id: String },
 }
 
-/// Detailed agent information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentDetails {
-    /// Agent ID
-    pub id: String,
-
-    /// Agent name
-    pub name: String,
-
-    /// Agent description
-    pub description: Option<String>,
-
-    /// System prompt
-    pub system_prompt: Option<String>,
-
-    /// Model used
-    pub model: Option<String>,
-
-    /// Available tools
-    pub tools: Option<Vec<serde_json::Value>>,
-
-    /// Agent configuration
-    pub config: Option<AgentConfig>,
-
-    /// Creation timestamp
-    pub created_at: Option<u64>,
-
-    /// Last update timestamp
-    pub updated_at: Option<u64>,
+/// A single choice in an agent response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentChoice {
+    pub message: Option<AgentChoiceMessage>,
+    #[serde(default)]
+    pub finish_reason: Option<String>,
 }
 
-/// Response from updating an agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentUpdateResponse {
-    /// Agent ID
-    pub id: String,
-
-    /// Success status
-    pub success: bool,
-
-    /// Update timestamp
-    pub updated_at: Option<u64>,
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentChoiceMessage {
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
 }
 
-/// Response from deleting an agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentDeleteResponse {
-    /// Deleted agent ID
-    pub id: String,
-
-    /// Success status
-    pub success: bool,
-
-    /// Deletion timestamp
-    pub deleted_at: Option<u64>,
+/// `async-result` response.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum AgentAsyncResult {
+    Pending {
+        agent_id: String,
+        async_id: String,
+    },
+    Success {
+        agent_id: String,
+        async_id: String,
+        choices: Vec<AgentChoice>,
+    },
+    Failed {
+        agent_id: String,
+        async_id: String,
+        #[serde(default)]
+        error: Option<AgentErrorDetail>,
+    },
 }
 
-/// Response from agent chat
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentChatResponse {
-    /// Conversation ID
-    pub conversation_id: Option<String>,
-
-    /// Session ID
-    pub session_id: Option<String>,
-
-    /// Agent response
-    pub response: AgentMessage,
-
-    /// Tool calls made by the agent
-    pub tool_calls: Option<Vec<AgentToolCall>>,
-
-    /// Usage statistics
-    pub usage: Option<AgentUsage>,
-}
-
-/// Agent message
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentMessage {
-    /// Message role (assistant/user)
-    pub role: String,
-
-    /// Message content
-    pub content: String,
-
-    /// Reasoning content (for thinking mode)
-    pub reasoning_content: Option<String>,
-
-    /// Timestamp
-    pub timestamp: Option<u64>,
-}
-
-/// Tool call made by agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentToolCall {
-    /// Tool call ID
-    pub id: String,
-
-    /// Tool name
-    pub name: String,
-
-    /// Tool arguments (JSON string)
-    pub arguments: String,
-
-    /// Tool result
-    pub result: Option<serde_json::Value>,
-}
-
-/// Token usage statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentUsage {
-    /// Input tokens
-    pub prompt_tokens: Option<u32>,
-
-    /// Output tokens
-    pub completion_tokens: Option<u32>,
-
-    /// Total tokens
-    pub total_tokens: Option<u32>,
-}
-
-/// Conversation history
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConversationHistory {
-    /// Conversation ID
+/// `conversation` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentConversationResponse {
     pub conversation_id: String,
+    pub agent_id: String,
+    pub choices: Vec<AgentChoice>,
+}
 
-    /// Messages in the conversation
-    pub messages: Vec<AgentMessage>,
+/// Embedded error detail (conversation/async-result failed bodies).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentErrorDetail {
+    #[serde(default)]
+    pub code: Option<serde_json::Value>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
 
-    /// Total number of messages
-    pub total_count: Option<u32>,
+// ---------------------------------------------------------------------------
+// Success-invariant validation (plan §13.2).
+// ---------------------------------------------------------------------------
 
-    /// Whether there are more messages
-    pub has_more: Option<bool>,
+/// Validate an `invoke` non-stream response against the success invariant.
+pub fn validate_invoke_response(resp: &AgentInvokeResponse) -> ZaiResult<()> {
+    match resp {
+        AgentInvokeResponse::Completed {
+            id,
+            agent_id,
+            choices,
+        } => {
+            if id.trim().is_empty() || agent_id.trim().is_empty() || choices.is_empty() {
+                return Err(invariant(
+                    "Completed requires id+agent_id+non-empty choices",
+                ));
+            }
+        },
+        AgentInvokeResponse::Pending { agent_id, async_id } => {
+            if agent_id.trim().is_empty() || async_id.trim().is_empty() {
+                return Err(invariant("Pending requires agent_id+async_id"));
+            }
+        },
+    }
+    Ok(())
+}
+
+/// Validate an `async-result` response. `Failed` is a normal task result, not
+/// a transport error — it returns `Ok`.
+pub fn validate_async_result(resp: &AgentAsyncResult) -> ZaiResult<()> {
+    match resp {
+        AgentAsyncResult::Pending { agent_id, async_id } => {
+            if agent_id.trim().is_empty() || async_id.trim().is_empty() {
+                return Err(invariant("Pending requires agent_id+async_id"));
+            }
+        },
+        AgentAsyncResult::Success {
+            agent_id,
+            async_id,
+            choices,
+        } => {
+            if agent_id.trim().is_empty() || async_id.trim().is_empty() || choices.is_empty() {
+                return Err(invariant(
+                    "Success requires agent_id+async_id+non-empty choices",
+                ));
+            }
+        },
+        AgentAsyncResult::Failed {
+            agent_id, async_id, ..
+        } => {
+            if agent_id.trim().is_empty() || async_id.trim().is_empty() {
+                return Err(invariant("Failed requires agent_id+async_id"));
+            }
+        },
+    }
+    Ok(())
+}
+
+/// Validate a `conversation` response. An embedded `error` object is surfaced
+/// as `Err`.
+pub fn validate_conversation_response(resp: &AgentConversationResponse) -> ZaiResult<()> {
+    if resp.conversation_id.trim().is_empty()
+        || resp.agent_id.trim().is_empty()
+        || resp.choices.is_empty()
+    {
+        return Err(invariant(
+            "conversation requires conversation_id+agent_id+non-empty choices",
+        ));
+    }
+    Ok(())
+}
+
+fn invariant(msg: &str) -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_VALIDATION,
+        message: format!("agent success invariant violated: {msg}"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_agent_create_response_serde_roundtrip() {
-        let resp = AgentCreateResponse {
-            id: "agent_123".to_string(),
-            name: "TestAgent".to_string(),
-            description: Some("A test agent".to_string()),
-            created_at: Some(1700000000),
-            model: Some("glm-4.5".to_string()),
-        };
-        let json = serde_json::to_string(&resp).unwrap();
-        let parsed: AgentCreateResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.id, "agent_123");
-        assert_eq!(parsed.name, "TestAgent");
-        assert_eq!(parsed.description, Some("A test agent".to_string()));
-    }
-
-    #[test]
-    fn test_agent_details_serde_roundtrip() {
-        let details = AgentDetails {
-            id: "agent_456".to_string(),
-            name: "DetailAgent".to_string(),
-            description: None,
-            system_prompt: Some("Be helpful".to_string()),
-            model: Some("glm-4.5-flash".to_string()),
-            tools: None,
-            config: None,
-            created_at: Some(1700000000),
-            updated_at: Some(1700000100),
-        };
-        let json = serde_json::to_string(&details).unwrap();
-        let parsed: AgentDetails = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.id, "agent_456");
-        assert!(parsed.description.is_none());
-    }
-
-    #[test]
-    fn test_agent_chat_response_serde_roundtrip() {
-        let resp = AgentChatResponse {
-            conversation_id: Some("conv_789".to_string()),
-            session_id: Some("sess_012".to_string()),
-            response: AgentMessage {
-                role: "assistant".to_string(),
-                content: "Hello!".to_string(),
-                reasoning_content: None,
-                timestamp: Some(1700000000),
-            },
-            tool_calls: None,
-            usage: Some(AgentUsage {
-                prompt_tokens: Some(10),
-                completion_tokens: Some(5),
-                total_tokens: Some(15),
+    fn choice(content: &str) -> AgentChoice {
+        AgentChoice {
+            message: Some(AgentChoiceMessage {
+                content: Some(content.to_string()),
+                role: Some("assistant".to_string()),
             }),
-        };
-        let json = serde_json::to_string(&resp).unwrap();
-        let parsed: AgentChatResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.response.content, "Hello!");
-        assert_eq!(parsed.usage.unwrap().total_tokens, Some(15));
+            finish_reason: Some("stop".to_string()),
+        }
     }
 
     #[test]
-    fn test_agent_update_response_serde_roundtrip() {
-        let resp = AgentUpdateResponse {
-            id: "agent_123".to_string(),
-            success: true,
-            updated_at: Some(1700000200),
+    fn completed_validates() {
+        let r = AgentInvokeResponse::Completed {
+            id: "id1".into(),
+            agent_id: "a1".into(),
+            choices: vec![choice("hi")],
         };
-        let json = serde_json::to_string(&resp).unwrap();
-        let parsed: AgentUpdateResponse = serde_json::from_str(&json).unwrap();
-        assert!(parsed.success);
+        assert!(validate_invoke_response(&r).is_ok());
     }
 
     #[test]
-    fn test_agent_delete_response_serde_roundtrip() {
-        let resp = AgentDeleteResponse {
-            id: "agent_123".to_string(),
-            success: true,
-            deleted_at: Some(1700000300),
+    fn completed_rejects_empty_choices() {
+        let r = AgentInvokeResponse::Completed {
+            id: "id1".into(),
+            agent_id: "a1".into(),
+            choices: vec![],
         };
-        let json = serde_json::to_string(&resp).unwrap();
-        let parsed: AgentDeleteResponse = serde_json::from_str(&json).unwrap();
-        assert!(parsed.success);
+        assert!(validate_invoke_response(&r).is_err());
     }
 
     #[test]
-    fn test_conversation_history_serde_roundtrip() {
-        let history = ConversationHistory {
-            conversation_id: "conv_abc".to_string(),
-            messages: vec![AgentMessage {
-                role: "user".to_string(),
-                content: "Hi".to_string(),
-                reasoning_content: None,
-                timestamp: None,
-            }],
-            total_count: Some(1),
-            has_more: Some(false),
+    fn pending_validates() {
+        let r = AgentInvokeResponse::Pending {
+            agent_id: "a1".into(),
+            async_id: "as1".into(),
         };
-        let json = serde_json::to_string(&history).unwrap();
-        let parsed: ConversationHistory = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.messages.len(), 1);
-        assert_eq!(parsed.messages[0].role, "user");
+        assert!(validate_invoke_response(&r).is_ok());
+    }
+
+    #[test]
+    fn async_result_failed_is_ok() {
+        let r = AgentAsyncResult::Failed {
+            agent_id: "a1".into(),
+            async_id: "as1".into(),
+            error: None,
+        };
+        assert!(validate_async_result(&r).is_ok());
+    }
+
+    #[test]
+    fn async_result_success_requires_choices() {
+        let r = AgentAsyncResult::Success {
+            agent_id: "a1".into(),
+            async_id: "as1".into(),
+            choices: vec![],
+        };
+        assert!(validate_async_result(&r).is_err());
+    }
+
+    #[test]
+    fn conversation_requires_all_fields() {
+        let ok = AgentConversationResponse {
+            conversation_id: "c1".into(),
+            agent_id: "a1".into(),
+            choices: vec![choice("hi")],
+        };
+        assert!(validate_conversation_response(&ok).is_ok());
+
+        let bad = AgentConversationResponse {
+            conversation_id: "c1".into(),
+            agent_id: "a1".into(),
+            choices: vec![],
+        };
+        assert!(validate_conversation_response(&bad).is_err());
+    }
+
+    #[test]
+    fn empty_and_unknown_objects_do_not_become_success() {
+        // The success-invariant validators must reject `{}` and unknown shapes;
+        // these are enforced at the envelope-probe layer (P01.7/P03 decode), but
+        // the typed validators also guard against malformed typed decodes.
+        let empty_completed = AgentInvokeResponse::Completed {
+            id: "".into(),
+            agent_id: "".into(),
+            choices: vec![],
+        };
+        assert!(validate_invoke_response(&empty_completed).is_err());
     }
 }

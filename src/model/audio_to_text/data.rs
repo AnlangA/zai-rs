@@ -56,10 +56,16 @@ where
         self
     }
 
-    /// Set the sampling temperature.
-    pub fn with_temperature(mut self, temperature: f32) -> Self {
-        self.body = self.body.with_temperature(temperature);
+    /// Set an optional prompt (advisory 8000-char limit; not hard-rejected).
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.body = self.body.with_prompt(prompt);
         self
+    }
+
+    /// Set the hot-word list (at most 100 entries).
+    pub fn with_hotwords(mut self, hotwords: Vec<String>) -> crate::ZaiResult<Self> {
+        self.body = self.body.with_hotwords(hotwords)?;
+        Ok(self)
     }
 
     /// Enable/disable streaming responses.
@@ -201,7 +207,8 @@ where
                 "audio/wav"
             };
 
-            let temperature = body.temperature;
+            let prompt = body.prompt.clone();
+            let hotwords = body.hotwords.clone();
             let stream = body.stream;
             let request_id = body.request_id.clone();
             let user_id = body.user_id.clone();
@@ -213,8 +220,11 @@ where
                 let mut form = reqwest::multipart::Form::new()
                     .part("file", part)
                     .text("model", model_name.clone());
-                if let Some(t) = temperature {
-                    form = form.text("temperature", t.to_string());
+                if let Some(p) = prompt.as_ref() {
+                    form = form.text("prompt", p.clone());
+                }
+                if !hotwords.is_empty() {
+                    form = form.text("hotwords", hotwords.join(","));
                 }
                 if let Some(s) = stream {
                     form = form.text("stream", s.to_string());

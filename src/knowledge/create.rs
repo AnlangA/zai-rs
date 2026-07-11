@@ -11,13 +11,15 @@ use crate::{
     },
 };
 
-/// Embedding model id enum mapped to integer ids
+/// Embedding model id enum mapped to integer ids (plan §13.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingId {
     /// 3: Embedding-2
     Embedding2,
-    /// 11: Embedding-3-new
+    /// 11: Embedding-3
     Embedding3New,
+    /// 12: Embedding-3-pro
+    Embedding3Pro,
 }
 
 impl EmbeddingId {
@@ -26,6 +28,7 @@ impl EmbeddingId {
         match self {
             EmbeddingId::Embedding2 => 3,
             EmbeddingId::Embedding3New => 11,
+            EmbeddingId::Embedding3Pro => 12,
         }
     }
 }
@@ -42,8 +45,9 @@ impl<'de> Deserialize<'de> for EmbeddingId {
         match v {
             3 => Ok(EmbeddingId::Embedding2),
             11 => Ok(EmbeddingId::Embedding3New),
+            12 => Ok(EmbeddingId::Embedding3Pro),
             other => Err(serde::de::Error::custom(format!(
-                "unsupported embedding_id: {other} (expected 3 or 11)"
+                "unsupported embedding_id: {other} (expected 3, 11 or 12)"
             ))),
         }
     }
@@ -92,7 +96,7 @@ pub enum KnowledgeIcon {
 /// Request body for creating a knowledge base
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateKnowledgeBody {
-    /// Embedding model id (3 or 11)
+    /// Embedding model id (3, 11 or 12; plan §13.5).
     pub embedding_id: EmbeddingId,
     /// Knowledge base name
     #[validate(length(min = 1))]
@@ -106,6 +110,13 @@ pub struct CreateKnowledgeBody {
     /// Icon name (optional; default question on server)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<KnowledgeIcon>,
+    /// Embedding model name (optional). When given alongside `embedding_id`,
+    /// the two must be consistent (plan §13.5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
+    /// Contextual retrieval flag (0/1; plan §13.5).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contextual: Option<u8>,
 }
 
 /// Create knowledge request (POST /llm-application/open/knowledge)
@@ -131,6 +142,8 @@ impl CreateKnowledgeRequest {
             description: None,
             background: None,
             icon: None,
+            embedding_model: None,
+            contextual: None,
         };
         Self {
             key: key.into(),
@@ -180,6 +193,17 @@ impl CreateKnowledgeRequest {
     /// Set the icon.
     pub fn with_icon(mut self, icon: KnowledgeIcon) -> Self {
         self.body.icon = Some(icon);
+        self
+    }
+    /// Set the embedding model name (optional). When given alongside
+    /// `embedding_id`, the two must be consistent (plan §13.5).
+    pub fn with_embedding_model(mut self, model: impl Into<String>) -> Self {
+        self.body.embedding_model = Some(model.into());
+        self
+    }
+    /// Set the contextual-retrieval flag (0 or 1; plan §13.5).
+    pub fn with_contextual(mut self, contextual: u8) -> Self {
+        self.body.contextual = Some(contextual);
         self
     }
 

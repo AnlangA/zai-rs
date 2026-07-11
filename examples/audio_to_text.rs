@@ -18,7 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GlmAsr {};
     let client = AudioToTextRequest::new(model, key)
         .with_file_path(&file_path)
-        .with_temperature(0.95)
         .with_stream(false);
 
     let body: AudioToTextResponse = client.send().await?;

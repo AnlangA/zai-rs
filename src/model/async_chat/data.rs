@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use serde::Serialize;
 use validator::Validate;
@@ -11,17 +11,19 @@ use crate::client::{
 
 /// Asynchronous (queued) chat-completion request builder.
 ///
-/// Generic over the model `N`, the message type `M`, and a stream type-state
-/// `S` (`StreamOff` by default, `StreamOn` after
-/// [`enable_stream`](Self::enable_stream)). Posts to the
-/// `async/chat/completions` endpoint and returns a task id that must be polled
-/// via [`AsyncChatGetRequest`](crate::model::async_chat_get::data::AsyncChatGetRequest).
-pub struct AsyncChatCompletion<N, M, S = StreamOff>
+/// Posts to the `async/chat/completions` task-submission endpoint and returns a
+/// task id that must be polled via
+/// [`AsyncChatGetRequest`](crate::model::async_chat_get::data::AsyncChatGetRequest).
+///
+/// **P04.5**: the official async-chat endpoint is a *task submission* interface
+/// and does NOT accept `stream`. The 0.4 `stream` type-state (`StreamOn`/
+/// `enable_stream`/`with_stream`/`SseStreamable`) is removed; the request body
+/// never serializes `stream`. (Plan §2.2.3 / P04.6.)
+pub struct AsyncChatCompletion<N, M>
 where
     N: ModelName + AsyncChat,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
-    S: StreamState,
 {
     /// Zhipu AI API key used for `Authorization: Bearer …`.
     pub key: String,
@@ -30,10 +32,9 @@ where
     api_base: ApiBase,
     http_config: Arc<HttpClientConfig>,
     body: ChatBody<N, M>,
-    _stream: PhantomData<S>,
 }
 
-impl<N, M> AsyncChatCompletion<N, M, StreamOff>
+impl<N, M> AsyncChatCompletion<N, M>
 where
     N: ModelName + AsyncChat,
     (N, M): Bounded,
@@ -53,7 +54,6 @@ where
             endpoint_config,
             api_base,
             http_config: Arc::new(HttpClientConfig::default()),
-            _stream: PhantomData,
         }
     }
 
@@ -62,8 +62,6 @@ where
         &mut self.body
     }
 
-    // Fluent, builder-style forwarding methods to mutate inner ChatBody and return
-    // Self
     /// Append another message batch to the conversation.
     pub fn add_messages(mut self, messages: M) -> Self {
         self.body = self.body.add_messages(messages);
@@ -77,13 +75,6 @@ where
     /// Enable/disable sampling (`do_sample`).
     pub fn with_do_sample(mut self, do_sample: bool) -> Self {
         self.body = self.body.with_do_sample(do_sample);
-        self
-    }
-    #[deprecated(note = "Use enable_stream()/disable_stream() for compile-time guarantees")]
-    /// Deprecated: prefer [`enable_stream`](Self::enable_stream) /
-    /// [`disable_stream`](Self::disable_stream) for compile-time guarantees.
-    pub fn with_stream(mut self, stream: bool) -> Self {
-        self.body = self.body.with_stream(stream);
         self
     }
     /// Enable/disable tool-call streaming (requires a model that supports it).
@@ -155,7 +146,6 @@ where
         self
     }
 
-    // Optional: only available when model supports thinking
     /// Enable thinking mode (requires a model that supports it).
     pub fn with_thinking(mut self, thinking: ThinkingType) -> Self
     where
@@ -165,7 +155,6 @@ where
         self
     }
 
-    // Optional: only available for GLM-5.2+ (reasoning_effort support)
     /// Set the reasoning effort (GLM-5.2+ only).
     pub fn with_reasoning_effort(mut self, effort: ReasoningEffort) -> Self
     where
@@ -175,22 +164,8 @@ where
         self
     }
 
-    // Type-state toggles
-    /// Switch this builder into streaming mode (consumes `self`).
-    pub fn enable_stream(mut self) -> AsyncChatCompletion<N, M, StreamOn> {
-        self.body.stream = Some(true);
-        AsyncChatCompletion {
-            key: self.key,
-            url: self.url,
-            endpoint_config: self.endpoint_config,
-            api_base: self.api_base,
-            http_config: self.http_config,
-            body: self.body,
-            _stream: PhantomData,
-        }
-    }
-
-    /// Validate request parameters for non-stream async chat (StreamOff)
+    /// Validate request parameters. The async-chat endpoint does not accept
+    /// `stream`; a body carrying `stream=true` is rejected here.
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
@@ -198,15 +173,14 @@ where
         if matches!(self.body.stream, Some(true)) {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
-                message: "stream=true detected; use enable_stream() and streaming APIs instead"
+                message: "async chat is a task-submission endpoint and does not accept stream"
                     .to_string(),
             });
         }
-
         Ok(())
     }
 
-    /// Submit the request and await the (non-streaming) response.
+    /// Submit the request and await the (non-streaming) task-creation response.
     pub async fn send(
         &self,
     ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
@@ -215,9 +189,7 @@ where
         M: serde::Serialize,
     {
         self.validate()?;
-
         let resp: reqwest::Response = self.post().await?;
-
         let parsed =
             parse_typed_response::<crate::model::chat_base_response::ChatCompletionResponse>(resp)
                 .await?;
@@ -225,45 +197,11 @@ where
     }
 }
 
-impl<N, M> AsyncChatCompletion<N, M, StreamOn>
-where
-    N: ModelName + AsyncChat,
-    (N, M): Bounded,
-    ChatBody<N, M>: Serialize,
-{
-    /// Enable/disable tool-call streaming (requires a model that supports it).
-    pub fn with_tool_stream(mut self, tool_stream: bool) -> Self
-    where
-        N: ToolStreamEnable,
-    {
-        self.body = self.body.with_tool_stream(tool_stream);
-        self
-    }
-
-    /// Switch this builder back into non-streaming mode (consumes `self`).
-    pub fn disable_stream(mut self) -> AsyncChatCompletion<N, M, StreamOff> {
-        self.body.stream = Some(false);
-        // Reset tool_stream when disabling streaming since tool_stream depends on
-        // stream
-        self.body.tool_stream = None;
-        AsyncChatCompletion {
-            key: self.key,
-            url: self.url,
-            endpoint_config: self.endpoint_config,
-            api_base: self.api_base,
-            http_config: self.http_config,
-            body: self.body,
-            _stream: PhantomData,
-        }
-    }
-}
-
-impl<N, M, S> HttpClient for AsyncChatCompletion<N, M, S>
+impl<N, M> HttpClient for AsyncChatCompletion<N, M>
 where
     N: ModelName + Serialize + AsyncChat,
     M: Serialize,
     (N, M): Bounded,
-    S: StreamState,
 {
     type Body = ChatBody<N, M>;
     type ApiUrl = String;
@@ -282,22 +220,4 @@ where
     fn http_config(&self) -> Arc<HttpClientConfig> {
         self.http_config.clone()
     }
-}
-
-impl<N, M> crate::model::traits::SseStreamable for AsyncChatCompletion<N, M, StreamOn>
-where
-    N: ModelName + Serialize + AsyncChat,
-    M: Serialize,
-    (N, M): Bounded,
-{
-}
-
-// Enable typed streaming extension methods for AsyncChatCompletion<...,
-// StreamOn>
-impl<N, M> crate::model::stream_ext::StreamChatLikeExt for AsyncChatCompletion<N, M, StreamOn>
-where
-    N: ModelName + Serialize + AsyncChat,
-    M: Serialize,
-    (N, M): Bounded,
-{
 }

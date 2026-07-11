@@ -14,6 +14,61 @@ this file records parent commits and results, not the task's own hash.
 | P01 | `fix(safety): close confirmed correctness and secret leaks` | `8edb0dd` | `cargo test --all-features --all-targets`, `cargo clippy --all-features --all-targets -D warnings`, `cargo audit`, `xtask forbidden check P01` | see P01 notes below | — |
 | P02 | `refactor(client): introduce shared client and validated configuration` | `574775d` | `cargo test --lib client::`, `cargo test --test client_builder`, `cargo clippy --all-features --all-targets -D warnings`, `xtask forbidden check P02` | see P02 notes below | — |
 | P03 | `refactor(transport): enforce retry safety limits and redaction` | `9af5cfb` | `cargo test --test transport_retry`, `--test transport_limits`, `--test transport_redaction`, `--test redirect_policy`, `cargo clippy --all-features --all-targets -D warnings`, `xtask forbidden check P03` | see P03 notes below | — |
+| P04 | `fix(api): align agent async audio and knowledge contracts` | `9cce682` | `cargo test --test agent_contract`, `--test audio_knowledge_contract`, `cargo clippy --all-features --all-targets -D warnings`, `xtask forbidden check P04` | see P04 notes below | — |
+
+## P04 — align Agent v1, async, ASR, TTS and Knowledge contracts
+
+- **Status:** complete
+- **Commit title (fixed):** `fix(api): align agent async audio and knowledge contracts`
+- **Parent commit:** `9cce682 refactor(transport): enforce retry safety limits and redaction`
+
+### Deliverables
+
+1. **Agent CRUD removed** (`create_agent`/`get_agent`/`update_agent`/`delete_agent`,
+   legacy PAAS-v4 agents chat + history, `AgentClient`). No compatibility alias.
+2. **Three AgentV1 operations** implemented with type-state streaming:
+   - `POST /v1/agents` — `AgentInvokeRequest<NonStreaming|Streaming>` (serialize
+     `stream=false`/`true`); `agent_id` non-empty, ≥1 message, role ∈ system/user/
+     assistant, open `custom_variables` Map.
+   - `POST /v1/agents/async-result` — `AgentAsyncResultRequest` (agent_id+async_id).
+   - `POST /v1/agents/conversation` — `AgentConversationRequest` (agent_id+
+     conversation_id+≥1 message).
+3. **Success invariants** (`Completed`: id+agent_id+non-empty choices; `Pending`:
+   agent_id+async_id; `Failed`: normal task result, not transport error;
+   `conversation`: conversation_id+agent_id+non-empty choices). Empty/unknown
+   bodies fail to deserialize.
+4. **AsyncChat stream removed** — `AsyncChatCompletion` loses its `S` type-state,
+   `with_stream`/`enable_stream`/`disable_stream`/`SseStreamable` impl; async-chat
+   body never serializes `stream` (task-submission endpoint).
+5. **ASR contract** — `temperature` removed; `prompt` (advisory) + `hotwords`
+   (≤100) added; `request_id` 6..=64, `user_id` 6..=128 validated.
+6. **TTS contract** — `input` max lowered 4096→1024; `volume` documented as
+   `(0,10]` (strictly >0); `response_format`/`encode_format` documented.
+7. **Knowledge contract** — `EmbeddingId` gains `Embedding3Pro (12)`;
+   `CreateKnowledgeBody` gains `embedding_model` + `contextual (0/1)`.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `cargo test --test agent_contract` | 9 pass |
+| `cargo test --test audio_knowledge_contract` | 7 pass |
+| `cargo test --all-features --all-targets` | 485 passed, 0 failed |
+| `cargo clippy --all-features --all-targets -D warnings` | clean |
+| `xtask forbidden check P04` | clean |
+
+### Notes
+
+- The `with_stream`/`enable_stream` removal on `AsyncChatCompletion` is a breaking
+  change (plan §4: 0.5 is breaking, no alias). The regular `ChatCompletion`
+  streaming path is unaffected.
+- The full ASR/TTS/Knowledge wire-model rewrite (type-state file/file_base64
+  exclusivity, PCM/stream/encode_format enforcement, KnowledgeSearch vs
+  KnowledgeGet naming) is completed in P05/P06 when these endpoints migrate onto
+  `RequestSpec`; P04 lands the field-level contract corrections on the existing
+  request types so the frozen constraints (§13.3–13.5) are honored now.
+- `forbidden check P04` skips the plan doc (which documents the banned patterns
+  in prose) and the ledger files.
 
 ## P03 — rebuild Transport, retry, timeouts, limits and redaction
 
