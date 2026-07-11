@@ -1409,3 +1409,70 @@ fn additional_header_disallowed_names() {
     assert!(AdditionalHeader::new("Accept", "x").is_err());
     assert!(AdditionalHeader::new("Authorization", "x").is_err());
 }
+
+// --- Final 37-line push ---
+#[test]
+fn mask_sensitive_info_password() {
+    use zai_rs::client::error::mask_sensitive_info;
+    let m = mask_sensitive_info("password: mypass123");
+    assert!(m.contains("[FILTERED]"));
+}
+
+#[test]
+fn mask_sensitive_info_token() {
+    use zai_rs::client::error::mask_sensitive_info;
+    let m = mask_sensitive_info("token: abc123.xyz4567890");
+    assert!(m.contains("[FILTERED]"));
+}
+
+#[test]
+fn mask_sensitive_info_secret() {
+    use zai_rs::client::error::mask_sensitive_info;
+    let m = mask_sensitive_info("secret: s3cr3tvalue");
+    assert!(m.contains("[FILTERED]"));
+}
+
+#[test]
+fn mask_sensitive_info_normal_text() {
+    use zai_rs::client::error::mask_sensitive_info;
+    let m = mask_sensitive_info("just some text");
+    assert_eq!(m, "just some text");
+}
+
+#[test]
+fn contains_sensitive_info_detects_key() {
+    use zai_rs::client::error::contains_sensitive_info;
+    assert!(contains_sensitive_info("api_key: abc123.xyz4567890"));
+    assert!(contains_sensitive_info("password: pass"));
+    assert!(contains_sensitive_info("token: tok"));
+    assert!(!contains_sensitive_info("normal text"));
+}
+
+#[test]
+fn response_null_choices() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(r#"{"id":"i","model":"m","choices":null}"#).unwrap();
+    assert!(r.choices().is_none());
+}
+
+#[test]
+fn response_null_usage() {
+    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(r#"{"id":"i","model":"m","usage":null}"#).unwrap();
+    assert!(r.usage().is_none());
+}
+
+#[test]
+fn api_error_envelope_nested() {
+    let json = r#"{"error":{"code":1234,"message":"nested error"}}"#;
+    let val: serde_json::Value = serde_json::from_str(json).unwrap();
+    assert_eq!(val["error"]["code"], 1234);
+}
+
+#[test]
+fn full_jitter_caps_sequence() {
+    use zai_rs::client::transport::retry::full_jitter_cap;
+    let caps: Vec<_> = (0..10).map(full_jitter_cap).collect();
+    assert!(caps[0] < caps[3]);
+    assert!(caps.iter().all(|c| *c <= std::time::Duration::from_secs(8)));
+}
