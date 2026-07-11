@@ -164,3 +164,5 @@ tempfile = "3.27.0"
 # Dev-only tokio `net` feature for the 127.0.0.1:0 TestServer (P02.13);
 # `test-util` for paused-time backoff/deadline tests (P03.13).
 tokio = { version = "1.52.3", features = ["net", "test-util"] }
+# Property-based testing for contract invariant verification (P11.5).
+proptest = "1.11.0"
