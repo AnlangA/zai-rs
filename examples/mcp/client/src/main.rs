@@ -1,8 +1,9 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use rmcp::{
     ServiceExt, model::ClientInfo, service::ServerSink, transport::StreamableHttpClientTransport,
 };
 // ZAI (zai-rs) imports
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 // rmcp-kits bridge imports
 use zai_rs::toolkits::rmcp_kits::{
@@ -41,13 +42,13 @@ async fn main() -> Result<()> {
     // 3) Convert RMCP tools into ZAI function-call tool definitions (via rmcp-kits)
     let tool_defs: Vec<Tools> = mcp_tools_to_functions(&tools);
 
-    // 4) Ask the AI to perform an increment operation using those tools
-    let key = std::env::var("ZHIPU_API_KEY").map_err(|_| {
-        anyhow!("ZHIPU_API_KEY is not set. Please export your API key to use the Zhipu AI service.")
-    })?;
+    // 4) Ask the AI to perform an increment operation using those tools.
+    //    The shared ZaiClient owns the API key (P05 migration): chat requests
+    //    are sent via `.send_via(&zai_client)` instead of carrying the key.
+    let zai_client = ZaiClient::from_env()?;
 
     let user_text = "Please increment the counter by 2.";
-    let chat = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(user_text), key)
+    let chat = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(user_text))
         .with_thinking(ThinkingType::disabled())
         .add_tools(tool_defs)
         .with_max_tokens(256);
@@ -55,6 +56,7 @@ async fn main() -> Result<()> {
     // 5-7) Full roundtrip (first request -> MCP tools -> second request)
     let final_resp: ChatCompletionResponse = run_mcp_tool_roundtrip(
         &caller,
+        &zai_client,
         chat,
         Some("Now provide the final result to the user based on the tool outputs."),
     )

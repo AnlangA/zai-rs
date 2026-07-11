@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("📋 Configuration loaded: {:?}", config);
 
     // Initialize application state
-    let state = AppState::new(config.clone());
+    let state = AppState::new(config.clone())?;
 
     // Build the application router
     let app = create_app(state, config.clone());

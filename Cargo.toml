@@ -9,13 +9,15 @@
 # ---------------------------------------------------------------------------
 [workspace]
 resolver = "3"
-members = ["xtask"]
-exclude = [
-    "fuzz",
+members = [
+    "xtask",
     "examples/web_chat",
     "examples/mcp/client",
     "examples/mcp/servers",
     "examples/mcp/list_remote_mcp_tools",
+]
+exclude = [
+    "fuzz",
 ]
 
 [package]
