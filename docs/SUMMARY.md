@@ -9,4 +9,3 @@
 - [Advanced Topics](./ADVANCED_TOPICS.md)
 - [OCR Guide](./OCR_GUIDE.md)
 - [FAQ](./FAQ.md)
-- [Optimization Plan](./AI_AGENT_OPTIMIZATION_PLAN.md)

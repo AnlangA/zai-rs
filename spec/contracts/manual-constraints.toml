@@ -5,7 +5,7 @@
 # conflict for the listed fields; unlisted fields continue to use the frozen
 # OpenAPI/AsyncAPI. They MUST NOT be re-derived from a live web page — the
 # source markdown snapshots under spec/upstream/manual/ are authoritative
-# (hash-verified by `xtask contract verify`).
+# together with their committed upstream snapshots.
 
 frozen_at = "2026-07-11"
 sources = [
