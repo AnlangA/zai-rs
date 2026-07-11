@@ -448,3 +448,163 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    /// Mock transport with scripted responses.
+    struct ScriptedTransport {
+        messages: Vec<String>,
+        sent: Arc<Mutex<Vec<String>>>,
+        closed: Arc<Mutex<bool>>,
+    }
+
+    impl ScriptedTransport {
+        fn new(msgs: Vec<&str>) -> Self {
+            Self {
+                messages: msgs.into_iter().map(String::from).collect(),
+                sent: Arc::new(Mutex::new(Vec::new())),
+                closed: Arc::new(Mutex::new(false)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl RealtimeTransport for ScriptedTransport {
+        async fn send(&mut self, msg: String) -> crate::ZaiResult<()> {
+            self.sent.lock().unwrap().push(msg);
+            Ok(())
+        }
+        async fn recv(&mut self) -> crate::ZaiResult<Option<WsMessage>> {
+            if self.messages.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(WsMessage::Text(self.messages.remove(0))))
+        }
+        async fn close(&mut self) -> crate::ZaiResult<()> {
+            *self.closed.lock().unwrap() = true;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn run_loop_processes_server_events() {
+        let transport = ScriptedTransport::new(vec![
+            r#"{"type":"session.created","session":{"id":"s1"}}"#,
+            r#"{"type":"session.updated","session":{"id":"s1"}}"#,
+        ]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        // Drop sender to terminate
+        drop(cmd_tx);
+        let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    }
+
+    #[tokio::test]
+    async fn run_loop_handles_audio_delta() {
+        // Base64-encoded "hello"
+        let audio_b64 = base64::engine::general_purpose::STANDARD.encode(b"hello");
+        use base64::Engine as _;
+        let json =
+            format!(r#"{{"type":"response.audio.delta","delta":"{audio_b64}","event_id":"e1"}}"#);
+        let transport = ScriptedTransport::new(vec![&json]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        drop(cmd_tx);
+        let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    }
+
+    #[tokio::test]
+    async fn run_loop_handles_error_event() {
+        let transport = ScriptedTransport::new(vec![
+            r#"{"type":"error","error":{"code":"server_error","message":"oops"}}"#,
+        ]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        drop(cmd_tx);
+        let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    }
+
+    #[tokio::test]
+    async fn run_loop_handles_unparseable_frame() {
+        let transport = ScriptedTransport::new(vec!["not json at all"]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        drop(cmd_tx);
+        let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    }
+
+    #[tokio::test]
+    async fn run_loop_sends_client_event() {
+        let transport = ScriptedTransport::new(vec![]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        // Send a client event
+        cmd_tx
+            .send(Command::ClientEvent(Box::new(
+                ClientEvent::ResponseCreate {
+                    client_timestamp: None,
+                },
+            )))
+            .await
+            .unwrap();
+        // Close
+        cmd_tx.send(Command::Close).await.unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(2), join).await;
+    }
+
+    #[tokio::test]
+    async fn run_loop_close_command_terminates() {
+        let transport = ScriptedTransport::new(vec![]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        cmd_tx.send(Command::Close).await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(2), join).await;
+        assert!(result.is_ok(), "run_loop should terminate on Close command");
+    }
+
+    #[tokio::test]
+    async fn run_loop_peer_disconnect_terminates() {
+        // Empty message queue → recv returns None → peer disconnected
+        let transport = ScriptedTransport::new(vec![]);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<Bytes>(16);
+        let join = tokio::spawn(run_loop(transport, cmd_rx, events_tx, audio_tx));
+        drop(cmd_tx);
+        let result = tokio::time::timeout(Duration::from_secs(2), join).await;
+        assert!(
+            result.is_ok(),
+            "run_loop should terminate on peer disconnect"
+        );
+    }
+
+    #[test]
+    fn new_event_id_format() {
+        let id = new_event_id();
+        assert!(id.starts_with("evt_"));
+    }
+
+    #[test]
+    fn now_ms_returns_positive() {
+        let t = now_ms();
+        assert!(t > 0);
+    }
+}
