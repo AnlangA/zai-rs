@@ -840,3 +840,92 @@ fn sse_parser_finish_incomplete() {
     // May or may not produce an event depending on impl
     let _ = final_events;
 }
+
+// --- Knowledge document upload file builder ---
+#[test]
+fn knowledge_doc_upload_file_builder() {
+    use zai_rs::knowledge::document_upload_file::*;
+    let mut req = DocumentUploadFileRequest::new("kb-1")
+        .add_file_path(std::path::PathBuf::from("/tmp/test.pdf"))
+        .with_options(UploadFileOptions::default());
+    let _ = req.options_mut();
+}
+
+// --- Text to audio builder ---
+#[test]
+fn text_to_audio_builder() {
+    use zai_rs::model::text_to_audio::*;
+    let body = TextToAudioBody::new(GlmTts {})
+        .with_input("hello world")
+        .with_speed(1.5)
+        .with_volume(5.0)
+        .with_voice(Voice::Tongtong);
+    let _ = body.input;
+}
+
+// --- Async chat builder ---
+#[test]
+fn async_chat_builder() {
+    use zai_rs::model::*;
+    let req = AsyncChatCompletion::new(GLM4_5 {}, TextMessage::user("hi"))
+        .with_temperature(0.7)
+        .with_top_p(0.9)
+        .with_max_tokens(100)
+        .with_request_id("r1")
+        .with_user_id("u1")
+        .with_stop("stop".to_string());
+    let _ = req.validate();
+}
+
+#[test]
+fn all_chat_model_ids() {
+    use zai_rs::model::*;
+    let ids: Vec<String> = vec![
+        GLM5_2 {}.into(),
+        GLM5_1 {}.into(),
+        GLM5_turbo {}.into(),
+        GLM5 {}.into(),
+        GLM4_7 {}.into(),
+        GLM4_7_flash {}.into(),
+        GLM4_7_flashx {}.into(),
+        GLM4_6 {}.into(),
+        GLM4_5 {}.into(),
+        GLM4_5_x {}.into(),
+        GLM4_5_flash {}.into(),
+        GLM4_5_air {}.into(),
+        GLM4_5_airx {}.into(),
+    ];
+    for id in &ids {
+        assert!(!id.is_empty());
+        assert_eq!(id, id.trim());
+    }
+}
+
+#[test]
+fn vision_model_ids() {
+    use zai_rs::model::*;
+    let ids: Vec<String> = vec![
+        GLM5V_turbo {}.into(),
+        autoglm_phone {}.into(),
+        GLM4_6v {}.into(),
+        GLM4_6v_flash {}.into(),
+        GLM4_6v_flashx {}.into(),
+        GLM4_5v {}.into(),
+    ];
+    for id in &ids {
+        assert!(!id.is_empty());
+    }
+}
+
+#[test]
+fn voice_realtime_model_ids() {
+    use zai_rs::model::*;
+    let ids: Vec<String> = vec![
+        GLM4_voice {}.into(),
+        GLM_realtime {}.into(),
+        GLM4_5_voice {}.into(),
+    ];
+    for id in &ids {
+        assert!(!id.is_empty());
+    }
+}
