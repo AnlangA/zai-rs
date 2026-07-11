@@ -4,18 +4,14 @@
 # Every entry records the exact URL, git commit (where applicable), fetch date,
 # byte length and SHA-256 of the committed blob under spec/upstream.
 #
-# The xtask `contract verify` command reads this file and re-checks each
-# length/SHA-256 against the on-disk file, so any drift is caught before a
-# merge. These values are fixed by the optimization plan (section 3) and MUST
-# NOT be regenerated from a live web page — see docs/AI_AGENT_OPTIMIZATION_PLAN.md
-# section 3 and section 13.
+# These values record the committed snapshot provenance and MUST NOT be
+# regenerated from a live web page without an intentional contract refresh.
 #
 # All byte lengths and hashes below were produced by:
 #   wc -c < <file>     (byte length)
 #   shasum -a 256 <file>   (SHA-256)
 
 frozen_at = "2026-07-11"
-plan_baseline_commit = "e82be86"
 
 # ---------------------------------------------------------------------------
 # Primary machine-readable contract: OpenAPI 3.0.1 (Zhipu AI).
@@ -47,7 +43,7 @@ channel_count = 1
 # ---------------------------------------------------------------------------
 # Human-readable manual reference pages. These encode field-level constraints
 # that the machine specs under-specify (ASR/TTS/Knowledge) and the canonical
-# Agent v1 surface. Encoded into spec/contracts/manual-constraints.toml by P00.
+# Agent v1 surface. Encoded into spec/contracts/manual-constraints.toml.
 # ---------------------------------------------------------------------------
 [[manual]]
 name = "agent"

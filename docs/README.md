@@ -2,10 +2,6 @@
 
 欢迎来到 zai-rs - Zhipu AI Rust SDK 的文档中心。
 
-## 项目维护
-
-- **[AI Agent 项目优化执行计划](AI_AGENT_OPTIMIZATION_PLAN.md)** - 基于 0.4.0 代码审查、官方冻结契约和可执行质量门的 0.5.0 优化路线
-
 ## 入门指南
 
 - **[快速入门指南](GETTING_STARTED.md)** - 新用户的完整入门教程

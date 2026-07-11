@@ -1,16 +1,13 @@
 # ---------------------------------------------------------------------------
-# Workspace definition (plan P00.4).
+# Workspace definition.
 #
-# resolver = 3 (2024 edition default) for the new 0.5 layout. Members are the
-# root `zai-rs` package and the `xtask` build-automation crate. The four nested
-# example projects (examples/web_chat and the three under examples/mcp) are
-# excluded here and brought into the workspace in P12; the fuzz workspace stays
-# a fully separate nested workspace (created in P11) and is excluded too.
+# resolver = 3 is the Rust 2024 edition default. Members are the root `zai-rs`
+# package and the bundled example projects; the fuzz workspace remains a fully
+# separate nested workspace.
 # ---------------------------------------------------------------------------
 [workspace]
 resolver = "3"
 members = [
-    "xtask",
     "examples/web_chat",
     "examples/mcp/client",
     "examples/mcp/servers",
