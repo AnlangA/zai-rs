@@ -22,12 +22,12 @@ impl DocumentImageListRequest {
         &self,
         client: &ZaiClient,
     ) -> crate::ZaiResult<DocumentImageListResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["document", "slice", "image_list", &self.document_id],
-        )?;
+        let route = crate::client::routes::DOCUMENTS_IMAGES;
+        let url = client
+            .endpoints()
+            .resolve_route(route, &[&self.document_id])?;
         client
-            .send_empty::<DocumentImageListResponse>("POST", url)
+            .send_empty::<DocumentImageListResponse>(route.method(), url)
             .await
     }
 }

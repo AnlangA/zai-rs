@@ -111,10 +111,8 @@ where
     {
         self.validate()?;
 
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::PaasV4,
-            &["audio", "transcriptions"],
-        )?;
+        let route = crate::client::routes::AUDIO_TRANSCRIBE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         let file_path =
             self.file_path
                 .clone()
@@ -163,7 +161,7 @@ where
             factory = factory.field("user_id", uid)?;
         }
         client
-            .send_multipart::<super::response::AudioToTextResponse>("POST", url, &factory)
+            .send_multipart::<super::response::AudioToTextResponse>(route.method(), url, &factory)
             .await
     }
 }

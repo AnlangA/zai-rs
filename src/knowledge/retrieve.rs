@@ -17,12 +17,10 @@ impl KnowledgeRetrieveRequest {
 
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeDetailResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["knowledge", &self.id],
-        )?;
+        let route = crate::client::routes::KNOWLEDGE_GET;
+        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_empty::<KnowledgeDetailResponse>("GET", url)
+            .send_empty::<KnowledgeDetailResponse>(route.method(), url)
             .await
     }
 }

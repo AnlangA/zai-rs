@@ -49,11 +49,10 @@ impl VoiceDeleteRequest {
         client: &ZaiClient,
     ) -> crate::ZaiResult<super::response::VoiceDeleteResponse> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["voice", "delete"])?;
+        let route = crate::client::routes::AUDIO_DELETE_VOICE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, super::response::VoiceDeleteResponse>("POST", url, &self.body)
+            .send_json::<_, super::response::VoiceDeleteResponse>(route.method(), url, &self.body)
             .await
     }
 }

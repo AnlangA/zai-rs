@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::request::FilePurpose;
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 
 /// File upload request (multipart/form-data)
 ///
@@ -44,7 +44,8 @@ impl FileUploadRequest {
         &self,
         client: &ZaiClient,
     ) -> crate::ZaiResult<super::response::FileObject> {
-        let url = client.endpoints().resolve(ApiFamily::PaasV4, &["files"])?;
+        let route = crate::client::routes::FILES_UPLOAD;
+        let url = client.endpoints().resolve_route(route, &[])?;
         let purpose = self.purpose.clone();
         let path = self.file_path.clone();
         let file_name = self.file_name.clone();
@@ -68,7 +69,7 @@ impl FileUploadRequest {
                 bytes,
             )?;
         client
-            .send_multipart::<super::response::FileObject>("POST", url, &factory)
+            .send_multipart::<super::response::FileObject>(route.method(), url, &factory)
             .await
     }
 }

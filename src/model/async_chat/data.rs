@@ -120,13 +120,13 @@ where
         M: serde::Serialize,
     {
         self.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::PaasV4,
-            &["async", "chat", "completions"],
-        )?;
+        let route = crate::client::routes::CHAT_COMPLETE_ASYNC;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
             .send_json::<_, crate::model::chat_base_response::ChatCompletionResponse>(
-                "POST", url, &self.body,
+                route.method(),
+                url,
+                &self.body,
             )
             .await
     }

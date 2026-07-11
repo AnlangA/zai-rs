@@ -77,15 +77,18 @@ impl KnowledgeListRequest {
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeListResponse> {
         let params = self.query.pairs();
-        let url = client.endpoints().resolve_with_query(
-            crate::client::ApiFamily::LlmApplication,
-            &["knowledge"],
+        let route = crate::client::routes::KNOWLEDGE_LIST;
+        let url = client.endpoints().resolve_route_with_query(
+            route,
+            &[],
             &params
                 .iter()
                 .map(|(k, v)| (*k, v.as_str()))
                 .collect::<Vec<_>>(),
         )?;
-        client.send_empty::<KnowledgeListResponse>("GET", url).await
+        client
+            .send_empty::<KnowledgeListResponse>(route.method(), url)
+            .await
     }
 
     /// Validate the query then send via a [`ZaiClient`] and parse the typed

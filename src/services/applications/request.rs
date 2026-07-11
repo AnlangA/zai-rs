@@ -15,7 +15,7 @@
 //! | [`ApplicationInvokeRequest`] | POST | `ApplicationV3` | `v3/application/invoke` |
 
 use crate::ZaiResult;
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 use crate::services::applications::response::{
     ApplicationConversationCreateResponse, ApplicationFileStatsResponse,
     ApplicationFileUploadResponse, ApplicationHistoryResponse, ApplicationInvokeResponse,
@@ -41,12 +41,10 @@ impl ApplicationFileStatsRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationFileStatsResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::ApplicationV2,
-            &["v2", "application", "file_stat"],
-        )?;
+        let route = crate::client::routes::APPLICATIONS_FILE_STATS;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ApplicationFileStatsResponse>("POST", url, &self.body)
+            .send_json::<_, ApplicationFileStatsResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -69,10 +67,8 @@ impl ApplicationFileUploadRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationFileUploadResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::ApplicationV2,
-            &["v2", "application", "file_upload"],
-        )?;
+        let route = crate::client::routes::APPLICATIONS_UPLOAD_FILE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new();
         if let serde_json::Value::Object(map) = &self.body {
             for (key, value) in map {
@@ -92,7 +88,7 @@ impl ApplicationFileUploadRequest {
             )?;
         }
         client
-            .send_multipart::<ApplicationFileUploadResponse>("POST", url, &factory)
+            .send_multipart::<ApplicationFileUploadResponse>(route.method(), url, &factory)
             .await
     }
 }
@@ -112,12 +108,10 @@ impl ApplicationSliceInfoRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationSliceInfoResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::ApplicationV2,
-            &["v2", "application", "slice_info"],
-        )?;
+        let route = crate::client::routes::APPLICATIONS_SLICE_INFO;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ApplicationSliceInfoResponse>("POST", url, &self.body)
+            .send_json::<_, ApplicationSliceInfoResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -145,12 +139,10 @@ impl ApplicationConversationCreateRequest {
         &self,
         client: &ZaiClient,
     ) -> ZaiResult<ApplicationConversationCreateResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::ApplicationV2,
-            &["v2", "application", &self.app_id, "conversation"],
-        )?;
+        let route = crate::client::routes::APPLICATIONS_CREATE_CONVERSATION;
+        let url = client.endpoints().resolve_route(route, &[&self.app_id])?;
         client
-            .send_json::<_, ApplicationConversationCreateResponse>("POST", url, &self.body)
+            .send_json::<_, ApplicationConversationCreateResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -173,12 +165,10 @@ impl ApplicationVariablesRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationVariablesResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::ApplicationV2,
-            &["v2", "application", &self.app_id, "variables"],
-        )?;
+        let route = crate::client::routes::APPLICATIONS_VARIABLES;
+        let url = client.endpoints().resolve_route(route, &[&self.app_id])?;
         client
-            .send_empty::<ApplicationVariablesResponse>("GET", url)
+            .send_empty::<ApplicationVariablesResponse>(route.method(), url)
             .await
     }
 }
@@ -203,16 +193,12 @@ impl ApplicationHistoryRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationHistoryResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::LlmApplication,
-            &[
-                "history_session_record",
-                &self.app_id,
-                &self.conversation_id,
-            ],
-        )?;
+        let route = crate::client::routes::APPLICATIONS_HISTORY;
+        let url = client
+            .endpoints()
+            .resolve_route(route, &[&self.app_id, &self.conversation_id])?;
         client
-            .send_empty::<ApplicationHistoryResponse>("GET", url)
+            .send_empty::<ApplicationHistoryResponse>(route.method(), url)
             .await
     }
 }
@@ -233,11 +219,10 @@ impl ApplicationInvokeRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationInvokeResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::ApplicationV3, &["v3", "application", "invoke"])?;
+        let route = crate::client::routes::APPLICATIONS_INVOKE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ApplicationInvokeResponse>("POST", url, &self.body)
+            .send_json::<_, ApplicationInvokeResponse>(route.method(), url, &self.body)
             .await
     }
 }

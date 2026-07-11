@@ -4,6 +4,7 @@
 pub mod config;
 pub mod endpoint;
 pub mod error;
+pub(crate) mod routes;
 pub mod secret;
 pub mod services;
 pub mod transport;

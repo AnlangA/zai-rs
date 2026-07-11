@@ -192,9 +192,8 @@ impl OcrRequest {
             .map_err(crate::client::error::ZaiError::from)?;
         self.validate_file_async().await?;
 
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["files", "ocr"])?;
+        let route = crate::client::routes::FILES_OCR;
+        let url = client.endpoints().resolve_route(route, &[])?;
         let file_path =
             self.file_path
                 .clone()
@@ -254,7 +253,7 @@ impl OcrRequest {
             factory = factory.field("user_id", uid)?;
         }
         client
-            .send_multipart::<super::response::OcrResponse>("POST", url, &factory)
+            .send_multipart::<super::response::OcrResponse>(route.method(), url, &factory)
             .await
     }
 }

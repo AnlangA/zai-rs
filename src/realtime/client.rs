@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use super::session::SessionBuilder;
-use crate::client::ApiFamily;
 use crate::client::endpoint::EndpointConfig;
 
 /// Authentication mode for the realtime WebSocket handshake.
@@ -100,7 +99,7 @@ impl RealtimeClient {
     /// The resolved realtime WebSocket URL.
     pub fn realtime_url(&self) -> String {
         self.endpoint_config
-            .resolve(ApiFamily::Realtime, &[])
+            .resolve_route(crate::client::routes::REALTIME_CONNECT, &[])
             .unwrap_or_default()
     }
 

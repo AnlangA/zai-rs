@@ -46,11 +46,10 @@ impl TokenizerRequest {
     /// Automatically runs `validate()` before sending.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<TokenizerResponse> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["tokenizer"])?;
+        let route = crate::client::routes::TOKENIZER_COUNT;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, TokenizerResponse>("POST", url, &self.body)
+            .send_json::<_, TokenizerResponse>(route.method(), url, &self.body)
             .await
     }
 }

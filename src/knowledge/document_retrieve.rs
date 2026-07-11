@@ -19,12 +19,12 @@ impl DocumentRetrieveRequest {
 
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDetailResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["document", &self.document_id],
-        )?;
+        let route = crate::client::routes::DOCUMENTS_GET;
+        let url = client
+            .endpoints()
+            .resolve_route(route, &[&self.document_id])?;
         client
-            .send_empty::<DocumentDetailResponse>("GET", url)
+            .send_empty::<DocumentDetailResponse>(route.method(), url)
             .await
     }
 }

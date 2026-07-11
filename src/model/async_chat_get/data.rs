@@ -42,12 +42,13 @@ where
         client: &ZaiClient,
     ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse> {
         self.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::PaasV4,
-            &["async-result", &self.task_id],
-        )?;
+        let route = crate::client::routes::TASKS_GET;
+        let url = client.endpoints().resolve_route(route, &[&self.task_id])?;
         client
-            .send_empty::<crate::model::chat_base_response::ChatCompletionResponse>("GET", url)
+            .send_empty::<crate::model::chat_base_response::ChatCompletionResponse>(
+                route.method(),
+                url,
+            )
             .await
     }
 }

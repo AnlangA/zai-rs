@@ -100,15 +100,18 @@ impl DocumentListRequest {
                 message: "document list requires a knowledge_id; call with_query first".to_string(),
             })?;
         let params = q.pairs();
-        let url = client.endpoints().resolve_with_query(
-            crate::client::ApiFamily::LlmApplication,
-            &["document"],
+        let route = crate::client::routes::DOCUMENTS_LIST;
+        let url = client.endpoints().resolve_route_with_query(
+            route,
+            &[],
             &params
                 .iter()
                 .map(|(k, v)| (*k, v.as_str()))
                 .collect::<Vec<_>>(),
         )?;
-        client.send_empty::<DocumentListResponse>("GET", url).await
+        client
+            .send_empty::<DocumentListResponse>(route.method(), url)
+            .await
     }
 
     /// Validate the query then send via a [`ZaiClient`] and parse the typed

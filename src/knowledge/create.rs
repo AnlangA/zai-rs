@@ -166,11 +166,10 @@ impl CreateKnowledgeRequest {
     /// Validate and send via a [`ZaiClient`], returning the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CreateKnowledgeResponse> {
         self.body.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::LlmApplication, &["knowledge"])?;
+        let route = crate::client::routes::KNOWLEDGE_CREATE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, CreateKnowledgeResponse>("POST", url, &self.body)
+            .send_json::<_, CreateKnowledgeResponse>(route.method(), url, &self.body)
             .await
     }
 }

@@ -10,10 +10,7 @@ use tracing::{debug, trace, warn};
 use super::{request::*, response::*};
 use crate::{
     ZaiResult,
-    client::{
-        error::codes,
-        {ApiFamily, ZaiClient},
-    },
+    client::{ZaiClient, error::codes},
 };
 
 /// File parser creation client (P05: routes through [`ZaiClient`]).
@@ -131,9 +128,8 @@ impl FileParserCreateRequest {
 
         trace!(bytes = file_bytes.len(), file_name = %file_name, "Prepared parser upload");
 
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["files", "parser", "create"])?;
+        let route = crate::client::routes::FILES_PARSE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         let tool_type = self.tool_type.clone();
         let file_type = self.file_type.clone();
         let factory = crate::client::transport::multipart::MultipartBodyFactory::new()
@@ -141,7 +137,7 @@ impl FileParserCreateRequest {
             .field("file_type", format!("{file_type:?}"))?
             .bytes_named("file", file_name, "application/octet-stream", file_bytes)?;
         let create_response = client
-            .send_multipart::<FileParserCreateResponse>("POST", url, &factory)
+            .send_multipart::<FileParserCreateResponse>(route.method(), url, &factory)
             .await
             .map_err(|e| e.context("file parser create"))?;
 

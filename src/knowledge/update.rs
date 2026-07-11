@@ -110,12 +110,10 @@ impl KnowledgeUpdateRequest {
             });
         }
         self.body.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["knowledge", &self.id],
-        )?;
+        let route = crate::client::routes::KNOWLEDGE_UPDATE;
+        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_json::<_, KnowledgeUpdateResponse>("PUT", url, &self.body)
+            .send_json::<_, KnowledgeUpdateResponse>(route.method(), url, &self.body)
             .await
     }
 }

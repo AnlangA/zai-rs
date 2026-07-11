@@ -8,10 +8,7 @@ use tracing::{debug, trace, warn};
 use super::{request::*, response::*};
 use crate::{
     ZaiResult,
-    client::{
-        error::codes,
-        {ApiFamily, ZaiClient},
-    },
+    client::{ZaiClient, error::codes},
 };
 
 /// File parser result client (P05: routes through [`ZaiClient`]).
@@ -69,19 +66,14 @@ impl FileParserResultRequest {
         client: &ZaiClient,
         format_type: FormatType,
     ) -> ZaiResult<FileParserResultResponse> {
-        let url = client.endpoints().resolve(
-            ApiFamily::PaasV4,
-            &[
-                "files",
-                "parser",
-                "result",
-                &self.task_id,
-                &format_type.to_string(),
-            ],
-        )?;
+        let route = crate::client::routes::FILES_PARSE_RESULT;
+        let format_type = format_type.to_string();
+        let url = client
+            .endpoints()
+            .resolve_route(route, &[&self.task_id, &format_type])?;
         trace!(url = %url, "Fetching file parser result");
         client
-            .send_empty::<FileParserResultResponse>("GET", url)
+            .send_empty::<FileParserResultResponse>(route.method(), url)
             .await
     }
 

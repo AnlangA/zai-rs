@@ -1,7 +1,7 @@
 //! Tools request types (plan P06) — layout parsing & reader.
 
 use crate::ZaiResult;
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 
 use super::response::{LayoutParsingResponse, ReaderResponse};
 
@@ -21,11 +21,10 @@ impl LayoutParsingRequest {
 
     /// Send the request and parse a typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<LayoutParsingResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["layout_parsing"])?;
+        let route = crate::client::routes::TOOLS_LAYOUT;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, LayoutParsingResponse>("POST", url, &self.body)
+            .send_json::<_, LayoutParsingResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -46,9 +45,10 @@ impl ReaderRequest {
 
     /// Send the request and parse a typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ReaderResponse> {
-        let url = client.endpoints().resolve(ApiFamily::PaasV4, &["reader"])?;
+        let route = crate::client::routes::TOOLS_READER;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ReaderResponse>("POST", url, &self.body)
+            .send_json::<_, ReaderResponse>(route.method(), url, &self.body)
             .await
     }
 }

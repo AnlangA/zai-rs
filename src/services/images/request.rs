@@ -1,7 +1,7 @@
 //! Images request types (plan P06) — async image generation.
 
 use crate::ZaiResult;
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 
 use super::response::AsyncImageGenerationResponse;
 
@@ -21,11 +21,10 @@ impl AsyncImageGenerationRequest {
 
     /// Send the request and parse a typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AsyncImageGenerationResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["async", "images", "generations"])?;
+        let route = crate::client::routes::IMAGES_GENERATE_ASYNC;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, AsyncImageGenerationResponse>("POST", url, &self.body)
+            .send_json::<_, AsyncImageGenerationResponse>(route.method(), url, &self.body)
             .await
     }
 }

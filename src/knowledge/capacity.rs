@@ -22,12 +22,10 @@ impl KnowledgeCapacityRequest {
         &self,
         client: &ZaiClient,
     ) -> crate::ZaiResult<KnowledgeCapacityResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["knowledge", "capacity"],
-        )?;
+        let route = crate::client::routes::KNOWLEDGE_CAPACITY;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_empty::<KnowledgeCapacityResponse>("GET", url)
+            .send_empty::<KnowledgeCapacityResponse>(route.method(), url)
             .await
     }
 }

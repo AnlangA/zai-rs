@@ -1,4 +1,4 @@
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 
 /// File content request (GET /paas/v4/files/{file_id}/content)
 pub struct FileContentRequest {
@@ -16,10 +16,9 @@ impl FileContentRequest {
     /// Send the request via a [`ZaiClient`] and return raw bytes of the file
     /// content.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<Vec<u8>> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["files", &self.file_id, "content"])?;
-        let bytes = client.send_empty_bytes("GET", url).await?;
+        let route = crate::client::routes::FILES_GET_CONTENT;
+        let url = client.endpoints().resolve_route(route, &[&self.file_id])?;
+        let bytes = client.send_empty_bytes(route.method(), url).await?;
         Ok(bytes.to_vec())
     }
 

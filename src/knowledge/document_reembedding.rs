@@ -51,12 +51,12 @@ impl DocumentReembeddingRequest {
     /// Send the POST request via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<DocumentReembeddingResponse> {
         self.body.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["document", "embedding", &self.document_id],
-        )?;
+        let route = crate::client::routes::DOCUMENTS_REEMBED;
+        let url = client
+            .endpoints()
+            .resolve_route(route, &[&self.document_id])?;
         client
-            .send_json::<_, DocumentReembeddingResponse>("POST", url, &self.body)
+            .send_json::<_, DocumentReembeddingResponse>(route.method(), url, &self.body)
             .await
     }
 }

@@ -1,8 +1,5 @@
 use super::request::FileListQuery;
-use crate::{
-    ZaiResult,
-    client::{ApiFamily, ZaiClient},
-};
+use crate::{ZaiResult, client::ZaiClient};
 
 /// Files list request (GET /paas/v4/files)
 ///
@@ -45,12 +42,12 @@ impl FileListRequest {
             params.push(("limit", limit.to_string()));
         }
         let borrowed: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
-        let url =
-            client
-                .endpoints()
-                .resolve_with_query(ApiFamily::PaasV4, &["files"], &borrowed)?;
+        let route = crate::client::routes::FILES_LIST;
+        let url = client
+            .endpoints()
+            .resolve_route_with_query(route, &[], &borrowed)?;
         client
-            .send_empty::<super::response::FileListResponse>("GET", url)
+            .send_empty::<super::response::FileListResponse>(route.method(), url)
             .await
     }
 

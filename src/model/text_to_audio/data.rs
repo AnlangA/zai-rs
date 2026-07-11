@@ -88,9 +88,10 @@ where
     /// audio bytes (the endpoint does not return JSON).
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<bytes::Bytes> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["audio", "speech"])?;
-        client.send_json_bytes("POST", url, &self.body).await
+        let route = crate::client::routes::AUDIO_SYNTHESIZE;
+        let url = client.endpoints().resolve_route(route, &[])?;
+        client
+            .send_json_bytes(route.method(), url, &self.body)
+            .await
     }
 }

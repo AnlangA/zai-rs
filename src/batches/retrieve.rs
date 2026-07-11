@@ -1,8 +1,5 @@
 use super::types::BatchItem;
-use crate::{
-    ZaiResult,
-    client::{ApiFamily, ZaiClient},
-};
+use crate::{ZaiResult, client::ZaiClient};
 
 /// Retrieve a batch task by ID (GET /paas/v4/batches/{batch_id})
 pub struct BatchesRetrieveRequest {
@@ -20,11 +17,10 @@ impl BatchesRetrieveRequest {
     /// Send request via a [`ZaiClient`] and parse typed response as a single
     /// BatchItem
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<BatchesRetrieveResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["batches", &self.batch_id])?;
+        let route = crate::client::routes::BATCHES_GET;
+        let url = client.endpoints().resolve_route(route, &[&self.batch_id])?;
         client
-            .send_empty::<BatchesRetrieveResponse>("GET", url)
+            .send_empty::<BatchesRetrieveResponse>(route.method(), url)
             .await
     }
 }

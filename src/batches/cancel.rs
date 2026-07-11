@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::types::BatchItem;
-use crate::{
-    ZaiResult,
-    client::{ApiFamily, ZaiClient},
-};
+use crate::{ZaiResult, client::ZaiClient};
 
 /// Empty body for cancel API (serializes to `{}`)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -28,11 +25,10 @@ impl CancelBatchRequest {
 
     /// Send the request via a [`ZaiClient`] and parse typed response
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CancelBatchResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["batches", &self.batch_id, "cancel"])?;
+        let route = crate::client::routes::BATCHES_CANCEL;
+        let url = client.endpoints().resolve_route(route, &[&self.batch_id])?;
         client
-            .send_json::<_, CancelBatchResponse>("POST", url, &self.body)
+            .send_json::<_, CancelBatchResponse>(route.method(), url, &self.body)
             .await
     }
 }
