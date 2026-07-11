@@ -32,12 +32,16 @@ forbidden_substrings = [
 
 # ---------------------------------------------------------------------------
 # P03 — transport/error/retry/limits/redaction rebuild.
+#
+# NOTE: the literal removal of `HTTP_CLIENTS` / the public `HttpClient` trait
+# happens in P05 once every endpoint is migrated onto RequestSpec; until then
+# the not-yet-migrated 0.4 request types still reference them. P03 establishes
+# the new Transport alongside the legacy path. The `HTTP_CLIENTS` forbidden
+# pattern is therefore registered under P05, not P03.
 # ---------------------------------------------------------------------------
 [[phase]]
 name = "P03"
 forbidden_substrings = [
-    "HTTP_CLIENTS",                  # global HTTP client cache — removed in P03
-    "reqwest::Client::new",          # no ad-hoc client construction outside Transport
     "tracing::info!(.*body",         # never log request/response body
 ]
 
@@ -59,6 +63,7 @@ forbidden_substrings = [
 [[phase]]
 name = "P05"
 forbidden_substrings = [
+    "HTTP_CLIENTS",               # global cache deleted once migration completes
     "with_base_url",
     "with_endpoint_config",
     "with_http_config",

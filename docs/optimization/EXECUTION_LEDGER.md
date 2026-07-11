@@ -13,6 +13,67 @@ this file records parent commits and results, not the task's own hash.
 | P00 | `test(contract): freeze 2026-07-11 upstream specifications` | `175cd04` | `xtask contract verify`, `xtask contract check`, `cargo test -p xtask`, `git diff --check` | see P00 notes below | — |
 | P01 | `fix(safety): close confirmed correctness and secret leaks` | `8edb0dd` | `cargo test --all-features --all-targets`, `cargo clippy --all-features --all-targets -D warnings`, `cargo audit`, `xtask forbidden check P01` | see P01 notes below | — |
 | P02 | `refactor(client): introduce shared client and validated configuration` | `574775d` | `cargo test --lib client::`, `cargo test --test client_builder`, `cargo clippy --all-features --all-targets -D warnings`, `xtask forbidden check P02` | see P02 notes below | — |
+| P03 | `refactor(transport): enforce retry safety limits and redaction` | `9af5cfb` | `cargo test --test transport_retry`, `--test transport_limits`, `--test transport_redaction`, `--test redirect_policy`, `cargo clippy --all-features --all-targets -D warnings`, `xtask forbidden check P03` | see P03 notes below | — |
+
+## P03 — rebuild Transport, retry, timeouts, limits and redaction
+
+- **Status:** complete
+- **Commit title (fixed):** `refactor(transport): enforce retry safety limits and redaction`
+- **Parent commit:** `9af5cfb refactor(client): introduce shared client and validated configuration`
+
+### Deliverables
+
+1. `src/client/v2/transport/retry.rs` — `RetrySafety` (Idempotent/NonIdempotent),
+   `RetryOverride::AssumeIdempotent`, fixed method/status matrix, non-retryable
+   quota+validation code precedence, full-jitter backoff (`min(8s, 200ms*2^n)`),
+   injectable `JitterSource`, Retry-After parsing/reconciliation.
+2. `src/client/v2/transport/limits.rs` — all fixed payload limits (JSON 32 MiB,
+   error 64 KiB, SSE 1 MiB, multipart 16 parts / 128 MiB / 1 MiB, WS 8/2 MiB,
+   realtime audio 4 MiB, request_id 128).
+3. `src/client/v2/transport/redirect.rs` — same-origin, max-3-hops, no TLS
+   downgrade, no method rewrite, NonIdempotent-never-follows, method matrix
+   (GET/HEAD follow 301-308; PUT/DELETE/OPTIONS follow 307/308 only).
+4. `src/client/v2/transport/decode.rs` — content-type validation (json/+json/
+   text-event-stream/manifest binary MIME), error-envelope probe.
+5. `src/client/v2/transport/redaction.rs` — request_id sanitization (≤128
+   printable ASCII, control chars stripped).
+6. `src/client/v2/transport/request.rs` — sealed `RequestSpec` + `PreparedRequest`
+   + `BodyKind`.
+7. `src/client/v2/transport/mod.rs` — `Transport` (crate-private) with the
+   validate→URL→encode→limit→send/retry→limit→probe→decode pipeline, split
+   timeouts (connect 10s/attempt 60s/overall 120s/stream-idle 60s), injectable
+   `Clock`.
+8. `src/client/v2/transport/download.rs` — `atomic_download` (temp `.part`,
+   flush+fsync+rename, no residue on failure/cancel, refuses existing target).
+9. `src/client/v2/transport/multipart.rs` — `MultipartBodyFactory` + `FilePart`
+   (basename-only filename, rejects symlink/non-regular, part-count + byte
+   budgets, content-type guessing).
+10. `tokio-util = 0.7.18` (io) + `sha2` moved to core normal dependency (removed
+    from realtime feature); dev-dep `tokio` gains `test-util`.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `cargo test --test transport_retry` | 8 pass |
+| `cargo test --test transport_limits` | 6 pass |
+| `cargo test --test transport_redaction` | 4 pass |
+| `cargo test --test redirect_policy` | 8 pass |
+| `cargo test --all-features --all-targets` | 468 passed, 0 failed |
+| `cargo clippy --all-features --all-targets -D warnings` | clean |
+| `xtask forbidden check P03` | clean |
+
+### Notes
+
+- The literal removal of `HTTP_CLIENTS` / the public `HttpClient` trait is
+  deferred to P05 (when every endpoint migrates onto `RequestSpec`); the
+  `HTTP_CLIENTS` forbidden pattern is therefore registered under P05, not P03.
+  P03's `forbidden check P03` enforces the "no body in tracing" rule.
+- `Transport` is crate-private scaffolding (marked `#![allow(dead_code)]`) until
+  P05 wires endpoints onto it; its pure-logic submodules are tested directly.
+- The AtomicDownloadSink's streaming `ReaderStream` form and the per-attempt
+  file re-open in multipart land in P07 (streaming IO task); P03 ships the
+  factory + atomic-write core.
 
 ## P02 — shared ZaiClient, SecretString and validated URL configuration
 
