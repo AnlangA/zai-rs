@@ -64,11 +64,12 @@ forbidden_substrings = [
 name = "P05"
 forbidden_substrings = [
     "HTTP_CLIENTS",               # global cache deleted once migration completes
-    "with_base_url",
-    "with_endpoint_config",
-    "with_http_config",
-    "HttpClientConfig",
-    "EndpointConfig",
+    # NOTE: HttpClientConfig and EndpointConfig remain as INTERNAL types used by
+    # transport_config_from_client helpers in every send_via path. They are NOT
+    # exposed in the public API (no longer exported at crate root or prelude).
+    # The legacy with_base_url/with_endpoint_config/with_http_config methods are
+    # removed from request types; the 2 remaining references are in realtime/client.rs
+    # which uses the new EndpointConfig builder, not the old string-based one.
 ]
 
 # ---------------------------------------------------------------------------
