@@ -12,6 +12,60 @@ this file records parent commits and results, not the task's own hash.
 |---|---|---|---|---|---|
 | P00 | `test(contract): freeze 2026-07-11 upstream specifications` | `175cd04` | `xtask contract verify`, `xtask contract check`, `cargo test -p xtask`, `git diff --check` | see P00 notes below | — |
 | P01 | `fix(safety): close confirmed correctness and secret leaks` | `8edb0dd` | `cargo test --all-features --all-targets`, `cargo clippy --all-features --all-targets -D warnings`, `cargo audit`, `xtask forbidden check P01` | see P01 notes below | — |
+| P02 | `refactor(client): introduce shared client and validated configuration` | `574775d` | `cargo test --lib client::`, `cargo test --test client_builder`, `cargo clippy --all-features --all-targets -D warnings`, `xtask forbidden check P02` | see P02 notes below | — |
+
+## P02 — shared ZaiClient, SecretString and validated URL configuration
+
+- **Status:** complete
+- **Commit title (fixed):** `refactor(client): introduce shared client and validated configuration`
+- **Parent commit:** `574775d fix(safety): close confirmed correctness and secret leaks`
+
+### Deliverables
+
+1. `secrecy = 0.10.3` added; `src/client/secret.rs` defines `ApiSecret`
+   (Clone/Debug/Display always `[REDACTED]`; single audited `expose()` site).
+2. Package version bumped to `0.5.0-alpha.0` (Cargo.lock synced).
+3. `src/client/v2/config.rs` — `ZaiClient` (`Arc<ClientInner>`), `ZaiClientBuilder`,
+   `ClientInner`; `Clone` is one `Arc` bump, no config/secret/pool copy.
+4. `builder(api_key)` rejects empty/blank; `from_env()` reads only `ZHIPU_API_KEY`.
+5. `src/client/v2/endpoint.rs` — `EndpointConfig` with private `url::Url` fields;
+   `ApiFamily` with the 8 fixed families + official default bases.
+6. `build()` rejects relative/userinfo/query/fragment; HTTPS/WSS by default;
+   HTTP/WS only with `allow_insecure_transport(true)` AND loopback host.
+7. `push_path_segment` via `PathSegmentsMut` (percent-encoding); `query_pairs_mut`;
+   empty/`.`/`..` segments rejected; no string-concat fallback.
+8. `HttpTransportConfig` (connect 10s / request 60s / max_attempts 3 / compression
+   / allow-listed `AdditionalHeader`); builder only tightens (no raising limits).
+9. Fixed connection-pool sizing (idle 8 / 90s / tcp_keepalive 60s), `redirect::Policy::none()`.
+10. `src/client/v2/services/mod.rs` — 18 zero-sized service facades borrowing `&ZaiClient`.
+11. `src/client/v2/legacy_adapter.rs` — `pub(crate)` bridge for not-yet-migrated
+    0.4 request types; deleted in P05.
+12. `tests/support/http_server.rs` — `TestServer` (127.0.0.1:0, scripted response
+    queue, request capture, shutdown); dev-dep `tokio/net` added.
+
+### Verification results
+
+| Command | Result |
+|---|---|
+| `cargo test --locked --lib client::` | 22 v2 tests pass |
+| `cargo test --locked --test client_builder` | 8 pass |
+| `cargo test --locked --all-features --all-targets` | 411 passed, 0 failed |
+| `cargo clippy --locked --all-features --all-targets -- -D warnings` | clean |
+| `cargo fmt --all -- --check` | clean |
+| `xtask forbidden check P02` | clean |
+| `git diff --check` | clean |
+
+### Notes
+
+- The new architecture lives under `src/client/v2/` alongside the legacy 0.4
+  `client::config::ZaiConfig`/`client::endpoints::EndpointConfig`, which remain
+  in use by the not-yet-migrated request types. P05 migrates every endpoint onto
+  `RequestSpec` and removes the legacy paths + `LegacyRequestAdapter`.
+- Service facade method bodies (`complete`/`generate`/…) land in P04–P06; P02
+  establishes the facade structure so every family has a single owned-by-`ZaiClient`
+  entry point.
+- `TestServer` supports scripted responses + request capture; chunked-body /
+  backpressure / connection-drop refinements are added in P11.
 
 ## P01 — close confirmed correctness, secret leaks and supply-chain gaps
 

@@ -20,7 +20,7 @@ exclude = [
 
 [package]
 name = "zai-rs"
-version = "0.4.0"
+version = "0.5.0-alpha.0"
 edition = "2024"
 rust-version = "1.88"
 authors = ["anlang <2682525840@qq.com>"]
@@ -64,6 +64,9 @@ jsonschema = { version = "0.46.5", optional = true, default-features = false }
 validator = { version = "0.20.0", features = ["derive"] }
 url = "2.5.8"
 reqwest = { version = "0.13.4", features = ["json", "multipart", "stream", "gzip"] }
+# secrecy wraps the API key so it is never exposed via Debug/Display; the only
+# place the plaintext is read is Authorization-header construction (P02.1).
+secrecy = "0.10.3"
 
 fastrand = "2.4.1"
 
@@ -148,3 +151,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # tempfile is used by tests that previously read real media from `data/`; it
 # lets them generate minimal PNG/WAV/text fixtures in a temp dir instead (P01.6).
 tempfile = "3.27.0"
+# Dev-only tokio `net` feature for the 127.0.0.1:0 TestServer (P02.13).
+tokio = { version = "1.52.3", features = ["net"] }

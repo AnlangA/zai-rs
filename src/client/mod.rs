@@ -41,6 +41,8 @@ pub mod config;
 pub mod endpoints;
 pub mod error;
 pub mod http;
+pub mod secret;
+pub mod v2;
 
 pub use config::*;
 pub use endpoints::*;
