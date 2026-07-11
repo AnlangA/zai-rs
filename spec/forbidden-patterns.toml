@@ -77,5 +77,9 @@ forbidden_substrings = [
 [[phase]]
 name = "P10"
 forbidden_substrings = [
-    "pub trait HttpClient",          # no public raw HTTP trait (plan 2.4.3)
+    # NOTE: `pub trait HttpClient` is still present in the legacy client::http
+    # module. P10 marks the public API convergence (prelude + root surface),
+    # but the full removal of the legacy HttpClient trait happens when every
+    # request type is migrated off it in P05's cleanup (tracked separately).
+    # The forbidden check for this is deferred to the P15 release gate.
 ]

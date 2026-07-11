@@ -162,8 +162,9 @@ pub mod services;
 pub mod tool;
 pub mod toolkits;
 pub mod usage;
-pub use usage::{
-    CodingPlanQuotaKind, CodingPlanQuotaLimit, CodingPlanQuotaSummary, CodingPlanUsageData,
-    CodingPlanUsageDetail, CodingPlanUsageRequest, CodingPlanUsageResponse, CodingPlanUsageSummary,
-    query as query_coding_plan_usage, query_summary as query_coding_plan_usage_summary,
-};
+
+// --- P10.1: minimal 0.5 root surface ---
+// The crate root directly exports only ZaiClient, ZaiConfig, ZaiError, ZaiResult
+// and the prelude. Everything else is accessed via modules or `prelude::*`.
+pub use client::v2::ZaiClient;
+pub mod prelude;
