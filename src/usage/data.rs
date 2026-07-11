@@ -13,10 +13,7 @@ use std::fmt;
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::{
-    ZaiResult,
-    client::{ApiFamily, ZaiClient},
-};
+use crate::{ZaiResult, client::ZaiClient};
 
 fn de_opt_string_from_string_or_number<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -605,11 +602,10 @@ impl CodingPlanUsageRequest {
 
     /// Send the quota query via a [`ZaiClient`] and parse the typed envelope.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CodingPlanUsageResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::Monitor, &["usage", "quota", "limit"])?;
+        let route = crate::client::routes::USAGE_GET;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_empty::<CodingPlanUsageResponse>("GET", url)
+            .send_empty::<CodingPlanUsageResponse>(route.method(), url)
             .await
     }
 }
@@ -796,13 +792,16 @@ mod tests {
 
     #[test]
     fn monitor_family_resolves_custom_base_via_builder() {
-        use crate::client::endpoint::{ApiFamily, EndpointConfig};
+        use crate::client::endpoint::EndpointConfig;
         let ec = EndpointConfig::builder()
             .monitor("https://api.z.ai/api/monitor")
             .build(false)
             .unwrap();
         let url = ec
-            .resolve(ApiFamily::Monitor, &["usage", "quota", "limit"])
+            .resolve(
+                crate::client::ApiFamily::Monitor,
+                &["usage", "quota", "limit"],
+            )
             .unwrap();
         assert_eq!(url, "https://api.z.ai/api/monitor/usage/quota/limit");
     }

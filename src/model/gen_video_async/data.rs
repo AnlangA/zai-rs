@@ -119,12 +119,13 @@ where
         N: serde::Serialize,
     {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["videos", "generations"])?;
+        let route = crate::client::routes::VIDEOS_GENERATE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
             .send_json::<_, crate::model::chat_base_response::ChatCompletionResponse>(
-                "POST", url, &self.body,
+                route.method(),
+                url,
+                &self.body,
             )
             .await
     }

@@ -1,4 +1,4 @@
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 
 /// File delete request (DELETE /paas/v4/files/{file_id})
 pub struct FileDeleteRequest {
@@ -18,11 +18,10 @@ impl FileDeleteRequest {
         &self,
         client: &ZaiClient,
     ) -> crate::ZaiResult<super::response::FileDeleteResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["files", &self.file_id])?;
+        let route = crate::client::routes::FILES_DELETE;
+        let url = client.endpoints().resolve_route(route, &[&self.file_id])?;
         client
-            .send_empty::<super::response::FileDeleteResponse>("DELETE", url)
+            .send_empty::<super::response::FileDeleteResponse>(route.method(), url)
             .await
     }
 }

@@ -55,11 +55,10 @@ impl WebSearchRequest {
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<WebSearchResponse> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["web_search"])?;
+        let route = crate::client::routes::TOOLS_WEB_SEARCH;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, WebSearchResponse>("POST", url, &self.body)
+            .send_json::<_, WebSearchResponse>(route.method(), url, &self.body)
             .await
     }
 }

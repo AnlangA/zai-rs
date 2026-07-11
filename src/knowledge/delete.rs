@@ -16,12 +16,10 @@ impl KnowledgeDeleteRequest {
 
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeDeleteResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["knowledge", &self.id],
-        )?;
+        let route = crate::client::routes::KNOWLEDGE_DELETE;
+        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_empty::<KnowledgeDeleteResponse>("DELETE", url)
+            .send_empty::<KnowledgeDeleteResponse>(route.method(), url)
             .await
     }
 }

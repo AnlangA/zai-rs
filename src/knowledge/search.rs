@@ -1,7 +1,7 @@
 //! Knowledge search (POST /llm-application/open/knowledge/retrieve) — plan P06.
 
 use crate::ZaiResult;
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 use serde::Serialize;
 
 /// POST /knowledge/retrieve search request (P06 knowledge.retrieve).
@@ -46,11 +46,10 @@ impl KnowledgeSearchRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeSearchResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::LlmApplication, &["knowledge", "retrieve"])?;
+        let route = crate::client::routes::KNOWLEDGE_RETRIEVE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, KnowledgeSearchResponse>("POST", url, &self.body)
+            .send_json::<_, KnowledgeSearchResponse>(route.method(), url, &self.body)
             .await
     }
 }

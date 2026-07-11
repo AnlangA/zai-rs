@@ -125,10 +125,10 @@ impl DocumentUploadFileRequest {
         self.options.validate()?;
         self.validate_cross()?;
 
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["document", "upload_document", &self.knowledge_id],
-        )?;
+        let route = crate::client::routes::DOCUMENTS_UPLOAD;
+        let url = client
+            .endpoints()
+            .resolve_route(route, &[&self.knowledge_id])?;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new();
         if let Some(t) = self.options.knowledge_type {
             factory = factory.field("knowledge_type", t.as_i64().to_string())?;
@@ -159,7 +159,7 @@ impl DocumentUploadFileRequest {
             factory = factory.file_named("files", part)?;
         }
         client
-            .send_multipart::<UploadFileResponse>("POST", url, &factory)
+            .send_multipart::<UploadFileResponse>(route.method(), url, &factory)
             .await
     }
 }

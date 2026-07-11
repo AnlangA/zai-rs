@@ -54,13 +54,12 @@ impl VoiceListRequest {
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        let url = client.endpoints().resolve_with_query(
-            crate::client::ApiFamily::PaasV4,
-            &["voice", "list"],
-            &query_refs,
-        )?;
+        let route = crate::client::routes::AUDIO_LIST_VOICES;
+        let url = client
+            .endpoints()
+            .resolve_route_with_query(route, &[], &query_refs)?;
         client
-            .send_empty::<super::response::VoiceListResponse>("GET", url)
+            .send_empty::<super::response::VoiceListResponse>(route.method(), url)
             .await
     }
 

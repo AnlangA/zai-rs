@@ -72,11 +72,10 @@ where
         client: &ZaiClient,
     ) -> crate::ZaiResult<super::response::VoiceCloneResponse> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["voice", "clone"])?;
+        let route = crate::client::routes::AUDIO_CLONE_VOICE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, super::response::VoiceCloneResponse>("POST", url, &self.body)
+            .send_json::<_, super::response::VoiceCloneResponse>(route.method(), url, &self.body)
             .await
     }
 }

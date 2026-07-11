@@ -2,10 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use validator::Validate;
 
-use crate::{
-    ZaiResult,
-    client::{ApiFamily, ZaiClient},
-};
+use crate::{ZaiResult, client::ZaiClient};
 
 /// Endpoint for batch requests
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,11 +90,10 @@ impl CreateBatchRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CreateBatchResponse> {
         self.validate()?;
 
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["batches"])?;
+        let route = crate::client::routes::BATCHES_CREATE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, CreateBatchResponse>("POST", url, &self.body)
+            .send_json::<_, CreateBatchResponse>(route.method(), url, &self.body)
             .await
     }
 }

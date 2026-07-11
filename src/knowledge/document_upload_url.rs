@@ -125,12 +125,10 @@ impl DocumentUploadUrlRequest {
     /// Validate and send via a [`ZaiClient`], returning the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<UploadUrlResponse> {
         self.body.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["document", "upload_url"],
-        )?;
+        let route = crate::client::routes::DOCUMENTS_UPLOAD_URL;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, UploadUrlResponse>("POST", url, &self.body)
+            .send_json::<_, UploadUrlResponse>(route.method(), url, &self.body)
             .await
     }
 }

@@ -71,11 +71,10 @@ impl Moderation {
     /// statistics.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<ModerationResponse> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["moderations"])?;
+        let route = crate::client::routes::MODERATION_CHECK;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ModerationResponse>("POST", url, &self.body)
+            .send_json::<_, ModerationResponse>(route.method(), url, &self.body)
             .await
     }
 }

@@ -61,11 +61,10 @@ impl RerankRequest {
     /// Automatically runs `validate()` before sending.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<RerankResponse> {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["rerank"])?;
+        let route = crate::client::routes::RERANK_CREATE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, RerankResponse>("POST", url, &self.body)
+            .send_json::<_, RerankResponse>(route.method(), url, &self.body)
             .await
     }
 }

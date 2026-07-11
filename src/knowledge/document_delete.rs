@@ -16,12 +16,10 @@ impl DocumentDeleteRequest {
 
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDeleteResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::LlmApplication,
-            &["document", &self.id],
-        )?;
+        let route = crate::client::routes::DOCUMENTS_DELETE;
+        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_empty::<DocumentDeleteResponse>("DELETE", url)
+            .send_empty::<DocumentDeleteResponse>(route.method(), url)
             .await
     }
 }

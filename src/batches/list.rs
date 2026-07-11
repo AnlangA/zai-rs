@@ -2,10 +2,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::types::BatchItem;
-use crate::{
-    ZaiResult,
-    client::{ApiFamily, ZaiClient},
-};
+use crate::{ZaiResult, client::ZaiClient};
 
 /// Query parameters for listing batch processing tasks
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -77,11 +74,13 @@ impl BatchesListRequest {
             params.push(("limit", limit.to_string()));
         }
         let borrowed: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
-        let url =
-            client
-                .endpoints()
-                .resolve_with_query(ApiFamily::PaasV4, &["batches"], &borrowed)?;
-        client.send_empty::<BatchesListResponse>("GET", url).await
+        let route = crate::client::routes::BATCHES_LIST;
+        let url = client
+            .endpoints()
+            .resolve_route_with_query(route, &[], &borrowed)?;
+        client
+            .send_empty::<BatchesListResponse>(route.method(), url)
+            .await
     }
 }
 

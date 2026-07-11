@@ -1,7 +1,7 @@
 //! File parse sync request (POST /paas/v4/files/parser/sync) — plan P06.
 
 use crate::ZaiResult;
-use crate::client::{ApiFamily, ZaiClient};
+use crate::client::ZaiClient;
 
 /// Response for a synchronous file parsing request.
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -23,11 +23,10 @@ impl FileParseSyncRequest {
 
     /// Send the request and parse a typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<FileParseSyncResponse> {
-        let url = client
-            .endpoints()
-            .resolve(ApiFamily::PaasV4, &["files", "parser", "sync"])?;
+        let route = crate::client::routes::FILES_PARSE_SYNC;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, FileParseSyncResponse>("POST", url, &self.body)
+            .send_json::<_, FileParseSyncResponse>(route.method(), url, &self.body)
             .await
     }
 }

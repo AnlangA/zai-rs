@@ -170,11 +170,10 @@ where
         M: serde::Serialize,
     {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["chat", "completions"])?;
+        let route = crate::client::routes::CHAT_COMPLETE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ChatCompletionResponse>("POST", url, &self.body)
+            .send_json::<_, ChatCompletionResponse>(route.method(), url, &self.body)
             .await
     }
 
@@ -188,12 +187,10 @@ where
         M: serde::Serialize,
     {
         self.validate()?;
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::CodingPaasV4,
-            &["chat", "completions"],
-        )?;
+        let route = crate::client::routes::CHAT_COMPLETE_CODING;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ChatCompletionResponse>("POST", url, &self.body)
+            .send_json::<_, ChatCompletionResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -243,7 +240,7 @@ where
             .map_err(crate::client::error::ZaiError::from)?;
         let url = client
             .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["chat", "completions"])?;
+            .resolve_route(crate::client::routes::CHAT_COMPLETE, &[])?;
         let body_bytes =
             serde_json::to_vec(&self.body).map_err(|e| crate::ZaiError::JsonError(Arc::new(e)))?;
         Ok((url, body_bytes, client.secret().expose().to_string()))

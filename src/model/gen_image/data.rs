@@ -117,11 +117,10 @@ where
         N: serde::Serialize,
     {
         self.validate()?;
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["images", "generations"])?;
+        let route = crate::client::routes::IMAGES_GENERATE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, super::image_response::ImageResponse>("POST", url, &self.body)
+            .send_json::<_, super::image_response::ImageResponse>(route.method(), url, &self.body)
             .await
     }
 }

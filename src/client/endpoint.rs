@@ -11,6 +11,7 @@
 
 use url::Url;
 
+use super::routes::{Route, Segment};
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
 /// The fixed API endpoint families (plan §4 / P02.5).
@@ -178,6 +179,68 @@ impl EndpointConfig {
             let mut pairs = url.query_pairs_mut();
             for (k, v) in query {
                 pairs.append_pair(k, v);
+            }
+        }
+        Ok(url.to_string())
+    }
+
+    /// Resolve a route from the crate's canonical operation registry.
+    ///
+    /// `parameters` are substituted into parameter slots in declaration order
+    /// and percent-encoded as individual path segments. A count mismatch is a
+    /// validation error instead of silently producing a malformed URL.
+    pub(crate) fn resolve_route(&self, route: Route, parameters: &[&str]) -> ZaiResult<String> {
+        self.resolve_route_with_query(route, parameters, &[])
+    }
+
+    /// Resolve a canonical route and append encoded query pairs.
+    pub(crate) fn resolve_route_with_query(
+        &self,
+        route: Route,
+        parameters: &[&str],
+        query: &[(&str, &str)],
+    ) -> ZaiResult<String> {
+        for parameter in parameters {
+            validate_segment(parameter)?;
+        }
+
+        let expected = route
+            .segments()
+            .iter()
+            .filter(|segment| matches!(segment, Segment::Parameter))
+            .count();
+        if parameters.len() != expected {
+            return Err(ZaiError::ApiError {
+                code: codes::SDK_VALIDATION,
+                message: format!(
+                    "route {} expects {expected} path parameter(s), got {}",
+                    route.operation_id(),
+                    parameters.len()
+                ),
+            });
+        }
+
+        let mut url = self.base(route.family()).clone();
+        if !route.segments().is_empty() {
+            let mut parameter_index = 0;
+            let mut path = url
+                .path_segments_mut()
+                .map_err(|_| invalid("base URL cannot be a base"))?;
+            for segment in route.segments() {
+                match segment {
+                    Segment::Static(value) => path.push(value),
+                    Segment::Parameter => {
+                        path.push(parameters[parameter_index]);
+                        parameter_index += 1;
+                        &mut path
+                    },
+                };
+            }
+        }
+        if !query.is_empty() {
+            let mut pairs = url.query_pairs_mut();
+            for (key, value) in query {
+                pairs.append_pair(key, value);
             }
         }
         Ok(url.to_string())
@@ -383,6 +446,31 @@ mod tests {
             .unwrap();
         assert!(url.contains("limit=10"));
         assert!(url.contains("order=desc"));
+    }
+
+    #[test]
+    fn canonical_route_encodes_parameters_and_query() {
+        let ec = EndpointConfig::defaults().unwrap();
+        let url = ec
+            .resolve_route_with_query(
+                crate::client::routes::FILES_PARSE_RESULT,
+                &["task/with/slash", "md"],
+                &[("name", "a&b")],
+            )
+            .unwrap();
+        assert_eq!(
+            url,
+            "https://open.bigmodel.cn/api/paas/v4/files/parser/result/task%2Fwith%2Fslash/md?name=a%26b"
+        );
+    }
+
+    #[test]
+    fn canonical_route_rejects_parameter_count_mismatch() {
+        let ec = EndpointConfig::defaults().unwrap();
+        let error = ec
+            .resolve_route(crate::client::routes::FILES_GET_CONTENT, &[])
+            .unwrap_err();
+        assert!(error.message().contains("expects 1 path parameter"));
     }
 
     #[test]

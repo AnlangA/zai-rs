@@ -17,11 +17,10 @@ impl AssistantInvokeRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AssistantInvokeResponse> {
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["assistant"])?;
+        let route = crate::client::routes::ASSISTANTS_INVOKE;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, AssistantInvokeResponse>("POST", url, &self.body)
+            .send_json::<_, AssistantInvokeResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -40,11 +39,10 @@ impl AssistantListRequest {
     }
 
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AssistantListResponse> {
-        let url = client
-            .endpoints()
-            .resolve(crate::client::ApiFamily::PaasV4, &["assistant", "list"])?;
+        let route = crate::client::routes::ASSISTANTS_LIST;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, AssistantListResponse>("POST", url, &self.body)
+            .send_json::<_, AssistantListResponse>(route.method(), url, &self.body)
             .await
     }
 }
@@ -72,12 +70,10 @@ impl AssistantConversationListRequest {
         &self,
         client: &ZaiClient,
     ) -> ZaiResult<AssistantConversationListResponse> {
-        let url = client.endpoints().resolve(
-            crate::client::ApiFamily::PaasV4,
-            &["assistant", "conversation", "list"],
-        )?;
+        let route = crate::client::routes::ASSISTANTS_CONVERSATIONS;
+        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, AssistantConversationListResponse>("POST", url, &self.body)
+            .send_json::<_, AssistantConversationListResponse>(route.method(), url, &self.body)
             .await
     }
 }
