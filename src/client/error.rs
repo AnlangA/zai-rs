@@ -26,7 +26,7 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::client::error::{ZaiError, ZaiResult};
 //!
 //! async fn call_api() -> ZaiResult<String> {

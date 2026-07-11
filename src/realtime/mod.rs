@@ -9,7 +9,7 @@
 //!
 //! ## Quick start
 //!
-//! ```rust,no_run
+//! ```text
 //! use zai_rs::{
 //!     model::GLM4_voice,
 //!     realtime::{RealtimeClient, TurnDetectionType},

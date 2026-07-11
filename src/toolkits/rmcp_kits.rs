@@ -9,7 +9,7 @@
 //! All APIs are feature-gated behind `rmcp-kits`.
 //!
 //! Example: convert RMCP tools and wire them into a chat request
-//! ```rust,ignore
+//! ```text
 //! use rmcp::{ServiceExt, model::ClientInfo, transport::SseClientTransport};
 //! use zai_rs::{model::{Tools, Function}, toolkits::rmcp_kits};
 //! # async fn demo() -> anyhow::Result<()> {
@@ -23,7 +23,7 @@
 //! ```
 //!
 //! Example: execute a tool call and collect results by tool name
-//! ```rust,ignore
+//! ```text
 //! use rmcp::service::ServerSink;
 //! use zai_rs::toolkits::rmcp_kits::{call_mcp_tool, call_mcp_tools_collect};
 //! # async fn run(server: &ServerSink) -> anyhow::Result<()> {

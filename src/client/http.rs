@@ -23,7 +23,7 @@
 //!
 //! The HTTP client supports configurable retry behavior:
 //!
-//! ```ignore
+//! ```text
 //! use zai_rs::client::http::HttpClientConfig;
 //!
 //! let config = HttpClientConfig::builder()
@@ -154,7 +154,7 @@ impl Default for RetryDelay {
 ///
 /// Use the builder pattern for fluent configuration:
 ///
-/// ```ignore
+/// ```text
 /// use zai_rs::client::http::HttpClientConfig;
 ///
 /// let config = HttpClientConfig::builder()
@@ -217,7 +217,7 @@ impl HttpClientConfig {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// use zai_rs::client::http::HttpClientConfig;
 ///
 /// let config = HttpClientConfig::builder()

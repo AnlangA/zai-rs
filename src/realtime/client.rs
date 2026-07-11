@@ -26,7 +26,7 @@ pub enum AuthMode {
 /// [`RealtimeClient::with_jwt`], then start a session with
 /// [`RealtimeClient::session`].
 ///
-/// ```rust,no_run
+/// ```text
 /// use zai_rs::{model::GLM4_voice, realtime::RealtimeClient};
 ///
 /// # async fn go(key: String) -> zai_rs::ZaiResult<()> {

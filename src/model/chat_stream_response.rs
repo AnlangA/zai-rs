@@ -22,7 +22,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! let mut client = ChatCompletion::new(model, messages, api_key).enable_stream();
 //! client.stream_for_each(|chunk| async move {
 //!     if let Some(delta) = &chunk.choices[0].delta {

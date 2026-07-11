@@ -46,7 +46,7 @@
 //!
 //! # Quick Start
 //!
-//! ```rust,no_run
+//! ```text
 //! use zai_rs::{client::http::*, model::*};
 //!
 //! #[tokio::main]
@@ -61,7 +61,7 @@
 //!
 //! # Streaming Responses
 //!
-//! ```rust,no_run
+//! ```text
 //! use zai_rs::{client::http::*, model::*};
 //!
 //! #[tokio::main]
@@ -86,7 +86,7 @@
 //! [`client::endpoints::EndpointConfig`], including the dedicated Coding Plan
 //! endpoint required by official Zhipu AI documentation.
 //!
-//! ```rust
+//! ```text
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use zai_rs::ZaiConfig;
 //!

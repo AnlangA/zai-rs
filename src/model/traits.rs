@@ -167,7 +167,7 @@ pub trait SseStreamable {}
 ///
 /// ## Usage Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Basic model definition
 /// define_model_type!(GLM4_5, "glm-4.5");
 /// // Model with attributes
@@ -208,7 +208,7 @@ macro_rules! define_model_type {
 ///
 /// ## Usage Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Single message type binding
 /// impl_message_binding!(GLM4_5, TextMessage);
 /// // Multiple message type bindings
@@ -236,7 +236,7 @@ macro_rules! impl_message_binding {
 ///
 /// ## Usage Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Single model, multiple traits
 /// impl_model_markers!(GLM4_5_flash: AsyncChat, Chat);
 ///

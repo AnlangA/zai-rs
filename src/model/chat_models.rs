@@ -52,7 +52,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::model::chat_models::*;
 //! use zai_rs::model::chat_message_types::TextMessage;
 //! use zai_rs::model::chat::data::ChatCompletion;

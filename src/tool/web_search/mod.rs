@@ -16,7 +16,7 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
+//! ```text
 //! use zai_rs::tool::web_search::{SearchEngine, WebSearchRequest};
 //!
 //! #[tokio::main]

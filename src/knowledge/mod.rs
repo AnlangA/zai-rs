@@ -33,7 +33,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::knowledge::*;
 //!
 //! // Create a knowledge base

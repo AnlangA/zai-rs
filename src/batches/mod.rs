@@ -22,7 +22,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::batches::*;
 //!
 //! // Create

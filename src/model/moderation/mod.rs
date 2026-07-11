@@ -13,7 +13,7 @@
 //!
 //! ## Examples
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::model::moderation::*;
 //!
 //! // Text moderation

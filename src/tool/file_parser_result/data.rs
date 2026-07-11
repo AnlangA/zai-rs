@@ -24,7 +24,7 @@ use crate::{
 ///
 /// ## Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
 ///
 /// let task_id = "task_123456789";

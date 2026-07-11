@@ -3,7 +3,7 @@
 //! `use zai_rs::prelude::*;` brings in the four core types plus the essential
 //! model types needed for chat construction.
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::prelude::*;
 //!
 //! let client = ZaiClient::builder("key").build()?;

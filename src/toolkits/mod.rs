@@ -19,7 +19,7 @@
 //!
 //! # Quick Start
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::toolkits::prelude::*;
 //!
 //! let tool = FunctionTool::builder("get_weather", "Get current weather")
@@ -59,7 +59,7 @@ pub mod rmcp_kits;
 ///
 /// ## Usage
 ///
-/// ```rust,ignore
+/// ```text
 /// use zai_rs::toolkits::prelude::*;
 /// ```
 pub mod prelude {

@@ -61,7 +61,7 @@
 //!
 //! # Usage
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::model::*;
 //!
 //! let model = GLM4_5_flash {};

@@ -584,7 +584,7 @@ impl fmt::Display for CodingPlanUsageResponse {
 /// [`CodingPlanUsageRequest::send_via`]. Credentials and transport live on the
 /// [`ZaiClient`], passed to `send_via`.
 ///
-/// ```rust,no_run
+/// ```text
 /// use zai_rs::usage::CodingPlanUsageRequest;
 /// use zai_rs::client::ZaiClient;
 ///

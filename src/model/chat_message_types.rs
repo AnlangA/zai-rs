@@ -45,7 +45,7 @@
 //! # Usage Examples
 //!
 //! ## Basic Text Conversation
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::model::chat_message_types::*;
 //!
 //! let messages = TextMessages::new(TextMessage::user("Hello!"))
@@ -54,19 +54,19 @@
 //! ```
 //!
 //! ## Vision-Enabled Conversation
-//! ```rust,ignore
+//! ```text
 //! let image_content = VisionRichContent::image("https://example.com/image.jpg");
 //! let vision_message = VisionMessage::user(image_content);
 //! ```
 //!
 //! ## Voice-Enabled Conversation
-//! ```rust,ignore
+//! ```text
 //! let audio_content = VoiceRichContent::input_audio(b"audio_data", VoiceFormat::MP3);
 //! let voice_message = VoiceMessage::user(audio_content);
 //! ```
 //!
 //! ## Tool Calling
-//! ```rust,ignore
+//! ```text
 //! let function_params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
 //! let tool_call = ToolCall::new_function("call_123", function_params);
 //! let assistant_msg = TextMessage::assistant_with_tools(None, vec![tool_call]);
@@ -155,7 +155,7 @@ impl TextMessages {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let messages = TextMessages::new(TextMessage::user("Hello!"));
     /// ```
     pub fn new(messages: TextMessage) -> Self {
@@ -179,7 +179,7 @@ impl TextMessages {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let messages = TextMessages::new(TextMessage::user("Hello!"))
     ///     .add_message(TextMessage::assistant("Hi there!"))
     ///     .add_message(TextMessage::user("How are you?"));
@@ -203,7 +203,7 @@ impl TextMessages {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Create different types of messages
 /// let user_msg = TextMessage::user("What's the weather like?");
 /// let system_msg = TextMessage::system("You are a helpful assistant.");
@@ -258,7 +258,7 @@ impl TextMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = TextMessage::user("Hello, how can you help me today?");
     /// ```
     pub fn user(content: impl Into<String>) -> Self {
@@ -279,7 +279,7 @@ impl TextMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = TextMessage::assistant("I'm happy to help you with that!");
     /// ```
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -306,7 +306,7 @@ impl TextMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let tool_call = ToolCall::new_function("call_123",
     ///     FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#));
     /// let msg = TextMessage::assistant_with_tools(
@@ -336,7 +336,7 @@ impl TextMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = TextMessage::system("You are a helpful assistant specialized in programming.");
     /// ```
     pub fn system(content: impl Into<String>) -> Self {
@@ -357,7 +357,7 @@ impl TextMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = TextMessage::tool("The current temperature is 22°C");
     /// ```
     pub fn tool(content: impl Into<String>) -> Self {
@@ -383,7 +383,7 @@ impl TextMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = TextMessage::tool_with_id(
     ///     "The current temperature is 22°C",
     ///     "call_123"
@@ -523,7 +523,7 @@ impl VisionRichContent {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let text = VisionRichContent::text("Hello, world!");
     /// ```
     pub fn text(text: impl Into<String>) -> Self {
@@ -542,7 +542,7 @@ impl VisionRichContent {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let image = VisionRichContent::image("https://example.com/image.jpg");
     /// let base64_image = VisionRichContent::image("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...");
     /// ```
@@ -564,7 +564,7 @@ impl VisionRichContent {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let video = VisionRichContent::video("https://example.com/video.mp4");
     /// ```
     pub fn video(url: impl Into<String>) -> Self {
@@ -585,7 +585,7 @@ impl VisionRichContent {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let file = VisionRichContent::file("https://example.com/document.pdf");
     /// ```
     pub fn file(url: impl Into<String>) -> Self {
@@ -604,7 +604,7 @@ impl VisionMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VisionMessage::new_user();
     /// ```
     pub fn new_user() -> Self {
@@ -625,7 +625,7 @@ impl VisionMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let image = VisionRichContent::image("https://example.com/image.jpg");
     /// let text = VisionRichContent::text("describe this image");
     /// let msg = VisionMessage.add_content(image)
@@ -656,7 +656,7 @@ impl VisionMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VisionMessage::system("You are a helpful vision assistant.");
     /// ```
     pub fn system(content: impl Into<String>) -> Self {
@@ -677,7 +677,7 @@ impl VisionMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VisionMessage::assistant("I can see the image contains a cat.");
     /// ```
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -701,7 +701,7 @@ impl VisionMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VisionMessage::assistant_with_content(None);
     /// let msg_with_content = VisionMessage::assistant_with_content(Some("I analyzed the image.".to_string()));
     /// ```
@@ -737,7 +737,7 @@ impl VisionMessage {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // User message with audio input
 /// let audio_content = VoiceRichContent::input_audio(b"audio_data", VoiceFormat::MP3);
 /// let user_msg = VoiceMessage::user(audio_content);
@@ -798,7 +798,7 @@ pub enum VoiceMessage {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Text content
 /// let text_content = VoiceRichContent::text("Hello, I need help with something.");
 ///
@@ -862,7 +862,7 @@ impl VoiceRichContent {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let text = VoiceRichContent::text("Hello, world!");
     /// ```
     pub fn text(text: impl Into<String>) -> Self {
@@ -882,7 +882,7 @@ impl VoiceRichContent {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio_bytes = b"audio data";
     /// let audio = VoiceRichContent::input_audio(audio_bytes, VoiceFormat::MP3);
     /// ```
@@ -923,7 +923,7 @@ impl VoiceRichContent {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Use MP3 for general voice input
 /// let format = VoiceFormat::MP3;
 ///
@@ -965,7 +965,7 @@ impl VoiceFormat {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// assert_eq!(VoiceFormat::from_extension("mp3"), Some(VoiceFormat::MP3));
     /// assert_eq!(VoiceFormat::from_extension("wav"), Some(VoiceFormat::WAV));
     /// assert_eq!(VoiceFormat::from_extension("ogg"), None);
@@ -991,7 +991,7 @@ impl VoiceFormat {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// assert_eq!(VoiceFormat::from_mime_type("audio/mpeg"), Some(VoiceFormat::MP3));
     /// assert_eq!(VoiceFormat::from_mime_type("audio/wav"), Some(VoiceFormat::WAV));
     /// assert_eq!(VoiceFormat::from_mime_type("audio/ogg"), None);
@@ -1033,7 +1033,7 @@ impl VoiceFormat {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Audio with specific ID
 /// let audio_with_id = Audio::with_id("audio_123");
 ///
@@ -1074,7 +1074,7 @@ impl Audio {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = Audio::with_id("audio_123");
     /// ```
     pub fn with_id(id: impl Into<String>) -> Self {
@@ -1091,7 +1091,7 @@ impl Audio {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = Audio::new();
     /// ```
     pub fn new() -> Self {
@@ -1110,7 +1110,7 @@ impl Audio {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = Audio::new().set_id("audio_123");
     /// ```
     pub fn set_id(mut self, id: impl Into<String>) -> Self {
@@ -1126,7 +1126,7 @@ impl Audio {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = Audio::with_id("audio_123").clear_id();
     /// ```
     pub fn clear_id(mut self) -> Self {
@@ -1144,7 +1144,7 @@ impl VoiceMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VoiceMessage::new_user();
     /// ```
     pub fn new_user() -> Self {
@@ -1165,7 +1165,7 @@ impl VoiceMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = VoiceRichContent::text("Hello");
     /// let text = VoiceRichContent::text("describe this audio");
     /// let msg = VoiceMessage::new_user()
@@ -1197,7 +1197,7 @@ impl VoiceMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VoiceMessage::system("You are a helpful voice assistant.");
     /// ```
     pub fn system(content: impl Into<String>) -> Self {
@@ -1218,7 +1218,7 @@ impl VoiceMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let msg = VoiceMessage::assistant("I can help you with that!");
     /// ```
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -1242,7 +1242,7 @@ impl VoiceMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = Audio { id: Some("audio_123".to_string()) };
     /// let msg = VoiceMessage::assistant_with_audio(
     ///     Some("Here's the audio response.".to_string()),
@@ -1265,7 +1265,7 @@ impl VoiceMessage {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let audio = Audio { id: Some("audio_123".to_string()) };
     /// let msg = VoiceMessage::assistant_audio_only(audio);
     /// ```
@@ -1405,7 +1405,7 @@ pub enum ToolCallType {
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```text
 /// // Simple function call
 /// let params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
 ///
@@ -1452,7 +1452,7 @@ impl ToolCall {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let function_params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
     /// let tool_call = ToolCall::new_function("call_123", function_params);
     /// ```
@@ -1480,7 +1480,7 @@ impl ToolCall {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let tool_call = ToolCall::new_web_search("search_456");
     /// ```
     pub fn new_web_search(id: impl Into<String>) -> Self {
@@ -1507,7 +1507,7 @@ impl ToolCall {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// let tool_call = ToolCall::new_retrieval("retrieval_789");
     /// ```
     pub fn new_retrieval(id: impl Into<String>) -> Self {
@@ -1537,7 +1537,7 @@ impl FunctionParams {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```text
     /// // Simple function with one parameter
     /// let params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
     ///

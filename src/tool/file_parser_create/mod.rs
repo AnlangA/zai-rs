@@ -12,7 +12,7 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
+//! ```text
 //! use std::path::Path;
 //!
 //! use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolType};

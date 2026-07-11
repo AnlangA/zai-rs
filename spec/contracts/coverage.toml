@@ -498,7 +498,7 @@ response_type = "CodingPlanUsageResponse"
 method = "GET"
 path = "/monitor/usage/quota/limit"
 contract_test = "coding_plan_contract"
-status = "missing"
+status = "covered"
 
 # ---------------------------------------------------------------------------
 # Realtime AsyncAPI protocol paths (five, separate contract face).
@@ -507,28 +507,28 @@ status = "missing"
 name = "handshake"
 description = "WebSocket open + JWT client-auth handshake"
 contract_test = "realtime_protocol"
-status = "missing"
+status = "covered"
 
 [[realtime_path]]
 name = "session_update"
 description = "session.update event"
 contract_test = "realtime_protocol"
-status = "missing"
+status = "covered"
 
 [[realtime_path]]
 name = "audio"
 description = "inbound/outbound audio frames"
 contract_test = "realtime_protocol"
-status = "missing"
+status = "covered"
 
 [[realtime_path]]
 name = "error"
 description = "server error propagation"
 contract_test = "realtime_protocol"
-status = "missing"
+status = "covered"
 
 [[realtime_path]]
 name = "close"
 description = "graceful close handshake"
 contract_test = "realtime_protocol"
-status = "missing"
+status = "covered"

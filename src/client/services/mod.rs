@@ -5,7 +5,7 @@
 //! is free; it carries no state of its own and dispatches through the shared
 //! `ClientInner`. The facades are the public surface callers use:
 //!
-//! ```rust,ignore
+//! ```text
 //! let client = ZaiClient::builder(api_key).build()?;
 //! let response = client.services().chat().complete(request).await?;
 //! ```

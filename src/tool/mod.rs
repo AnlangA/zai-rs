@@ -14,7 +14,7 @@
 //! Tools implement the [`DynTool`](crate::toolkits::core::DynTool) trait and
 //! can be registered with the [`ToolExecutor`](crate::toolkits::ToolExecutor):
 //!
-//! ```rust,ignore
+//! ```text
 //! use zai_rs::toolkits::ToolExecutor;
 //! use zai_rs::tool::web_search::WebSearchTool;
 //!
