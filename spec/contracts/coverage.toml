@@ -21,7 +21,7 @@ service_method = "client.knowledge().list_documents"
 request_type = "DocumentListRequest"
 response_type = "DocumentListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.reembed_document"
@@ -29,7 +29,7 @@ service_method = "client.knowledge().reembed_document"
 request_type = "DocumentReembedRequest"
 response_type = "DocumentReembedResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.list_document_images"
@@ -37,7 +37,7 @@ service_method = "client.knowledge().list_document_images"
 request_type = "DocumentImageListRequest"
 response_type = "DocumentImageListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.upload_document"
@@ -45,7 +45,7 @@ service_method = "client.knowledge().upload_document"
 request_type = "DocumentUploadRequest"
 response_type = "DocumentUploadResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.upload_document_url"
@@ -53,7 +53,7 @@ service_method = "client.knowledge().upload_document_url"
 request_type = "DocumentUrlUploadRequest"
 response_type = "DocumentUrlUploadResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.delete_document"
@@ -61,7 +61,7 @@ service_method = "client.knowledge().delete_document"
 request_type = "DocumentDeleteRequest"
 response_type = "DocumentDeleteResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.get_document"
@@ -69,7 +69,7 @@ service_method = "client.knowledge().get_document"
 request_type = "DocumentGetRequest"
 response_type = "DocumentGetResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.history"
@@ -77,7 +77,7 @@ service_method = "client.applications().history"
 request_type = "ApplicationHistoryRequest"
 response_type = "ApplicationHistoryResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.list"
@@ -85,7 +85,7 @@ service_method = "client.knowledge().list"
 request_type = "KnowledgeListRequest"
 response_type = "KnowledgeListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.create"
@@ -93,7 +93,7 @@ service_method = "client.knowledge().create"
 request_type = "KnowledgeCreateRequest"
 response_type = "KnowledgeCreateResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.capacity"
@@ -101,7 +101,7 @@ service_method = "client.knowledge().capacity"
 request_type = "KnowledgeCapacityRequest"
 response_type = "KnowledgeCapacityResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.retrieve"
@@ -109,7 +109,7 @@ service_method = "client.knowledge().retrieve"
 request_type = "KnowledgeSearchRequest"
 response_type = "KnowledgeSearchResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.delete"
@@ -117,7 +117,7 @@ service_method = "client.knowledge().delete"
 request_type = "KnowledgeDeleteRequest"
 response_type = "KnowledgeDeleteResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.get"
@@ -125,7 +125,7 @@ service_method = "client.knowledge().get"
 request_type = "KnowledgeGetRequest"
 response_type = "KnowledgeGetResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "knowledge.update"
@@ -133,7 +133,7 @@ service_method = "client.knowledge().update"
 request_type = "KnowledgeUpdateRequest"
 response_type = "KnowledgeUpdateResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.file_stats"
@@ -141,7 +141,7 @@ service_method = "client.applications().file_stats"
 request_type = "ApplicationFileStatsRequest"
 response_type = "ApplicationFileStatsResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.upload_file"
@@ -149,7 +149,7 @@ service_method = "client.applications().upload_file"
 request_type = "ApplicationFileUploadRequest"
 response_type = "ApplicationFileUploadResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.slice_info"
@@ -157,7 +157,7 @@ service_method = "client.applications().slice_info"
 request_type = "ApplicationSliceInfoRequest"
 response_type = "ApplicationSliceInfoResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.create_conversation"
@@ -165,7 +165,7 @@ service_method = "client.applications().create_conversation"
 request_type = "ApplicationConversationCreateRequest"
 response_type = "ApplicationConversationCreateResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.variables"
@@ -173,7 +173,7 @@ service_method = "client.applications().variables"
 request_type = "ApplicationVariablesRequest"
 response_type = "ApplicationVariablesResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "applications.invoke"
@@ -181,7 +181,7 @@ service_method = "client.applications().invoke"
 request_type = "ApplicationInvokeRequest"
 response_type = "ApplicationInvokeResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "assistants.invoke"
@@ -189,7 +189,7 @@ service_method = "client.assistants().invoke"
 request_type = "AssistantInvokeRequest"
 response_type = "AssistantInvokeResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "assistants.conversations"
@@ -197,7 +197,7 @@ service_method = "client.assistants().conversations"
 request_type = "AssistantConversationListRequest"
 response_type = "AssistantConversationListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "assistants.list"
@@ -205,7 +205,7 @@ service_method = "client.assistants().list"
 request_type = "AssistantListRequest"
 response_type = "AssistantListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "tasks.get"
@@ -213,7 +213,7 @@ service_method = "client.tasks().get"
 request_type = "AsyncTaskGetRequest"
 response_type = "AsyncTaskResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "chat.complete_async"
@@ -221,7 +221,7 @@ service_method = "client.chat().complete_async"
 request_type = "AsyncChatRequest"
 response_type = "AsyncTaskResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "images.generate_async"
@@ -229,7 +229,7 @@ service_method = "client.images().generate_async"
 request_type = "AsyncImageGenerationRequest"
 response_type = "AsyncTaskResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "audio.synthesize"
@@ -237,7 +237,7 @@ service_method = "client.audio().synthesize / synthesize_stream"
 request_type = "TextToSpeechRequest"
 response_type = "Bytes / AudioByteStream"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "audio.transcribe"
@@ -245,7 +245,7 @@ service_method = "client.audio().transcribe / transcribe_stream"
 request_type = "SpeechToTextRequest"
 response_type = "SpeechToTextResponse / SpeechToTextStream"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "batches.list"
@@ -253,7 +253,7 @@ service_method = "client.batches().list"
 request_type = "BatchListRequest"
 response_type = "BatchListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "batches.create"
@@ -261,7 +261,7 @@ service_method = "client.batches().create"
 request_type = "BatchCreateRequest"
 response_type = "BatchCreateResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "batches.get"
@@ -269,7 +269,7 @@ service_method = "client.batches().get"
 request_type = "BatchGetRequest"
 response_type = "BatchGetResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "batches.cancel"
@@ -277,7 +277,7 @@ service_method = "client.batches().cancel"
 request_type = "BatchCancelRequest"
 response_type = "BatchCancelResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "chat.complete"
@@ -285,7 +285,7 @@ service_method = "client.chat().complete / stream"
 request_type = "ChatRequest"
 response_type = "ChatResponse / ChatEventStream"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "embeddings.create"
@@ -293,7 +293,7 @@ service_method = "client.embeddings().create"
 request_type = "EmbeddingRequest"
 response_type = "EmbeddingResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.list"
@@ -301,7 +301,7 @@ service_method = "client.files().list"
 request_type = "FileListRequest"
 response_type = "FileListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.upload"
@@ -309,7 +309,7 @@ service_method = "client.files().upload"
 request_type = "FileUploadRequest"
 response_type = "FileUploadResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.ocr"
@@ -317,7 +317,7 @@ service_method = "client.files().ocr"
 request_type = "OcrRequest"
 response_type = "OcrResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.parse"
@@ -325,7 +325,7 @@ service_method = "client.files().parse"
 request_type = "FileParseRequest"
 response_type = "AsyncTaskResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.parse_result"
@@ -333,7 +333,7 @@ service_method = "client.files().parse_result"
 request_type = "FileParseResultRequest"
 response_type = "FileParseResultResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.parse_sync"
@@ -341,7 +341,7 @@ service_method = "client.files().parse_sync"
 request_type = "FileParseSyncRequest"
 response_type = "FileResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.delete"
@@ -349,7 +349,7 @@ service_method = "client.files().delete"
 request_type = "FileDeleteRequest"
 response_type = "FileDeleteResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "files.content"
@@ -357,7 +357,7 @@ service_method = "client.files().content"
 request_type = "FileContentRequest"
 response_type = "ByteStream"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "images.generate"
@@ -365,7 +365,7 @@ service_method = "client.images().generate"
 request_type = "ImageGenerationRequest"
 response_type = "ImageGenerationResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "tools.parse_layout"
@@ -373,7 +373,7 @@ service_method = "client.tools().parse_layout"
 request_type = "LayoutParsingRequest"
 response_type = "LayoutParsingResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "moderation.check"
@@ -381,7 +381,7 @@ service_method = "client.moderation().check"
 request_type = "ModerationRequest"
 response_type = "ModerationResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "tools.read_document"
@@ -389,7 +389,7 @@ service_method = "client.tools().read_document"
 request_type = "ReaderRequest"
 response_type = "ReaderResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "rerank.create"
@@ -397,7 +397,7 @@ service_method = "client.rerank().create"
 request_type = "RerankRequest"
 response_type = "RerankResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "tokenizer.count"
@@ -405,7 +405,7 @@ service_method = "client.tokenizer().count"
 request_type = "TokenizerRequest"
 response_type = "TokenizerResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "videos.generate"
@@ -413,7 +413,7 @@ service_method = "client.videos().generate"
 request_type = "VideoGenerationRequest"
 response_type = "AsyncTaskResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "audio.clone_voice"
@@ -421,7 +421,7 @@ service_method = "client.audio().clone_voice"
 request_type = "VoiceCloneRequest"
 response_type = "VoiceCloneResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "audio.delete_voice"
@@ -429,7 +429,7 @@ service_method = "client.audio().delete_voice"
 request_type = "VoiceDeleteRequest"
 response_type = "VoiceDeleteResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "audio.list_voices"
@@ -437,7 +437,7 @@ service_method = "client.audio().list_voices"
 request_type = "VoiceListRequest"
 response_type = "VoiceListResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "tools.web_search"
@@ -445,7 +445,7 @@ service_method = "client.tools().web_search"
 request_type = "WebSearchRequest"
 response_type = "WebSearchResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "agents.invoke"
@@ -453,7 +453,7 @@ service_method = "client.agents().invoke / stream"
 request_type = "AgentInvokeRequest"
 response_type = "AgentInvokeResponse / AgentEventStream"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "agents.async_result"
@@ -461,7 +461,7 @@ service_method = "client.agents().async_result"
 request_type = "AgentAsyncResultRequest"
 response_type = "AgentAsyncResult"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "agents.conversation"
@@ -469,7 +469,7 @@ service_method = "client.agents().conversation"
 request_type = "AgentConversationRequest"
 response_type = "AgentConversationResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "zrag.chat"
@@ -477,7 +477,7 @@ service_method = "client.zrag().chat"
 request_type = "ZragChatRequest"
 response_type = "ZragEventStream"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 [[openapi_operation]]
 operation_id = "zrag.retrieve"
@@ -485,7 +485,7 @@ service_method = "client.zrag().retrieve"
 request_type = "ZragRetrieveRequest"
 response_type = "ZragRetrieveResponse"
 contract_test = "contract_matrix"
-status = "missing"
+status = "covered"
 
 # ---------------------------------------------------------------------------
 # Coding Plan monitor operation (separate contract face, not in the 59).

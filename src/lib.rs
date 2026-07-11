@@ -158,6 +158,7 @@ pub mod model;
 /// Gated behind the `realtime` Cargo feature (off by default).
 #[cfg(feature = "realtime")]
 pub mod realtime;
+pub mod services;
 pub mod tool;
 pub mod toolkits;
 pub mod usage;
