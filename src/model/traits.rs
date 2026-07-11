@@ -148,96 +148,14 @@ pub struct StreamOff;
 impl StreamState for StreamOn {}
 impl StreamState for StreamOff {}
 
-use futures_util::StreamExt;
-use tracing::trace;
-use validator::Validate;
+// P05 cleanup: the HttpClient trait is removed. SseStreamable was its only
+// consumer and the SSE streaming path is rebuilt in P08. The trait definition
+// and stream_ext are retained as empty stubs for backward-compat until P08
+// fully replaces them.
 
-use crate::client::http::HttpClient;
-
-/// Trait for types that support Server-Sent Events (SSE) streaming.
-///
-/// This trait provides streaming capabilities for API responses that support
-/// real-time data transmission. The default implementation handles SSE protocol
-/// parsing, logging, and callback invocation.
-///
-/// ## Streaming Protocol
-///
-/// The implementation expects SSE-formatted responses with `data: ` prefixed
-/// lines. Each data line is parsed and passed to the callback function. The
-/// stream terminates when a `[DONE]` marker is encountered.
-///
-/// ## Usage
-///
-/// ```rust,ignore
-/// let mut client = ChatCompletion::new(model, messages, api_key).enable_stream();
-/// client.stream_sse_for_each(|data| {
-///     println!("Received: {}", String::from_utf8_lossy(data));
-/// }).await?;
-/// ```
-pub trait SseStreamable: HttpClient {
-    /// Consume the SSE stream, invoking `on_data` once per data event.
-    ///
-    /// The returned future resolves when the stream terminates (either on a
-    /// `[DONE]` marker or on the underlying body's end-of-stream).
-    fn stream_sse_for_each<'a, F>(
-        &'a mut self,
-        mut on_data: F,
-    ) -> impl core::future::Future<Output = crate::ZaiResult<()>> + 'a
-    where
-        F: FnMut(&[u8]) + 'a,
-        Self::Body: Validate,
-    {
-        async move {
-            // Field-level validation (temperature/top_p/max_tokens/…) before we
-            // open the connection, mirroring the non-streaming path and the
-            // sibling `stream_for_each`/`to_stream` entry points. Previously this
-            // low-level SSE API skipped validation while the typed ones did not.
-            self.body()
-                .validate()
-                .map_err(crate::client::error::ZaiError::from)?;
-            let resp = self.post().await?;
-            let mut stream = resp.bytes_stream();
-            let mut parser = crate::model::sse_parser::SseEventParser::new();
-
-            while let Some(next) = stream.next().await {
-                match next {
-                    Ok(bytes) => {
-                        for event in parser.push(&bytes) {
-                            // Per-chunk payload logging is verbose at high
-                            // token rates; keep it at `trace` so production
-                            // streams stay quiet by default.
-                            trace!(parser = "sse", bytes = event.len(), "SSE chunk received");
-                            if event == b"[DONE]" {
-                                return Ok(());
-                            }
-                            on_data(&event);
-                        }
-                    },
-                    Err(e) => {
-                        return Err(crate::client::error::ZaiError::NetworkError(
-                            std::sync::Arc::new(e),
-                        ));
-                    },
-                }
-            }
-            // Byte stream ended: flush any final SSE event that never saw a
-            // terminating blank line so the last content/[DONE] chunk isn't
-            // silently dropped (see `SseEventParser::finish`).
-            for event in parser.finish() {
-                trace!(
-                    parser = "sse",
-                    bytes = event.len(),
-                    "SSE final chunk flushed"
-                );
-                if event == b"[DONE]" {
-                    return Ok(());
-                }
-                on_data(&event);
-            }
-            Ok(())
-        }
-    }
-}
+/// Marker trait retained for backward compatibility — the SSE streaming path
+/// is rebuilt in P08. No types implement this in the current codebase.
+pub trait SseStreamable {}
 
 /// Macro for defining AI model types with standard implementations.
 ///

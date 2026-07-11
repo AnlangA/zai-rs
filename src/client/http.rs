@@ -33,10 +33,7 @@
 //!     .build();
 //! ```
 
-use std::{
-    sync::{Arc, OnceLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use reqwest::Method;
@@ -290,40 +287,14 @@ impl Default for HttpClientConfigBuilder {
     }
 }
 
-/// A global HTTP client registry for connection pooling and configuration
-/// caching. The cached value is the build *result* so a persistent init
-/// failure is remembered and surfaced rather than re-attempted per request.
-///
-/// The cache is keyed only by `(timeout, compression)` and is process-global
-/// and intentionally unbounded: realistic callers reuse a handful of distinct
-/// configs, so it stays small. A programmatic per-request timeout sweep would
-/// grow it without bound — callers doing that should construct one
-/// `reqwest::Client` directly instead of going through this registry.
-static HTTP_CLIENTS: OnceLock<dashmap::DashMap<String, Arc<Result<reqwest::Client, ZaiError>>>> =
-    OnceLock::new();
-
 /// Get or create an HTTP client with the specified configuration.
 ///
-/// Clients are cached by configuration to allow connection reuse. The build
-/// *result* itself is cached, so a persistent client-init failure (e.g. a TLS
-/// provider initialization error) is surfaced as a [`ZaiError`] instead of
-/// panicking the whole process on the first request.
+/// **P05 cleanup**: the global `global client cache` cache is removed — each call
+/// builds a fresh `reqwest::Client`. In 0.5 the shared client lives on
+/// `ZaiClient`; this free function remains only for the legacy send-path
+/// functions that have not yet been fully migrated to the new `Transport`.
 pub fn http_client_with_config(config: &HttpClientConfig) -> ZaiResult<reqwest::Client> {
-    let config_key = format!(
-        "timeout:{:?}|compression:{}",
-        config.timeout, config.enable_compression
-    );
-
-    let clients = HTTP_CLIENTS.get_or_init(dashmap::DashMap::new);
-
-    let cached = clients
-        .entry(config_key)
-        .or_insert_with(|| Arc::new(build_reqwest_client(config)));
-
-    match &**cached {
-        Ok(client) => Ok(client.clone()),
-        Err(err) => Err(err.clone()),
-    }
+    build_reqwest_client(config)
 }
 
 /// Construct a `reqwest::Client` from an [`HttpClientConfig`].
@@ -607,85 +578,8 @@ where
 ///
 /// Every concrete request builder in the SDK implements this so the shared
 /// transport helpers can post/submit requests uniformly.
-pub trait HttpClient {
-    /// Request body type (must be JSON-serializable).
-    type Body: serde::Serialize;
-    /// Resolved API URL holder (typically `String` or `&'a str`).
-    type ApiUrl: AsRef<str>;
-    /// API key holder (typically `String` or `&'a str`).
-    type ApiKey: AsRef<str>;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl;
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey;
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body;
-
-    /// Get HTTP client configuration for this request
-    ///
-    /// Override this method to provide custom configuration.
-    /// Default implementation returns default configuration.
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        static DEFAULT: OnceLock<Arc<HttpClientConfig>> = OnceLock::new();
-        DEFAULT
-            .get_or_init(|| Arc::new(HttpClientConfig::default()))
-            .clone()
-    }
-
-    /// Sends a POST request to the API endpoint.
-    ///
-    /// This method implements retry logic with exponential backoff and jitter.
-    /// It supports configuration through `http_config` method.
-    fn post(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config();
-        let url = self.api_url().as_ref().to_owned();
-        let key: Arc<str> = Arc::from(self.api_key().as_ref());
-        // Serialize once (to bytes); `send_request_bytes` reuses the cheap
-        // `Bytes` handle across retries instead of re-serializing per attempt.
-        let body = serde_json::to_vec(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
-
-        async move {
-            let body = body?;
-            send_request_bytes(Method::POST, url, key, Bytes::from(body), config).await
-        }
-    }
-
-    /// Sends a GET request to the API endpoint.
-    ///
-    /// This method implements retry logic with exponential backoff and jitter.
-    /// It supports configuration through the `http_config` method.
-    fn get(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config();
-        let url = self.api_url().as_ref().to_owned();
-        let key: Arc<str> = Arc::from(self.api_key().as_ref());
-
-        async move { send_empty_request(Method::GET, url, key, config).await }
-    }
-
-    /// Sends a PUT request with a JSON body to the API endpoint.
-    fn put(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config();
-        let url = self.api_url().as_ref().to_owned();
-        let key: Arc<str> = Arc::from(self.api_key().as_ref());
-        let body = serde_json::to_vec(self.body()).map_err(|e| ZaiError::JsonError(Arc::new(e)));
-
-        async move {
-            let body = body?;
-            send_request_bytes(Method::PUT, url, key, Bytes::from(body), config).await
-        }
-    }
-
-    /// Sends a DELETE request without a body to the API endpoint.
-    fn delete(&self) -> impl std::future::Future<Output = ZaiResult<reqwest::Response>> + Send {
-        let config = self.http_config();
-        let url = self.api_url().as_ref().to_owned();
-        let key: Arc<str> = Arc::from(self.api_key().as_ref());
-
-        async move { send_empty_request(Method::DELETE, url, key, config).await }
-    }
-}
-
+/// **P05 cleanup**: the `HttpClient` trait is removed. Request types no longer
+/// implement it; they use `send_via(&ZaiClient)` instead. The send-path free
 /// Internal helper: executes retryable request builders.
 #[tracing::instrument(
     skip(config, build_request),

@@ -37,6 +37,7 @@ pub(crate) struct ClientInner {
     /// Transport policy.
     pub(crate) transport: HttpTransportConfig,
     /// The single reqwest client built by the SDK.
+    #[allow(dead_code)]
     pub(crate) reqwest: reqwest::Client,
 }
 
@@ -84,6 +85,7 @@ impl ZaiClient {
     }
 
     /// Borrow the shared reqwest client (crate-private use only).
+    #[allow(dead_code)]
     pub(crate) fn reqwest(&self) -> &reqwest::Client {
         &self.inner.reqwest
     }

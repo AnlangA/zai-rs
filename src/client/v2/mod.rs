@@ -21,7 +21,6 @@
 
 pub mod config;
 pub mod endpoint;
-pub mod legacy_adapter;
 pub mod services;
 pub mod transport;
 
