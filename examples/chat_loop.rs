@@ -1,22 +1,21 @@
 use std::io::{self, Write};
 
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
-    // 简化版：假设服务端总是返回纯字符串内容
     v.as_str().map(std::string::ToString::to_string)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_airx {};
-    let key = std::env::var("ZHIPU_API_KEY").expect("请先在环境变量中设置 ZHIPU_API_KEY");
+    let client = ZaiClient::from_env()?;
 
     println!("可持续对话示例 (输入 exit 或 quit 退出)\n");
 
     let mut line = String::new();
 
-    // 读取首条用户输入并创建会话
     print!("你> ");
     io::stdout().flush().ok();
     line.clear();
@@ -26,16 +25,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let mut client = ChatCompletion::new(model, TextMessage::user(&user_input), key)
+    let mut request = ChatCompletion::new(model, TextMessage::user(&user_input))
         .with_temperature(0.7)
         .with_top_p(0.9)
         .with_thinking(ThinkingType::disabled());
 
     loop {
-        // 发送当前累计的所有消息，并获取 AI 回复（非流式）
-        let body: ChatCompletionResponse = client.send().await?;
+        let body: ChatCompletionResponse = request.send_via(&client).await?;
 
-        // 获取第一条 choice 的文本内容
         let ai_text = body
             .choices()
             .and_then(|cs| cs.first())
@@ -45,10 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         println!("AI> {ai_text}\n");
 
-        // 将 AI 回复也追加进对话上下文
-        client = client.add_messages(TextMessage::assistant(ai_text));
+        request = request.add_messages(TextMessage::assistant(ai_text));
 
-        // 读取下一轮用户输入
         print!("你> ");
         io::stdout().flush().ok();
         line.clear();
@@ -58,12 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
         if user_input.is_empty() {
-            // 空输入则继续读
             continue;
         }
 
-        // 将用户输入追加到对话上下文
-        client = client.add_messages(TextMessage::user(&user_input));
+        request = request.add_messages(TextMessage::user(&user_input));
     }
 
     Ok(())

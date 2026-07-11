@@ -1,13 +1,13 @@
 use std::{fs::File, io::Write};
 
 use base64::Engine;
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_voice {};
-    let key =
-        std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
+    let client = ZaiClient::from_env()?;
 
     let text_contxt = VoiceRichContent::text("复述一遍");
     // Read the input WAV path from the first CLI argument.
@@ -26,9 +26,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_content(text_contxt)
         .add_content(audio_content);
 
-    let client = ChatCompletion::new(model, voice_message, key);
+    let request = ChatCompletion::new(model, voice_message);
 
-    match tokio::time::timeout(tokio::time::Duration::from_secs(30), client.send()).await {
+    match tokio::time::timeout(
+        tokio::time::Duration::from_secs(30),
+        request.send_via(&client),
+    )
+    .await
+    {
         Ok(Ok(body)) => {
             // Success responses are JSON; parsed as struct
 

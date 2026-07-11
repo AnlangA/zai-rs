@@ -1,55 +1,26 @@
-//! # Chat Completion Data Models
-//!
-//! This module defines the core data structures for chat completion requests,
-//! implementing type-safe chat interactions with the Zhipu AI API.
-//!
-//! ## Type-State Pattern
-//!
-//! The implementation uses Rust's type system to enforce compile-time
-//! guarantees about streaming capabilities through phantom types
-//! (`StreamOn`/`StreamOff`).
-//!
-//! ## Features
-//!
-//! - **Type-safe model binding** - Compile-time verification of model-message
-//!   compatibility
-//! - **Builder pattern** - Fluent API for request construction
-//! - **Streaming support** - Type-state based streaming capability enforcement
-//! - **Tool integration** - Support for function calling and tool usage
-//! - **Parameter control** - Temperature, top-p, max tokens, and other
-//!   generation parameters
-
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
+use std::sync::Arc;
 
 use serde::Serialize;
 use validator::Validate;
 
-use super::super::{chat_base_request::*, tools::*, traits::*};
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
+use super::super::{
+    chat_base_request::*, chat_base_response::ChatCompletionResponse, tools::*, traits::*,
 };
+use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
+use crate::client::v2::ZaiClient;
 
-// Type-state is defined in model::traits::{StreamState, StreamOn, StreamOff}
-
-/// Type-safe chat completion request structure.
+/// Chat-completion request builder (plan P05: migrated to route through
+/// [`ZaiClient`]).
 ///
-/// This struct represents a chat completion request with compile-time
-/// guarantees for model compatibility and streaming capabilities.
+/// Generic over the model `N`, the message type `M`, and a stream type-state
+/// `S` (`StreamOff` by default, `StreamOn` after
+/// [`enable_stream`](Self::enable_stream)).
 ///
-/// ## Type Parameters
-///
-/// - `N` - The AI model type (must implement `ModelName + Chat`)
-/// - `M` - The message type (must form a valid bound with the model)
-/// - `S` - Stream state (`StreamOn` or `StreamOff`, defaults to `StreamOff`)
-///
-/// ## Examples
-///
-/// ```rust,ignore
-/// let model = GLM4_5_flash {};
-/// let messages = TextMessage::user("Hello, how are you?");
-/// let request = ChatCompletion::new(model, messages, api_key);
-/// ```
+/// **P05**: the `key`/`url`/`endpoint_config`/`api_base`/`http_config` fields
+/// and the `with_base_url`/`with_endpoint_config`/`with_http_config`/`with_url`
+/// methods are REMOVED. Credentials and transport live on the `ZaiClient`,
+/// passed to [`send`](Self::send)/[`send_via`](Self::send_via).
 pub struct ChatCompletion<N, M, S = StreamOff>
 where
     N: ModelName + Chat,
@@ -57,20 +28,7 @@ where
     ChatBody<N, M>: Serialize,
     S: StreamState,
 {
-    /// API key for authentication with the Zhipu AI service.
-    pub key: String,
-
-    /// Final API endpoint URL for chat completions.
-    pub url: String,
-
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
-
-    /// The request body containing model, messages, and parameters.
     body: ChatBody<N, M>,
-
-    /// Phantom data to track streaming capability at compile time.
     _stream: PhantomData<S>,
 }
 
@@ -80,53 +38,24 @@ where
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
-    /// Creates a new non-streaming chat completion request.
+    /// Create a new chat request from a model and the first message batch.
     ///
-    /// ## Arguments
-    ///
-    /// * `model` - The AI model to use for completion
-    /// * `messages` - The conversation messages
-    /// * `key` - API key for authentication
-    ///
-    /// ## Returns
-    ///
-    /// A new `ChatCompletion` instance configured for non-streaming requests.
-    pub fn new(model: N, messages: M, key: impl Into<String>) -> ChatCompletion<N, M, StreamOff> {
+    /// **P05**: no longer takes an API key — the key is provided by the
+    /// [`ZaiClient`] at send time.
+    pub fn new(model: N, messages: M) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let url = endpoint_config.url(&api_base, paths::CHAT_COMPLETIONS);
         ChatCompletion {
             body,
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
             _stream: PhantomData,
         }
     }
 
-    /// Gets mutable access to the request body for further customization.
-    ///
-    /// This method allows modification of request parameters after initial
-    /// creation.
+    /// Borrow the underlying `ChatBody` mutably for advanced tweaks.
     pub fn body_mut(&mut self) -> &mut ChatBody<N, M> {
         &mut self.body
     }
 
-    /// Adds additional messages to the conversation.
-    ///
-    /// This method provides a fluent interface for building conversation
-    /// context.
-    ///
-    /// ## Arguments
-    ///
-    /// * `messages` - Additional messages to append to the conversation
-    ///
-    /// ## Returns
-    ///
-    /// Self with the updated message collection, enabling method chaining.
+    /// Append another message batch to the conversation.
     pub fn add_messages(mut self, messages: M) -> Self {
         self.body = self.body.add_messages(messages);
         self
@@ -141,7 +70,6 @@ where
         self.body = self.body.with_do_sample(do_sample);
         self
     }
-
     /// Set the sampling temperature.
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.body = self.body.with_temperature(temperature);
@@ -167,14 +95,12 @@ where
         self.body = self.body.extend_tools(tools);
         self
     }
-    /// Set the `tool_choice` policy (`auto` / `none` / a specific function).
-    /// Only meaningful when tools are attached via
-    /// [`add_tool`](Self::add_tool).
+    /// Set the tool choice.
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.body = self.body.with_tool_choice(tool_choice);
         self
     }
-    /// Set the response format (plain text or JSON object).
+    /// Set the response format.
     pub fn with_response_format(mut self, format: ResponseFormat) -> Self {
         self.body = self.body.with_response_format(format);
         self
@@ -187,78 +113,6 @@ where
     /// Add a stop sequence that halts generation when encountered.
     pub fn with_stop(mut self, stop: String) -> Self {
         self.body = self.body.with_stop(stop);
-        self
-    }
-
-    /// Sets a custom API endpoint URL for this chat completion request.
-    ///
-    /// This method allows overriding the default API endpoint with a custom
-    /// URL, enabling support for different deployment environments or proxy
-    /// configurations.
-    ///
-    /// ## Arguments
-    ///
-    /// * `url` - The custom API endpoint URL
-    ///
-    /// ## Returns
-    ///
-    /// Self with the updated URL, enabling method chaining.
-    ///
-    /// ## Examples
-    ///
-    /// ```rust,ignore
-    /// let request = ChatCompletion::new(model, messages, api_key)
-    ///     .with_url("https://custom-api.example.com/v1/chat/completions");
-    /// ```
-    pub fn with_url(mut self, url: impl Into<String>) -> Self {
-        self.url = url.into();
-        self
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base_url.into());
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::CHAT_COMPLETIONS);
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::CHAT_COMPLETIONS);
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Sets the URL to the coding plan endpoint.
-    ///
-    /// This method configures the chat completion request to use the
-    /// coding-specific API endpoint <https://open.bigmodel.cn/api/coding/paas/v4/chat/completions>.
-    ///
-    /// ## Returns
-    ///
-    /// Self with the coding plan URL, enabling method chaining.
-    ///
-    /// ## Examples
-    ///
-    /// ```rust,ignore
-    /// let request = ChatCompletion::new(model, messages, api_key)
-    ///     .with_coding_plan();
-    /// ```
-    pub fn with_coding_plan(mut self) -> Self {
-        self.api_base = ApiBase::CodingPaasV4;
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::CHAT_COMPLETIONS);
         self
     }
 
@@ -283,36 +137,19 @@ where
     }
 
     /// Enables streaming for this chat completion request.
-    ///
-    /// This method transitions the request to streaming mode, allowing
-    /// real-time response processing through Server-Sent Events (SSE).
-    ///
-    /// ## Returns
-    ///
-    /// A new `ChatCompletion` instance with streaming enabled (`StreamOn`).
     pub fn enable_stream(mut self) -> ChatCompletion<N, M, StreamOn> {
         self.body.stream = Some(true);
         ChatCompletion {
-            key: self.key,
-            url: self.url,
             body: self.body,
-            endpoint_config: self.endpoint_config,
-            api_base: self.api_base,
-            http_config: self.http_config,
             _stream: PhantomData,
         }
     }
 
     /// Validate request parameters for non-stream chat (StreamOff)
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        // Field-level validation from ChatBody
-        // (temperature/top_p/max_tokens/user_id/stop...)
-
         self.body
             .validate()
             .map_err(crate::client::error::ZaiError::from)?;
-        // Ensure not accidentally enabling stream in StreamOff state
-
         if matches!(self.body.stream, Some(true)) {
             return Err(crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
@@ -320,29 +157,60 @@ where
                     .to_string(),
             });
         }
-
         Ok(())
     }
 
-    /// Submit the request and await the (non-streaming) response.
-    pub async fn send(
-        &self,
-    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
+    /// Submit the request via a [`ZaiClient`] and await the (non-streaming)
+    /// response.
+    ///
+    /// **P05**: credentials and transport come from the client; the request
+    /// type carries no key/config of its own.
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<ChatCompletionResponse>
     where
         N: serde::Serialize,
         M: serde::Serialize,
     {
         self.validate()?;
+        let url = client.endpoints().resolve(
+            crate::client::v2::ApiFamily::PaasV4,
+            &["chat", "completions"],
+        )?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<ChatCompletionResponse>(resp).await
+    }
 
-        // post() handles non-2xx responses internally (returns Err), so here we
-        // only receive a successful response with valid HTTP status.
-        let resp: reqwest::Response = self.post().await?;
-
-        let parsed =
-            parse_typed_response::<crate::model::chat_base_response::ChatCompletionResponse>(resp)
-                .await?;
-
-        Ok(parsed)
+    /// Submit using a coding-plan endpoint via a [`ZaiClient`].
+    pub async fn send_via_coding_plan(
+        &self,
+        client: &ZaiClient,
+    ) -> crate::ZaiResult<ChatCompletionResponse>
+    where
+        N: serde::Serialize,
+        M: serde::Serialize,
+    {
+        self.validate()?;
+        let url = client.endpoints().resolve(
+            crate::client::v2::ApiFamily::CodingPaasV4,
+            &["chat", "completions"],
+        )?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<ChatCompletionResponse>(resp).await
     }
 }
 
@@ -362,81 +230,57 @@ where
     }
 
     /// Disables streaming for this chat completion request.
-    ///
-    /// This method ensures the request will receive a complete response
-    /// rather than streaming chunks.
-    ///
-    /// ## Returns
-    ///
-    /// A new `ChatCompletion` instance with streaming disabled (`StreamOff`).
     pub fn disable_stream(mut self) -> ChatCompletion<N, M, StreamOff> {
         self.body.stream = Some(false);
-        // Reset tool_stream when disabling streaming since tool_stream depends on
-        // stream
         self.body.tool_stream = None;
         ChatCompletion {
-            key: self.key,
-            url: self.url,
             body: self.body,
-            endpoint_config: self.endpoint_config,
-            api_base: self.api_base,
-            http_config: self.http_config,
             _stream: PhantomData,
         }
     }
-}
 
-impl<N, M, S> HttpClient for ChatCompletion<N, M, S>
-where
-    N: ModelName + Serialize + Chat,
-    M: Serialize,
-    (N, M): Bounded,
-    S: StreamState,
-{
-    type Body = ChatBody<N, M>;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Returns the API endpoint URL for chat completions.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
+    /// Borrow the body for SSE processing.
+    pub fn body(&self) -> &ChatBody<N, M> {
         &self.body
     }
 
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        self.http_config.clone()
+    /// Resolve the URL and expose the serialized body for SSE streaming via a
+    /// [`ZaiClient`]. Returns `(url, serialized_body, api_key)`.
+    pub fn prepare_stream_via(
+        &self,
+        client: &ZaiClient,
+    ) -> crate::ZaiResult<(String, Vec<u8>, String)>
+    where
+        N: serde::Serialize,
+        M: serde::Serialize,
+    {
+        self.body
+            .validate()
+            .map_err(crate::client::error::ZaiError::from)?;
+        let url = client.endpoints().resolve(
+            crate::client::v2::ApiFamily::PaasV4,
+            &["chat", "completions"],
+        )?;
+        let body_bytes =
+            serde_json::to_vec(&self.body).map_err(|e| crate::ZaiError::JsonError(Arc::new(e)))?;
+        Ok((url, body_bytes, client.secret().expose().to_string()))
     }
 }
 
-/// Enables Server-Sent Events (SSE) streaming for streaming-enabled chat
-/// completions.
-///
-/// This implementation allows streaming chat completions to be processed
-/// incrementally as responses arrive from the API.
-impl<N, M> crate::model::traits::SseStreamable for ChatCompletion<N, M, StreamOn>
-where
-    N: ModelName + Serialize + Chat,
-    M: Serialize,
-    (N, M): Bounded,
-{
-}
-
-/// Provides streaming extension methods for streaming-enabled chat completions.
-///
-/// This implementation enables the use of streaming-specific methods
-/// for processing chat responses in real-time.
-impl<N, M> crate::model::stream_ext::StreamChatLikeExt for ChatCompletion<N, M, StreamOn>
-where
-    N: ModelName + Serialize + Chat,
-    M: Serialize,
-    (N, M): Bounded,
-{
+/// Build a legacy `HttpClientConfig` from a `ZaiClient`'s transport policy.
+/// This is a temporary bridge during P05–P06; once all endpoints route through
+/// the new `Transport`, this adapter is removed.
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
+    }
 }

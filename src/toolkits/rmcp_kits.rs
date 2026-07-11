@@ -320,6 +320,7 @@ pub async fn execute_tool_calls_as_messages(
 #[cfg(feature = "rmcp-kits")]
 pub async fn run_mcp_tool_roundtrip<N>(
     caller: &McpToolCaller,
+    client: &crate::client::v2::ZaiClient,
     mut chat: crate::model::chat::data::ChatCompletion<
         N,
         crate::model::chat_message_types::TextMessage,
@@ -333,7 +334,7 @@ where
 {
     use crate::model::chat_message_types::TextMessage;
 
-    let first_resp = chat.send().await?;
+    let first_resp = chat.send_via(client).await?;
 
     let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> =
         execute_tool_calls_as_messages(caller, &first_resp).await?;
@@ -353,7 +354,7 @@ where
         chat = chat.add_messages(TextMessage::system(hint));
     }
 
-    let final_resp = chat.send().await?;
+    let final_resp = chat.send_via(client).await?;
     Ok(final_resp)
 }
 

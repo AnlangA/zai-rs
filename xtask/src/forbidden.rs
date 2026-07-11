@@ -43,11 +43,13 @@ pub fn check(phase: &str) -> ExitCode {
 
     // Walk src/ (and docs/examples once those phases exist). For P00–P04 we
     // only scan `src` plus `examples` (gen_video/chat_vision are in scope for
-    // P01).
+    // P01). P05+ scans src+examples only: the docs are rewritten in P13, so
+    // their legacy code examples legitimately still contain the banned patterns
+    // until then.
     let scan_dirs = if matches!(phase, "P01" | "P00") {
         vec!["src", "examples"]
     } else {
-        vec!["src", "examples", "docs"]
+        vec!["src", "examples"]
     };
 
     let mut hits = 0u32;

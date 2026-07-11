@@ -1,3 +1,4 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
@@ -15,8 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let model = GLM4_5v {};
-    let key =
-        std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY environment variable must be set");
+    let client = ZaiClient::from_env()?;
 
     // Create video content from the user-provided media URL.
     let video_content = VisionRichContent::video(&media_url);
@@ -24,9 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vision_message = VisionMessage::new_user()
         .add_content(video_content)
         .add_content(text_content);
-    let client = ChatCompletion::new(model, vision_message, key);
+    let request = ChatCompletion::new(model, vision_message);
 
-    let body: ChatCompletionResponse = client.send().await?;
+    let body: ChatCompletionResponse = request.send_via(&client).await?;
     println!("{body:#?}");
     Ok(())
 }

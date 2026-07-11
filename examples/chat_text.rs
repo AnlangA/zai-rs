@@ -1,50 +1,23 @@
 //! # Basic Chat Text Example
 //!
-//! This example demonstrates how to use the ZAI-RS SDK for basic text-based
-//! chat completion with the Zhipu AI API.
-//!
-//! ## Features Demonstrated
-//!
-//! - Model selection (GLM-4.5-Flash)
-//! - Text message creation
-//! - Request parameter configuration
-//! - Response handling and parsing
-//! - Thinking capability control
-//!
-//! ## Prerequisites
-//!
-//! Set the `ZHIPU_API_KEY` environment variable with your API key:
-//! ```bash
-//! export ZHIPU_API_KEY="your-api-key-here"
-//! ```
-//!
-//! ## Running the Example
-//!
-//! ```bash
-//! cargo run --example chat_text
-//! ```
+//! Demonstrates basic text chat completion via `ZaiClient` (P05 migration).
 
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Select the AI model - GLM-4.5-Flash for fast, efficient responses
     let model = GLM4_5_flash {};
+    let client = ZaiClient::from_env()?;
 
-    // Get API key from environment variable
-    let key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
-
-    // User input text (Chinese: "Hello")
     let user_text = "你好";
 
-    // Build the chat completion request with custom parameters
-    let client = ChatCompletion::new(model, TextMessage::user(user_text), key)
-        .with_temperature(0.7) // Control randomness (0.0-1.0)
-        .with_top_p(0.9) // Control diversity (0.0-1.0)
-        .with_thinking(ThinkingType::disabled()); // Disable thinking for faster response
+    let request = ChatCompletion::new(model, TextMessage::user(user_text))
+        .with_temperature(0.7)
+        .with_top_p(0.9)
+        .with_thinking(ThinkingType::disabled());
 
-    // Send the request and await response (non-stream)
-    let body: ChatCompletionResponse = client.send().await?;
+    let body: ChatCompletionResponse = request.send_via(&client).await?;
     println!("{body:#?}");
 
     Ok(())

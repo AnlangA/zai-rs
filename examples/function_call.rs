@@ -1,4 +1,5 @@
 use tracing::warn;
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::{chat::data::ChatCompletion, chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
@@ -29,18 +30,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // 读取 API Key，并保留以便后续继续对话
-    let key = get_key()?;
+    let zai_client = ZaiClient::from_env()?;
 
     // 会话的第一条用户消息
     let user_text = "你是谁，帮为查找深圳今天的天气";
 
-    let mut client = ChatCompletion::new(model, TextMessage::user(user_text), key)
+    let mut request = ChatCompletion::new(model, TextMessage::user(user_text))
         .with_thinking(ThinkingType::disabled())
         .with_temperature(0.7)
         .with_top_p(0.9)
         .with_max_tokens(512)
         .add_tool(tools);
-    let body: ChatCompletionResponse = client.send().await?;
+    let body: ChatCompletionResponse = request.send_via(&zai_client).await?;
     let v = serde_json::to_value(&body).expect("Failed to serialize response to JSON");
     println!(
         "{}",
@@ -64,9 +65,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             serde_json::to_string(&result).expect("Failed to serialize tool result"),
             id,
         );
-        client = client.add_messages(tool_msg).with_max_tokens(512);
+        request = request.add_messages(tool_msg).with_max_tokens(512);
 
-        let body2: ChatCompletionResponse = client.send().await?;
+        let body2: ChatCompletionResponse = request.send_via(&zai_client).await?;
         let v2 = serde_json::to_value(&body2).expect("Failed to serialize response to JSON");
         println!(
             "继续对话返回: {}",
@@ -77,20 +78,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn get_key() -> Result<String, Box<dyn std::error::Error>> {
-    if let Ok(key) = std::env::var("ZHIPU_API_KEY") {
-        Ok(key)
-    } else {
-        // 从输入中读取
-        let mut key = String::new();
-        print!("请输入 ZHIPU_API_KEY: ");
-        use std::io::Write;
-        std::io::stdout().flush().ok();
-        std::io::stdin().read_line(&mut key)?;
-        Ok(key.trim().to_string())
-    }
 }
 
 /// 从响应中解析第一条 tool_call: 返回 (id, name, arguments)

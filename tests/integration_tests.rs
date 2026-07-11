@@ -16,7 +16,7 @@ use hyper_util::{rt::TokioIo, server::conn::auto::Builder as ConnBuilder};
 use serde_json::json;
 use tokio::{net::TcpListener, sync::oneshot, time::sleep};
 use zai_rs::{
-    client::EndpointConfig,
+    client::v2::{ApiFamily, ZaiClient},
     file::{FileListQuery, FileListRequest, FilePurpose, FileUploadRequest},
     model::{ChatCompletion, GLM5_2, TextMessage},
     usage::CodingPlanUsageRequest,
@@ -92,6 +92,18 @@ async fn capture_one_sdk_request(
     (format!("http://{addr}/api/paas/v4"), rx)
 }
 
+/// Build a `ZaiClient` whose PaasV4 endpoint points at the mock `base_url`
+/// (P05: chat requests route through `ZaiClient` instead of per-request keys).
+fn client_for_mock_base(base_url: &str, key: &str) -> ZaiClient {
+    let ep = base_url.to_string();
+    let leaked: &'static str = Box::leak(ep.into_boxed_str());
+    ZaiClient::builder(key)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::PaasV4, leaked)
+        .build()
+        .unwrap()
+}
+
 /// Integration test for chat completion
 #[tokio::test]
 async fn test_chat_completion_integration() {
@@ -122,9 +134,8 @@ async fn test_sdk_json_post_uses_dynamic_mock_base() {
     }))
     .await;
 
-    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"), key.clone())
-        .with_base_url(base_url)
-        .send()
+    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
+        .send_via(&client_for_mock_base(&base_url, &key))
         .await
         .unwrap();
 
@@ -160,11 +171,10 @@ async fn test_sdk_chat_serializes_tool_choice_and_response_format() {
     }))
     .await;
 
-    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"), key.clone())
-        .with_base_url(base_url)
+    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
         .with_tool_choice(ToolChoice::function("get_weather"))
         .with_response_format(ResponseFormat::JsonObject)
-        .send()
+        .send_via(&client_for_mock_base(&base_url, &key))
         .await
         .unwrap();
 
@@ -197,10 +207,9 @@ async fn test_sdk_chat_tool_choice_auto_serializes_as_bare_string() {
     }))
     .await;
 
-    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"), key.clone())
-        .with_base_url(base_url)
+    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
         .with_tool_choice(ToolChoice::auto())
-        .send()
+        .send_via(&client_for_mock_base(&base_url, &key))
         .await
         .unwrap();
 
@@ -229,12 +238,16 @@ async fn test_sdk_chat_uses_configured_coding_plan_base() {
     )
     .await;
 
-    let endpoint_config = EndpointConfig::default().with_coding_paas_v4_base(coding_base_url);
+    let coding_ep = coding_base_url.clone();
+    let leaked: &'static str = Box::leak(coding_ep.into_boxed_str());
+    let client = ZaiClient::builder(&key)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::CodingPaasV4, leaked)
+        .build()
+        .unwrap();
 
-    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("fix this"), key.clone())
-        .with_endpoint_config(endpoint_config)
-        .with_coding_plan()
-        .send()
+    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("fix this"))
+        .send_via_coding_plan(&client)
         .await
         .unwrap();
 
@@ -548,7 +561,6 @@ async fn test_retry_simulation() {
 #[tokio::test]
 async fn test_send_path_retries_500_then_succeeds() {
     use std::sync::atomic::{AtomicU32, Ordering};
-    use zai_rs::client::http::{HttpClientConfig, RetryDelay};
 
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let base_url = format!("http://{}", listener.local_addr().unwrap());
@@ -599,15 +611,10 @@ async fn test_send_path_retries_500_then_succeeds() {
         }
     });
 
-    let cfg = HttpClientConfig::builder()
-        .max_retries(2)
-        .retry_delay(RetryDelay::None)
-        .build();
     let key = "test.12345678901234567890".to_string();
-    let resp = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"), key)
-        .with_base_url(base_url)
-        .with_http_config(cfg)
-        .send()
+    let client = client_for_mock_base(&base_url, &key);
+    let resp = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
+        .send_via(&client)
         .await;
 
     assert!(
