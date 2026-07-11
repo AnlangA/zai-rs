@@ -3,8 +3,6 @@
 //! This module provides the file parser result client for retrieving file
 //! parsing results.
 
-use std::sync::Arc;
-
 use tracing::{debug, trace, warn};
 
 use super::{request::*, response::*};
@@ -12,7 +10,6 @@ use crate::{
     ZaiResult,
     client::{
         error::codes,
-        http::{HttpClientConfig, parse_typed_response, send_empty_request},
         {ApiFamily, ZaiClient},
     },
 };
@@ -83,15 +80,9 @@ impl FileParserResultRequest {
             ],
         )?;
         trace!(url = %url, "Fetching file parser result");
-        let config = transport_config_from_client(client);
-        let response = send_empty_request(
-            reqwest::Method::GET,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<FileParserResultResponse>(response).await
+        client
+            .send_empty::<FileParserResultResponse>("GET", url)
+            .await
     }
 
     /// Polls for the result until it's completed or timeout is reached.
@@ -179,20 +170,5 @@ impl FileParserResultRequest {
             .get_result_via(client, FormatType::DownloadLink)
             .await?;
         Ok((text_result, download_result))
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
     }
 }

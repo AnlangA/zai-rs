@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::types::BatchItem;
 use crate::{
     ZaiResult,
-    client::{
-        http::{HttpClientConfig, parse_typed_response, send_empty_request},
-        {ApiFamily, ZaiClient},
-    },
+    client::{ApiFamily, ZaiClient},
 };
 
 /// Query parameters for listing batch processing tasks
@@ -86,18 +81,7 @@ impl BatchesListRequest {
             client
                 .endpoints()
                 .resolve_with_query(ApiFamily::PaasV4, &["batches"], &borrowed)?;
-        let config = transport_config_from_client(client);
-        let resp: reqwest::Response = send_empty_request(
-            reqwest::Method::GET,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-        )
-        .await?;
-
-        let parsed = parse_typed_response::<BatchesListResponse>(resp).await?;
-
-        Ok(parsed)
+        client.send_empty::<BatchesListResponse>("GET", url).await
     }
 }
 
@@ -137,19 +121,4 @@ pub struct BatchesListResponse {
 pub enum ListObject {
     /// List marker
     List,
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
-    }
 }

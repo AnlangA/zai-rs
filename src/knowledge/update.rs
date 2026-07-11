@@ -1,11 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::create::{BackgroundColor, EmbeddingId, KnowledgeIcon};
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
 
 /// Update body for editing a knowledge base
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
@@ -115,16 +114,9 @@ impl KnowledgeUpdateRequest {
             crate::client::ApiFamily::LlmApplication,
             &["knowledge", &self.id],
         )?;
-        let config = transport_config_from_client(client);
-        let resp = send_json_request(
-            reqwest::Method::PUT,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<KnowledgeUpdateResponse>(resp).await
+        client
+            .send_json::<_, KnowledgeUpdateResponse>("PUT", url, &self.body)
+            .await
     }
 }
 
@@ -140,19 +132,4 @@ pub struct KnowledgeUpdateResponse {
     /// Server timestamp.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
-    }
 }

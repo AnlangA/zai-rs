@@ -63,7 +63,6 @@ pub(crate) enum WireEnvelope {
 
 #[derive(serde::Deserialize)]
 pub(crate) struct WireError {
-    #[allow(dead_code)]
     code: serde_json::Value,
     #[allow(dead_code)]
     message: String,
@@ -113,7 +112,7 @@ pub fn extract_error_envelope(body: &str) -> Option<BusinessError> {
     }
     match env {
         WireEnvelope::Nested { error } => Some(BusinessError {
-            code: None,
+            code: Some(error.code),
             message: error.message,
         }),
         WireEnvelope::Flat { code, message } => Some(BusinessError {

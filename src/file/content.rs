@@ -1,9 +1,4 @@
-use std::sync::Arc;
-
-use crate::client::{
-    http::{HttpClientConfig, send_empty_request},
-    {ApiFamily, ZaiClient},
-};
+use crate::client::{ApiFamily, ZaiClient};
 
 /// File content request (GET /paas/v4/files/{file_id}/content)
 pub struct FileContentRequest {
@@ -24,19 +19,7 @@ impl FileContentRequest {
         let url = client
             .endpoints()
             .resolve(ApiFamily::PaasV4, &["files", &self.file_id, "content"])?;
-        let config = transport_config_from_client(client);
-        // `send_empty_request` routes through the retry pipeline, which returns
-        // `Ok` only for a 2xx response (any non-2xx is converted to `Err`
-        // there), so the response here is guaranteed successful — no status
-        // re-check needed.
-        let resp: reqwest::Response = send_empty_request(
-            reqwest::Method::GET,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-        )
-        .await?;
-        let bytes = resp.bytes().await?;
+        let bytes = client.send_empty_bytes("GET", url).await?;
         Ok(bytes.to_vec())
     }
 
@@ -62,20 +45,5 @@ impl FileContentRequest {
         let mut f = tokio::fs::File::create(p).await?;
         tokio::io::AsyncWriteExt::write_all(&mut f, &bytes).await?;
         Ok(bytes.len())
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
     }
 }

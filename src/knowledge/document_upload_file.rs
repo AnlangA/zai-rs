@@ -1,10 +1,9 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use validator::Validate;
 
 use super::types::UploadFileResponse;
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_multipart_request};
 
 /// Slice type (knowledge_type)
 #[derive(Debug, Clone, Copy)]
@@ -130,77 +129,37 @@ impl DocumentUploadFileRequest {
             crate::client::ApiFamily::LlmApplication,
             &["document", "upload_document", &self.knowledge_id],
         )?;
-        let config = Arc::new(transport_config_from_client(client));
-
-        let mut file_parts = Vec::new();
-        for path in self.files.iter() {
-            let fname = path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(std::string::ToString::to_string)
-                .unwrap_or_else(|| "upload.bin".to_string());
-            file_parts.push((fname, tokio::fs::read(path).await?));
+        let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new();
+        if let Some(t) = self.options.knowledge_type {
+            factory = factory.field("knowledge_type", t.as_i64().to_string())?;
         }
-
-        let resp = send_multipart_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            config,
-            move || {
-                let mut form = reqwest::multipart::Form::new();
-
-                if let Some(t) = self.options.knowledge_type {
-                    form = form.text("knowledge_type", t.as_i64().to_string());
-                }
-                if let Some(seps) = self.options.custom_separator.as_ref() {
-                    let s = serde_json::to_string(seps).unwrap_or_else(|_| "[]".to_string());
-                    form = form.text("custom_separator", s);
-                }
-                if let Some(sz) = self.options.sentence_size {
-                    form = form.text("sentence_size", sz.to_string());
-                }
-                if let Some(pi) = self.options.parse_image {
-                    form = form.text("parse_image", if pi { "true" } else { "false" }.to_string());
-                }
-                if let Some(u) = self.options.callback_url.as_ref() {
-                    form = form.text("callback_url", u.clone());
-                }
-                if let Some(h) = self.options.callback_header.as_ref() {
-                    let s = serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string());
-                    form = form.text("callback_header", s);
-                }
-                if let Some(w) = self.options.word_num_limit.as_ref() {
-                    form = form.text("word_num_limit", w.clone());
-                }
-                if let Some(r) = self.options.req_id.as_ref() {
-                    form = form.text("req_id", r.clone());
-                }
-
-                for (fname, bytes) in file_parts.iter() {
-                    let part =
-                        reqwest::multipart::Part::bytes(bytes.clone()).file_name(fname.clone());
-                    form = form.part("files", part);
-                }
-                Ok(form)
-            },
-        )
-        .await?;
-        parse_typed_response::<UploadFileResponse>(resp).await
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
+        if let Some(seps) = self.options.custom_separator.as_ref() {
+            factory = factory.field("custom_separator", serde_json::to_string(seps)?)?;
+        }
+        if let Some(sz) = self.options.sentence_size {
+            factory = factory.field("sentence_size", sz.to_string())?;
+        }
+        if let Some(pi) = self.options.parse_image {
+            factory = factory.field("parse_image", pi.to_string())?;
+        }
+        if let Some(url) = self.options.callback_url.as_ref() {
+            factory = factory.field("callback_url", url.clone())?;
+        }
+        if let Some(header) = self.options.callback_header.as_ref() {
+            factory = factory.field("callback_header", serde_json::to_string(header)?)?;
+        }
+        if let Some(limit) = self.options.word_num_limit.as_ref() {
+            factory = factory.field("word_num_limit", limit.clone())?;
+        }
+        if let Some(req_id) = self.options.req_id.as_ref() {
+            factory = factory.field("req_id", req_id.clone())?;
+        }
+        for path in &self.files {
+            let part = crate::client::transport::multipart::FilePart::from_path(path)?;
+            factory = factory.file_named("files", part)?;
+        }
+        client
+            .send_multipart::<UploadFileResponse>("POST", url, &factory)
+            .await
     }
 }

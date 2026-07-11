@@ -39,6 +39,7 @@ pub(crate) struct ClientInner {
     /// The single reqwest client built by the SDK.
     #[allow(dead_code)]
     pub(crate) reqwest: reqwest::Client,
+    pub(crate) sender: crate::client::transport::Transport,
 }
 
 impl ZaiClient {
@@ -93,6 +94,104 @@ impl ZaiClient {
     /// Borrow the API secret (crate-private; only for Authorization construction).
     pub(crate) fn secret(&self) -> &ApiSecret {
         &self.inner.secret
+    }
+
+    /// Send a JSON request through the unified transport and decode its body.
+    pub(crate) async fn send_json<B, R>(
+        &self,
+        method: &'static str,
+        url: String,
+        body: &B,
+    ) -> ZaiResult<R>
+    where
+        B: serde::Serialize + ?Sized,
+        R: serde::de::DeserializeOwned,
+    {
+        let bytes = bytes::Bytes::from(serde_json::to_vec(body).map_err(crate::ZaiError::from)?);
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::Bytes(&bytes),
+            retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Json,
+            route_template: "typed-api-request",
+        };
+        self.inner.sender.send(&request).await?.json()
+    }
+
+    /// Send a body-less request through the unified transport and decode JSON.
+    pub(crate) async fn send_empty<R>(&self, method: &'static str, url: String) -> ZaiResult<R>
+    where
+        R: serde::de::DeserializeOwned,
+    {
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::None,
+            retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Json,
+            route_template: "typed-api-request",
+        };
+        self.inner.sender.send(&request).await?.json()
+    }
+
+    /// Send a JSON request whose successful response is binary.
+    pub(crate) async fn send_json_bytes<B: serde::Serialize + ?Sized>(
+        &self,
+        method: &'static str,
+        url: String,
+        body: &B,
+    ) -> ZaiResult<bytes::Bytes> {
+        let bytes = bytes::Bytes::from(serde_json::to_vec(body).map_err(crate::ZaiError::from)?);
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::Bytes(&bytes),
+            retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Binary,
+            route_template: "binary-api-request",
+        };
+        self.inner.sender.send(&request).await?.bytes()
+    }
+
+    /// Send a body-less request whose successful response is binary.
+    pub(crate) async fn send_empty_bytes(
+        &self,
+        method: &'static str,
+        url: String,
+    ) -> ZaiResult<bytes::Bytes> {
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::None,
+            retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Binary,
+            route_template: "binary-api-request",
+        };
+        self.inner.sender.send(&request).await?.bytes()
+    }
+
+    /// Send a multipart request through the unified transport and decode JSON.
+    pub(crate) async fn send_multipart<R: serde::de::DeserializeOwned>(
+        &self,
+        method: &'static str,
+        url: String,
+        factory: &crate::client::transport::multipart::MultipartBodyFactory,
+    ) -> ZaiResult<R> {
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::Multipart(factory),
+            retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Json,
+            route_template: "multipart-api-request",
+        };
+        self.inner.sender.send(&request).await?.json()
     }
 }
 
@@ -169,11 +268,17 @@ impl ZaiClientBuilder {
         let endpoints = self.endpoints.build(self.allow_insecure)?;
         let reqwest = build_reqwest_client(&self.transport)?;
         let secret = ApiSecret::new(self.api_key);
+        let sender = crate::client::transport::Transport::new(
+            reqwest.clone(),
+            secret.clone(),
+            &self.transport,
+        );
         let inner = Arc::new(ClientInner {
             secret,
             endpoints,
             transport: self.transport,
             reqwest,
+            sender,
         });
         Ok(ZaiClient { inner })
     }

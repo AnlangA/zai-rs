@@ -588,7 +588,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust,ignore
 // 注意：当前版本不支持自定义超时，使用默认 60 秒
-// 未来版本将支持 HttpClientConfig 自定义
+// 通过 ZaiClient::builder(...).transport(HttpTransportConfig) 自定义统一传输层
 ```
 
 ## 安全最佳实践

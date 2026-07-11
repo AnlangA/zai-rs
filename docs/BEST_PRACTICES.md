@@ -9,22 +9,22 @@
 ### 使用环境变量
 ```rust
 // ✅ 推荐：从环境变量读取
-let api_key = std::env::var("ZAI_API_KEY")
-    .expect("ZAI_API_KEY environment variable must be set");
-let client = ZaiClient::new(api_key);
+let api_key = std::env::var("ZHIPU_API_KEY")
+    .expect("ZHIPU_API_KEY environment variable must be set");
+let client = ZaiClient::builder(api_key).build()?;
 
 // ❌ 避免：硬编码 API 密钥
-let client = ZaiClient::new("your.hardcoded.key".to_string());
+let client = ZaiClient::builder("your.hardcoded.key").build()?;
 ```
 
 ### 使用 `.env` 文件
 ```rust
 // .env 文件
-ZAI_API_KEY=your.api.key.here
+ZHIPU_API_KEY=your.api.key.here
 
 // 代码中加载
 dotenv::dotenv().ok();
-let api_key = std::env::var("ZAI_API_KEY")?;
+let api_key = std::env::var("ZHIPU_API_KEY")?;
 ```
 
 ### 验证 API 密钥格式
@@ -32,7 +32,7 @@ let api_key = std::env::var("ZAI_API_KEY")?;
 use zai_rs::client::error::validate_api_key;
 
 validate_api_key(&api_key)?;
-let client = ZaiClient::new(api_key);
+let client = ZaiClient::builder(api_key).build()?;
 ```
 
 ---
@@ -78,19 +78,14 @@ match result {
 
 ### 使用重试机制
 ```rust
-use zai_rs::client::http::{HttpClientConfig, RetryDelay};
+use zai_rs::client::{HttpTransportConfig, ZaiClient};
 use std::time::Duration;
 
-let config = HttpClientConfig::builder()
-    .max_retries(3)
-    .timeout(Duration::from_secs(120))
-    .retry_delay(RetryDelay::exponential(
-        Duration::from_millis(500),
-        Duration::from_secs(10),
-    ))
+let config = HttpTransportConfig::builder()
+    .max_attempts(3)?
+    .request_timeout(Duration::from_secs(60))?
     .build();
-
-let client = ZaiClient::new_with_config(api_key, config);
+let client = ZaiClient::builder(api_key).transport(config).build()?;
 ```
 
 ---
@@ -98,26 +93,18 @@ let client = ZaiClient::new_with_config(api_key, config);
 ## 3. 请求优化
 
 ### 启用压缩
-```rust
-let config = HttpClientConfig::builder()
-    .compression(true)  // 默认启用，开启后 SDK 会在请求中声明 gzip 并透明解压响应
-    .build();
-```
-
-启用后，共享传输层（`http_client_with_config`）会在构造 `reqwest::Client` 时打开 `gzip(true)`，
-并对相同配置（含 compression 开关）做连接池缓存复用。关闭压缩可以节省少量 CPU，但会显著增加
-网络传输量，通常仅在调试或对接不支持 gzip 的代理时关闭。
+统一传输层默认启用 gzip，并由 `ZaiClient` 持有的单一连接池透明解压响应；请求对象不会各自创建客户端。
 
 ### 设置合适的超时
 ```rust
 // 快速请求
-let config = HttpClientConfig::builder()
-    .timeout(Duration::from_secs(30))
+let config = HttpTransportConfig::builder()
+    .request_timeout(Duration::from_secs(30))?
     .build();
 
-// 长时间处理任务
-let config = HttpClientConfig::builder()
-    .timeout(Duration::from_secs(300))
+// 更严格的快速失败配置
+let config = HttpTransportConfig::builder()
+    .request_timeout(Duration::from_secs(10))?
     .build();
 ```
 
@@ -152,10 +139,7 @@ tracing_subscriber::fmt()
     .with_max_level(tracing::Level::INFO)
     .init();
 
-let config = HttpClientConfig::builder()
-    .enable_logging(true)
-    .mask_sensitive_data(true)
-    .build();
+// 统一传输层自动过滤鉴权信息，无需在请求对象上启用日志。
 ```
 
 ### 结构化日志
@@ -197,12 +181,8 @@ let safe_msg = mask_sensitive_info(&log_msg);
 // SDK 内部使用 reqwest::Client 自动管理连接池
 // 相同配置的请求会复用连接
 
-// 为不同配置创建不同的客户端
-let config1 = HttpClientConfig::builder().timeout(Duration::from_secs(30)).build();
-let config2 = HttpClientConfig::builder().timeout(Duration::from_secs(60)).build();
-
-let client1 = ZaiClient::new_with_config(api_key.clone(), config1);
-let client2 = ZaiClient::new_with_config(api_key, config2);
+// 克隆 ZaiClient 会复用同一个连接池、secret 和 Transport。
+let client2 = client.clone();
 ```
 
 ### 并发请求
@@ -339,11 +319,7 @@ tracing_subscriber::fmt()
     .with_max_level(tracing::Level::INFO)
     .init();
 
-// 调试环境使用 DEBUG 级别（敏感信息会被过滤）
-let config = HttpClientConfig::builder()
-    .enable_logging(cfg!(debug_assertions))
-    .mask_sensitive_data(true)
-    .build();
+// 调试环境可使用 DEBUG 级别；传输层仍会过滤敏感信息。
 ```
 
 ---
@@ -377,12 +353,12 @@ fn create_client() -> ZaiResult<ZaiClient> {
     let api_key = std::env::var("ZAI_API_KEY")?;
     validate_api_key(&api_key)?;
 
-    let config = HttpClientConfig::builder()
-        .max_retries(3)
-        .timeout(Duration::from_secs(120))
+    let config = HttpTransportConfig::builder()
+        .max_attempts(3)?
+        .request_timeout(Duration::from_secs(60))?
         .build();
 
-    Ok(ZaiClient::new_with_config(api_key, config))
+    ZaiClient::builder(api_key).transport(config).build()
 }
 ```
 

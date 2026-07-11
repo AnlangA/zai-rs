@@ -105,36 +105,26 @@ match client.send().await {
 ```
 
 ### Q: 如何配置重试机制？
-A: 使用 `HttpClientConfig` 配置重试策略：
+A: 使用 `HttpTransportConfig` 设置最大尝试次数。只有幂等请求会自动重试；POST/PATCH 不会被隐式重放：
 
 ```rust
-use zai_rs::client::http::{HttpClientConfig, RetryDelay};
-use zai_rs::model::*;
-use std::time::Duration;
+use zai_rs::client::{HttpTransportConfig, ZaiClient};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
-let config = HttpClientConfig::builder()
-    .max_retries(5)
-    .timeout(Duration::from_secs(120))
-    .retry_delay(RetryDelay::exponential(Duration::from_millis(100), Duration::from_secs(10)))
-    .logging(true)
+let config = HttpTransportConfig::builder()
+    .max_attempts(2)?
     .build();
-
-let client = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"), key)
-    .with_http_config(config);
+let client = ZaiClient::builder(std::env::var("ZHIPU_API_KEY")?)
+    .transport(config)
+    .build()?;
 ```
 
 ### Q: 如何启用请求日志？
-A: 在 `HttpClientConfig` 中启用日志记录：
+A: 统一传输层使用 `tracing`，配置 subscriber 和 `RUST_LOG` 即可：
 
 ```rust
-use zai_rs::client::http::HttpClientConfig;
-use std::time::Duration;
-
-let config = HttpClientConfig::builder()
-    .logging(true)
-    .mask_sensitive_data(true)
-    .build();
+tracing_subscriber::fmt()
+    .with_env_filter("zai_rs=debug")
+    .init();
 ```
 
 日志会使用 `tracing` 框架输出，需要配置 tracing subscriber。
@@ -270,13 +260,14 @@ let retrieve: KnowledgeRetrieveResponse = KnowledgeRetrieveRequest::new(key, kno
 ## 故障排除
 
 ### Q: 连接超时怎么办？
-A: 增加超时时间配置：
+A: 可以收紧（不能提高）SDK 的连接与单次请求超时上限：
 
 ```rust
-use zai_rs::client::http::HttpClientConfig;
+use zai_rs::client::HttpTransportConfig;
 
-let config = HttpClientConfig::builder()
-    .timeout(Duration::from_secs(300))
+let config = HttpTransportConfig::builder()
+    .connect_timeout(Duration::from_secs(5))?
+    .request_timeout(Duration::from_secs(30))?
     .build();
 ```
 
@@ -285,20 +276,13 @@ A: 某些功能可能需要启用 feature：
 
 ```toml
 [dependencies]
-zai-rs = { version = "0.4", features = ["rmcp-kits"] }
+zai-rs = { version = "0.5", features = ["rmcp-kits"] }
 ```
 
 ### Q: 如何调试请求问题？
-A: 启用详细日志：
+A: 配置 `tracing` 详细日志（传输层不会输出鉴权头或 secret）：
 
 ```rust
-use zai_rs::client::http::HttpClientConfig;
-
-let config = HttpClientConfig::builder()
-    .logging(true)
-    .build();
-
-// 配置 tracing
 tracing_subscriber::fmt()
     .with_max_level(tracing::Level::DEBUG)
     .init();

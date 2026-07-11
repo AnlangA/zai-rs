@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
 
 /// Knowledge delete request (DELETE /llm-application/open/knowledge/{id})
 ///
@@ -23,15 +20,9 @@ impl KnowledgeDeleteRequest {
             crate::client::ApiFamily::LlmApplication,
             &["knowledge", &self.id],
         )?;
-        let config = transport_config_from_client(client);
-        let resp = send_empty_request(
-            reqwest::Method::DELETE,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<KnowledgeDeleteResponse>(resp).await
+        client
+            .send_empty::<KnowledgeDeleteResponse>("DELETE", url)
+            .await
     }
 }
 
@@ -47,19 +38,4 @@ pub struct KnowledgeDeleteResponse {
     /// Server timestamp.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
-    }
 }

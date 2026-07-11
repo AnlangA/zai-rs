@@ -121,3 +121,52 @@ async fn test_server_serves_scripted_response_and_captures_request() {
 
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn unified_transport_injects_auth_and_additional_headers() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        serde_json::json!({
+            "id": "chatcmpl-1",
+            "model": "glm-5.2",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+        }),
+    )])
+    .await;
+    let base: &'static str = Box::leak(format!("{}/api/paas/v4", server.base_url).into_boxed_str());
+    let transport = HttpTransportConfig::builder()
+        .additional_header(AdditionalHeader::new("X-Test-Client", "preserved").unwrap())
+        .build();
+    let client = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::PaasV4, base)
+        .transport(transport)
+        .build()
+        .unwrap();
+
+    use zai_rs::model::{ChatCompletion, GLM5_2, TextMessage};
+    ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1);
+    let expected_auth = format!("Bearer {KEY}");
+    assert_eq!(
+        requests[0].authorization.as_deref(),
+        Some(expected_auth.as_str())
+    );
+    assert!(
+        requests[0]
+            .headers
+            .iter()
+            .any(|(name, value)| name == "x-test-client" && value == "preserved")
+    );
+    server.shutdown().await;
+}

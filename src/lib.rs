@@ -47,34 +47,29 @@
 //! # Quick Start
 //!
 //! ```text
-//! use zai_rs::{client::http::*, model::*};
+//! use zai_rs::{client::ZaiClient, model::*};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY")?;
-//!     let client = ChatCompletion::new(model, TextMessage::user("Hello"), key);
-//!     let _resp = client.post().await?;
+//!     let client = ZaiClient::from_env()?;
+//!     let request = ChatCompletion::new(model, TextMessage::user("Hello"));
+//!     let _resp = request.send_via(&client).await?;
 //!     Ok(())
 //! }
 //! ```
 //!
-//! # Streaming Responses
+//! # Streaming Requests
 //!
 //! ```text
-//! use zai_rs::{client::http::*, model::*};
+//! use zai_rs::{client::ZaiClient, model::*};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let model = GLM4_5_flash {};
-//!     let key = std::env::var("ZHIPU_API_KEY")?;
-//!     let mut client =
-//!         ChatCompletion::new(model, TextMessage::user("Hello"), key).enable_stream();
-//!     client
-//!         .stream_sse_for_each(|data| {
-//!             print!("{}", String::from_utf8_lossy(data));
-//!         })
-//!         .await?;
+//!     let client = ZaiClient::from_env()?;
+//!     let request = ChatCompletion::new(model, TextMessage::user("Hello"));
+//!     let _response = request.send_via(&client).await?;
 //!     Ok(())
 //! }
 //! ```
@@ -137,8 +132,8 @@
 //!   model/message compatibility at compile time
 //! - **Zero-cost abstractions** — marker traits and type-state patterns impose
 //!   no runtime overhead
-//! - **Consistent API style** — all API clients follow a uniform builder
-//!   pattern and implement the `HttpClient` trait
+//! - **Consistent API style** — request builders carry typed payloads and all
+//!   network operations are dispatched with `send_via(&ZaiClient)`
 
 // On docs.rs (which builds with `--cfg docsrs`, see `[package.metadata.docs.rs]`
 // in Cargo.toml), enable the nightly `doc_cfg` feature so feature-gated items

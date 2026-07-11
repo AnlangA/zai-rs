@@ -1,15 +1,10 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use validator::Validate;
 
 use crate::{
     ZaiResult,
-    client::{
-        http::{HttpClientConfig, parse_typed_response, send_json_request},
-        {ApiFamily, ZaiClient},
-    },
+    client::{ApiFamily, ZaiClient},
 };
 
 /// Endpoint for batch requests
@@ -101,35 +96,11 @@ impl CreateBatchRequest {
         let url = client
             .endpoints()
             .resolve(ApiFamily::PaasV4, &["batches"])?;
-        let config = transport_config_from_client(client);
-        let resp: reqwest::Response = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-
-        let parsed = parse_typed_response::<CreateBatchResponse>(resp).await?;
-        Ok(parsed)
+        client
+            .send_json::<_, CreateBatchResponse>("POST", url, &self.body)
+            .await
     }
 }
 
 /// Response type for creating a batch task (same as a single item)
 pub type CreateBatchResponse = super::types::BatchItem;
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
-    }
-}

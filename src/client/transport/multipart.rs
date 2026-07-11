@@ -16,7 +16,7 @@ use crate::client::transport::limits::{
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
 /// One file part to attach to a multipart form.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FilePart {
     pub path: std::path::PathBuf,
     pub filename: String,
@@ -51,8 +51,10 @@ impl FilePart {
 }
 
 /// A factory that builds a fresh multipart form per attempt.
+#[derive(Debug)]
 pub struct MultipartBodyFactory {
-    parts: Vec<FilePart>,
+    parts: Vec<(String, FilePart)>,
+    memory_parts: Vec<(String, String, String, bytes::Bytes)>,
     fields: Vec<(String, String)>,
 }
 
@@ -60,18 +62,26 @@ impl MultipartBodyFactory {
     pub fn new() -> Self {
         Self {
             parts: Vec::new(),
+            memory_parts: Vec::new(),
             fields: Vec::new(),
         }
     }
 
     /// Add a file part, enforcing part-count and cross-file byte budgets.
     pub fn file(mut self, part: FilePart) -> ZaiResult<Self> {
+        let field = part.filename.clone();
+        self = self.file_named(field, part)?;
+        Ok(self)
+    }
+
+    /// Add a file under an explicit multipart field name.
+    pub fn file_named(mut self, field_name: impl Into<String>, part: FilePart) -> ZaiResult<Self> {
         if self.parts.len() >= MULTIPART_MAX_FILE_PARTS {
             return Err(invalid(&format!(
                 "multipart exceeds {MULTIPART_MAX_FILE_PARTS} file parts"
             )));
         }
-        self.parts.push(part);
+        self.parts.push((field_name.into(), part));
         Ok(self)
     }
 
@@ -88,6 +98,31 @@ impl MultipartBodyFactory {
         Ok(self)
     }
 
+    /// Add an already-buffered file part. This is used by public request
+    /// builders that accept bytes rather than filesystem paths.
+    pub fn bytes_named(
+        mut self,
+        field_name: impl Into<String>,
+        filename: impl Into<String>,
+        content_type: impl Into<String>,
+        bytes: impl Into<bytes::Bytes>,
+    ) -> ZaiResult<Self> {
+        if self.parts.len() + self.memory_parts.len() >= MULTIPART_MAX_FILE_PARTS {
+            return Err(invalid(&format!(
+                "multipart exceeds {MULTIPART_MAX_FILE_PARTS} file parts"
+            )));
+        }
+        let filename = filename.into();
+        validate_basename(&filename)?;
+        let bytes = bytes.into();
+        if bytes.len() as u64 > MULTIPART_FILE_BYTES_MAX {
+            return Err(payload_too_large(MULTIPART_FILE_BYTES_MAX));
+        }
+        self.memory_parts
+            .push((field_name.into(), filename, content_type.into(), bytes));
+        Ok(self)
+    }
+
     /// Build a fresh form for one attempt. Each file is re-opened from its Path
     /// and attached via `reqwest::multipart::Part::bytes` of the (already
     /// size-checked) file contents; the streaming reader form lands in P07.
@@ -96,13 +131,20 @@ impl MultipartBodyFactory {
         for (name, value) in &self.fields {
             form = form.text(name.clone(), value.clone());
         }
-        for part in &self.parts {
+        for (field_name, part) in &self.parts {
             let bytes = std::fs::read(&part.path).map_err(ZaiError::from)?;
             let mp = reqwest::multipart::Part::bytes(bytes)
                 .file_name(part.filename.clone())
                 .mime_str(&part.content_type)
                 .map_err(|e| invalid(&format!("invalid mime: {e}")))?;
-            form = form.part(part.filename.clone(), mp);
+            form = form.part(field_name.clone(), mp);
+        }
+        for (field_name, filename, content_type, bytes) in &self.memory_parts {
+            let part = reqwest::multipart::Part::bytes(bytes.to_vec())
+                .file_name(filename.clone())
+                .mime_str(content_type)
+                .map_err(|e| invalid(&format!("invalid mime: {e}")))?;
+            form = form.part(field_name.clone(), part);
         }
         Ok(form)
     }

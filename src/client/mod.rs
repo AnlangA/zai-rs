@@ -1,10 +1,9 @@
 //! HTTP client infrastructure: the shared [`ZaiClient`], validated endpoints,
-//! transport policies, error types, and the legacy send-path free functions.
+//! transport policies and error types.
 
 pub mod config;
 pub mod endpoint;
 pub mod error;
-pub mod http;
 pub mod secret;
 pub mod services;
 pub mod transport;

@@ -26,14 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Send and write audio to file
     let resp = request.send_via(&client).await?;
-    let status = resp.status();
-    if !status.is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        tracing::error!(%status, response = %txt, "Request failed");
-        return Ok(());
-    }
-
-    let bytes = resp.bytes().await?;
+    let bytes = resp;
     std::fs::create_dir_all("out").ok();
     std::fs::write("out/tts_output.wav", &bytes)?;
     println!("Saved to out/tts_output.wav ({} bytes)", bytes.len());

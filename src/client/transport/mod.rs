@@ -12,10 +12,9 @@
 //! byte count, attempt, elapsed, sanitized correlation request_id) — never the
 //! URL, header values, query values, or body.
 //!
-//! Until P05 migrates endpoints onto `RequestSpec`, the `Transport` struct and
-//! its send loop are scaffolding (not yet called by any request type); the
-//! pure-logic submodules (retry/limits/redirect/decode/redaction/download/
-//! multipart) are exercised directly by tests today.
+//! Every REST request is dispatched through this transport. JSON, empty-body,
+//! binary and multipart endpoints therefore share the same authentication,
+//! retry, redirect, size-limit and response-decoding behavior.
 
 #![allow(dead_code)]
 
@@ -37,9 +36,12 @@ use tracing::warn;
 use crate::ZaiError;
 use crate::ZaiResult;
 use crate::client::error::codes;
-use crate::client::transport::limits::{ERROR_BODY_MAX, JSON_REQUEST_MAX, JSON_RESPONSE_MAX};
+use crate::client::secret::ApiSecret;
+use crate::client::transport::limits::{
+    ERROR_BODY_MAX, JSON_REQUEST_MAX, JSON_RESPONSE_MAX, MULTIPART_FILE_BYTES_MAX,
+};
 use crate::client::transport::redirect::follow as follow_redirect;
-use crate::client::transport::request::PreparedRequest;
+use crate::client::transport::request::{PreparedRequest, ResponseMode};
 use crate::client::transport::retry::{JitterSource, RetrySafety, backoff_delay};
 #[allow(unused_imports)]
 use crate::client::transport::retry::{
@@ -89,6 +91,72 @@ pub(crate) struct Transport {
     pub(crate) max_attempts: u8,
     pub(crate) jitter: Arc<dyn JitterSource>,
     pub(crate) clock: Arc<dyn Clock>,
+    secret: ApiSecret,
+    additional_headers: Vec<crate::client::AdditionalHeader>,
+}
+
+/// A fully buffered response produced by the transport pipeline.
+///
+/// Keeping status, headers and bytes together replaces the old dependency on
+/// `reqwest::Response` and lets typed JSON and binary endpoints share one path.
+pub struct TransportResponse {
+    status: u16,
+    headers: reqwest::header::HeaderMap,
+    body: Bytes,
+}
+
+impl TransportResponse {
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+    pub fn headers(&self) -> &reqwest::header::HeaderMap {
+        &self.headers
+    }
+    pub fn bytes(self) -> ZaiResult<Bytes> {
+        if let Ok(text) = std::str::from_utf8(&self.body)
+            && let Some(error) = decode::extract_error_envelope(text)
+        {
+            return Err(api_error(self.status, error));
+        }
+        if !(200..300).contains(&self.status) {
+            return Err(ZaiError::from_api_response(
+                self.status,
+                0,
+                String::from_utf8_lossy(&self.body).into_owned(),
+            ));
+        }
+        Ok(self.body)
+    }
+
+    pub fn json<T: serde::de::DeserializeOwned>(self) -> ZaiResult<T> {
+        if let Ok(text) = std::str::from_utf8(&self.body)
+            && let Some(error) = decode::extract_error_envelope(text)
+        {
+            return Err(api_error(self.status, error));
+        }
+        if !(200..300).contains(&self.status) {
+            return Err(ZaiError::from_api_response(
+                self.status,
+                0,
+                String::from_utf8_lossy(&self.body).into_owned(),
+            ));
+        }
+        serde_json::from_slice(&self.body).map_err(ZaiError::from)
+    }
+}
+
+struct SystemJitter;
+impl JitterSource for SystemJitter {
+    fn jitter(&self, upper: Duration) -> Duration {
+        let upper_nanos = upper.as_nanos();
+        if upper_nanos == 0 {
+            return Duration::ZERO;
+        }
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        Duration::from_nanos((seed % (upper_nanos + 1)) as u64)
+    }
 }
 
 /// Outcome of a single send attempt, used by the retry loop.
@@ -106,6 +174,29 @@ pub(crate) enum AttemptOutcome {
 }
 
 impl Transport {
+    pub(crate) fn new(
+        reqwest: reqwest::Client,
+        secret: ApiSecret,
+        config: &crate::client::HttpTransportConfig,
+    ) -> Self {
+        Self {
+            reqwest,
+            timeouts: TimeoutPolicy {
+                connect: config.connect_timeout,
+                attempt: config.request_timeout,
+                overall: config
+                    .request_timeout
+                    .saturating_mul(u32::from(config.max_attempts)),
+                stream_idle: Duration::from_secs(60),
+            },
+            max_attempts: config.max_attempts,
+            jitter: Arc::new(SystemJitter),
+            clock: Arc::new(WallClock),
+            secret,
+            additional_headers: config.additional_headers.clone(),
+        }
+    }
+
     /// Send a prepared request with the retry/timeout pipeline, returning the
     /// (status, headers, body) of the final attempt. The caller performs the
     /// typed decode.
@@ -114,10 +205,7 @@ impl Transport {
     /// except multipart (added in P07) and SSE streaming (P08). For the P02–P05
     /// window, migrated endpoints call this; legacy endpoints keep their path.
     #[allow(clippy::too_many_lines)]
-    pub(crate) async fn send(
-        &self,
-        prepped: &PreparedRequest<'_>,
-    ) -> ZaiResult<(u16, reqwest::header::HeaderMap, Bytes)> {
+    pub(crate) async fn send(&self, prepped: &PreparedRequest<'_>) -> ZaiResult<TransportResponse> {
         // Enforce request body limit up front.
         if let request::BodyKind::Bytes(b) = &prepped.body
             && (b.len() as u64) > JSON_REQUEST_MAX
@@ -138,7 +226,7 @@ impl Transport {
                 return Err(timeout_overall());
             }
 
-            let req = self.build_request(prepped.method, &url, &prepped.body);
+            let req = self.build_request(prepped.method, &url, &prepped.body)?;
             let send_result = tokio::time::timeout(self.timeouts.attempt, req.send()).await;
 
             let outcome = match send_result {
@@ -170,13 +258,20 @@ impl Transport {
                             Ok(None) | Err(_) => {
                                 // Don't follow; treat as terminal with the body.
                                 let body = cap_body(resp, ERROR_BODY_MAX).await;
-                                return Ok((status, headers, body));
+                                return Ok(TransportResponse {
+                                    status,
+                                    headers,
+                                    body,
+                                });
                             },
                         }
                     }
 
                     let limit = if (200..300).contains(&status) {
-                        JSON_RESPONSE_MAX
+                        match prepped.response_mode {
+                            ResponseMode::Json => JSON_RESPONSE_MAX,
+                            ResponseMode::Binary => MULTIPART_FILE_BYTES_MAX,
+                        }
                     } else {
                         ERROR_BODY_MAX
                     };
@@ -195,14 +290,36 @@ impl Transport {
                     headers,
                     body,
                 } => {
-                    // Probe error envelope on the body.
-                    if let Ok(text) = std::str::from_utf8(&body)
-                        && decode::probe_error_envelope(text)
+                    let business_code = std::str::from_utf8(&body)
+                        .ok()
+                        .and_then(decode::extract_error_envelope)
+                        .and_then(|e| e.code)
+                        .and_then(|v| match v {
+                            serde_json::Value::Number(n) => n.as_u64().map(|n| n as u16),
+                            serde_json::Value::String(s) => s.parse().ok(),
+                            _ => None,
+                        });
+                    if safety == RetrySafety::Idempotent
+                        && is_retryable_outcome(status, business_code)
+                        && attempt < max_attempts
                     {
-                        // It's a business error; surface it (caller decodes).
-                        return Ok((status, headers, body));
+                        let computed = backoff_delay(u32::from(attempt) - 1, self.jitter.as_ref());
+                        let hint = headers
+                            .get(reqwest::header::RETRY_AFTER)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(parse_retry_after);
+                        let delay = reconcile_retry_after(hint, computed);
+                        if self.clock.now() + delay >= deadline {
+                            return Err(timeout_overall());
+                        }
+                        tokio::time::sleep(delay).await;
+                        continue;
                     }
-                    return Ok((status, headers, body));
+                    return Ok(TransportResponse {
+                        status,
+                        headers,
+                        body,
+                    });
                 },
                 AttemptOutcome::Terminal(e) => return Err(e),
                 AttemptOutcome::Transient(e) => {
@@ -233,19 +350,47 @@ impl Transport {
         method: &str,
         url: &str,
         body: &request::BodyKind<'_>,
-    ) -> reqwest::RequestBuilder {
+    ) -> ZaiResult<reqwest::RequestBuilder> {
         let m = reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
-        let rb = self
+        let mut auth =
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {}", self.secret.expose()))
+                .map_err(|_| invalid("invalid authorization header"))?;
+        auth.set_sensitive(true);
+        let mut rb = self
             .reqwest
             .request(m, url)
-            .header("Content-Type", "application/json");
-        match body {
-            request::BodyKind::None => rb,
-            request::BodyKind::Json(v) => rb.body(serde_json::to_vec(v).unwrap_or_default()),
-            request::BodyKind::Bytes(b) => rb.body((*b).clone()), // Bytes: Clone is cheap (Arc)
-            request::BodyKind::Multipart => rb, // multipart built per-attempt in P07
+            .header(reqwest::header::AUTHORIZATION, auth)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(
+                reqwest::header::USER_AGENT,
+                concat!("zai-rs/", env!("CARGO_PKG_VERSION")),
+            );
+        for header in &self.additional_headers {
+            rb = rb.header(header.name(), header.value());
         }
+        Ok(match body {
+            request::BodyKind::None => rb,
+            request::BodyKind::Json(v) => rb
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(serde_json::to_vec(v).map_err(ZaiError::from)?),
+            request::BodyKind::Bytes(b) => rb
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body((*b).clone()),
+            request::BodyKind::Multipart(factory) => rb.multipart(factory.build()?),
+        })
     }
+}
+
+fn api_error(status: u16, error: decode::BusinessError) -> ZaiError {
+    let code = error
+        .code
+        .and_then(|v| match v {
+            serde_json::Value::Number(n) => n.as_u64().map(|n| n as u16),
+            serde_json::Value::String(s) => s.parse().ok(),
+            _ => None,
+        })
+        .unwrap_or(0);
+    ZaiError::from_api_response(status, code, error.message)
 }
 
 /// Cap a response body to `limit` bytes (plan P03.8).

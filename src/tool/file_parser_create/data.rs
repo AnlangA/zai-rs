@@ -3,7 +3,7 @@
 //! This module provides the file parser creation client for creating file
 //! parsing tasks.
 
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use tracing::{debug, trace, warn};
 
@@ -12,7 +12,6 @@ use crate::{
     ZaiResult,
     client::{
         error::codes,
-        http::{HttpClientConfig, parse_typed_response, send_multipart_request},
         {ApiFamily, ZaiClient},
     },
 };
@@ -135,28 +134,14 @@ impl FileParserCreateRequest {
         let url = client
             .endpoints()
             .resolve(ApiFamily::PaasV4, &["files", "parser", "create"])?;
-        let config = transport_config_from_client(client);
         let tool_type = self.tool_type.clone();
         let file_type = self.file_type.clone();
-        let response = send_multipart_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-            move || {
-                let file_part = reqwest::multipart::Part::bytes(file_bytes.clone())
-                    .file_name(file_name.clone())
-                    .mime_str("application/octet-stream")?;
-                Ok(reqwest::multipart::Form::new()
-                    .part("file", file_part)
-                    .text("tool_type", format!("{tool_type:?}").to_lowercase())
-                    .text("file_type", format!("{file_type:?}")))
-            },
-        )
-        .await
-        .map_err(|e| e.context("file parser create"))?;
-
-        let create_response = parse_typed_response::<FileParserCreateResponse>(response)
+        let factory = crate::client::transport::multipart::MultipartBodyFactory::new()
+            .field("tool_type", format!("{tool_type:?}").to_lowercase())?
+            .field("file_type", format!("{file_type:?}"))?
+            .bytes_named("file", file_name, "application/octet-stream", file_bytes)?;
+        let create_response = client
+            .send_multipart::<FileParserCreateResponse>("POST", url, &factory)
             .await
             .map_err(|e| e.context("file parser create"))?;
 
@@ -174,20 +159,5 @@ impl FileParserCreateRequest {
         }
 
         Ok(create_response)
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
     }
 }

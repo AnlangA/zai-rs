@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = client?;
 
     // Query the monitor endpoint. The raw response body is logged at `trace`
-    // inside `parse_typed_response`, so run with `RUST_LOG=trace` to see it.
+    // inside the transport decoder, so run with `RUST_LOG=trace` to see it.
     let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
 
     // Pretty-print the normalized summary (also available via

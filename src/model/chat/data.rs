@@ -8,7 +8,6 @@ use super::super::{
     chat_base_request::*, chat_base_response::ChatCompletionResponse, tools::*, traits::*,
 };
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
 
 /// Chat-completion request builder (plan P05: migrated to route through
 /// [`ZaiClient`]).
@@ -174,16 +173,9 @@ where
         let url = client
             .endpoints()
             .resolve(crate::client::ApiFamily::PaasV4, &["chat", "completions"])?;
-        let config = transport_config_from_client(client);
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<ChatCompletionResponse>(resp).await
+        client
+            .send_json::<_, ChatCompletionResponse>("POST", url, &self.body)
+            .await
     }
 
     /// Submit using a coding-plan endpoint via a [`ZaiClient`].
@@ -200,16 +192,9 @@ where
             crate::client::ApiFamily::CodingPaasV4,
             &["chat", "completions"],
         )?;
-        let config = transport_config_from_client(client);
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<ChatCompletionResponse>(resp).await
+        client
+            .send_json::<_, ChatCompletionResponse>("POST", url, &self.body)
+            .await
     }
 }
 
@@ -262,23 +247,5 @@ where
         let body_bytes =
             serde_json::to_vec(&self.body).map_err(|e| crate::ZaiError::JsonError(Arc::new(e)))?;
         Ok((url, body_bytes, client.secret().expose().to_string()))
-    }
-}
-
-/// Build a legacy `HttpClientConfig` from a `ZaiClient`'s transport policy.
-/// This is a temporary bridge during P05–P06; once all endpoints route through
-/// the new `Transport`, this adapter is removed.
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
     }
 }

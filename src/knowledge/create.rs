@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
 use crate::ZaiResult;
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
 
 /// Embedding model id enum mapped to integer ids (plan §13.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,31 +169,9 @@ impl CreateKnowledgeRequest {
         let url = client
             .endpoints()
             .resolve(crate::client::ApiFamily::LlmApplication, &["knowledge"])?;
-        let config = transport_config_from_client(client);
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<CreateKnowledgeResponse>(resp).await
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
+        client
+            .send_json::<_, CreateKnowledgeResponse>("POST", url, &self.body)
+            .await
     }
 }
 

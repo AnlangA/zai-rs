@@ -1,3 +1,9 @@
+// The `core::DynTool` / `core::FunctionTool` intra-doc links here are necessary
+// on stable (a bare `DynTool` does not resolve because `core` is ambiguous with
+// the std `core` crate). On nightly, `rustdoc::redundant_explicit_links` flags
+// them anyway (a known false-positive under the ambiguity); allow it locally.
+#![allow(rustdoc::redundant_explicit_links)]
+
 //! # Toolkits Module
 //!
 //! A comprehensive tool-calling and execution framework for AI applications.

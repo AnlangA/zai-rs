@@ -5,7 +5,7 @@
 ## 设计目标
 
 - 类型安全：通过模型 marker trait、`Bounded` 约束和 streaming type-state，尽量在编译期阻止不兼容的模型/消息组合。
-- 统一传输：所有 REST 请求都走 `client::http` 的共享 retry、连接池、敏感信息 masking 和 typed response 解析。
+- 统一传输：所有 REST 请求都走 `client::transport::Transport`，共享鉴权、retry、连接池、重定向、请求/响应大小限制和 typed response 解析。
 - 可配置端点：`EndpointConfig` 集中管理 PAAS v4、Coding PAAS v4、知识库、Realtime、Monitor 五类 API base，`ZaiConfig` 作为面向用户的中心配置入口。
 - 小模块边界：chat、file、knowledge、batches、tool、realtime、usage 等模块独立维护请求/响应类型，再通过 crate root 和模块 root 做选择性 re-export。
 - 离线可测：集成测试使用本地 mock server 捕获真实 SDK HTTP 请求，不依赖外部 API key 或网络。
@@ -43,7 +43,7 @@ src/lib.rs
 
 1. `new(...)` 构造默认 endpoint、body、HTTP config。
 2. `with_*` builder 方法覆盖参数、base URL、endpoint config 或 HTTP config。
-3. 实现 `HttpClient`，由 `post/get/put/delete` 统一发送。
+3. 请求通过 `send_via(&ZaiClient)` 进入统一 `Transport::send` 管线。
 4. `send()` 只负责校验、调用传输层、解析 typed response。
 
 ## 错误与重试

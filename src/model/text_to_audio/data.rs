@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use serde::Serialize;
 use validator::Validate;
 
@@ -8,7 +6,6 @@ use super::{
     request::{TextToAudioBody, TtsAudioFormat, Voice},
 };
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, send_json_request};
 
 /// Text-to-speech request wrapper using JSON body
 ///
@@ -88,36 +85,12 @@ where
     }
 
     /// Submit the request via a [`ZaiClient`] and return the raw
-    /// `reqwest::Response` (the endpoint yields audio bytes, not JSON).
-    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<reqwest::Response> {
+    /// audio bytes (the endpoint does not return JSON).
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<bytes::Bytes> {
         self.validate()?;
         let url = client
             .endpoints()
             .resolve(crate::client::ApiFamily::PaasV4, &["audio", "speech"])?;
-        let config = transport_config_from_client(client);
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-        Ok(resp)
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
+        client.send_json_bytes("POST", url, &self.body).await
     }
 }

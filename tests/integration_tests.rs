@@ -563,15 +563,11 @@ async fn test_retry_simulation() {
     assert_eq!(retry_count, 3);
 }
 
-/// End-to-end exercise of the SDK's real retry loop
-/// (`send_with_retry_factory`): a server that responds `500` (retryable as
-/// `HttpError`) twice and then `200` must be driven through exactly three
-/// attempts and ultimately succeed. Uses `RetryDelay::None` so the backoff
-/// sleeps are instant. The error body is intentionally empty so the response
-/// classifies as `HttpError { 500 }` (retryable), not an unmapped business
-/// code (`Unknown`, which is deliberately non-retryable).
+/// POST requests are non-idempotent by contract and must not be replayed after
+/// a transient server error. This pins the unified transport's retry-safety
+/// behavior and guards against duplicate chat submissions.
 #[tokio::test]
-async fn test_send_path_retries_500_then_succeeds() {
+async fn test_send_path_does_not_retry_non_idempotent_post() {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
@@ -629,15 +625,11 @@ async fn test_send_path_retries_500_then_succeeds() {
         .send_via(&client)
         .await;
 
-    assert!(
-        resp.is_ok(),
-        "should succeed after retries: {:?}",
-        resp.err()
-    );
+    assert!(resp.is_err(), "the first 500 must be returned");
     assert_eq!(
         attempts.load(Ordering::SeqCst),
-        3,
-        "expected exactly 3 attempts (1 initial + 2 retries)"
+        1,
+        "a non-idempotent POST must be sent exactly once"
     );
 }
 

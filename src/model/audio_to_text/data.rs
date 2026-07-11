@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use serde::Serialize;
 use validator::Validate;
@@ -6,7 +6,6 @@ use validator::Validate;
 use super::{super::traits::*, request::AudioToTextBody};
 use crate::client::ZaiClient;
 use crate::client::error::codes;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_multipart_request};
 
 /// Audio transcription request (multipart/form-data)
 ///
@@ -116,8 +115,6 @@ where
             crate::client::ApiFamily::PaasV4,
             &["audio", "transcriptions"],
         )?;
-        let config = Arc::new(transport_config_from_client(client));
-
         let file_path =
             self.file_path
                 .clone()
@@ -147,53 +144,26 @@ where
         let user_id = self.body.user_id.clone();
         let model_name: String = self.body.model.clone().into();
 
-        let resp = send_multipart_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            config,
-            move || {
-                let part = reqwest::multipart::Part::bytes(file_bytes.clone())
-                    .file_name(file_name.clone())
-                    .mime_str(mime)?;
-                let mut form = reqwest::multipart::Form::new()
-                    .part("file", part)
-                    .text("model", model_name.clone());
-                if let Some(p) = prompt.as_ref() {
-                    form = form.text("prompt", p.clone());
-                }
-                if !hotwords.is_empty() {
-                    form = form.text("hotwords", hotwords.join(","));
-                }
-                if let Some(s) = stream {
-                    form = form.text("stream", s.to_string());
-                }
-                if let Some(rid) = request_id.as_ref() {
-                    form = form.text("request_id", rid.clone());
-                }
-                if let Some(uid) = user_id.as_ref() {
-                    form = form.text("user_id", uid.clone());
-                }
-                Ok(form)
-            },
-        )
-        .await?;
-
-        parse_typed_response::<super::response::AudioToTextResponse>(resp).await
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
+        let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
+            .field("model", model_name)?
+            .bytes_named("file", file_name, mime, file_bytes)?;
+        if let Some(p) = prompt {
+            factory = factory.field("prompt", p)?;
+        }
+        if !hotwords.is_empty() {
+            factory = factory.field("hotwords", hotwords.join(","))?;
+        }
+        if let Some(s) = stream {
+            factory = factory.field("stream", s.to_string())?;
+        }
+        if let Some(rid) = request_id {
+            factory = factory.field("request_id", rid)?;
+        }
+        if let Some(uid) = user_id {
+            factory = factory.field("user_id", uid)?;
+        }
+        client
+            .send_multipart::<super::response::AudioToTextResponse>("POST", url, &factory)
+            .await
     }
 }

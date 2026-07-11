@@ -64,12 +64,8 @@ forbidden_substrings = [
 name = "P05"
 forbidden_substrings = [
     "HTTP_CLIENTS",               # global cache deleted once migration completes
-    # NOTE: HttpClientConfig and EndpointConfig remain as INTERNAL types used by
-    # transport_config_from_client helpers in every send_via path. They are NOT
-    # exposed in the public API (no longer exported at crate root or prelude).
-    # The legacy with_base_url/with_endpoint_config/with_http_config methods are
-    # removed from request types; the 2 remaining references are in realtime/client.rs
-    # which uses the new EndpointConfig builder, not the old string-based one.
+    # Per-request transport adapters and legacy send helpers are gone. All
+    # request types dispatch through the ZaiClient-owned Transport.
 ]
 
 # ---------------------------------------------------------------------------
@@ -78,9 +74,6 @@ forbidden_substrings = [
 [[phase]]
 name = "P10"
 forbidden_substrings = [
-    # NOTE: `pub trait HttpClient` is still present in the legacy client::http
-    # module. P10 marks the public API convergence (prelude + root surface),
-    # but the full removal of the legacy HttpClient trait happens when every
-    # request type is migrated off it in P05's cleanup (tracked separately).
+    # The legacy client::http module and HttpClient trait have been removed.
     # The forbidden check for this is deferred to the P15 release gate.
 ]

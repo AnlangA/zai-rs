@@ -23,7 +23,14 @@ pub enum BodyKind<'a> {
     /// Raw bytes (already serialized); reused via `Arc<Bytes>`.
     Bytes(&'a bytes::Bytes),
     /// Multipart — built per attempt by a factory (files re-opened each try).
-    Multipart,
+    Multipart(&'a super::multipart::MultipartBodyFactory),
+}
+
+/// How the final response body is consumed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseMode {
+    Json,
+    Binary,
 }
 
 /// A fully-prepared, validated request ready to be sent by the Transport.
@@ -33,6 +40,7 @@ pub struct PreparedRequest<'a> {
     pub body: BodyKind<'a>,
     pub retry_safety: RetrySafety,
     pub retry_override: Option<RetryOverride>,
+    pub response_mode: ResponseMode,
     /// Route template for tracing (never the materialized URL).
     pub route_template: &'static str,
 }

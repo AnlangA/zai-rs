@@ -1,12 +1,7 @@
-use std::sync::Arc;
-
 use super::request::FileListQuery;
 use crate::{
     ZaiResult,
-    client::{
-        http::{HttpClientConfig, parse_typed_response, send_empty_request},
-        {ApiFamily, ZaiClient},
-    },
+    client::{ApiFamily, ZaiClient},
 };
 
 /// Files list request (GET /paas/v4/files)
@@ -54,15 +49,9 @@ impl FileListRequest {
             client
                 .endpoints()
                 .resolve_with_query(ApiFamily::PaasV4, &["files"], &borrowed)?;
-        let config = transport_config_from_client(client);
-        let resp = send_empty_request(
-            reqwest::Method::GET,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<super::response::FileListResponse>(resp).await
+        client
+            .send_empty::<super::response::FileListResponse>("GET", url)
+            .await
     }
 
     /// Validate query and send in one call.
@@ -81,20 +70,5 @@ impl FileListRequest {
 impl Default for FileListRequest {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
     }
 }

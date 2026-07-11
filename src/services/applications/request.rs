@@ -14,13 +14,7 @@
 //! | [`ApplicationHistoryRequest`] | GET | `LlmApplication` | `history_session_record/{app_id}/{conversation_id}` |
 //! | [`ApplicationInvokeRequest`] | POST | `ApplicationV3` | `v3/application/invoke` |
 
-use std::sync::Arc;
-
 use crate::ZaiResult;
-use crate::client::http::{
-    HttpClientConfig, parse_typed_response, send_empty_request, send_json_request,
-    send_multipart_request,
-};
 use crate::client::{ApiFamily, ZaiClient};
 use crate::services::applications::response::{
     ApplicationConversationCreateResponse, ApplicationFileStatsResponse,
@@ -31,21 +25,6 @@ use crate::services::applications::response::{
 // ---------------------------------------------------------------------------
 // transport_config helper — mirrors the pattern in every P05 service module.
 // ---------------------------------------------------------------------------
-
-fn transport_config(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
-    }
-}
 
 // ---------------------------------------------------------------------------
 // 1. ApplicationFileStatsRequest — POST /v2/application/file_stat
@@ -66,16 +45,9 @@ impl ApplicationFileStatsRequest {
             ApiFamily::ApplicationV2,
             &["v2", "application", "file_stat"],
         )?;
-        let config = Arc::new(transport_config(client));
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            config,
-        )
-        .await?;
-        parse_typed_response::<ApplicationFileStatsResponse>(resp).await
+        client
+            .send_json::<_, ApplicationFileStatsResponse>("POST", url, &self.body)
+            .await
     }
 }
 
@@ -101,40 +73,27 @@ impl ApplicationFileUploadRequest {
             ApiFamily::ApplicationV2,
             &["v2", "application", "file_upload"],
         )?;
-        let config = Arc::new(transport_config(client));
-        let resp = send_multipart_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            config,
-            {
-                let files = self.files.clone();
-                let body = self.body.clone();
-                move || {
-                    let mut form = reqwest::multipart::Form::new();
-                    // Attach additional form fields from the JSON body (top-level
-                    // string values only).
-                    if let serde_json::Value::Object(map) = &body {
-                        for (k, v) in map {
-                            let text = match v {
-                                serde_json::Value::String(s) => s.clone(),
-                                other => other.to_string(),
-                            };
-                            form = form.text(k.clone(), text);
-                        }
-                    }
-                    // Attach files.
-                    for (fname, bytes) in &files {
-                        let part =
-                            reqwest::multipart::Part::bytes(bytes.clone()).file_name(fname.clone());
-                        form = form.part("files", part);
-                    }
-                    Ok(form)
-                }
-            },
-        )
-        .await?;
-        parse_typed_response::<ApplicationFileUploadResponse>(resp).await
+        let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new();
+        if let serde_json::Value::Object(map) = &self.body {
+            for (key, value) in map {
+                let text = match value {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                factory = factory.field(key.clone(), text)?;
+            }
+        }
+        for (filename, bytes) in &self.files {
+            factory = factory.bytes_named(
+                "files",
+                filename.clone(),
+                "application/octet-stream",
+                bytes.clone(),
+            )?;
+        }
+        client
+            .send_multipart::<ApplicationFileUploadResponse>("POST", url, &factory)
+            .await
     }
 }
 
@@ -157,16 +116,9 @@ impl ApplicationSliceInfoRequest {
             ApiFamily::ApplicationV2,
             &["v2", "application", "slice_info"],
         )?;
-        let config = Arc::new(transport_config(client));
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            config,
-        )
-        .await?;
-        parse_typed_response::<ApplicationSliceInfoResponse>(resp).await
+        client
+            .send_json::<_, ApplicationSliceInfoResponse>("POST", url, &self.body)
+            .await
     }
 }
 
@@ -197,16 +149,9 @@ impl ApplicationConversationCreateRequest {
             ApiFamily::ApplicationV2,
             &["v2", "application", &self.app_id, "conversation"],
         )?;
-        let config = Arc::new(transport_config(client));
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            config,
-        )
-        .await?;
-        parse_typed_response::<ApplicationConversationCreateResponse>(resp).await
+        client
+            .send_json::<_, ApplicationConversationCreateResponse>("POST", url, &self.body)
+            .await
     }
 }
 
@@ -232,10 +177,9 @@ impl ApplicationVariablesRequest {
             ApiFamily::ApplicationV2,
             &["v2", "application", &self.app_id, "variables"],
         )?;
-        let config = Arc::new(transport_config(client));
-        let resp =
-            send_empty_request(reqwest::Method::GET, url, client.secret().expose(), config).await?;
-        parse_typed_response::<ApplicationVariablesResponse>(resp).await
+        client
+            .send_empty::<ApplicationVariablesResponse>("GET", url)
+            .await
     }
 }
 
@@ -267,10 +211,9 @@ impl ApplicationHistoryRequest {
                 &self.conversation_id,
             ],
         )?;
-        let config = Arc::new(transport_config(client));
-        let resp =
-            send_empty_request(reqwest::Method::GET, url, client.secret().expose(), config).await?;
-        parse_typed_response::<ApplicationHistoryResponse>(resp).await
+        client
+            .send_empty::<ApplicationHistoryResponse>("GET", url)
+            .await
     }
 }
 
@@ -293,15 +236,8 @@ impl ApplicationInvokeRequest {
         let url = client
             .endpoints()
             .resolve(ApiFamily::ApplicationV3, &["v3", "application", "invoke"])?;
-        let config = Arc::new(transport_config(client));
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            config,
-        )
-        .await?;
-        parse_typed_response::<ApplicationInvokeResponse>(resp).await
+        client
+            .send_json::<_, ApplicationInvokeResponse>("POST", url, &self.body)
+            .await
     }
 }

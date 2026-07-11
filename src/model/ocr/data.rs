@@ -1,13 +1,10 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use validator::Validate;
 
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
 use crate::client::ZaiClient;
-use crate::client::{
-    error::codes,
-    http::{HttpClientConfig, parse_typed_response, send_multipart_request},
-};
+use crate::client::error::codes;
 
 /// OCR recognition request (multipart/form-data)
 ///
@@ -198,8 +195,6 @@ impl OcrRequest {
         let url = client
             .endpoints()
             .resolve(crate::client::ApiFamily::PaasV4, &["files", "ocr"])?;
-        let config = transport_config_from_client(client);
-
         let file_path =
             self.file_path
                 .clone()
@@ -243,53 +238,23 @@ impl OcrRequest {
         let request_id = self.body.request_id.clone();
         let user_id = self.body.user_id.clone();
 
-        let resp = send_multipart_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            Arc::new(config),
-            move || {
-                let part = reqwest::multipart::Part::bytes(file_bytes.clone())
-                    .file_name(file_name.clone())
-                    .mime_str(mime)?;
-                let mut form = reqwest::multipart::Form::new()
-                    .part("file", part)
-                    .text("tool_type", tool_type_str.clone());
-                if let Some(lang) = language_type.as_ref() {
-                    form = form.text("language_type", lang.clone());
-                }
-                if let Some(prob) = probability {
-                    form = form.text("probability", prob.to_string());
-                }
-                if let Some(rid) = request_id.as_ref() {
-                    form = form.text("request_id", rid.clone());
-                }
-                if let Some(uid) = user_id.as_ref() {
-                    form = form.text("user_id", uid.clone());
-                }
-                Ok(form)
-            },
-        )
-        .await?;
-
-        parse_typed_response::<super::response::OcrResponse>(resp).await
-    }
-}
-
-/// Build a legacy `HttpClientConfig` from a `ZaiClient`'s transport policy.
-/// This is a temporary bridge during P05–P06; once all endpoints route through
-/// the new `Transport`, this adapter is removed.
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
+        let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
+            .field("tool_type", tool_type_str)?
+            .bytes_named("file", file_name, mime, file_bytes)?;
+        if let Some(lang) = language_type {
+            factory = factory.field("language_type", lang)?;
+        }
+        if let Some(prob) = probability {
+            factory = factory.field("probability", prob.to_string())?;
+        }
+        if let Some(rid) = request_id {
+            factory = factory.field("request_id", rid)?;
+        }
+        if let Some(uid) = user_id {
+            factory = factory.field("user_id", uid)?;
+        }
+        client
+            .send_multipart::<super::response::OcrResponse>("POST", url, &factory)
+            .await
     }
 }

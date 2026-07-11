@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use serde::Serialize;
 use validator::Validate;
 
@@ -8,7 +6,6 @@ use super::{
     video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize},
 };
 use crate::client::ZaiClient;
-use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
 
 /// Video generation request structure
 /// Handles HTTP requests for video generation API
@@ -125,33 +122,10 @@ where
         let url = client
             .endpoints()
             .resolve(crate::client::ApiFamily::PaasV4, &["videos", "generations"])?;
-        let config = transport_config_from_client(client);
-        let resp = send_json_request(
-            reqwest::Method::POST,
-            url,
-            client.secret().expose(),
-            &self.body,
-            Arc::new(config),
-        )
-        .await?;
-        parse_typed_response::<crate::model::chat_base_response::ChatCompletionResponse>(resp).await
-    }
-}
-
-/// Build a legacy `HttpClientConfig` from a `ZaiClient`'s transport policy.
-/// This is a temporary bridge during P05–P06; once all endpoints route through
-/// the new `Transport`, this adapter is removed.
-fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
-    let t = client.transport();
-    HttpClientConfig {
-        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
-        max_retries: u32::from(t.max_attempts).saturating_sub(1),
-        enable_compression: t.enable_compression,
-        retry_delay: crate::client::http::RetryDelay::Exponential {
-            base: std::time::Duration::from_millis(500),
-            max: std::time::Duration::from_secs(5),
-        },
-        enable_logging: false,
-        mask_sensitive_data: true,
+        client
+            .send_json::<_, crate::model::chat_base_response::ChatCompletionResponse>(
+                "POST", url, &self.body,
+            )
+            .await
     }
 }
