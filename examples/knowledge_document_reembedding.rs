@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    let client = ZaiClient::from_env()?;
 
     // Args: <document_id> [callback_url]
     let doc_id = std::env::args()
@@ -12,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("Usage: knowledge_document_reembedding <document_id> [callback_url]");
     let cb = std::env::args().nth(2);
 
-    let mut req = DocumentReembeddingRequest::new(key, doc_id);
+    let mut req = DocumentReembeddingRequest::new(doc_id);
     if let Some(url) = cb {
         req = req.with_callback_url(url);
         let mut hdr = BTreeMap::new();
@@ -20,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         req = req.with_callback_header(hdr);
     }
 
-    let resp: DocumentReembeddingResponse = req.send().await?;
+    let resp: DocumentReembeddingResponse = req.send_via(&client).await?;
     println!(
         "code={:?} message={:?} timestamp={:?}",
         resp.code, resp.message, resp.timestamp

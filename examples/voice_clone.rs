@@ -1,8 +1,10 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::voice_clone::{model::GlmTtsClone, response::VoiceCloneResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    // Credentials and transport come from the environment via ZaiClient (P05).
+    let client = ZaiClient::from_env()?;
 
     // Example values from the spec
     let model = GlmTtsClone {};
@@ -13,11 +15,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 通过文件上传接口上传音频文件，获取file_id。暂时用zhipu官方提供的。
     let file_id = "abcf4765-0d08-5cbd-8bd8-6867f76166cc";
 
-    let client = VoiceCloneRequest::new(model, key, voice_name, input, file_id)
+    let request = VoiceCloneRequest::new(model, voice_name, input, file_id)
         .with_request_id("voice_clone_req_001")
         .with_text(text);
 
-    let body: VoiceCloneResponse = client.send().await?;
+    let body: VoiceCloneResponse = request.send_via(&client).await?;
     println!("{body:#?}");
 
     Ok(())

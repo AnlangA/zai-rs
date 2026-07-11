@@ -104,6 +104,18 @@ fn client_for_mock_base(base_url: &str, key: &str) -> ZaiClient {
         .unwrap()
 }
 
+/// Build a `ZaiClient` whose Monitor endpoint points at the mock `base_url`
+/// (P05: usage requests route through `ZaiClient` instead of per-request keys).
+fn monitor_client_for_base(base_url: &str, key: &str) -> ZaiClient {
+    let ep = base_url.to_string();
+    let leaked: &'static str = Box::leak(ep.into_boxed_str());
+    ZaiClient::builder(key)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::Monitor, leaked)
+        .build()
+        .unwrap()
+}
+
 /// Integration test for chat completion
 #[tokio::test]
 async fn test_chat_completion_integration() {
@@ -274,14 +286,14 @@ async fn test_sdk_get_uses_dynamic_mock_base_and_query() {
     }))
     .await;
 
-    let response = FileListRequest::new(key.clone())
+    let client = client_for_mock_base(&base_url, &key);
+    let response = FileListRequest::new()
         .with_query(
             FileListQuery::new()
                 .with_purpose(FilePurpose::Batch)
                 .with_limit(2),
         )
-        .with_base_url(base_url)
-        .send()
+        .send_via(&client)
         .await
         .unwrap();
 
@@ -330,11 +342,11 @@ async fn test_sdk_multipart_uses_dynamic_mock_base() {
     }))
     .await;
 
-    let response = FileUploadRequest::new(key.clone(), FilePurpose::Batch, &temp_path)
-        .with_base_url(base_url)
+    let client = client_for_mock_base(&base_url, &key);
+    let response = FileUploadRequest::new(FilePurpose::Batch, &temp_path)
         .with_file_name("sample.txt")
         .with_content_type("text/plain")
-        .send()
+        .send_via(&client)
         .await
         .unwrap();
 
@@ -783,9 +795,8 @@ async fn test_sdk_coding_plan_usage_query() {
     )
     .await;
 
-    let response = CodingPlanUsageRequest::new(key.clone())
-        .with_base_url(base_url)
-        .send()
+    let response = CodingPlanUsageRequest::new()
+        .send_via(&monitor_client_for_base(&base_url, &key))
         .await
         .unwrap();
 

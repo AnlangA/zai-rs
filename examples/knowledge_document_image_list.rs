@@ -1,16 +1,17 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    let client = ZaiClient::from_env()?;
 
     // Args: <document_id>
     let doc_id = std::env::args()
         .nth(1)
         .expect("Usage: knowledge_document_image_list <document_id>");
 
-    let req = DocumentImageListRequest::new(key, doc_id);
-    let resp: DocumentImageListResponse = req.send().await?;
+    let req = DocumentImageListRequest::new(doc_id);
+    let resp: DocumentImageListResponse = req.send_via(&client).await?;
 
     println!(
         "code={:?} message={:?} timestamp={:?}",

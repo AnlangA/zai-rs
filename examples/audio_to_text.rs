@@ -1,9 +1,10 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::audio_to_text::{model::GlmAsr, response::AudioToTextResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set your API key in env: ZHIPU_API_KEY
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    // Credentials and transport come from the environment via ZaiClient (P05).
+    let client = ZaiClient::from_env()?;
 
     // Read the input WAV/MP3 path from the first CLI argument.
     let file_path = match std::env::args().nth(1) {
@@ -16,11 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build and send request
     let model = GlmAsr {};
-    let client = AudioToTextRequest::new(model, key)
+    let request = AudioToTextRequest::new(model)
         .with_file_path(&file_path)
         .with_stream(false);
 
-    let body: AudioToTextResponse = client.send().await?;
+    let body: AudioToTextResponse = request.send_via(&client).await?;
     println!("{body:#?}");
 
     Ok(())

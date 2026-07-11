@@ -1,15 +1,17 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::voice_delete::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    // Credentials and transport come from the environment via ZaiClient (P05).
+    let client = ZaiClient::from_env()?;
 
     // Example voice id to delete
     let voice = "voice_clone_20240315_143052_001";
 
-    let client = VoiceDeleteRequest::new(key, voice).with_request_id("voice_delete_req_001");
+    let request = VoiceDeleteRequest::new(voice).with_request_id("voice_delete_req_001");
 
-    let body: VoiceDeleteResponse = client.send().await?;
+    let body: VoiceDeleteResponse = request.send_via(&client).await?;
     println!("{body:#?}");
 
     Ok(())

@@ -4,26 +4,21 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::VoiceCloneBody};
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
-};
+use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
+use crate::client::v2::ZaiClient;
 
 /// Voice clone request wrapper using JSON
 ///
 /// Builder for the voice-clone endpoint. Construct with
 /// [`VoiceCloneRequest::new`], tune with the `with_*` methods, then call
-/// [`VoiceCloneRequest::send`].
+/// [`VoiceCloneRequest::send_via`].
+///
+/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct VoiceCloneRequest<N>
 where
     N: ModelName + VoiceClone + Serialize,
 {
-    /// Zhipu AI API key used for `Authorization: Bearer …`.
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     body: VoiceCloneBody<N>,
 }
 
@@ -31,50 +26,18 @@ impl<N> VoiceCloneRequest<N>
 where
     N: ModelName + VoiceClone + Serialize,
 {
-    /// Create a new voice clone request with required fields
+    /// Create a new voice clone request with required fields.
+    ///
+    /// **P05**: no longer takes an API key — the key is provided by the
+    /// [`ZaiClient`] at send time.
     pub fn new(
         model: N,
-        key: impl Into<String>,
         voice_name: impl Into<String>,
         input: impl Into<String>,
         file_id: impl Into<String>,
     ) -> Self {
         let body = VoiceCloneBody::new(model, voice_name, input, file_id);
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let url = endpoint_config.url(&api_base, paths::VOICE_CLONE);
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(&self.api_base, paths::VOICE_CLONE);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+        Self { body }
     }
 
     /// Borrow the underlying [`VoiceCloneBody`] mutably for advanced tweaks.
@@ -105,38 +68,40 @@ where
         Ok(())
     }
 
-    /// Submit the request and parse the typed voice-clone response.
-    pub async fn send(&self) -> crate::ZaiResult<super::response::VoiceCloneResponse> {
+    /// Submit the request via a [`ZaiClient`] and parse the typed voice-clone
+    /// response.
+    pub async fn send_via(
+        &self,
+        client: &ZaiClient,
+    ) -> crate::ZaiResult<super::response::VoiceCloneResponse> {
         self.validate()?;
-        let resp = self.post().await?;
-        let parsed = parse_typed_response::<super::response::VoiceCloneResponse>(resp).await?;
-        Ok(parsed)
+        let url = client
+            .endpoints()
+            .resolve(crate::client::v2::ApiFamily::PaasV4, &["voice", "clone"])?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<super::response::VoiceCloneResponse>(resp).await
     }
 }
 
-impl<N> HttpClient for VoiceCloneRequest<N>
-where
-    N: ModelName + VoiceClone + Serialize,
-{
-    type Body = VoiceCloneBody<N>;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
     }
 }

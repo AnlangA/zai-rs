@@ -1,8 +1,9 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    let client = ZaiClient::from_env()?;
 
     // Args: <knowledge_id> [word]
     let knowledge_id = std::env::args()
@@ -15,8 +16,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         q = q.with_word(w);
     }
 
-    let req = DocumentListRequest::new(key).with_query(q);
-    let resp: DocumentListResponse = req.send().await?;
+    let req = DocumentListRequest::new().with_query(q);
+    let resp: DocumentListResponse = req.send_via(&client).await?;
 
     println!(
         "code={:?} message={:?} timestamp={:?}",

@@ -1,8 +1,9 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    let client = ZaiClient::from_env()?;
 
     // Args: name [embedding=2|3new] [background] [icon]
     let name = std::env::args()
@@ -36,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut req =
-        CreateKnowledgeRequest::new(key, emb, name).with_description("Created by zai-rs example");
+        CreateKnowledgeRequest::new(emb, name).with_description("Created by zai-rs example");
     if let Some(c) = bg {
         req = req.with_background(c);
     }
@@ -44,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         req = req.with_icon(i);
     }
 
-    let resp: CreateKnowledgeResponse = req.send().await?;
+    let resp: CreateKnowledgeResponse = req.send_via(&client).await?;
     println!("code={:?} message={:?}", resp.code, resp.message);
     if let Some(data) = resp.data {
         println!("created id={:?}", data.id);

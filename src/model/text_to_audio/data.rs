@@ -1,30 +1,29 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use validator::Validate;
 
 use super::{
     super::traits::*,
     request::{TextToAudioBody, TtsAudioFormat, Voice},
 };
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, paths},
-    http::{HttpClient, HttpClientConfig},
-};
+use crate::client::http::{HttpClientConfig, send_json_request};
+use crate::client::v2::ZaiClient;
 
 /// Text-to-speech request wrapper using JSON body
 ///
 /// Builder for the text-to-speech endpoint. Construct with
-/// [`TextToAudioRequest::new`], tune with the `with_*` methods, then `post()`.
+/// [`TextToAudioRequest::new`], tune with the `with_*` methods, then call
+/// [`TextToAudioRequest::send_via`].
+///
+/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via). The endpoint returns raw audio bytes, so
+/// `send_via` yields the underlying `reqwest::Response` for the caller to
+/// extract bytes from.
 pub struct TextToAudioRequest<N>
 where
     N: ModelName + TextToAudio + Serialize,
 {
-    /// Zhipu AI API key used for `Authorization: Bearer …`.
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     body: TextToAudioBody<N>,
 }
 
@@ -33,45 +32,12 @@ where
     N: ModelName + TextToAudio + Serialize,
 {
     /// Create a new TTS request for the given model.
-    pub fn new(model: N, key: String) -> Self {
+    ///
+    /// **P05**: no longer takes an API key — the key is provided by the
+    /// [`ZaiClient`] at send time.
+    pub fn new(model: N) -> Self {
         let body = TextToAudioBody::new(model);
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let url = endpoint_config.url(&api_base, paths::AUDIO_SPEECH);
-        Self {
-            key,
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::AUDIO_SPEECH);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+        Self { body }
     }
 
     /// Borrow the underlying [`TextToAudioBody`] mutably for advanced tweaks.
@@ -109,31 +75,49 @@ where
         self.body = self.body.with_watermark_enabled(enabled);
         self
     }
+
+    /// Validate the request body constraints before sending.
+    pub fn validate(&self) -> crate::ZaiResult<()> {
+        self.body
+            .validate()
+            .map_err(|e| crate::client::error::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_VALIDATION,
+                message: format!("Validation error: {e:?}"),
+            })?;
+        Ok(())
+    }
+
+    /// Submit the request via a [`ZaiClient`] and return the raw
+    /// `reqwest::Response` (the endpoint yields audio bytes, not JSON).
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<reqwest::Response> {
+        self.validate()?;
+        let url = client
+            .endpoints()
+            .resolve(crate::client::v2::ApiFamily::PaasV4, &["audio", "speech"])?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        Ok(resp)
+    }
 }
 
-impl<N> HttpClient for TextToAudioRequest<N>
-where
-    N: ModelName + TextToAudio + Serialize,
-{
-    type Body = TextToAudioBody<N>;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
     }
 }

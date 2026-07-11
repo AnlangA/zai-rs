@@ -3,13 +3,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
-use crate::{
-    ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
-};
+use crate::ZaiResult;
+use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
+use crate::client::v2::ZaiClient;
 
 /// Embedding model id enum mapped to integer ids (plan §13.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,22 +116,16 @@ pub struct CreateKnowledgeBody {
 }
 
 /// Create knowledge request (POST /llm-application/open/knowledge)
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct CreateKnowledgeRequest {
-    /// Bearer key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     body: CreateKnowledgeBody,
 }
 
 impl CreateKnowledgeRequest {
     /// Build a create request with required fields
-    pub fn new(key: impl Into<String>, embedding_id: EmbeddingId, name: impl Into<String>) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, paths::KNOWLEDGE);
+    pub fn new(embedding_id: EmbeddingId, name: impl Into<String>) -> Self {
         let body = CreateKnowledgeBody {
             embedding_id,
             name: name.into(),
@@ -145,38 +135,7 @@ impl CreateKnowledgeRequest {
             embedding_model: None,
             contextual: None,
         };
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(&self.api_base, paths::KNOWLEDGE);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+        Self { body }
     }
 
     /// Optional fields setters
@@ -207,38 +166,37 @@ impl CreateKnowledgeRequest {
         self
     }
 
-    /// Validate and send, returning typed response
-    pub async fn send(&self) -> ZaiResult<CreateKnowledgeResponse> {
+    /// Validate and send via a [`ZaiClient`], returning the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CreateKnowledgeResponse> {
         self.body.validate()?;
-
-        let resp: reqwest::Response = self.post().await?;
-
-        let parsed = parse_typed_response::<CreateKnowledgeResponse>(resp).await?;
-        Ok(parsed)
+        let url = client
+            .endpoints()
+            .resolve(crate::client::v2::ApiFamily::LlmApplication, &["knowledge"])?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<CreateKnowledgeResponse>(resp).await
     }
 }
 
-impl HttpClient for CreateKnowledgeRequest {
-    type Body = CreateKnowledgeBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
     }
 }
 

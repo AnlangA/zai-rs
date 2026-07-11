@@ -1,18 +1,17 @@
-use zai_rs::file::*;
+use zai_rs::client::v2::ZaiClient;
+use zai_rs::file::FileContentRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    let client = ZaiClient::from_env()?;
     let file_id = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "1757561531_ec561569199641b3a5c556503a72cb79".to_string());
-
-    // New: directly save to a file via send_to()
-    let out_path = format!("out/{file_id}_content.bin");
-    let written = FileContentRequest::new(key, file_id.clone())
-        .send_to(&out_path)
+        .expect("usage: files_content <file_id>");
+    let path = std::env::temp_dir().join("zai_file_content.bin");
+    let p = path.to_str().unwrap();
+    FileContentRequest::new(file_id)
+        .send_to_via(&client, p)
         .await?;
-
-    println!("Saved {written} bytes to {out_path}");
+    println!("saved to {p}");
     Ok(())
 }

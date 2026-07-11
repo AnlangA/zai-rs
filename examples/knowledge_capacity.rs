@@ -1,22 +1,10 @@
-use zai_rs::knowledge::*;
+use zai_rs::client::v2::ZaiClient;
+use zai_rs::knowledge::capacity::KnowledgeCapacityRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
-
-    let resp: KnowledgeCapacityResponse = KnowledgeCapacityRequest::new(key).send().await?;
-
-    println!(
-        "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
-    );
-    if let Some(data) = &resp.data {
-        if let Some(used) = &data.used {
-            println!("used: words={:?} bytes={:?}", used.word_num, used.length);
-        }
-        if let Some(total) = &data.total {
-            println!("total: words={:?} bytes={:?}", total.word_num, total.length);
-        }
-    }
+    let client = ZaiClient::from_env()?;
+    let resp = KnowledgeCapacityRequest::new().send_via(&client).await?;
+    println!("{resp:#?}");
     Ok(())
 }

@@ -1,102 +1,37 @@
 use std::sync::Arc;
 
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, join_url, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
-};
+use crate::client::http::{HttpClientConfig, parse_typed_response, send_empty_request};
+use crate::client::v2::ZaiClient;
 
 /// Document delete request (DELETE /llm-application/open/document/{id})
+///
+/// Credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct DocumentDeleteRequest {
-    /// Bearer API key
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
     id: String,
-    http_config: Arc<HttpClientConfig>,
-    _body: (),
 }
 
 impl DocumentDeleteRequest {
-    /// Build a delete request with target document id
-    pub fn new(key: impl Into<String>, id: impl Into<String>) -> Self {
-        let id = id.into();
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::LlmApplication;
-        let url = endpoint_config.url(&api_base, &join_url(paths::DOCUMENT, &id));
-        Self {
-            key: key.into(),
+    /// Build a delete request with target document id.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self { id: id.into() }
+    }
+
+    /// Send via a [`ZaiClient`] and parse the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDeleteResponse> {
+        let url = client.endpoints().resolve(
+            crate::client::v2::ApiFamily::LlmApplication,
+            &["document", &self.id],
+        )?;
+        let config = transport_config_from_client(client);
+        let resp = send_empty_request(
+            reqwest::Method::DELETE,
             url,
-            endpoint_config,
-            api_base,
-            id,
-            http_config: Arc::new(HttpClientConfig::default()),
-            _body: (),
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, &join_url(paths::DOCUMENT, &self.id));
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base_url.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Issue the underlying DELETE request.
-    pub fn delete(
-        &self,
-    ) -> impl std::future::Future<Output = crate::ZaiResult<reqwest::Response>> + Send {
-        HttpClient::delete(self)
-    }
-
-    /// Send delete request and parse typed response
-    pub async fn send(&self) -> crate::ZaiResult<DocumentDeleteResponse> {
-        let resp = self.delete().await?;
-
+            client.secret().expose(),
+            Arc::new(config),
+        )
+        .await?;
         parse_typed_response::<DocumentDeleteResponse>(resp).await
-    }
-}
-
-impl HttpClient for DocumentDeleteRequest {
-    type Body = (); // unused
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Empty body placeholder (DELETE request).
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        self.http_config.clone()
     }
 }
 
@@ -112,4 +47,19 @@ pub struct DocumentDeleteResponse {
     /// Server timestamp.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
+}
+
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
+    }
 }

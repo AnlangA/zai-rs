@@ -1,3 +1,4 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::model::ocr::{
     request::{OcrLanguageType, OcrToolType},
     response::OcrResponse,
@@ -6,8 +7,8 @@ use zai_rs::model::ocr::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set your API key in env: ZHIPU_API_KEY
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    // Shared client reads ZHIPU_API_KEY from the environment.
+    let client = ZaiClient::from_env()?;
 
     // Read the input image path from the first CLI argument.
     let file_path = match std::env::args().nth(1) {
@@ -20,8 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== OCR Handwriting Recognition Example ===\n");
 
-    // Build and send OCR request
-    let client = OcrRequest::new(key)
+    // Build and send OCR request (P05: credentials live on the client).
+    let request = OcrRequest::new()
         .with_file_path(&file_path)
         .with_tool_type(OcrToolType::HandWrite)
         .with_language_type(OcrLanguageType::ChnEng)
@@ -29,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Sending OCR request for image: {file_path}\n");
 
-    let response: OcrResponse = client.send().await?;
+    let response: OcrResponse = request.send_via(&client).await?;
 
     println!("OCR Recognition Result:\n");
     println!("Task ID: {:?}", response.task_id);

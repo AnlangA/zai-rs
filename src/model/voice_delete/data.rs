@@ -3,67 +3,29 @@ use std::sync::Arc;
 use validator::Validate;
 
 use super::request::VoiceDeleteBody;
-use crate::client::{
-    endpoints::{ApiBase, EndpointConfig, paths},
-    http::{HttpClient, HttpClientConfig, parse_typed_response},
-};
+use crate::client::http::{HttpClientConfig, parse_typed_response, send_json_request};
+use crate::client::v2::ZaiClient;
 
 /// Voice delete request using JSON body
 ///
 /// Builder for the voice-delete endpoint. Construct with
 /// [`VoiceDeleteRequest::new`], tune with the `with_*` methods, then call
-/// [`VoiceDeleteRequest::send`].
+/// [`VoiceDeleteRequest::send_via`].
+///
+/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
+/// [`send_via`](Self::send_via).
 pub struct VoiceDeleteRequest {
-    /// Zhipu AI API key used for `Authorization: Bearer …`.
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     body: VoiceDeleteBody,
 }
 
 impl VoiceDeleteRequest {
     /// Create a new voice-delete request for the given voice id.
-    pub fn new(key: impl Into<String>, voice: impl Into<String>) -> Self {
+    ///
+    /// **P05**: no longer takes an API key — the key is provided by the
+    /// [`ZaiClient`] at send time.
+    pub fn new(voice: impl Into<String>) -> Self {
         let body = VoiceDeleteBody::new(voice);
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let url = endpoint_config.url(&api_base, paths::VOICE_DELETE);
-        Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::VOICE_DELETE);
-    }
-
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
+        Self { body }
     }
 
     /// Set the client-side request id.
@@ -83,35 +45,40 @@ impl VoiceDeleteRequest {
         Ok(())
     }
 
-    /// Submit the request and parse the typed voice-delete response.
-    pub async fn send(&self) -> crate::ZaiResult<super::response::VoiceDeleteResponse> {
+    /// Submit the request via a [`ZaiClient`] and parse the typed voice-delete
+    /// response.
+    pub async fn send_via(
+        &self,
+        client: &ZaiClient,
+    ) -> crate::ZaiResult<super::response::VoiceDeleteResponse> {
         self.validate()?;
-        let resp = self.post().await?;
-        let parsed = parse_typed_response::<super::response::VoiceDeleteResponse>(resp).await?;
-        Ok(parsed)
+        let url = client
+            .endpoints()
+            .resolve(crate::client::v2::ApiFamily::PaasV4, &["voice", "delete"])?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<super::response::VoiceDeleteResponse>(resp).await
     }
 }
 
-impl HttpClient for VoiceDeleteRequest {
-    type Body = VoiceDeleteBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    /// Resolved target URL for the request.
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    /// API key used for `Authorization: Bearer …`.
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    /// Serialized request body.
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    /// HTTP client configuration (timeouts, retries, …).
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
     }
 }

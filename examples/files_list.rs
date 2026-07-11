@@ -1,30 +1,14 @@
-use zai_rs::file::*;
+use zai_rs::client::v2::ZaiClient;
+use zai_rs::file::{FileListQuery, FileListRequest, FileListResponse, FilePurpose};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
-
-    // Build query (all optional)
+    let client = ZaiClient::from_env()?;
     let query = FileListQuery::new().with_purpose(FilePurpose::FileExtract);
-
-    let list = FileListRequest::new(key.clone()).with_query(query);
-    let body: FileListResponse = list.send().await?;
-
-    println!("object: {:?}", body.object);
-    println!("has_more: {:?}", body.has_more);
-    if let Some(data) = &body.data {
-        println!("files: {}", data.len());
-        for (i, f) in data.iter().enumerate() {
-            println!(
-                "#{}: id={:?} filename={:?} bytes={:?} purpose={:?}",
-                i + 1,
-                f.id,
-                f.filename,
-                f.bytes,
-                f.purpose
-            );
-        }
-    }
-
+    let body: FileListResponse = FileListRequest::new()
+        .with_query(query)
+        .send_via(&client)
+        .await?;
+    println!("{body:#?}");
     Ok(())
 }

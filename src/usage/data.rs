@@ -8,7 +8,7 @@
 //! See <https://docs.bigmodel.cn/cn/coding-plan/extension/usage-query-plugin>
 //! and the community CLI <https://github.com/JinHanAI/coding-plan-monitor>.
 
-use std::{fmt, sync::Arc};
+use std::fmt;
 
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -16,10 +16,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::{
     ZaiResult,
     client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
+        http::{HttpClientConfig, parse_typed_response, send_empty_request},
+        v2::{ApiFamily, ZaiClient},
     },
 };
+use std::sync::Arc;
 
 fn de_opt_string_from_string_or_number<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -577,17 +578,18 @@ impl fmt::Display for CodingPlanUsageResponse {
 }
 
 /// Coding Plan usage / quota query request
-/// (`GET /api/monitor/usage/quota/limit`).
+/// (`GET /api/monitor/usage/quota/limit`) (P05: routes through [`ZaiClient`]).
 ///
 /// Construct with [`CodingPlanUsageRequest::new`] and execute with
-/// [`CodingPlanUsageRequest::send`]. Implements [`HttpClient`] so it flows
-/// through the shared retry / connection-pool / masking pipeline.
+/// [`CodingPlanUsageRequest::send_via`]. Credentials and transport live on the
+/// [`ZaiClient`], passed to `send_via`.
 ///
 /// ```rust,no_run
 /// use zai_rs::usage::CodingPlanUsageRequest;
+/// use zai_rs::client::v2::ZaiClient;
 ///
-/// # async fn go(key: String) -> zai_rs::ZaiResult<()> {
-/// let resp = CodingPlanUsageRequest::new(key).send().await?;
+/// # async fn go(client: ZaiClient) -> zai_rs::ZaiResult<()> {
+/// let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
 /// if let Some(five_hour) = resp.time_limit() {
 ///     tracing::info!("5h window: {}% used", five_hour.percentage);
 /// }
@@ -595,95 +597,51 @@ impl fmt::Display for CodingPlanUsageResponse {
 /// # }
 /// ```
 pub struct CodingPlanUsageRequest {
-    /// Bearer API key.
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
     _body: (),
 }
 
 impl CodingPlanUsageRequest {
-    /// Build a quota query using the official monitor base URL.
-    pub fn new(key: String) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::Monitor;
-        let url = endpoint_config.url(&api_base, paths::MONITOR_USAGE_QUOTA_LIMIT);
-        Self {
-            key,
+    /// Build a quota query. The base URL, credentials and transport are
+    /// supplied by the [`ZaiClient`] passed to [`Self::send_via`].
+    pub fn new() -> Self {
+        Self { _body: () }
+    }
+
+    /// Send the quota query via a [`ZaiClient`] and parse the typed envelope.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CodingPlanUsageResponse> {
+        let url = client
+            .endpoints()
+            .resolve(ApiFamily::Monitor, &["usage", "quota", "limit"])?;
+        let config = transport_config_from_client(client);
+        let resp = send_empty_request(
+            reqwest::Method::GET,
             url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            _body: (),
-        }
-    }
-
-    fn rebuild_url(&mut self) {
-        self.url = self
-            .endpoint_config
-            .url(&self.api_base, paths::MONITOR_USAGE_QUOTA_LIMIT);
-    }
-
-    /// Override the base URL (e.g. `https://api.z.ai/api/monitor` for the
-    /// international endpoint).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full endpoint configuration.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Override the monitor base URL only.
-    pub fn with_monitor_base(mut self, base: impl Into<String>) -> Self {
-        self.endpoint_config = self.endpoint_config.with_monitor_base(base);
-        self.rebuild_url();
-        self
-    }
-
-    /// Customize the HTTP transport (timeout, retries, masking, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Resolve the configured URL for this request.
-    pub fn url(&self) -> &str {
-        &self.url
-    }
-
-    /// Send the quota query and parse the typed envelope.
-    pub async fn send(&self) -> ZaiResult<CodingPlanUsageResponse> {
-        let resp = self.get().await?;
-        let parsed = parse_typed_response::<CodingPlanUsageResponse>(resp).await?;
-        Ok(parsed)
+            client.secret().expose(),
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<CodingPlanUsageResponse>(resp).await
     }
 }
 
-impl HttpClient for CodingPlanUsageRequest {
-    type Body = ();
-    type ApiUrl = String;
-    type ApiKey = String;
+impl Default for CodingPlanUsageRequest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-    fn body(&self) -> &Self::Body {
-        &self._body
-    }
-
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
     }
 }
 
@@ -847,25 +805,30 @@ mod tests {
     }
 
     #[test]
-    fn request_targets_official_monitor_endpoint() {
-        let req = CodingPlanUsageRequest::new("abcdefghij.0123456789abcdef".to_string());
+    fn monitor_family_resolves_official_endpoint() {
+        let ec = crate::client::v2::endpoint::EndpointConfig::defaults().unwrap();
+        let url = ec
+            .resolve(
+                crate::client::v2::ApiFamily::Monitor,
+                &["usage", "quota", "limit"],
+            )
+            .unwrap();
         assert_eq!(
-            req.url(),
+            url,
             "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
         );
     }
 
     #[test]
-    fn request_custom_base_overrides_url() {
-        let req = CodingPlanUsageRequest::new("abcdefghij.0123456789abcdef".to_string())
-            .with_base_url("https://api.z.ai/api/monitor");
-        assert_eq!(req.url(), "https://api.z.ai/api/monitor/usage/quota/limit");
-    }
-
-    #[test]
-    fn request_monitor_base_overrides_url() {
-        let req = CodingPlanUsageRequest::new("abcdefghij.0123456789abcdef".to_string())
-            .with_monitor_base("https://api.z.ai/api/monitor");
-        assert_eq!(req.url(), "https://api.z.ai/api/monitor/usage/quota/limit");
+    fn monitor_family_resolves_custom_base_via_builder() {
+        use crate::client::v2::endpoint::{ApiFamily, EndpointConfig};
+        let ec = EndpointConfig::builder()
+            .monitor("https://api.z.ai/api/monitor")
+            .build(false)
+            .unwrap();
+        let url = ec
+            .resolve(ApiFamily::Monitor, &["usage", "quota", "limit"])
+            .unwrap();
+        assert_eq!(url, "https://api.z.ai/api/monitor/usage/quota/limit");
     }
 }

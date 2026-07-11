@@ -2,150 +2,89 @@ use std::sync::Arc;
 
 use crate::{
     ZaiResult,
-    client::{
-        endpoints::{ApiBase, EndpointConfig, paths},
-        http::{HttpClient, HttpClientConfig, parse_typed_response},
-    },
+    client::http::{HttpClientConfig, parse_typed_response, send_json_request},
+    client::v2::ZaiClient,
     tool::web_search::{request::*, response::*},
 };
 
-/// Web search API client
+/// Web search API request builder (P05: routes through [`ZaiClient`]).
 pub struct WebSearchRequest {
-    /// API key for authentication
-    pub key: String,
-    url: String,
-    endpoint_config: EndpointConfig,
-    api_base: ApiBase,
-    http_config: Arc<HttpClientConfig>,
-    /// Request body
     body: WebSearchBody,
 }
 
 impl WebSearchRequest {
-    /// Create a new web search request
-    ///
-    /// # Arguments
-    /// * `key` - API key for authentication
-    /// * `search_query` - Search query content (max 70 characters)
-    /// * `search_engine` - Search engine to use
-    pub fn new(key: impl Into<String>, search_query: String, search_engine: SearchEngine) -> Self {
-        let body = WebSearchBody::new(search_query, search_engine);
-        Self::with_body(key, body)
-    }
-
-    /// Create a web search request with a pre-configured body
-    pub fn with_body(key: impl Into<String>, body: WebSearchBody) -> Self {
-        let endpoint_config = EndpointConfig::default();
-        let api_base = ApiBase::PaasV4;
-        let url = endpoint_config.url(&api_base, paths::WEB_SEARCH);
+    pub fn new(search_query: String, search_engine: SearchEngine) -> Self {
         Self {
-            key: key.into(),
-            url,
-            endpoint_config,
-            api_base,
-            http_config: Arc::new(HttpClientConfig::default()),
-            body,
+            body: WebSearchBody::new(search_query, search_engine),
         }
     }
 
-    fn rebuild_url(&mut self) {
-        self.url = self.endpoint_config.url(&self.api_base, paths::WEB_SEARCH);
+    pub fn with_body(body: WebSearchBody) -> Self {
+        Self { body }
     }
 
-    /// Override the base URL (uses [`ApiBase::Custom`]).
-    pub fn with_base_url(mut self, base: impl Into<String>) -> Self {
-        self.api_base = ApiBase::Custom(base.into());
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the full [`EndpointConfig`] used to resolve URLs.
-    pub fn with_endpoint_config(mut self, endpoint_config: EndpointConfig) -> Self {
-        self.endpoint_config = endpoint_config;
-        self.rebuild_url();
-        self
-    }
-
-    /// Replace the HTTP client configuration (timeouts, retries, …).
-    pub fn with_http_config(mut self, config: HttpClientConfig) -> Self {
-        self.http_config = Arc::new(config);
-        self
-    }
-
-    /// Enable search intent recognition
     pub fn with_search_intent(mut self, enabled: bool) -> Self {
         self.body = self.body.with_search_intent(enabled);
         self
     }
-
-    /// Set the number of results to return
     pub fn with_count(mut self, count: i32) -> Self {
         self.body = self.body.with_count(count);
         self
     }
-
-    /// Set domain filter for search results
     pub fn with_domain_filter(mut self, domain: impl Into<String>) -> Self {
         self.body = self.body.with_domain_filter(domain.into());
         self
     }
-
-    /// Set time range filter for search results
     pub fn with_recency_filter(mut self, filter: SearchRecencyFilter) -> Self {
         self.body = self.body.with_recency_filter(filter);
         self
     }
-
-    /// Set content size preference
     pub fn with_content_size(mut self, size: ContentSize) -> Self {
         self.body = self.body.with_content_size(size);
         self
     }
-
-    /// Set custom request ID
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.body = self.body.with_request_id(request_id.into());
         self
     }
-
-    /// Set user ID
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id.into());
         self
     }
 
-    /// Validate the request
     pub fn validate(&self) -> ZaiResult<()> {
         self.body.validate_constraints()
     }
 
-    /// Send the web search request and return the response
-    pub async fn send(&self) -> ZaiResult<WebSearchResponse> {
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<WebSearchResponse> {
         self.validate()?;
-        let resp: reqwest::Response = self.post().await?;
-        let parsed = parse_typed_response::<WebSearchResponse>(resp).await?;
-        Ok(parsed)
+        let url = client
+            .endpoints()
+            .resolve(crate::client::v2::ApiFamily::PaasV4, &["web_search"])?;
+        let config = transport_config_from_client(client);
+        let resp = send_json_request(
+            reqwest::Method::POST,
+            url,
+            client.secret().expose(),
+            &self.body,
+            Arc::new(config),
+        )
+        .await?;
+        parse_typed_response::<WebSearchResponse>(resp).await
     }
 }
 
-impl HttpClient for WebSearchRequest {
-    type Body = WebSearchBody;
-    type ApiUrl = String;
-    type ApiKey = String;
-
-    fn api_url(&self) -> &Self::ApiUrl {
-        &self.url
-    }
-
-    fn api_key(&self) -> &Self::ApiKey {
-        &self.key
-    }
-
-    fn body(&self) -> &Self::Body {
-        &self.body
-    }
-
-    fn http_config(&self) -> Arc<HttpClientConfig> {
-        Arc::clone(&self.http_config)
+fn transport_config_from_client(client: &ZaiClient) -> HttpClientConfig {
+    let t = client.transport();
+    HttpClientConfig {
+        timeout: std::time::Duration::from_secs(t.request_timeout.as_secs()),
+        max_retries: u32::from(t.max_attempts).saturating_sub(1),
+        enable_compression: t.enable_compression,
+        retry_delay: crate::client::http::RetryDelay::Exponential {
+            base: std::time::Duration::from_millis(500),
+            max: std::time::Duration::from_secs(5),
+        },
+        enable_logging: false,
+        mask_sensitive_data: true,
     }
 }

@@ -1,21 +1,19 @@
-use zai_rs::knowledge::*;
+use zai_rs::client::v2::ZaiClient;
+use zai_rs::knowledge::update::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
-
-    // Args: <id> <description>
+    let client = ZaiClient::from_env()?;
     let id = std::env::args()
         .nth(1)
-        .expect("Usage: knowledge_update <id> <description>");
-    let description = "修改知识库描述";
-
-    let req = KnowledgeUpdateRequest::new(key, id).with_description(description);
-    let resp: KnowledgeUpdateResponse = req.send().await?;
-    println!(
-        "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
-    );
-
+        .expect("usage: knowledge_update <id>");
+    let description = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "updated".to_string());
+    let resp: KnowledgeUpdateResponse = KnowledgeUpdateRequest::new(id)
+        .with_description(description)
+        .send_via(&client)
+        .await?;
+    println!("{resp:#?}");
     Ok(())
 }

@@ -1,8 +1,9 @@
+use zai_rs::client::v2::ZaiClient;
 use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
+    let client = ZaiClient::from_env()?;
 
     // Args: <knowledge_id> <file1> [file2] [file3] ...
     let knowledge_id = std::env::args()
@@ -13,13 +14,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("Please provide at least one file path");
     }
 
-    let mut req = DocumentUploadFileRequest::new(key, knowledge_id);
+    let mut req = DocumentUploadFileRequest::new(knowledge_id);
     for f in files {
         req = req.add_file_path(f);
     }
 
     // Minimal example: dynamic parse, no extra options
-    let resp: UploadFileResponse = req.send().await?;
+    let resp: UploadFileResponse = req.send_via(&client).await?;
 
     println!(
         "code={:?} message={:?} timestamp={:?}",

@@ -1,18 +1,13 @@
-use zai_rs::knowledge::*;
+use zai_rs::client::v2::ZaiClient;
+use zai_rs::knowledge::delete::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY").expect("Please set ZHIPU_API_KEY env var");
-
+    let client = ZaiClient::from_env()?;
     let id = std::env::args()
         .nth(1)
-        .expect("Usage: knowledge_delete <id>");
-
-    let resp: KnowledgeDeleteResponse = KnowledgeDeleteRequest::new(key, id).send().await?;
-    println!(
-        "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
-    );
-
+        .expect("usage: knowledge_delete <id>");
+    let resp = KnowledgeDeleteRequest::new(id).send_via(&client).await?;
+    println!("{resp:#?}");
     Ok(())
 }
