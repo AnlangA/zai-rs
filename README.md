@@ -2,6 +2,8 @@
 
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
+> **0.5 release candidate** — `main` 分支包含 0.5 的 breaking release candidate。crates.io 当前公开版本为 0.2.0。安装 main 分支版本：`zai-rs = { git = "https://github.com/AnlangA/zai-rs", branch = "main" }`。迁移指南见 [docs/MIGRATING-0.5.md](docs/MIGRATING-0.5.md)。
+
 ## 快速开始
 
 1. 准备环境
