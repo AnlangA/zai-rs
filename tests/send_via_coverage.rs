@@ -601,3 +601,59 @@ async fn file_content_send_to_via() {
     let _ = std::fs::remove_file(&dest);
     server.shutdown().await;
 }
+
+// --- Batch create (POST) ---
+#[tokio::test]
+async fn batch_create_send_via() {
+    let (s, c) = ok_server(json!({
+        "id": "batch-1", "object": "batch", "status": "validating"
+    }))
+    .await;
+    use zai_rs::batches::*;
+    let _ = CreateBatchRequest::new("file-1", BatchEndpoint::ChatCompletions)
+        .send_via(&c)
+        .await;
+    s.shutdown().await;
+}
+
+// --- Batch retrieve (GET by id) ---
+#[tokio::test]
+async fn batch_retrieve_send_via() {
+    let (s, c) = ok_server(json!({
+        "id": "batch-1", "object": "batch", "status": "completed"
+    }))
+    .await;
+    use zai_rs::batches::*;
+    let _ = BatchesRetrieveRequest::new("batch-1").send_via(&c).await;
+    s.shutdown().await;
+}
+
+// --- Batch cancel (POST to cancel path) ---
+#[tokio::test]
+async fn batch_cancel_send_via() {
+    let (s, c) = ok_server(json!({
+        "id": "batch-1", "object": "batch", "status": "cancelled"
+    }))
+    .await;
+    use zai_rs::batches::*;
+    let _ = CancelBatchRequest::new("batch-1").send_via(&c).await;
+    s.shutdown().await;
+}
+
+// --- Services: application file_stats (POST, ApplicationV2 family) ---
+#[tokio::test]
+async fn application_file_stats_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(200, json!({"data": {}}))]).await;
+    let base = format!("{}/api/llm-application/open", server.base_url);
+    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
+    let c = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::ApplicationV2, leaked)
+        .build()
+        .unwrap();
+    use zai_rs::services::applications::*;
+    let _ = ApplicationFileStatsRequest::new(json!({}))
+        .send_via(&c)
+        .await;
+    server.shutdown().await;
+}
