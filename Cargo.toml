@@ -124,7 +124,9 @@ all = "deny"
 
 [features]
 default = []
-rmcp-kits = ["dep:rmcp"]
+# RMCP protocol bridge — builds on the toolkits framework to call remote MCP
+# servers (plan P09.1). Enables `zai_rs::toolkits::rmcp_kits`.
+rmcp-kits = ["dep:rmcp", "toolkits"]
 # WebSocket realtime (GLM-Realtime) client. Off by default — most users only
 # need the HTTP chat/embeddings surface. Pulls in tokio-tungstenite, the JWT
 # crypto stack (hmac/sha2), tokio-stream, and `tokio/net`.
@@ -136,11 +138,15 @@ realtime = [
     "dep:uuid",
     "tokio/net",
 ]
+# Core tool-execution framework: dynamic tool registration, schema validation,
+# and effect-aware execution (plan P09.1). Enables `zai_rs::toolkits`.
+toolkits = ["dep:jsonschema"]
 # Runtime validation of tool-call arguments against their JSON Schema. Off by
 # default — disabling it drops the heavy `jsonschema` dependency (and its
 # transitive `reqwest`/`fraction`/`fancy-regex`/... tree) for users who don't
 # need argument validation at execution time.
-tool-validation = ["dep:jsonschema"]
+# P09.1: this is a compatibility alias for `toolkits`, removed in 0.6.
+tool-validation = ["toolkits"]
 
 [[example]]
 name = "realtime_audio"
