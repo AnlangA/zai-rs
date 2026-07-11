@@ -219,3 +219,113 @@ async fn send_via_http_500() {
     assert!(result.is_err());
     server.shutdown().await;
 }
+
+// --- Knowledge endpoints (LlmApplication family) ---
+fn llm_mock_client(base: &str) -> ZaiClient {
+    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
+    ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::LlmApplication, leaked)
+        .build()
+        .unwrap()
+}
+
+async fn llm_ok_server(body: serde_json::Value) -> (TestServer, ZaiClient) {
+    let server = TestServer::start(vec![ScriptedResponse::json(200, body)]).await;
+    let base = format!("{}/api/llm-application/open", server.base_url);
+    (server, llm_mock_client(&base))
+}
+
+#[tokio::test]
+async fn knowledge_list_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": [], "total": 0}})).await;
+    use zai_rs::knowledge::list::*;
+    let _ = KnowledgeListRequest::new().send_via(&c).await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_create_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "kb1", "name": "test"}})).await;
+    use zai_rs::knowledge::create::*;
+    let _ = CreateKnowledgeRequest::new(EmbeddingId::Embedding2, "test")
+        .send_via(&c)
+        .await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_capacity_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"capacity": 100}})).await;
+    use zai_rs::knowledge::capacity::*;
+    let _ = KnowledgeCapacityRequest::new().send_via(&c).await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_retrieve_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "x"}})).await;
+    use zai_rs::knowledge::retrieve::*;
+    let _ = KnowledgeRetrieveRequest::new("kb1").send_via(&c).await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_delete_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": null})).await;
+    use zai_rs::knowledge::delete::*;
+    let _ = KnowledgeDeleteRequest::new("kb1").send_via(&c).await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_update_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "kb1"}})).await;
+    use zai_rs::knowledge::update::*;
+    let _ = KnowledgeUpdateRequest::new("kb1").send_via(&c).await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_search_send_via() {
+    let (s, c) = llm_ok_server(json!({"data": []})).await;
+    use zai_rs::knowledge::search::*;
+    let _ = KnowledgeSearchRequest::new("kb1", "query")
+        .send_via(&c)
+        .await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_document_list_send_via() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": []}})).await;
+    use zai_rs::knowledge::document_list::*;
+    let _ = DocumentListRequest::new().send_via(&c).await;
+    s.shutdown().await;
+}
+
+// --- File endpoints ---
+#[tokio::test]
+async fn file_list_send_via() {
+    let (s, c) = ok_server(json!({"data": [], "has_more": false})).await;
+    use zai_rs::file::*;
+    let _ = FileListRequest::new().send_via(&c).await;
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn file_delete_send_via() {
+    let (s, c) = ok_server(json!({"id": "f1", "deleted": true})).await;
+    use zai_rs::file::*;
+    let _ = FileDeleteRequest::new("f1").send_via(&c).await;
+    s.shutdown().await;
+}
+
+// --- Batch endpoints ---
+#[tokio::test]
+async fn batch_list_send_via() {
+    let (s, c) = ok_server(json!({"data": [], "object": "list"})).await;
+    use zai_rs::batches::*;
+    let _ = BatchesListRequest::new().send_via(&c).await;
+    s.shutdown().await;
+}
