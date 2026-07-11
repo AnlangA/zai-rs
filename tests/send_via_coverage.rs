@@ -860,12 +860,11 @@ fn knowledge_doc_upload_file_builder() {
 #[test]
 fn text_to_audio_builder() {
     use zai_rs::model::text_to_audio::*;
-    let body = TextToAudioBody::new(zai_rs::model::text_to_audio::GlmTts {})
+    let _body = TextToAudioRequest::new(zai_rs::model::text_to_audio::GlmTts {})
         .with_input("hello world")
         .with_speed(1.5)
         .with_volume(5.0)
         .with_voice(Voice::Tongtong);
-    let _ = body.input;
 }
 
 // --- Async chat builder ---
@@ -1207,12 +1206,11 @@ fn audio_to_text_hotwords_over_limit() {
 #[test]
 fn tts_request_full_builder() {
     use zai_rs::model::text_to_audio::*;
-    let body = TextToAudioBody::new(GlmTts {})
+    let _body = TextToAudioRequest::new(GlmTts {})
         .with_input("hello world")
         .with_voice(Voice::Tongtong)
         .with_speed(1.0)
         .with_volume(5.0);
-    let _ = body.input;
 }
 
 // --- Embedding dimensions ---
@@ -1475,4 +1473,117 @@ fn full_jitter_caps_sequence() {
     let caps: Vec<_> = (0..10).map(full_jitter_cap).collect();
     assert!(caps[0] < caps[3]);
     assert!(caps.iter().all(|c| *c <= std::time::Duration::from_secs(8)));
+}
+
+// --- TTS send_via ---
+#[tokio::test]
+async fn tts_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::raw(
+        200,
+        "audio/pcm",
+        bytes::Bytes::from_static(b"fake-audio-data"),
+    )])
+    .await;
+    let base = format!("{}/api/paas/v4", server.base_url);
+    let c = mock_client(&base);
+    use zai_rs::model::text_to_audio::*;
+    let _ = TextToAudioRequest::new(GlmTts {})
+        .with_input("hello")
+        .send_via(&c)
+        .await;
+    server.shutdown().await;
+}
+
+// --- ASR send_via ---
+#[tokio::test]
+async fn asr_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "id": "asr-1", "model": "glm-asr-2512", "text": "transcribed text"
+        }),
+    )])
+    .await;
+    let base = format!("{}/api/paas/v4", server.base_url);
+    let c = mock_client(&base);
+    let dir = tempfile::tempdir().unwrap();
+    let wav = dir.path().join("test.wav");
+    std::fs::write(&wav, b"fake-wav").unwrap();
+    use zai_rs::model::audio_to_text::*;
+    let _ = AudioToTextRequest::new(GlmAsr {})
+        .with_file_path(wav.to_str().unwrap())
+        .send_via(&c)
+        .await;
+    server.shutdown().await;
+}
+
+// --- File upload multipart send_via ---
+#[tokio::test]
+async fn file_upload_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(200, json!({
+        "id": "file-1", "object": "file", "bytes": 5, "filename": "test.txt", "purpose": "file-extract"
+    }))]).await;
+    let base = format!("{}/api/paas/v4", server.base_url);
+    let c = mock_client(&base);
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("test.txt");
+    std::fs::write(&f, b"hello").unwrap();
+    use zai_rs::file::*;
+    let _ = FileUploadRequest::new(FilePurpose::FileExtract, f.to_str().unwrap())
+        .send_via(&c)
+        .await;
+    server.shutdown().await;
+}
+
+// --- Knowledge document upload file send_via ---
+#[tokio::test]
+async fn knowledge_doc_upload_file_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "code": 200, "data": {"document_id": "d1"}
+        }),
+    )])
+    .await;
+    let base = format!("{}/api/llm-application/open", server.base_url);
+    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
+    let c = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::LlmApplication, leaked)
+        .build()
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("test.pdf");
+    std::fs::write(&f, b"fake-pdf").unwrap();
+    use zai_rs::knowledge::document_upload_file::*;
+    let _ = DocumentUploadFileRequest::new("kb-1")
+        .add_file_path(f)
+        .send_via(&c)
+        .await;
+    server.shutdown().await;
+}
+
+// --- OCR send_via with actual file ---
+#[tokio::test]
+async fn ocr_send_via_with_file() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "task_id": "t1", "status": "SUCCESS", "words_result_num": 1,
+            "words_result": [{"words": "hello"}]
+        }),
+    )])
+    .await;
+    let base = format!("{}/api/paas/v4", server.base_url);
+    let c = mock_client(&base);
+    let dir = tempfile::tempdir().unwrap();
+    let img = dir.path().join("test.png");
+    std::fs::write(&img, b"fake-png").unwrap();
+    use zai_rs::model::ocr::*;
+    let _ = OcrRequest::new()
+        .with_file_path(img.to_str().unwrap())
+        .with_tool_type(OcrToolType::HandWrite)
+        .send_via(&c)
+        .await;
+    server.shutdown().await;
 }
