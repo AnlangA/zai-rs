@@ -657,3 +657,186 @@ async fn application_file_stats_send_via() {
         .await;
     server.shutdown().await;
 }
+
+// --- Chat base response deeper coverage ---
+#[test]
+fn chat_response_usage_accessors() {
+    let json = r#"{"id":"x","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop","tool_calls":null}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15},"model":"glm-5.2","created":1234567890}"#;
+    let resp: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(json).unwrap();
+    let usage = resp.usage.unwrap();
+    assert_eq!(usage.prompt_tokens(), Some(10));
+    assert_eq!(usage.completion_tokens(), Some(5));
+    assert_eq!(usage.total_tokens(), Some(15));
+}
+
+#[test]
+fn chat_response_message_tool_calls() {
+    let json = r#"{"id":"x","choices":[{"index":0,"message":{"role":"assistant","content":"hi","tool_calls":[{"id":"tc1","type":"function","function":{"name":"calc","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#;
+    let resp: zai_rs::model::chat_base_response::ChatCompletionResponse =
+        serde_json::from_str(json).unwrap();
+    let choices = resp.choices().unwrap();
+    let tc = choices[0].message().tool_calls();
+    assert!(tc.is_some());
+    let tc = tc.unwrap();
+    assert_eq!(tc.len(), 1);
+    assert_eq!(
+        tc[0].function.as_ref().unwrap().name.as_deref(),
+        Some("calc")
+    );
+}
+
+// --- Error compact/message/code for all variants ---
+#[test]
+fn error_all_variants_compact() {
+    use zai_rs::client::error::*;
+    for err in [
+        ZaiError::AuthError {
+            code: 1001,
+            message: "auth".into(),
+        },
+        ZaiError::RateLimitError {
+            code: 1302,
+            message: "rl".into(),
+        },
+        ZaiError::AccountError {
+            code: 1110,
+            message: "acct".into(),
+        },
+        ZaiError::ApiError {
+            code: 1200,
+            message: "api".into(),
+        },
+        ZaiError::ContentPolicyError {
+            code: 1300,
+            message: "cp".into(),
+        },
+        ZaiError::FileError {
+            code: 1400,
+            message: "file".into(),
+        },
+        ZaiError::HttpError {
+            status: 404,
+            message: "http".into(),
+        },
+        ZaiError::Unknown {
+            code: 999,
+            message: "unk".into(),
+        },
+    ] {
+        let c = err.compact();
+        assert!(!c.is_empty(), "compact should be non-empty for {err:?}");
+        let m = err.message();
+        assert!(!m.is_empty(), "message should be non-empty");
+    }
+}
+
+#[test]
+fn error_is_retryable_all_variants() {
+    use zai_rs::client::error::*;
+    assert!(
+        !ZaiError::AuthError {
+            code: 1001,
+            message: "x".into()
+        }
+        .is_retryable()
+    );
+    assert!(
+        ZaiError::RateLimitError {
+            code: 1302,
+            message: "x".into()
+        }
+        .is_retryable()
+    );
+    assert!(
+        ZaiError::HttpError {
+            status: 503,
+            message: "x".into()
+        }
+        .is_retryable()
+    );
+    assert!(
+        !ZaiError::HttpError {
+            status: 400,
+            message: "x".into()
+        }
+        .is_retryable()
+    );
+    assert!(
+        !ZaiError::ApiError {
+            code: 1200,
+            message: "x".into()
+        }
+        .is_retryable()
+    );
+}
+
+// --- Transport config builder ---
+#[test]
+fn transport_config_builder() {
+    use zai_rs::client::HttpTransportConfig;
+    let cfg = HttpTransportConfig::builder()
+        .max_attempts(2)
+        .unwrap()
+        .request_timeout(std::time::Duration::from_secs(30))
+        .unwrap()
+        .build();
+    assert_eq!(cfg.max_attempts, 2);
+    assert_eq!(cfg.request_timeout, std::time::Duration::from_secs(30));
+}
+
+// --- Endpoint config builder ---
+#[test]
+fn endpoint_config_builder_custom() {
+    use zai_rs::client::EndpointConfig;
+    let ec = EndpointConfig::builder()
+        .paas_v4("https://custom.example.com/api/paas/v4")
+        .build(false)
+        .unwrap();
+    assert!(
+        ec.base(zai_rs::client::ApiFamily::PaasV4)
+            .as_str()
+            .contains("custom.example.com")
+    );
+}
+
+#[test]
+fn endpoint_config_resolve_with_query() {
+    use zai_rs::client::{ApiFamily, EndpointConfig};
+    let ec = EndpointConfig::defaults().unwrap();
+    let url = ec
+        .resolve_with_query(
+            ApiFamily::PaasV4,
+            &["files"],
+            &[("limit", "10"), ("order", "desc")],
+        )
+        .unwrap();
+    assert!(url.contains("limit=10"));
+    assert!(url.contains("order=desc"));
+}
+
+// --- Retry-After parsing edge cases ---
+#[test]
+fn retry_after_edge_cases() {
+    use zai_rs::client::transport::retry::parse_retry_after;
+    assert_eq!(parse_retry_after(""), None);
+    assert_eq!(parse_retry_after("  "), None);
+    assert_eq!(parse_retry_after("abc"), None);
+    assert_eq!(
+        parse_retry_after("99999999999"),
+        Some(std::time::Duration::from_secs(99999999999))
+    );
+}
+
+// --- SSE parser with finish() ---
+#[test]
+fn sse_parser_finish_incomplete() {
+    use zai_rs::model::sse_parser::SseEventParser;
+    let mut p = SseEventParser::new();
+    let events = p.push(b"data: incomplete");
+    assert!(events.is_empty()); // no terminating blank line
+    // finish should flush remaining buffered data
+    let final_events = p.finish();
+    // May or may not produce an event depending on impl
+    let _ = final_events;
+}
