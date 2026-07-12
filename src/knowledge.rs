@@ -8,9 +8,9 @@
 //!
 //! | Operation | Module | Description |
 //! |-----------|--------|-------------|
-//! | Create | [`CreateKnowledgeRequest`] | Create a new knowledge base |
+//! | Create | [`KnowledgeCreateRequest`] | Create a new knowledge base |
 //! | List | [`KnowledgeListRequest`] | List knowledge bases |
-//! | Retrieve | [`KnowledgeRetrieveRequest`] | Get knowledge-base details |
+//! | Retrieve | [`KnowledgeGetRequest`] | Get knowledge-base details |
 //! | Search | [`KnowledgeSearchRequest`] | Run semantic retrieval against a knowledge base |
 //! | Update | [`KnowledgeUpdateRequest`] | Update metadata |
 //! | Delete | [`KnowledgeDeleteRequest`] | Delete a knowledge base |
@@ -20,12 +20,12 @@
 //!
 //! | Operation | Module | Description |
 //! |-----------|--------|-------------|
-//! | Upload (file) | [`DocumentUploadFileRequest`] | Upload a local file |
-//! | Upload (URL) | [`DocumentUploadUrlRequest`] | Upload from a URL |
+//! | Upload (file) | [`DocumentUploadRequest`] | Upload a local file |
+//! | Upload (URL) | [`DocumentUrlUploadRequest`] | Upload from a URL |
 //! | List | [`DocumentListRequest`] | List documents in a KB |
-//! | Retrieve | [`DocumentRetrieveRequest`] | Get document details |
+//! | Retrieve | [`DocumentGetRequest`] | Get document details |
 //! | Delete | [`DocumentDeleteRequest`] | Delete documents |
-//! | Re-embed | [`DocumentReembeddingRequest`] | Re-run vectorisation |
+//! | Re-embed | [`DocumentReembedRequest`] | Re-run vectorisation |
 //! | Images | [`DocumentImageListRequest`] | List extracted images |
 //!
 //! # Supported Document Types
@@ -38,10 +38,10 @@
 //! use zai_rs::{ZaiResult, client::ZaiClient, knowledge::*};
 //!
 //! # async fn example(client: &ZaiClient) -> ZaiResult<()> {
-//! let created = CreateKnowledgeRequest::new(EmbeddingId::Embedding3New, "Product docs")
+//! let created = KnowledgeCreateRequest::new(EmbeddingId::Embedding3New, "Product docs")
 //!     .send_via(client)
 //!     .await?;
-//! let uploaded = DocumentUploadFileRequest::new("knowledge-base-id")
+//! let uploaded = DocumentUploadRequest::new("knowledge-base-id")
 //!     .add_file_path("guide.pdf")
 //!     .send_via(client)
 //!     .await?;
@@ -87,28 +87,34 @@ mod update;
 
 pub use capacity::KnowledgeCapacityRequest;
 pub use create::{
-    BackgroundColor, CreateKnowledgeBody, CreateKnowledgeRequest, CreateKnowledgeResponse,
-    EmbeddingId, KnowledgeIcon,
+    BackgroundColor, EmbeddingId, KnowledgeCreateBody, KnowledgeCreateData, KnowledgeCreateRequest,
+    KnowledgeCreateResponse, KnowledgeIcon,
 };
 pub use delete::{KnowledgeDeleteRequest, KnowledgeDeleteResponse};
 pub use document_delete::{DocumentDeleteRequest, DocumentDeleteResponse};
 pub use document_image_list::DocumentImageListRequest;
 pub use document_list::{DocumentListQuery, DocumentListRequest};
 pub use document_reembedding::{
-    DocumentReembeddingBody, DocumentReembeddingRequest, DocumentReembeddingResponse,
+    DocumentReembedBody, DocumentReembedRequest, DocumentReembedResponse,
 };
-pub use document_retrieve::DocumentRetrieveRequest;
-pub use document_upload_file::{DocumentSliceType, DocumentUploadFileRequest, UploadFileOptions};
-pub use document_upload_url::{DocumentUploadUrlRequest, UploadUrlBody, UploadUrlDetail};
+pub use document_retrieve::DocumentGetRequest;
+pub use document_upload_file::{DocumentSliceType, DocumentUploadOptions, DocumentUploadRequest};
+pub use document_upload_url::{
+    DocumentUrlUploadBody, DocumentUrlUploadDetail, DocumentUrlUploadRequest,
+};
 pub use list::{KnowledgeListQuery, KnowledgeListRequest};
-pub use retrieve::{KnowledgeRetrieveRequest, KnowledgeRetrieveResponse};
-pub use search::{KnowledgeSearchBody, KnowledgeSearchRequest, KnowledgeSearchResponse};
-pub use types::{
-    DocumentDetailResponse, DocumentFailInfo, DocumentImageItem, DocumentImageListData,
-    DocumentImageListResponse, DocumentItem, DocumentListData, DocumentListResponse,
-    KnowledgeCapacityData, KnowledgeCapacityResponse, KnowledgeDetailResponse, KnowledgeItem,
-    KnowledgeListData, KnowledgeListResponse, KnowledgeUsageCounts, UploadFileData,
-    UploadFileFailedInfo, UploadFileResponse, UploadFileSuccessInfo, UploadUrlData,
-    UploadUrlFailedInfo, UploadUrlResponse, UploadUrlSuccessInfo,
+pub use retrieve::KnowledgeGetRequest;
+pub use search::{
+    KnowledgeRecallMethod, KnowledgeRerankModel, KnowledgeSearchBody, KnowledgeSearchMetadata,
+    KnowledgeSearchRequest, KnowledgeSearchResponse, KnowledgeSearchResult,
 };
-pub use update::{KnowledgeUpdateRequest, KnowledgeUpdateResponse, UpdateKnowledgeBody};
+pub use types::{
+    DocumentFailInfo, DocumentGetResponse, DocumentImageItem, DocumentImageListData,
+    DocumentImageListResponse, DocumentItem, DocumentListData, DocumentListResponse,
+    DocumentUploadData, DocumentUploadFailedInfo, DocumentUploadResponse,
+    DocumentUploadSuccessInfo, DocumentUrlUploadData, DocumentUrlUploadFailedInfo,
+    DocumentUrlUploadResponse, DocumentUrlUploadSuccessInfo, KnowledgeCapacityData,
+    KnowledgeCapacityResponse, KnowledgeGetResponse, KnowledgeItem, KnowledgeListData,
+    KnowledgeListResponse, KnowledgeOperationResponse, KnowledgeResponse, KnowledgeUsageCounts,
+};
+pub use update::{KnowledgeUpdateBody, KnowledgeUpdateRequest, KnowledgeUpdateResponse};

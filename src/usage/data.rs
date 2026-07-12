@@ -11,28 +11,13 @@
 use std::fmt;
 
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 use crate::{ZaiResult, client::ZaiClient};
 
-fn de_opt_string_from_string_or_number<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    match value {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::String(value) => Ok(Some(value)),
-        serde_json::Value::Number(value) => Ok(Some(value.to_string())),
-        other => Err(serde::de::Error::custom(format!(
-            "expected string or number, got {other}"
-        ))),
-    }
-}
-
 fn parse_next_reset_time(raw: &str) -> Option<DateTime<Utc>> {
     if let Ok(timestamp) = raw.parse::<i64>() {
-        return if timestamp.abs() >= 10_000_000_000 {
+        return if timestamp.unsigned_abs() >= 10_000_000_000 {
             Utc.timestamp_millis_opt(timestamp).single()
         } else {
             Utc.timestamp_opt(timestamp, 0).single()
@@ -45,8 +30,7 @@ fn parse_next_reset_time(raw: &str) -> Option<DateTime<Utc>> {
 }
 
 fn beijing_offset() -> Option<FixedOffset> {
-    // UTC+08:00 is a valid fixed offset; retain UTC as a panic-free fallback.
-    FixedOffset::east_opt(8 * 60 * 60).or_else(|| FixedOffset::east_opt(0))
+    FixedOffset::east_opt(8 * 60 * 60)
 }
 
 /// `data` payload returned by the quota-limit endpoint.
@@ -60,7 +44,7 @@ pub struct CodingPlanUsageData {
     /// Subscribed plan level identifier.
     #[serde(
         default,
-        deserialize_with = "de_opt_string_from_string_or_number",
+        deserialize_with = "crate::serde_helpers::optional_string_from_number_or_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub level: Option<String>,
@@ -75,8 +59,9 @@ pub struct CodingPlanUsageDetail {
     /// Model identifier reported by the monitor API.
     #[serde(
         default,
-        alias = "modelCode",
-        deserialize_with = "de_opt_string_from_string_or_number",
+        rename = "modelCode",
+        alias = "model_code",
+        deserialize_with = "crate::serde_helpers::optional_string_from_number_or_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub model_code: Option<String>,
@@ -329,7 +314,7 @@ pub struct CodingPlanQuotaLimit {
     /// Window unit (e.g. `"5h"`, `"week"`).
     #[serde(
         default,
-        deserialize_with = "de_opt_string_from_string_or_number",
+        deserialize_with = "crate::serde_helpers::optional_string_from_number_or_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub unit: Option<String>,
@@ -345,7 +330,8 @@ pub struct CodingPlanQuotaLimit {
     /// Amount already consumed in the current window, when present.
     #[serde(
         default,
-        alias = "currentValue",
+        rename = "currentValue",
+        alias = "current_value",
         skip_serializing_if = "Option::is_none"
     )]
     pub current_value: Option<u64>,
@@ -355,13 +341,19 @@ pub struct CodingPlanQuotaLimit {
     /// When this window resets (server timestamp / ISO string).
     #[serde(
         default,
-        alias = "nextResetTime",
-        deserialize_with = "de_opt_string_from_string_or_number",
+        rename = "nextResetTime",
+        alias = "next_reset_time",
+        deserialize_with = "crate::serde_helpers::optional_string_from_number_or_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub next_reset_time: Option<String>,
     /// Optional per-model breakdown for this quota window.
-    #[serde(default, alias = "usageDetails", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "usageDetails",
+        alias = "usage_details",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub usage_details: Vec<CodingPlanUsageDetail>,
 }
 
@@ -396,7 +388,7 @@ impl CodingPlanQuotaLimit {
         if self.number == 0 {
             return 0;
         }
-        let consumed = (self.number as f64) * (self.percentage / 100.0);
+        let consumed = (self.number as f64) * self.used_fraction();
         self.number.saturating_sub(consumed.round() as u64)
     }
 
@@ -405,7 +397,7 @@ impl CodingPlanQuotaLimit {
         if self.number == 0 {
             return 0.0;
         }
-        1.0 - (self.percentage / 100.0).clamp(0.0, 1.0)
+        1.0 - self.used_fraction()
     }
 
     /// Consumed amount in this window.
@@ -416,13 +408,16 @@ impl CodingPlanQuotaLimit {
         if let (Some(usage), Some(remaining)) = (self.usage, self.remaining) {
             return usage.saturating_sub(remaining);
         }
-        let consumed = (self.number as f64) * (self.percentage / 100.0);
+        let consumed = (self.number as f64) * self.used_fraction();
         consumed.round() as u64
     }
 
-    /// Alias for [`CodingPlanQuotaLimit::consumed`].
-    pub fn used(&self) -> u64 {
-        self.consumed()
+    fn used_fraction(&self) -> f64 {
+        if self.percentage.is_nan() {
+            0.0
+        } else {
+            (self.percentage / 100.0).clamp(0.0, 1.0)
+        }
     }
 
     /// Parsed reset time in UTC when `next_reset_time` is a Unix timestamp or
@@ -458,7 +453,7 @@ impl CodingPlanQuotaLimit {
             current_value: self.current_value,
             reported_remaining: self.remaining,
             quota: self.quota(),
-            used: self.used(),
+            used: self.consumed(),
             remaining: self.remaining(),
             percentage: self.percentage,
             next_reset_time: self.next_reset_time.clone(),
@@ -485,7 +480,7 @@ impl fmt::Display for CodingPlanQuotaLimit {
 }
 
 /// Standard `{code, msg, success, data}` envelope used by the monitor API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CodingPlanUsageResponse {
     /// Business status code (0 / 200 indicate success).
     #[serde(default)]
@@ -494,7 +489,7 @@ pub struct CodingPlanUsageResponse {
     #[serde(
         default,
         rename = "msg",
-        deserialize_with = "de_opt_string_from_string_or_number",
+        deserialize_with = "crate::serde_helpers::optional_string_from_number_or_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub msg: Option<String>,
@@ -504,6 +499,43 @@ pub struct CodingPlanUsageResponse {
     /// Quota payload.
     #[serde(default)]
     pub data: CodingPlanUsageData,
+}
+
+#[derive(Deserialize)]
+struct CodingPlanUsageResponseWire {
+    code: Option<i64>,
+    #[serde(
+        default,
+        rename = "msg",
+        deserialize_with = "crate::serde_helpers::optional_string_from_number_or_string"
+    )]
+    msg: Option<String>,
+    success: Option<bool>,
+    data: Option<CodingPlanUsageData>,
+}
+
+impl<'de> Deserialize<'de> for CodingPlanUsageResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = CodingPlanUsageResponseWire::deserialize(deserializer)?;
+        if wire.code.is_none()
+            && wire.msg.is_none()
+            && wire.success.is_none()
+            && wire.data.is_none()
+        {
+            return Err(D::Error::custom(
+                "coding-plan usage response contained no documented non-null fields",
+            ));
+        }
+        Ok(Self {
+            code: wire.code.unwrap_or_default(),
+            msg: wire.msg,
+            success: wire.success.unwrap_or_default(),
+            data: wire.data.unwrap_or_default(),
+        })
+    }
 }
 
 impl CodingPlanUsageResponse {
@@ -575,7 +607,7 @@ impl fmt::Display for CodingPlanUsageResponse {
 /// [`CodingPlanUsageRequest::send_via`]. Credentials and transport live on the
 /// [`ZaiClient`], passed to `send_via`.
 ///
-/// ```text
+/// ```rust,no_run
 /// use zai_rs::usage::CodingPlanUsageRequest;
 /// use zai_rs::client::ZaiClient;
 ///
@@ -587,15 +619,13 @@ impl fmt::Display for CodingPlanUsageResponse {
 /// # Ok(())
 /// # }
 /// ```
-pub struct CodingPlanUsageRequest {
-    _body: (),
-}
+pub struct CodingPlanUsageRequest;
 
 impl CodingPlanUsageRequest {
     /// Build a quota query. The base URL, credentials and transport are
     /// supplied by the [`ZaiClient`] passed to [`Self::send_via`].
     pub fn new() -> Self {
-        Self { _body: () }
+        Self
     }
 
     /// Send the quota query via a [`ZaiClient`] and parse the typed envelope.
@@ -754,6 +784,20 @@ mod tests {
         assert!(resp.limits().is_empty());
         assert!(resp.level().is_none());
         assert!(resp.time_limit().is_none());
+    }
+
+    #[test]
+    fn rejects_empty_success_but_preserves_flexible_string_fields() {
+        assert!(serde_json::from_str::<CodingPlanUsageResponse>("{}").is_err());
+        assert!(
+            serde_json::from_str::<CodingPlanUsageResponse>(
+                r#"{"code":null,"msg":null,"success":null,"data":null}"#
+            )
+            .is_err()
+        );
+
+        let response: CodingPlanUsageResponse = serde_json::from_str(r#"{"msg":42}"#).unwrap();
+        assert_eq!(response.msg.as_deref(), Some("42"));
     }
 
     #[test]

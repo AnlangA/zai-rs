@@ -1,18 +1,21 @@
 //! Tool registry and executor with caching, retries, and bounded concurrency.
 
 use std::{
+    panic::AssertUnwindSafe,
     sync::Arc,
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
 
-use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
-use tokio::{sync::Semaphore, task::JoinSet, time::timeout};
+use dashmap::{DashMap, mapref::entry::Entry};
+use futures_util::{FutureExt, StreamExt};
+use serde::Serialize;
+use tokio::time::timeout;
 use tracing::warn;
 
 use super::{
     cache::{CacheKey, ToolCallCache},
-    core::ToolHandler,
+    core::{ToolHandler, validate_tool_name},
 };
 use crate::{
     model::{
@@ -31,21 +34,43 @@ use crate::{
 /// / [`execute_tool_calls_ordered`](ToolExecutor::execute_tool_calls_ordered).
 ///
 /// Prevents a model that emits many tool calls in one turn from fanning them
-/// all out at once and overwhelming downstream (e.g. MCP) services. Network
-/// Calls queue on the semaphore after their Tokio tasks have been spawned; this
-/// bounds active tool executions, not the number of queued tasks.
+/// all out at once and overwhelming downstream services.
 const MAX_CONCURRENT_TOOL_CALLS: usize = 8;
 
-fn task_panic_tool_message() -> TextMessage {
-    TextMessage::tool(
-        serde_json::json!({
-            "error": {
-                "type": "task_panic",
-                "message": "a tool execution task panicked or was cancelled"
-            }
-        })
-        .to_string(),
+fn tool_message(payload: serde_json::Value, id: Option<&str>) -> TextMessage {
+    let content = payload.to_string();
+    match id {
+        Some(id) => TextMessage::tool_with_id(content, id),
+        None => TextMessage::tool(content),
+    }
+}
+
+fn tool_error_message(error_type: &str, message: &str, id: Option<&str>) -> TextMessage {
+    tool_message(
+        serde_json::json!({"error": {"type": error_type, "message": message}}),
+        id,
     )
+}
+
+fn task_panic_tool_message(id: Option<&str>) -> TextMessage {
+    tool_error_message("task_panic", "a tool execution future panicked", id)
+}
+
+fn sort_exported_tools(tools: &mut [Tools]) {
+    fn function_name(tool: &Tools) -> Option<&str> {
+        match tool {
+            Tools::Function { function } => Some(&function.name),
+            _ => None,
+        }
+    }
+    tools.sort_unstable_by(|left, right| function_name(left).cmp(&function_name(right)));
+}
+
+fn export_enabled_tool(tool: &dyn DynTool) -> Option<Tools> {
+    let metadata = tool.metadata();
+    metadata.is_enabled().then(|| Tools::Function {
+        function: Function::new(metadata.name(), metadata.description(), tool.input_schema()),
+    })
 }
 
 /// Retry configuration with exponential backoff.
@@ -64,7 +89,9 @@ pub struct RetryConfig {
 impl Default for RetryConfig {
     fn default() -> Self {
         Self {
-            max_retries: 3,
+            // Arbitrary tools may have side effects; retries require an
+            // explicit idempotency decision by the caller.
+            max_retries: 0,
             initial_delay: Duration::from_millis(100),
             max_delay: Duration::from_secs(30),
             backoff_multiplier: 2.0,
@@ -79,13 +106,17 @@ impl RetryConfig {
             return Duration::ZERO;
         }
 
-        // Compute in milliseconds as `f64` (honors the configurable `f64`
-        // `backoff_multiplier`), cap at `max_delay`, then convert. The final
-        // `as u64` saturates on overflow or NaN, and `max(0.0)` guards against
-        // a negative product from a misconfigured multiplier.
+        // Public fields allow callers to construct a malformed configuration.
+        // Falling back to a neutral multiplier keeps delay calculation total
+        // without turning a bad value into an unexpectedly long sleep.
         let initial_ms = self.initial_delay.as_millis() as f64;
         let max_ms = self.max_delay.as_millis() as f64;
-        let raw = initial_ms * self.backoff_multiplier.powi((attempt - 1) as i32);
+        let multiplier = if self.backoff_multiplier.is_finite() && self.backoff_multiplier >= 1.0 {
+            self.backoff_multiplier
+        } else {
+            1.0
+        };
+        let raw = initial_ms * multiplier.powf(f64::from(attempt - 1));
         let capped = if raw.is_finite() { raw } else { max_ms };
         let delay_ms = capped.clamp(0.0, max_ms) as u64;
 
@@ -106,19 +137,6 @@ pub struct ExecutionConfig {
     pub timeout: Option<Duration>,
     /// Retry/backoff configuration.
     pub retry_config: RetryConfig,
-    /// Whether to validate input parameters against the tool schema.
-    ///
-    /// **Reserved:** schema validation currently fires whenever the
-    /// `toolkits` Cargo feature is enabled (it lives inside
-    /// `FunctionTool::execute_json`). This flag is reserved for a future
-    /// per-call opt-out and does not yet suppress validation on its own.
-    pub validate_parameters: bool,
-    /// Whether to emit execution log events.
-    ///
-    /// **Reserved:** execution is instrumented with `tracing` spans whose output
-    /// is governed by the subscriber's filter (e.g. `RUST_LOG`), independent of
-    /// this flag. Kept for API stability; setting it has no effect today.
-    pub enable_logging: bool,
 }
 
 impl Default for ExecutionConfig {
@@ -126,14 +144,12 @@ impl Default for ExecutionConfig {
         Self {
             timeout: Some(Duration::from_secs(30)),
             retry_config: RetryConfig::default(),
-            validate_parameters: true,
-            enable_logging: false,
         }
     }
 }
 
 /// Detailed outcome of a tool execution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ExecutionResult {
     /// Name of the tool that was executed.
     pub tool_name: String,
@@ -149,13 +165,12 @@ pub struct ExecutionResult {
     pub retries: u32,
     /// When the execution completed.
     pub timestamp: std::time::SystemTime,
-    /// Free-form metadata (e.g. `cache_hit`).
-    pub metadata: std::collections::HashMap<String, serde_json::Value>,
+    /// Whether the value came from the executor cache.
+    pub cache_hit: bool,
 }
 
 impl ExecutionResult {
-    /// Construct a successful execution result.
-    pub fn success(
+    fn success(
         tool_name: String,
         result: serde_json::Value,
         duration: Duration,
@@ -169,12 +184,11 @@ impl ExecutionResult {
             error: None,
             retries,
             timestamp: std::time::SystemTime::now(),
-            metadata: std::collections::HashMap::new(),
+            cache_hit: false,
         }
     }
 
-    /// Construct a failed execution result.
-    pub fn failure(tool_name: String, error: String, duration: Duration, retries: u32) -> Self {
+    fn failure(tool_name: String, error: String, duration: Duration, retries: u32) -> Self {
         Self {
             tool_name,
             result: serde_json::Value::Null,
@@ -183,13 +197,12 @@ impl ExecutionResult {
             error: Some(error),
             retries,
             timestamp: std::time::SystemTime::now(),
-            metadata: std::collections::HashMap::new(),
+            cache_hit: false,
         }
     }
 
-    /// Attach a free-form metadata entry to this result.
-    pub fn with_metadata(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
-        self.metadata.insert(key.into(), value);
+    fn with_cache_hit(mut self) -> Self {
+        self.cache_hit = true;
         self
     }
 }
@@ -197,15 +210,21 @@ impl ExecutionResult {
 /// Tool registry and executor with optional result caching.
 #[derive(Clone)]
 pub struct ToolExecutor {
-    tools: Arc<DashMap<String, Arc<dyn DynTool>>>,
+    tools: Arc<DashMap<String, RegisteredTool>>,
+    next_generation: Arc<AtomicU64>,
     config: ExecutionConfig,
     cache: ToolCallCache,
+}
+
+struct RegisteredTool {
+    tool: Arc<dyn DynTool>,
+    generation: u64,
 }
 
 impl std::fmt::Debug for ToolExecutor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let tool_count = self.tools.len();
-        let cache_enabled = self.cache.stats().total_entries > 0;
+        let cache_enabled = self.cache.enabled();
         f.debug_struct("ToolExecutor")
             .field("tool_count", &tool_count)
             .field("config", &self.config)
@@ -225,32 +244,17 @@ impl ToolExecutor {
     pub fn new() -> Self {
         Self {
             tools: Arc::new(DashMap::new()),
+            next_generation: Arc::new(AtomicU64::new(0)),
             config: ExecutionConfig::default(),
-            cache: ToolCallCache::new(),
+            // Tool purity is unknown at registration time, so caching is an
+            // explicit opt-in.
+            cache: ToolCallCache::new().with_enabled(false),
         }
     }
 
     /// Create an executor builder for fluent API
     pub fn builder() -> ExecutorBuilder {
         ExecutorBuilder::new()
-    }
-
-    /// Enable or disable tool call result caching
-    pub fn with_cache_enabled(mut self, enabled: bool) -> Self {
-        self.cache = self.cache.with_enabled(enabled);
-        self
-    }
-
-    /// Set cache TTL (time-to-live)
-    pub fn with_cache_ttl(mut self, ttl: Duration) -> Self {
-        self.cache = self.cache.with_ttl(ttl);
-        self
-    }
-
-    /// Set maximum cache size
-    pub fn with_cache_max_size(mut self, size: usize) -> Self {
-        self.cache = self.cache.with_max_size(size);
-        self
     }
 
     /// Clear the cache
@@ -264,40 +268,43 @@ impl ToolExecutor {
     }
 
     /// Get cache statistics
-    pub fn cache_stats(&self) -> super::cache::CacheStats {
+    pub fn cache_stats(&self) -> super::CacheStats {
         self.cache.stats()
     }
 
     /// Chain-friendly: add a dynamic tool, returns error if already registered
     pub fn add_dyn_tool(&self, tool: Box<dyn DynTool>) -> ToolResult<&Self> {
         let name = tool.name().to_string();
-        if self.tools.contains_key(&name) {
-            return Err(ToolError::RegistrationError {
+        validate_tool_name(&name)?;
+        match self.tools.entry(name.clone()) {
+            Entry::Occupied(_) => Err(ToolError::RegistrationError {
                 message: format!("Tool '{name}' is already registered").into(),
-            });
+            }),
+            Entry::Vacant(entry) => {
+                let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+                entry.insert(RegisteredTool {
+                    tool: Arc::from(tool),
+                    generation,
+                });
+                // Remove entries from a prior registration with this name.
+                self.cache.invalidate_tool(&name);
+                Ok(self)
+            },
         }
-        self.tools.insert(name, Arc::from(tool));
-        Ok(self)
-    }
-
-    /// Chain-friendly: try to add a dynamic tool (ignores error)
-    pub fn try_add_dyn_tool(&self, tool: Box<dyn DynTool>) -> &Self {
-        let name = tool.name().to_string();
-        self.tools.entry(name).or_insert_with(|| Arc::from(tool));
-        self
     }
 
     /// Unregister a tool
     pub fn unregister(&self, name: &str) -> ToolResult<()> {
         if self.tools.remove(name).is_none() {
-            return Err(error_context().tool_not_found());
+            return Err(error_context().with_tool(name).tool_not_found());
         }
+        self.cache.invalidate_tool(name);
         Ok(())
     }
 
     /// Get input schema for a tool
     pub fn input_schema(&self, name: &str) -> Option<serde_json::Value> {
-        self.tools.get(name).map(|t| t.input_schema())
+        self.tools.get(name).map(|entry| entry.tool.input_schema())
     }
 
     /// Check if tool exists
@@ -305,21 +312,42 @@ impl ToolExecutor {
         self.tools.contains_key(name)
     }
 
-    /// List tool names in unspecified order.
+    /// List tool names in deterministic lexicographic order.
     pub fn tool_names(&self) -> Vec<String> {
-        self.tools.iter().map(|entry| entry.key().clone()).collect()
+        let mut names: Vec<_> = self.tools.iter().map(|entry| entry.key().clone()).collect();
+        names.sort_unstable();
+        names
     }
 
-    fn get_tool(&self, name: &str) -> Option<Arc<dyn DynTool>> {
-        self.tools.get(name).map(|t| Arc::clone(t.value()))
+    fn get_tool(&self, name: &str) -> Option<(Arc<dyn DynTool>, u64)> {
+        self.tools
+            .get(name)
+            .map(|entry| (Arc::clone(&entry.tool), entry.generation))
+    }
+
+    fn cache_if_still_registered(
+        &self,
+        tool_name: &str,
+        generation: u64,
+        key: CacheKey,
+        result: serde_json::Value,
+    ) {
+        // Keep the map guard until after insertion. An unregister operation
+        // either happens first (and this write is skipped) or happens after
+        // the write and invalidates it, so an old in-flight call cannot leave
+        // an unreachable stale entry behind.
+        if let Some(registered) = self.tools.get(tool_name)
+            && registered.generation == generation
+        {
+            self.cache.insert(key, result, None);
+        }
     }
 
     /// Execute a tool with caching, timeout, and exponential backoff.
     ///
-    /// Tool-level failures are returned as `Ok(ExecutionResult)` with
-    /// [`ExecutionResult::success`] set to `false`. Use
-    /// [`ToolExecutor::execute_simple`] when failures should be returned as
-    /// [`ToolError`] values instead.
+    /// Tool-level failures are returned as `Ok(ExecutionResult)` with its
+    /// `success` field set to `false`. Use [`ToolExecutor::execute_simple`]
+    /// when failures should be returned as [`ToolError`] values instead.
     #[tracing::instrument(skip(self, input))]
     pub async fn execute(
         &self,
@@ -330,11 +358,35 @@ impl ToolExecutor {
         let mut retries = 0;
         let retry_config = &self.config.retry_config;
 
-        // Build the cache key lazily: `CacheKey::new` deep-clones and
-        // re-serializes the arguments, so skip it entirely when the cache is
-        // disabled (and only pay for it once when enabled).
+        let Some((tool, generation)) = self.get_tool(tool_name) else {
+            let error = error_context().with_tool(tool_name).tool_not_found();
+            return Ok(ExecutionResult::failure(
+                tool_name.to_string(),
+                error.to_string(),
+                start_time.elapsed(),
+                0,
+            ));
+        };
+        if !tool.metadata().is_enabled() {
+            let error = error_context()
+                .with_tool(tool_name)
+                .execution_failed(format!("tool '{tool_name}' is disabled"));
+            return Ok(ExecutionResult::failure(
+                tool_name.to_string(),
+                error.to_string(),
+                start_time.elapsed(),
+                0,
+            ));
+        }
+
+        // Registration generation prevents an in-flight call from repopulating
+        // a cache entry that a later tool with the same name could consume.
         let cache_key = if self.cache.enabled() {
-            Some(CacheKey::new(tool_name.to_string(), input.clone()))
+            Some(CacheKey::for_generation(
+                tool_name.to_string(),
+                input.clone(),
+                generation,
+            ))
         } else {
             None
         };
@@ -348,16 +400,15 @@ impl ToolExecutor {
                 duration,
                 retries,
             )
-            .with_metadata("cache_hit", serde_json::Value::Bool(true)));
+            .with_cache_hit());
         }
 
         loop {
-            match self.execute_once(tool_name, &input).await {
+            match self.execute_once(&tool, tool_name, &input).await {
                 Ok(result) => {
                     let duration = start_time.elapsed();
-                    // Cache the successful result (only if the cache is on).
                     if let Some(key) = cache_key {
-                        self.cache.insert(key, result.clone(), None);
+                        self.cache_if_still_registered(tool_name, generation, key, result.clone());
                     }
 
                     return Ok(ExecutionResult::success(
@@ -365,8 +416,7 @@ impl ToolExecutor {
                         result,
                         duration,
                         retries,
-                    )
-                    .with_metadata("cache_hit", serde_json::Value::Bool(false)));
+                    ));
                 },
                 Err(error) => {
                     // Only retry on retryable errors (timeout, transient failures)
@@ -392,7 +442,7 @@ impl ToolExecutor {
 
                     retries += 1;
 
-                    warn!(attempt = retries, error = %error, "Tool execution failed, retrying");
+                    warn!(attempt = retries, "Tool execution failed, retrying");
 
                     // Use exponential backoff
                     let delay = retry_config.calculate_delay(retries);
@@ -402,7 +452,8 @@ impl ToolExecutor {
         }
     }
 
-    /// Execute a tool and return only the result
+    /// Execute a tool and return its JSON value, converting an unsuccessful
+    /// execution into a [`ToolError`].
     pub async fn execute_simple(
         &self,
         tool_name: &str,
@@ -418,16 +469,12 @@ impl ToolExecutor {
         }
     }
 
-    /// Bulk load function specs from a directory of .json files and register
-    /// them with handlers.
+    /// Register function specifications loaded from `.json` files in `dir`.
     ///
-    /// - Each file should contain either of the following shapes:
-    ///   1) {"name":..., "description":..., "parameters": {...}}
-    ///   2) {"type":"function", "function": {"name":..., "description":...,
-    ///      "parameters": {...}}}
-    /// - `handlers` maps function `name` -> handler closure
-    /// - `strict`: when true, missing handler for any spec will return error;
-    ///   when false, specs without handlers are skipped
+    /// Each file may contain a direct function object or an OpenAI-style
+    /// `{ "type": "function", "function": ... }` wrapper. `handlers` maps
+    /// function names to implementations. When `strict` is `false`, files
+    /// without a matching handler are skipped; otherwise they cause an error.
     ///
     /// Returns the list of function names successfully registered.
     pub fn add_functions_from_dir_with_registry(
@@ -448,20 +495,20 @@ impl ToolExecutor {
                 e
             ))
         })?;
-        for entry in read_dir {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(e) => {
-                    return Err(error_context().invalid_parameters(format!("Dir entry error: {e}")));
-                },
-            };
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if path.extension().and_then(|s| s.to_str()) != Some("json") {
-                continue;
-            }
+        let mut paths = read_dir
+            .map(|entry| {
+                entry.map(|entry| entry.path()).map_err(|error| {
+                    error_context().invalid_parameters(format!("Dir entry error: {error}"))
+                })
+            })
+            .collect::<ToolResult<Vec<_>>>()?;
+        paths.retain(|path| {
+            path.is_file()
+                && path.extension().and_then(|extension| extension.to_str()) == Some("json")
+        });
+        paths.sort_unstable();
+
+        for path in paths {
             let content = fs::read_to_string(&path).map_err(|e| {
                 error_context().invalid_parameters(format!(
                     "Failed to read {}: {}",
@@ -477,7 +524,6 @@ impl ToolExecutor {
                 ))
             })?;
 
-            // Extract name/description/parameters from spec
             let (name, description, parameters) =
                 crate::toolkits::core::parse_function_spec_details(&spec).map_err(|e| {
                     error_context().invalid_parameters(format!(
@@ -488,7 +534,7 @@ impl ToolExecutor {
                 })?;
 
             let handler = match handlers.get(&name) {
-                Some(h) => h.clone(),
+                Some(handler) => Arc::clone(handler),
                 None => {
                     if strict {
                         return Err(error_context().invalid_parameters(format!(
@@ -496,15 +542,11 @@ impl ToolExecutor {
                             name,
                             path.display()
                         )));
-                    } else {
-                        // skip silently
-                        continue;
                     }
+                    continue;
                 },
             };
 
-            // Build FunctionTool via existing builder path (will auto-complete schema
-            // defaults)
             let mut builder =
                 crate::toolkits::core::FunctionTool::builder(name.clone(), description);
             if let Some(p) = parameters {
@@ -512,8 +554,8 @@ impl ToolExecutor {
             }
             let tool = builder
                 .handler(move |args| {
-                    let h = handler.clone();
-                    h(args)
+                    let handler = Arc::clone(&handler);
+                    handler(args)
                 })
                 .build()?;
 
@@ -523,242 +565,149 @@ impl ToolExecutor {
         Ok(added)
     }
 
-    /// Execute LLM tool_calls in parallel and return `TextMessage::tool`
-    /// messages.
-    ///
-    /// Behavior:
-    /// - Parses each ToolCallMessage's function.arguments (stringified JSON
-    ///   supported)
-    /// - Runs up to eight tools concurrently using this executor
-    /// - Captures errors per-call and encodes them as JSON: { "error": {
-    ///   "type": "...", "message": "..." } }
-    /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when
-    ///   present
-    ///
-    /// Returns:
-    /// - `Vec<TextMessage>` ready to be appended to ChatCompletion as tool
-    ///   messages.
     async fn execute_single_tool_call(&self, tc: &ToolCallMessage) -> TextMessage {
-        let id_opt = tc.id().map(std::string::ToString::to_string);
-        let func_opt = tc.function();
+        let id = tc.id();
+        let Some(function) = tc.function() else {
+            return tool_error_message("missing_function", "tool_call.function is missing", id);
+        };
+        let name = function.name();
+        if name.trim().is_empty() {
+            return tool_error_message(
+                "missing_function_name",
+                "tool_call.function.name is blank",
+                id,
+            );
+        }
+        let arguments = match serde_json::from_str(function.arguments()) {
+            Ok(serde_json::Value::Object(arguments)) => serde_json::Value::Object(arguments),
+            Ok(_) => {
+                return tool_error_message(
+                    "invalid_arguments",
+                    "tool arguments must decode to a JSON object",
+                    id,
+                );
+            },
+            Err(error) => {
+                return tool_error_message(
+                    "invalid_arguments",
+                    &format!("tool arguments are not valid JSON: {error}"),
+                    id,
+                );
+            },
+        };
 
-        if let Some(func) = func_opt {
-            let name = func.name().unwrap_or("").to_string();
-            let args_str = func.arguments().unwrap_or("{}");
-            let args_json: serde_json::Value = serde_json::from_str(args_str)
-                .unwrap_or_else(|_| serde_json::json!({ "_raw": args_str }));
-
-            let content_json = match self.execute_simple(&name, args_json).await {
-                Ok(v) => v,
-                Err(err) => serde_json::json!({
-                    "error": { "type": "execution_failed", "message": err.to_string() }
-                }),
-            };
-
-            let s = serde_json::to_string(&content_json).unwrap_or_else(|_| "{}".to_string());
-
-            if let Some(id) = id_opt {
-                TextMessage::tool_with_id(s, id)
-            } else {
-                TextMessage::tool(s)
-            }
-        } else {
-            let s = serde_json::json!({
-                "error": { "type": "missing_function", "message": "tool_call.function is missing" }
-            })
-            .to_string();
-
-            if let Some(id) = id_opt {
-                TextMessage::tool_with_id(s, id)
-            } else {
-                TextMessage::tool(s)
-            }
+        match self.execute_simple(name, arguments).await {
+            Ok(result) => tool_message(result, id),
+            Err(error) => tool_error_message("execution_failed", &error.to_string(), id),
         }
     }
 
-    /// Execute LLM tool calls concurrently, returning one `TextMessage::tool`
-    /// per call (order is NOT preserved — see
-    /// [`Self::execute_tool_calls_ordered`]).
+    async fn execute_tool_calls_bounded(
+        &self,
+        calls: &[ToolCallMessage],
+    ) -> Vec<(usize, TextMessage)> {
+        futures_util::stream::iter(calls.iter().enumerate())
+            .map(|(index, call)| async move {
+                let message = match AssertUnwindSafe(self.execute_single_tool_call(call))
+                    .catch_unwind()
+                    .await
+                {
+                    Ok(message) => message,
+                    Err(_) => {
+                        warn!(index, "tool execution future panicked");
+                        task_panic_tool_message(call.id())
+                    },
+                };
+                (index, message)
+            })
+            .buffer_unordered(MAX_CONCURRENT_TOOL_CALLS)
+            .collect()
+            .await
+    }
+
+    /// Execute tool calls concurrently, returning one tool message per call.
+    ///
+    /// Results are returned in completion order; use
+    /// [`Self::execute_tool_calls_ordered`] to restore input order.
     pub async fn execute_tool_calls_parallel(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
-        let mut set = JoinSet::new();
-        let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_TOOL_CALLS));
-
-        // Clone each call so it can be moved into the `'static` spawned task.
-        for tc in calls {
-            let tc = tc.clone();
-            let this = self.clone();
-            let permits = Arc::clone(&permits);
-            set.spawn(async move {
-                // Bounded concurrency: a model emitting many tool calls no
-                // longer fires them all simultaneously. `.ok()` holds the
-                // `Option<Permit>` (gating the call) without panicking; `None`
-                // only if the semaphore were closed, which never happens here.
-                let _permit = permits.acquire().await.ok();
-                this.execute_single_tool_call(&tc).await
-            });
-        }
-
-        let mut messages = Vec::with_capacity(calls.len());
-        while let Some(res) = set.join_next().await {
-            match res {
-                Ok(msg) => messages.push(msg),
-                Err(join_err) => {
-                    // A spawned task panicked or was cancelled. Surface it as a
-                    // tool message so the caller (and the LLM) observes the
-                    // failure rather than receiving a silently-shorter result
-                    // vector whose length no longer matches the input.
-                    warn!(
-                        error = %join_err,
-                        "tool execution task panicked or was cancelled"
-                    );
-                    messages.push(task_panic_tool_message());
-                },
-            }
-        }
-        messages
-    }
-
-    /// Execute LLM tool_calls in parallel with result ordering preserved
-    ///
-    /// This method guarantees that results are returned in the same order as
-    /// the input calls, which is important for maintaining conversation
-    /// context in LLM interactions.
-    ///
-    /// Behavior:
-    /// - Parses each ToolCallMessage's function.arguments (stringified JSON
-    ///   supported)
-    /// - Runs up to eight tools concurrently using this executor
-    /// - Preserves the original order of tool calls in results
-    /// - Captures errors per-call and encodes them as JSON
-    /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when
-    ///   present
-    /// - Isolates panics/cancellation per call: a panicking handler surfaces as
-    ///   an in-band `task_panic` tool message in its slot (matching
-    ///   [`Self::execute_tool_calls_parallel`]) instead of unwinding out of this
-    ///   call and discarding every result.
-    ///
-    /// Returns:
-    /// - `Vec<TextMessage>` in the same order as input calls, ready for
-    ///   ChatCompletion
-    pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
-        let mut set = JoinSet::new();
-        let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_TOOL_CALLS));
-
-        // Carry each call's original index so results can be restored to input
-        // order while spawned tasks isolate handler panics from sibling calls.
-        for (idx, tc) in calls.iter().enumerate() {
-            let tc = tc.clone();
-            let this = self.clone();
-            let permits = Arc::clone(&permits);
-            set.spawn(async move {
-                let _permit = permits.acquire().await.ok();
-                (idx, this.execute_single_tool_call(&tc).await)
-            });
-        }
-
-        let mut results: Vec<Option<TextMessage>> = (0..calls.len()).map(|_| None).collect();
-        while let Some(res) = set.join_next().await {
-            match res {
-                // Completed (or in-band-errored) call: place at its original
-                // index so order is preserved.
-                Ok((idx, msg)) => results[idx] = Some(msg),
-                // The spawned task panicked or was cancelled before returning
-                // its index, so the exact slot is unknown. Any slot still `None`
-                // after the loop corresponds to such a task; fill it below with
-                // the same `task_panic` message used by the parallel path.
-                Err(join_err) => {
-                    warn!(
-                        error = %join_err,
-                        "tool execution task panicked or was cancelled"
-                    );
-                },
-            }
-        }
-
-        // Every slot whose task did not return a result gets the in-band panic
-        // message, preserving the invariant that the returned length ==
-        // calls.len() (matching `execute_tool_calls_parallel`).
-        for slot in results.iter_mut() {
-            if slot.is_none() {
-                *slot = Some(task_panic_tool_message());
-            }
-        }
-
-        results
+        self.execute_tool_calls_bounded(calls)
+            .await
             .into_iter()
-            .map(|r| r.unwrap_or_else(task_panic_tool_message))
+            .map(|(_, message)| message)
             .collect()
     }
 
-    /// Export a single registered tool as Tools::Function (for LLM function
-    /// calling)
+    /// Execute tool calls concurrently and restore input order in the result.
+    ///
+    /// At most eight handlers run concurrently. Invalid arguments, execution
+    /// errors, and handler panics are isolated to their call and encoded as a
+    /// tool-error message, so one failure does not discard other results.
+    pub async fn execute_tool_calls_ordered(&self, calls: &[ToolCallMessage]) -> Vec<TextMessage> {
+        let mut results = self.execute_tool_calls_bounded(calls).await;
+        results.sort_unstable_by_key(|(index, _)| *index);
+        results.into_iter().map(|(_, message)| message).collect()
+    }
+
+    /// Export one registered tool as an LLM function definition.
     pub fn export_tool_as_function(&self, name: &str) -> Option<Tools> {
-        let tool = self.tools.get(name)?;
-        let meta = tool.metadata();
-        let schema = tool.input_schema();
-        let func = Function::new(meta.name.clone(), meta.description.clone(), schema);
-        Some(Tools::Function { function: func })
+        let registered = self.tools.get(name)?;
+        export_enabled_tool(registered.tool.as_ref())
     }
 
-    /// Export all registered tools as function definitions in unspecified order.
+    /// Export all registered tools as function definitions sorted by name.
     pub fn export_all_tools_as_functions(&self) -> Vec<Tools> {
-        self.tools
+        let mut tools: Vec<_> = self
+            .tools
             .iter()
-            .map(|entry| {
-                let tool = entry.value();
-                let meta = tool.metadata();
-                let schema = tool.input_schema();
-                let func = Function::new(meta.name.clone(), meta.description.clone(), schema);
-                Tools::Function { function: func }
-            })
-            .collect()
+            .filter_map(|entry| export_enabled_tool(entry.value().tool.as_ref()))
+            .collect();
+        sort_exported_tools(&mut tools);
+        tools
     }
-    /// Export all registered tools with a metadata filter as Tools::Function
+    /// Export enabled tools selected by a metadata predicate.
     pub fn export_tools_filtered<F>(&self, mut filter: F) -> Vec<Tools>
     where
         F: FnMut(&crate::toolkits::core::ToolMetadata) -> bool,
     {
-        self.tools
+        let mut tools: Vec<_> = self
+            .tools
             .iter()
-            .filter(|entry| filter(entry.value().metadata()))
-            .map(|entry| {
-                let tool = entry.value();
-                let meta = tool.metadata();
-                let schema = tool.input_schema();
-                let func = Function::new(meta.name.clone(), meta.description.clone(), schema);
-                Tools::Function { function: func }
-            })
-            .collect()
+            .filter(|entry| filter(entry.value().tool.metadata()))
+            .filter_map(|entry| export_enabled_tool(entry.value().tool.as_ref()))
+            .collect();
+        sort_exported_tools(&mut tools);
+        tools
     }
 
-    #[tracing::instrument(skip(self, input))]
+    #[tracing::instrument(skip(self, tool, input))]
     async fn execute_once(
         &self,
+        tool: &Arc<dyn DynTool>,
         tool_name: &str,
         input: &serde_json::Value,
     ) -> ToolResult<serde_json::Value> {
-        let tool = self
-            .get_tool(tool_name)
-            .ok_or_else(|| error_context().with_tool(tool_name).tool_not_found())?;
+        let execution_future = AssertUnwindSafe(tool.execute_json(input.clone())).catch_unwind();
 
-        // Honor `ToolMetadata::enabled`: a tool registered as disabled must not
-        // execute. (Default `enabled = true` preserves existing behavior.)
-        if !tool.metadata().enabled {
-            return Err(error_context()
-                .with_tool(tool_name)
-                .execution_failed(format!("tool '{tool_name}' is disabled")));
-        }
-
-        let execution_future = tool.execute_json(input.clone());
-
-        match self.config.timeout {
+        let outcome = match self.config.timeout {
             Some(timeout_duration) => match timeout(timeout_duration, execution_future).await {
                 Ok(result) => result,
-                Err(_) => Err(error_context()
-                    .with_tool(tool_name)
-                    .timeout_error(timeout_duration)),
+                Err(_) => {
+                    return Err(error_context()
+                        .with_tool(tool_name)
+                        .timeout_error(timeout_duration));
+                },
             },
             None => execution_future.await,
+        };
+
+        match outcome {
+            Ok(result) => result,
+            Err(_) => {
+                warn!("tool execution handler panicked");
+                Err(ToolError::ExecutionPanicked {
+                    tool: tool_name.to_string().into(),
+                })
+            },
         }
     }
 
@@ -771,14 +720,9 @@ impl ToolExecutor {
 /// Builder for creating tool executors with fluent API
 pub struct ExecutorBuilder {
     config: ExecutionConfig,
-    cache_config: Option<CacheConfig>,
-}
-
-#[derive(Clone)]
-struct CacheConfig {
-    enabled: bool,
-    ttl: Duration,
-    max_size: usize,
+    cache_enabled: bool,
+    cache_ttl: Duration,
+    cache_max_size: usize,
 }
 
 impl Default for ExecutorBuilder {
@@ -792,7 +736,9 @@ impl ExecutorBuilder {
     pub fn new() -> Self {
         Self {
             config: ExecutionConfig::default(),
-            cache_config: None,
+            cache_enabled: false,
+            cache_ttl: Duration::from_secs(300),
+            cache_max_size: 1000,
         }
     }
 
@@ -808,73 +754,34 @@ impl ExecutorBuilder {
         self
     }
 
-    /// Set the reserved logging flag.
-    ///
-    /// This currently has no effect; tracing output is controlled by the
-    /// installed subscriber and its filter.
-    pub fn logging(mut self, enabled: bool) -> Self {
-        self.config.enable_logging = enabled;
-        self
-    }
-
     /// Enable tool call result caching
     pub fn enable_cache(mut self) -> Self {
-        self.cache_config
-            .get_or_insert(CacheConfig {
-                enabled: true,
-                ttl: Duration::from_secs(300),
-                max_size: 1000,
-            })
-            .enabled = true;
+        self.cache_enabled = true;
         self
     }
 
-    /// Disable tool call result caching
-    pub fn disable_cache(mut self) -> Self {
-        self.cache_config
-            .get_or_insert(CacheConfig {
-                enabled: false,
-                ttl: Duration::from_secs(300),
-                max_size: 1000,
-            })
-            .enabled = false;
-        self
-    }
-
-    /// Set cache TTL
+    /// Configure cache TTL without implicitly enabling caching.
     pub fn cache_ttl(mut self, ttl: Duration) -> Self {
-        let cfg = self.cache_config.get_or_insert(CacheConfig {
-            enabled: true,
-            ttl: Duration::from_secs(300),
-            max_size: 1000,
-        });
-        cfg.ttl = ttl;
+        self.cache_ttl = ttl;
         self
     }
 
-    /// Set maximum cache size
+    /// Configure cache capacity without implicitly enabling caching.
     pub fn cache_max_size(mut self, size: usize) -> Self {
-        let cfg = self.cache_config.get_or_insert(CacheConfig {
-            enabled: true,
-            ttl: Duration::from_secs(300),
-            max_size: 1000,
-        });
-        cfg.max_size = size;
+        self.cache_max_size = size;
         self
     }
 
     /// Build the final executor
     pub fn build(self) -> ToolExecutor {
-        let cache = match self.cache_config {
-            Some(cfg) => ToolCallCache::new()
-                .with_enabled(cfg.enabled)
-                .with_ttl(cfg.ttl)
-                .with_max_size(cfg.max_size),
-            None => ToolCallCache::new(),
-        };
+        let cache = ToolCallCache::new()
+            .with_enabled(self.cache_enabled)
+            .with_ttl(self.cache_ttl)
+            .with_max_size(self.cache_max_size);
 
         ToolExecutor {
             tools: Arc::new(DashMap::new()),
+            next_generation: Arc::new(AtomicU64::new(0)),
             config: self.config,
             cache,
         }
@@ -889,7 +796,7 @@ mod tests {
     #[test]
     fn test_retry_config_default() {
         let config = RetryConfig::default();
-        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.max_retries, 0);
         assert_eq!(config.initial_delay, Duration::from_millis(100));
         assert_eq!(config.max_delay, Duration::from_secs(30));
         assert_eq!(config.backoff_multiplier, 2.0);
@@ -928,9 +835,7 @@ mod tests {
     fn test_execution_config_default() {
         let config = ExecutionConfig::default();
         assert_eq!(config.timeout, Some(Duration::from_secs(30)));
-        assert!(config.validate_parameters);
-        assert!(!config.enable_logging);
-        assert_eq!(config.retry_config.max_retries, 3);
+        assert_eq!(config.retry_config.max_retries, 0);
     }
 
     #[test]
@@ -948,7 +853,7 @@ mod tests {
         assert!(result.success);
         assert!(result.error.is_none());
         assert_eq!(result.retries, 2);
-        assert!(result.metadata.is_empty());
+        assert!(!result.cache_hit);
     }
 
     #[test]
@@ -966,30 +871,7 @@ mod tests {
         assert!(!result.success);
         assert_eq!(result.error, Some("Something went wrong".to_string()));
         assert_eq!(result.retries, 1);
-        assert!(result.metadata.is_empty());
-    }
-
-    #[test]
-    fn test_execution_result_with_metadata() {
-        let mut result = ExecutionResult::success(
-            "test_tool".to_string(),
-            serde_json::json!({"value": 42}),
-            Duration::from_millis(100),
-            0,
-        );
-
-        result = result.with_metadata("key1", serde_json::json!("value1"));
-        result = result.with_metadata("key2", serde_json::json!({"nested": true}));
-
-        assert_eq!(result.metadata.len(), 2);
-        assert_eq!(
-            result.metadata.get("key1"),
-            Some(&serde_json::json!("value1"))
-        );
-        assert_eq!(
-            result.metadata.get("key2"),
-            Some(&serde_json::json!({"nested": true}))
-        );
+        assert!(!result.cache_hit);
     }
 
     #[test]
@@ -1054,28 +936,6 @@ mod tests {
         // Adding duplicate tool should return error
         let result = executor.add_dyn_tool(Box::new(tool2));
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_tool_executor_try_add_dyn_tool() {
-        let executor = ToolExecutor::new();
-
-        let tool1 = FunctionTool::builder("test_tool", "First tool")
-            .handler(|_args| async move { Ok(serde_json::json!({})) })
-            .build()
-            .unwrap();
-
-        let tool2 = FunctionTool::builder("test_tool", "Second tool")
-            .handler(|_args| async move { Ok(serde_json::json!({})) })
-            .build()
-            .unwrap();
-
-        executor.try_add_dyn_tool(Box::new(tool1));
-        executor.try_add_dyn_tool(Box::new(tool2));
-
-        // Only one tool should be registered (second should be ignored)
-        assert_eq!(executor.tool_names().len(), 1);
-        assert!(executor.has_tool("test_tool"));
     }
 
     #[test]
@@ -1320,7 +1180,7 @@ mod tests {
     fn test_executor_builder_default() {
         let builder = ExecutorBuilder::new();
         assert_eq!(builder.config.timeout, Some(Duration::from_secs(30)));
-        assert_eq!(builder.config.retry_config.max_retries, 3);
+        assert_eq!(builder.config.retry_config.max_retries, 0);
     }
 
     #[test]
@@ -1336,22 +1196,14 @@ mod tests {
     }
 
     #[test]
-    fn test_executor_builder_logging() {
-        let builder = ExecutorBuilder::new().logging(true);
-        assert!(builder.config.enable_logging);
-    }
-
-    #[test]
     fn test_executor_builder_build() {
         let executor = ExecutorBuilder::new()
             .timeout(Duration::from_secs(60))
             .retries(5)
-            .logging(true)
             .build();
 
         assert_eq!(executor.config.timeout, Some(Duration::from_secs(60)));
         assert_eq!(executor.config.retry_config.max_retries, 5);
-        assert!(executor.config.enable_logging);
     }
 
     #[test]
@@ -1359,14 +1211,11 @@ mod tests {
         let builder = ExecutorBuilder::new()
             .timeout(Duration::from_secs(45))
             .retries(3)
-            .logging(false)
             .timeout(Duration::from_secs(50))
-            .retries(4)
-            .logging(true);
+            .retries(4);
 
         assert_eq!(builder.config.timeout, Some(Duration::from_secs(50)));
         assert_eq!(builder.config.retry_config.max_retries, 4);
-        assert!(builder.config.enable_logging);
     }
 
     #[test]
@@ -1437,13 +1286,13 @@ mod tests {
         let executor = ToolExecutor::new();
 
         let tool1 = FunctionTool::builder("math_tool", "Math operations")
-            .metadata(|m| m.version("1.0.0"))
+            .metadata(|m| m.with_version("1.0.0"))
             .handler(|_args| async move { Ok(serde_json::json!({})) })
             .build()
             .unwrap();
 
         let tool2 = FunctionTool::builder("text_tool", "Text operations")
-            .metadata(|m| m.version("2.0.0"))
+            .metadata(|m| m.with_version("2.0.0"))
             .handler(|_args| async move { Ok(serde_json::json!({})) })
             .build()
             .unwrap();
@@ -1451,7 +1300,7 @@ mod tests {
         executor.add_dyn_tool(Box::new(tool1)).unwrap();
         executor.add_dyn_tool(Box::new(tool2)).unwrap();
 
-        let exported = executor.export_tools_filtered(|meta| meta.version == "1.0.0");
+        let exported = executor.export_tools_filtered(|meta| meta.version() == "1.0.0");
         assert_eq!(exported.len(), 1);
 
         if let Some(Tools::Function { function }) = exported.first() {
@@ -1459,24 +1308,6 @@ mod tests {
         } else {
             panic!("Expected Tools::Function");
         }
-    }
-
-    #[test]
-    fn test_execution_result_metadata_serialization() {
-        let result = ExecutionResult::success(
-            "test_tool".to_string(),
-            serde_json::json!({"value": 42}),
-            Duration::from_millis(100),
-            0,
-        )
-        .with_metadata("key1", serde_json::json!("value1"))
-        .with_metadata("key2", serde_json::json!(123));
-
-        let json = serde_json::to_string(&result).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(parsed["metadata"]["key1"], "value1");
-        assert_eq!(parsed["metadata"]["key2"], 123);
     }
 
     #[test]
@@ -1567,8 +1398,8 @@ mod tests {
                 id: Some("call_1".to_string()),
                 type_: Some("function".to_string()),
                 function: Some(ToolFunction {
-                    name: Some("tool_a".to_string()),
-                    arguments: Some(r#"{"n": 1}"#.to_string()),
+                    name: "tool_a".to_string(),
+                    arguments: r#"{"n": 1}"#.to_string(),
                 }),
                 mcp: None,
             },
@@ -1576,8 +1407,8 @@ mod tests {
                 id: Some("call_2".to_string()),
                 type_: Some("function".to_string()),
                 function: Some(ToolFunction {
-                    name: Some("tool_b".to_string()),
-                    arguments: Some(r#"{"n": 2}"#.to_string()),
+                    name: "tool_b".to_string(),
+                    arguments: r#"{"n": 2}"#.to_string(),
                 }),
                 mcp: None,
             },
@@ -1644,8 +1475,8 @@ mod tests {
                 id: Some("call_1".to_string()),
                 type_: Some("function".to_string()),
                 function: Some(ToolFunction {
-                    name: Some("parallel_a".to_string()),
-                    arguments: Some(r#"{"n": 1}"#.to_string()),
+                    name: "parallel_a".to_string(),
+                    arguments: r#"{"n": 1}"#.to_string(),
                 }),
                 mcp: None,
             },
@@ -1653,8 +1484,8 @@ mod tests {
                 id: Some("call_2".to_string()),
                 type_: Some("function".to_string()),
                 function: Some(ToolFunction {
-                    name: Some("parallel_b".to_string()),
-                    arguments: Some(r#"{"n": 2}"#.to_string()),
+                    name: "parallel_b".to_string(),
+                    arguments: r#"{"n": 2}"#.to_string(),
                 }),
                 mcp: None,
             },
@@ -1668,7 +1499,7 @@ mod tests {
     async fn test_execute_works_with_cache_disabled() {
         // Regression guard for the lazy cache-key path: with caching disabled,
         // execute() must not build a key / touch the cache, yet still succeed.
-        let executor = ToolExecutor::builder().disable_cache().build();
+        let executor = ToolExecutor::new();
 
         let tool = FunctionTool::builder("echo", "echo input")
             .property("x", serde_json::json!({"type": "number"}))

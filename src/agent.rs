@@ -1,15 +1,14 @@
-//! # Agent v1 wire types
+//! # Agent v1 wire contracts
 //!
-//! Defines request builders, response types, and response validators for these
-//! Agent v1 endpoints:
+//! Strongly typed request and response values for the three frozen Agent v1
+//! operations:
 //!
 //! - `POST /v1/agents`
 //! - `POST /v1/agents/async-result`
 //! - `POST /v1/agents/conversation`
 //!
-//! This module does not currently dispatch those requests or parse an SSE
-//! stream. Callers that provide their own transport can use the wire types and
-//! invoke the exported validators after deserialization.
+//! This module intentionally contains no network facade. Use these values with
+//! a transport that targets the corresponding Agent v1 routes.
 
 mod request;
 mod response;
@@ -19,32 +18,79 @@ pub use response::*;
 
 use std::marker::PhantomData;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::ZaiResult;
-use crate::client::error::codes;
+use crate::{ZaiResult, client::validation::require_non_blank};
 
-// ---------------------------------------------------------------------------
-// Type-state markers for streaming vs non-streaming invoke.
-// ---------------------------------------------------------------------------
+/// Open variables object accepted by the Agent invocation schema.
+///
+/// This is the only open JSON map in the Agent v1 request contracts.
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AgentCustomVariables(serde_json::Map<String, serde_json::Value>);
 
-/// Type-state marker: a non-streaming agent invocation.
-#[derive(Debug, Clone, Copy, Default)]
+impl std::fmt::Debug for AgentCustomVariables {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AgentCustomVariables")
+            .field("keys", &self.0.keys().collect::<Vec<_>>())
+            .field("values", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl AgentCustomVariables {
+    /// Construct an empty variables object.
+    pub fn new() -> Self {
+        Self(serde_json::Map::new())
+    }
+
+    /// Insert an open-schema variable value.
+    pub fn insert(
+        &mut self,
+        key: impl Into<String>,
+        value: serde_json::Value,
+    ) -> Option<serde_json::Value> {
+        self.0.insert(key.into(), value)
+    }
+
+    /// Return whether no variables are present.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Borrow the underlying open map.
+    pub const fn as_map(&self) -> &serde_json::Map<String, serde_json::Value> {
+        &self.0
+    }
+}
+
+impl From<serde_json::Map<String, serde_json::Value>> for AgentCustomVariables {
+    fn from(value: serde_json::Map<String, serde_json::Value>) -> Self {
+        Self(value)
+    }
+}
+
+/// Type-state marker for a non-streaming Agent invocation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct NonStreaming;
-/// Type-state marker: a streaming agent invocation (serializes `stream=true`).
-#[derive(Debug, Clone, Copy, Default)]
+
+/// Type-state marker for a streaming Agent invocation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Streaming;
 
-/// Trait bound linking a stream type-state to its `stream` wire value.
+/// Sealed mapping from invocation type-state to its wire-level `stream` value.
 pub trait StreamMode: private::Sealed {
-    /// The `stream` value serialized into the request body (`None` omits it).
-    const WIRE: Option<bool>;
+    /// Boolean serialized into the request body.
+    const WIRE: bool;
 }
+
 impl StreamMode for NonStreaming {
-    const WIRE: Option<bool> = Some(false);
+    const WIRE: bool = false;
 }
+
 impl StreamMode for Streaming {
-    const WIRE: Option<bool> = Some(true);
+    const WIRE: bool = true;
 }
 
 mod private {
@@ -53,223 +99,295 @@ mod private {
     impl Sealed for super::Streaming {}
 }
 
-// ---------------------------------------------------------------------------
-// Public request builders.
-// ---------------------------------------------------------------------------
-
-impl<N: StreamMode> AgentInvokeRequest<N> {
-    /// Build an invoke request for `agent_id` with at least one message.
-    pub fn builder(agent_id: impl Into<String>) -> AgentInvokeRequestBuilder<N> {
-        AgentInvokeRequestBuilder {
-            agent_id: agent_id.into(),
-            messages: Vec::new(),
-            custom_variables: serde_json::Map::new(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-/// Builder for [`AgentInvokeRequest`].
+/// Builder for an [`AgentInvokeRequest`].
 pub struct AgentInvokeRequestBuilder<N: StreamMode> {
-    agent_id: String,
+    agent_id: AgentId,
     messages: Vec<AgentMessage>,
-    custom_variables: serde_json::Map<String, serde_json::Value>,
-    _marker: PhantomData<N>,
+    custom_variables: AgentCustomVariables,
+    marker: PhantomData<N>,
 }
 
 impl<N: StreamMode> AgentInvokeRequestBuilder<N> {
-    /// Add a message (role must be system/user/assistant).
-    pub fn message(mut self, msg: AgentMessage) -> Self {
-        self.messages.push(msg);
+    /// Append one message.
+    pub fn message(mut self, message: AgentMessage) -> Self {
+        self.messages.push(message);
         self
     }
-    /// Replace the open-ended `custom_variables` object sent to the agent.
-    pub fn custom_variables(mut self, vars: serde_json::Map<String, serde_json::Value>) -> Self {
-        self.custom_variables = vars;
+
+    /// Append multiple messages in order.
+    pub fn messages(mut self, messages: impl IntoIterator<Item = AgentMessage>) -> Self {
+        self.messages.extend(messages);
         self
     }
-    /// Finalize, validating `agent_id` non-empty and `messages` non-empty.
+
+    /// Replace the open variables object.
+    pub fn custom_variables(mut self, variables: impl Into<AgentCustomVariables>) -> Self {
+        self.custom_variables = variables.into();
+        self
+    }
+
+    /// Validate the required non-empty message list and build the request.
     pub fn build(self) -> ZaiResult<AgentInvokeRequest<N>> {
-        if self.agent_id.trim().is_empty() {
-            return Err(crate::ZaiError::ApiError {
-                code: codes::SDK_VALIDATION,
-                message: "agent_id must be non-empty".to_string(),
-            });
-        }
         if self.messages.is_empty() {
-            return Err(crate::ZaiError::ApiError {
-                code: codes::SDK_VALIDATION,
-                message: "AgentInvokeRequest requires at least one message".to_string(),
-            });
-        }
-        // Validate message roles.
-        for m in &self.messages {
-            if !matches!(m.role.as_str(), "system" | "user" | "assistant") {
-                return Err(crate::ZaiError::ApiError {
-                    code: codes::SDK_VALIDATION,
-                    message: format!("invalid message role `{}`", m.role),
-                });
-            }
+            return Err(crate::client::validation::invalid(
+                "messages must contain at least one item",
+            ));
         }
         Ok(AgentInvokeRequest {
             agent_id: self.agent_id,
+            stream: N::WIRE,
             messages: self.messages,
             custom_variables: self.custom_variables,
-            _marker: PhantomData,
-            stream: N::WIRE,
+            marker: PhantomData,
         })
     }
 
-    /// Switch this builder into streaming mode (consumes `self`).
+    /// Switch this request builder to streaming output.
     pub fn streaming(self) -> AgentInvokeRequestBuilder<Streaming> {
         AgentInvokeRequestBuilder {
             agent_id: self.agent_id,
             messages: self.messages,
             custom_variables: self.custom_variables,
-            _marker: PhantomData,
+            marker: PhantomData,
         }
     }
 }
 
-/// Request body for `POST /v1/agents`.
-#[derive(Debug, Clone, Serialize)]
+/// Frozen request body for `POST /v1/agents`.
+#[derive(Clone, Serialize)]
 pub struct AgentInvokeRequest<N: StreamMode> {
-    /// Agent identifier supplied by the caller.
-    pub agent_id: String,
-    /// Conversation messages, in request order.
-    pub messages: Vec<AgentMessage>,
-    /// Open-ended variables made available to the configured agent.
-    #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
-    pub custom_variables: serde_json::Map<String, serde_json::Value>,
-    /// Serialized from the type-state; `true` for streaming, `false` otherwise.
-    /// The `PhantomData<N>` is NOT serialized — the resolved value is emitted
-    /// via the `stream` field below.
+    agent_id: AgentId,
+    stream: bool,
+    messages: Vec<AgentMessage>,
+    #[serde(skip_serializing_if = "AgentCustomVariables::is_empty")]
+    custom_variables: AgentCustomVariables,
     #[serde(skip)]
-    pub _marker: PhantomData<N>,
-    /// The `stream` wire value, derived from the type-state at construction.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stream: Option<bool>,
+    marker: PhantomData<N>,
+}
+
+impl<N: StreamMode> std::fmt::Debug for AgentInvokeRequest<N> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let custom_variables = if self.custom_variables.is_empty() {
+            "none"
+        } else {
+            "[REDACTED]"
+        };
+        formatter
+            .debug_struct("AgentInvokeRequest")
+            .field("agent_id", &"[REDACTED]")
+            .field("stream", &self.stream)
+            .field("message_count", &self.messages.len())
+            .field("custom_variables", &custom_variables)
+            .finish()
+    }
 }
 
 impl<N: StreamMode> AgentInvokeRequest<N> {
-    /// The resolved `stream` wire value.
-    pub fn stream_value(&self) -> Option<bool> {
+    /// Start an invocation request for a frozen Agent v1 identifier.
+    pub fn builder(agent_id: AgentId) -> AgentInvokeRequestBuilder<N> {
+        AgentInvokeRequestBuilder {
+            agent_id,
+            messages: Vec::new(),
+            custom_variables: AgentCustomVariables::new(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Return the selected agent identifier.
+    pub const fn agent_id(&self) -> AgentId {
+        self.agent_id
+    }
+
+    /// Return the resolved streaming flag.
+    pub const fn stream(&self) -> bool {
         self.stream
+    }
+
+    /// Borrow request messages.
+    pub fn messages(&self) -> &[AgentMessage] {
+        &self.messages
+    }
+
+    /// Borrow the open variables object.
+    pub const fn custom_variables(&self) -> &AgentCustomVariables {
+        &self.custom_variables
     }
 }
 
-/// `POST /v1/agents/async-result` request body.
-#[derive(Debug, Clone, Serialize)]
+/// Frozen request body for `POST /v1/agents/async-result`.
+#[derive(Clone, Serialize)]
 pub struct AgentAsyncResultRequest {
-    /// Agent identifier associated with the asynchronous invocation.
-    pub agent_id: String,
-    /// Asynchronous task identifier returned by an earlier invocation.
-    pub async_id: String,
+    async_id: String,
+    agent_id: String,
+}
+
+impl std::fmt::Debug for AgentAsyncResultRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AgentAsyncResultRequest")
+            .field("async_id", &"[REDACTED]")
+            .field("agent_id", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl AgentAsyncResultRequest {
-    /// Start a builder for the given agent and asynchronous task identifiers.
-    pub fn builder(
-        agent_id: impl Into<String>,
-        async_id: impl Into<String>,
-    ) -> AgentAsyncResultRequestBuilder {
-        AgentAsyncResultRequestBuilder {
-            agent_id: agent_id.into(),
-            async_id: async_id.into(),
-        }
+    /// Validate the two required identifiers and construct the request.
+    pub fn new(agent_id: impl Into<String>, async_id: impl Into<String>) -> ZaiResult<Self> {
+        let agent_id = agent_id.into();
+        let async_id = async_id.into();
+        require_non_blank(&agent_id, "agent_id")?;
+        require_non_blank(&async_id, "async_id")?;
+        Ok(Self { async_id, agent_id })
+    }
+
+    /// Borrow the agent identifier.
+    pub fn agent_id(&self) -> &str {
+        &self.agent_id
+    }
+
+    /// Borrow the asynchronous task identifier.
+    pub fn async_id(&self) -> &str {
+        &self.async_id
     }
 }
 
-/// Builder that validates identifiers for [`AgentAsyncResultRequest`].
-pub struct AgentAsyncResultRequestBuilder {
-    agent_id: String,
-    async_id: String,
+/// One slide page descriptor in conversation custom variables.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSlidePage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    position: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height: Option<f64>,
 }
 
-impl AgentAsyncResultRequestBuilder {
-    /// Validate both identifiers and build the request.
-    pub fn build(self) -> ZaiResult<AgentAsyncResultRequest> {
-        if self.agent_id.trim().is_empty() || self.async_id.trim().is_empty() {
-            return Err(crate::ZaiError::ApiError {
-                code: codes::SDK_VALIDATION,
-                message: "agent_id and async_id must both be non-empty".to_string(),
-            });
+impl AgentSlidePage {
+    /// Construct a fully specified slide page descriptor.
+    pub const fn new(position: f64, width: f64, height: f64) -> Self {
+        Self {
+            position: Some(position),
+            width: Some(width),
+            height: Some(height),
         }
-        Ok(AgentAsyncResultRequest {
-            agent_id: self.agent_id,
-            async_id: self.async_id,
-        })
+    }
+
+    /// Return the slide position.
+    pub const fn position(&self) -> Option<f64> {
+        self.position
+    }
+
+    /// Return the slide width in centimetres.
+    pub const fn width(&self) -> Option<f64> {
+        self.width
+    }
+
+    /// Return the slide height in centimetres.
+    pub const fn height(&self) -> Option<f64> {
+        self.height
     }
 }
 
-/// `POST /v1/agents/conversation` request body.
-#[derive(Debug, Clone, Serialize)]
+/// Closed custom variables accepted by the slide conversation endpoint.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentConversationVariables {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    include_pdf: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pages: Option<Vec<AgentSlidePage>>,
+}
+
+impl AgentConversationVariables {
+    /// Construct empty optional conversation variables.
+    pub const fn new() -> Self {
+        Self {
+            include_pdf: None,
+            pages: None,
+        }
+    }
+
+    /// Configure whether a PDF export is included.
+    pub const fn with_include_pdf(mut self, include_pdf: bool) -> Self {
+        self.include_pdf = Some(include_pdf);
+        self
+    }
+
+    /// Configure slide page descriptors.
+    pub fn with_pages(mut self, pages: impl IntoIterator<Item = AgentSlidePage>) -> Self {
+        self.pages = Some(pages.into_iter().collect());
+        self
+    }
+
+    /// Return the configured PDF flag.
+    pub const fn include_pdf(&self) -> Option<bool> {
+        self.include_pdf
+    }
+
+    /// Borrow configured page descriptors.
+    pub fn pages(&self) -> Option<&[AgentSlidePage]> {
+        self.pages.as_deref()
+    }
+}
+
+/// Frozen request body for `POST /v1/agents/conversation`.
+#[derive(Clone, Serialize)]
 pub struct AgentConversationRequest {
-    /// Agent identifier supplied by the caller.
-    pub agent_id: String,
-    /// Existing conversation identifier to continue.
-    pub conversation_id: String,
-    /// Messages to append to the conversation.
-    pub messages: Vec<AgentMessage>,
+    agent_id: String,
+    conversation_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_variables: Option<AgentConversationVariables>,
+}
+
+impl std::fmt::Debug for AgentConversationRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AgentConversationRequest")
+            .field("agent_id", &"[REDACTED]")
+            .field("conversation_id", &"[REDACTED]")
+            .field(
+                "custom_variables",
+                &self.custom_variables.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish()
+    }
 }
 
 impl AgentConversationRequest {
-    /// Start a builder for an existing agent conversation.
-    pub fn builder(
-        agent_id: impl Into<String>,
-        conversation_id: impl Into<String>,
-    ) -> AgentConversationRequestBuilder {
-        AgentConversationRequestBuilder {
-            agent_id: agent_id.into(),
-            conversation_id: conversation_id.into(),
-            messages: Vec::new(),
-        }
-    }
-}
-
-/// Builder for [`AgentConversationRequest`].
-///
-/// The builder checks identifiers and requires at least one message. Unlike the
-/// invoke builder, it does not currently validate message role strings.
-pub struct AgentConversationRequestBuilder {
-    agent_id: String,
-    conversation_id: String,
-    messages: Vec<AgentMessage>,
-}
-
-impl AgentConversationRequestBuilder {
-    /// Append a message to the conversation request.
-    pub fn message(mut self, msg: AgentMessage) -> Self {
-        self.messages.push(msg);
-        self
-    }
-    /// Validate identifiers and message presence, then build the request.
-    pub fn build(self) -> ZaiResult<AgentConversationRequest> {
-        if self.agent_id.trim().is_empty() || self.conversation_id.trim().is_empty() {
-            return Err(crate::ZaiError::ApiError {
-                code: codes::SDK_VALIDATION,
-                message: "agent_id and conversation_id must both be non-empty".to_string(),
-            });
-        }
-        if self.messages.is_empty() {
-            return Err(crate::ZaiError::ApiError {
-                code: codes::SDK_VALIDATION,
-                message: "AgentConversationRequest requires at least one message".to_string(),
-            });
-        }
-        Ok(AgentConversationRequest {
-            agent_id: self.agent_id,
-            conversation_id: self.conversation_id,
-            messages: self.messages,
+    /// Validate identifiers and construct a conversation-continuation request.
+    pub fn new(agent_id: impl Into<String>, conversation_id: impl Into<String>) -> ZaiResult<Self> {
+        let agent_id = agent_id.into();
+        let conversation_id = conversation_id.into();
+        require_non_blank(&agent_id, "agent_id")?;
+        require_non_blank(&conversation_id, "conversation_id")?;
+        Ok(Self {
+            agent_id,
+            conversation_id,
+            custom_variables: None,
         })
     }
-}
 
-/// Construct a single message.
-pub fn message(role: &str, content: impl Into<AgentContent>) -> AgentMessage {
-    AgentMessage {
-        role: role.to_string(),
-        content: content.into(),
+    /// Set the endpoint's closed custom-variables object.
+    pub fn with_custom_variables(mut self, variables: AgentConversationVariables) -> Self {
+        self.custom_variables = Some(variables);
+        self
+    }
+
+    /// Borrow the agent identifier.
+    pub fn agent_id(&self) -> &str {
+        &self.agent_id
+    }
+
+    /// Borrow the conversation identifier.
+    pub fn conversation_id(&self) -> &str {
+        &self.conversation_id
+    }
+
+    /// Borrow the optional custom variables.
+    pub const fn custom_variables(&self) -> Option<&AgentConversationVariables> {
+        self.custom_variables.as_ref()
     }
 }
 
@@ -278,75 +396,103 @@ mod tests {
     use super::*;
 
     #[test]
-    fn invoke_request_serializes_stream_false_for_nonstreaming() {
-        let req = AgentInvokeRequest::<NonStreaming>::builder("agent-1")
-            .message(message("user", "hi"))
+    fn invoke_request_serializes_the_exact_nonstreaming_schema() {
+        let request = AgentInvokeRequest::<NonStreaming>::builder(AgentId::GeneralTranslation)
+            .message(AgentMessage::user("hello"))
             .build()
             .unwrap();
-        assert_eq!(req.stream_value(), Some(false));
-        let json = serde_json::to_value(&req).unwrap();
-        assert_eq!(json["stream"], false);
-        assert_eq!(json["agent_id"], "agent-1");
+
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            serde_json::json!({
+                "agent_id": "general_translation",
+                "stream": false,
+                "messages": [{"role": "user", "content": "hello"}]
+            })
+        );
+        assert!(!format!("{request:?}").contains("hello"));
     }
 
     #[test]
-    fn invoke_request_serializes_stream_true_for_streaming() {
-        let req = AgentInvokeRequest::<NonStreaming>::builder("agent-1")
-            .message(message("user", "hi"))
+    fn invoke_request_serializes_closed_multimodal_parts_and_open_variables() {
+        let mut variables = AgentCustomVariables::new();
+        variables.insert("target_lang", serde_json::json!("en"));
+        let request = AgentInvokeRequest::<NonStreaming>::builder(AgentId::GeneralTranslation)
+            .message(AgentMessage::user(vec![
+                AgentRequestContentPart::text("translate this"),
+                AgentRequestContentPart::file_id("file-1"),
+                AgentRequestContentPart::file_url("https://example.test/report.pdf"),
+                AgentRequestContentPart::image_url("https://example.test/image.png"),
+            ]))
+            .custom_variables(variables)
             .streaming()
             .build()
             .unwrap();
-        assert_eq!(req.stream_value(), Some(true));
-        let json = serde_json::to_value(&req).unwrap();
-        assert_eq!(json["stream"], true);
-    }
 
-    #[test]
-    fn invoke_rejects_empty_agent_id_and_no_messages() {
-        assert!(
-            AgentInvokeRequest::<NonStreaming>::builder("")
-                .message(message("user", "hi"))
-                .build()
-                .is_err()
-        );
-        assert!(
-            AgentInvokeRequest::<NonStreaming>::builder("a")
-                .build()
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn invoke_rejects_invalid_role() {
-        assert!(
-            AgentInvokeRequest::<NonStreaming>::builder("a")
-                .message(message("tool", "hi"))
-                .build()
-                .is_err()
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "agent_id": "general_translation",
+                "stream": true,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "translate this"},
+                        {"type": "file_id", "file_id": "file-1"},
+                        {"type": "file_url", "file_url": "https://example.test/report.pdf"},
+                        {"type": "image_url", "image_url": "https://example.test/image.png"}
+                    ]
+                }],
+                "custom_variables": {"target_lang": "en"}
+            })
         );
     }
 
     #[test]
-    fn async_result_rejects_blank_ids() {
-        assert!(AgentAsyncResultRequest::builder("", "x").build().is_err());
-        assert!(AgentAsyncResultRequest::builder("x", "").build().is_err());
-        assert!(AgentAsyncResultRequest::builder("a", "b").build().is_ok());
-    }
-
-    #[test]
-    fn conversation_rejects_blank_or_no_messages() {
+    fn invoke_request_requires_at_least_one_message() {
         assert!(
-            AgentConversationRequest::builder("", "c")
-                .message(message("user", "hi"))
+            AgentInvokeRequest::<NonStreaming>::builder(AgentId::GeneralTranslation)
                 .build()
                 .is_err()
         );
-        assert!(AgentConversationRequest::builder("a", "c").build().is_err());
-        assert!(
-            AgentConversationRequest::builder("a", "c")
-                .message(message("user", "hi"))
-                .build()
-                .is_ok()
+    }
+
+    #[test]
+    fn async_result_request_is_exact_and_redacted() {
+        assert!(AgentAsyncResultRequest::new(" ", "task-1").is_err());
+        assert!(AgentAsyncResultRequest::new("agent-1", " ").is_err());
+        let request = AgentAsyncResultRequest::new("agent-1", "task-1").unwrap();
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            serde_json::json!({"async_id": "task-1", "agent_id": "agent-1"})
         );
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("agent-1"));
+        assert!(!debug.contains("task-1"));
+    }
+
+    #[test]
+    fn conversation_request_uses_custom_variables_instead_of_messages() {
+        let variables = AgentConversationVariables::new()
+            .with_include_pdf(true)
+            .with_pages([AgentSlidePage::new(1.0, 25.4, 14.29)]);
+        let request = AgentConversationRequest::new("slides_glm_agent", "conversation-1")
+            .unwrap()
+            .with_custom_variables(variables);
+
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            serde_json::json!({
+                "agent_id": "slides_glm_agent",
+                "conversation_id": "conversation-1",
+                "custom_variables": {
+                    "include_pdf": true,
+                    "pages": [{"position": 1.0, "width": 25.4, "height": 14.29}]
+                }
+            })
+        );
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("slides_glm_agent"));
+        assert!(!debug.contains("conversation-1"));
     }
 }

@@ -1,27 +1,19 @@
-use zai_rs::batches::*;
-use zai_rs::client::ZaiClient;
-use zai_rs::file::*;
+//! Cancel an existing batch without creating unrelated resources first.
+
+use zai_rs::{
+    batches::{BatchCancelRequest, BatchCancelResponse},
+    client::ZaiClient,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let batch_id = std::env::args()
+        .nth(1)
+        .ok_or("usage: batches_cancel <batch-id>")?;
+
     let client = ZaiClient::from_env()?;
-    let path = std::env::temp_dir().join("zai_batch_cancel.jsonl");
-    let path_str = path.to_str().unwrap();
-    std::fs::write(
-        &path,
-        r#"{"custom_id":"d","method":"POST","url":"/v4/chat/completions","body":{"model":"glm-4","messages":[{"role":"user","content":"hi"}]}}"#,
-    )?;
-    let file: FileObject = FileUploadRequest::new(FilePurpose::Batch, path_str)
-        .send_via(&client)
-        .await?;
-    let file_id = file.id.ok_or("no id")?;
-    let created: CreateBatchResponse =
-        CreateBatchRequest::new(file_id, BatchEndpoint::ChatCompletions)
-            .send_via(&client)
-            .await?;
-    let batch_id = created.id.ok_or("no batch id")?;
-    let cancelled: CancelBatchResponse =
-        CancelBatchRequest::new(batch_id).send_via(&client).await?;
+    let cancelled: BatchCancelResponse =
+        BatchCancelRequest::new(batch_id).send_via(&client).await?;
     println!("{cancelled:#?}");
     Ok(())
 }

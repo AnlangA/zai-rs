@@ -11,7 +11,7 @@
 //! | List | [`FileListRequest`] | List files with metadata |
 //! | Content | [`FileContentRequest`] | Retrieve file content |
 //! | Delete | [`FileDeleteRequest`] | Delete files |
-//! | Parse | [`FileParseSyncRequest`] | Submit an open-format synchronous parse request |
+//! | Parse | [`FileParseSyncRequest`] | Stream a local file to the synchronous parser |
 //!
 //! # Usage
 //!
@@ -19,18 +19,22 @@
 //! use zai_rs::{ZaiResult, client::ZaiClient, file::*};
 //!
 //! # async fn example(client: &ZaiClient) -> ZaiResult<()> {
-//! let uploaded = FileUploadRequest::new(FilePurpose::FileExtract, "report.pdf")
+//! let uploaded = FileUploadRequest::new(FileUploadPurpose::Agent, "report.pdf")
 //!     .send_via(client)
 //!     .await?;
 //!
-//! let files = FileListRequest::new()
-//!     .with_query(FileListQuery::new().with_limit(10))
+//! let files = FileListRequest::new(FileListPurpose::Agent)
+//!     .with_query(FileListQuery::new(FileListPurpose::Agent).with_limit(10))
 //!     .send_via(client)
 //!     .await?;
 //!
 //! let content = FileContentRequest::new("file-id").send_via(client).await?;
 //! let deleted = FileDeleteRequest::new("file-id").send_via(client).await?;
-//! # let _ = (uploaded, files, content, deleted);
+//! let parsed = FileParseSyncRequest::new("report.pdf")
+//!     .with_file_type(FileParseSyncFileType::PDF)
+//!     .send_via(client)
+//!     .await?;
+//! # let _ = (uploaded, files, content, deleted, parsed);
 //! # Ok(())
 //! # }
 //! ```

@@ -1,83 +1,91 @@
-//! Realtime audio example — a server-VAD voice conversation over GLM-Realtime.
+//! Stream a `glm-realtime-flash` response to a raw PCM file.
 //!
-//! Requires `ZHIPU_API_KEY`. Connects to the realtime WebSocket, sends a text
-//! prompt, prints the streamed transcript, and collects the response audio to
-//! `realtime_out.bin`.
-//!
-//! ```sh
-//! ZHIPU_API_KEY=xxxxx.yyyyy cargo run --example realtime_audio -- "讲个冷笑话"
-//! ```
+//! The output is 24 kHz, mono, signed 16-bit little-endian PCM.
 
-use std::{env, fs::File, io::Write};
+use std::{env, io::Write as _, path::PathBuf, time::Duration};
 
-use futures_util::StreamExt;
+use futures_util::{FutureExt as _, StreamExt as _};
+use tokio::io::AsyncWriteExt as _;
 use zai_rs::{
-    ZaiResult,
-    model::GLM4_voice,
-    realtime::{RealtimeClient, ServerEvent, TurnDetectionType},
+    model::GLM_realtime_flash,
+    realtime::{RealtimeClient, RealtimeModality, ServerEvent},
 };
 
 #[tokio::main]
-async fn main() -> ZaiResult<()> {
-    let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
-
-    let key = env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set to run realtime_audio");
-    let prompt = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "用一句话介绍你自己".to_string());
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let key = env::var("ZHIPU_API_KEY")?;
+    let mut args = env::args().skip(1);
+    let prompt = args
+        .next()
+        .unwrap_or_else(|| "用一句话介绍你自己。".to_owned());
+    let output_path = args
+        .next()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("realtime_response.pcm"));
 
     let session = RealtimeClient::new(key)
-        .session(GLM4_voice {})
-        .turn_detection(TurnDetectionType::ServerVad)
+        .session(GLM_realtime_flash {})
         .instructions("你是一个简洁、礼貌的中文语音助手。")
+        .modalities([RealtimeModality::Audio])
         .build()
         .await?;
 
-    println!("[realtime] connected (model={})", session.model_name());
-
-    // Ask the question as text and trigger inference.
-    session.send_text(&prompt).await?;
-    session.create_response().await?;
-
-    // Drive the two streams inside a block so their borrows of `session` end
-    // before `close(self)` consumes it.
-    {
-        let mut audio_out =
-            File::create("realtime_out.bin").expect("failed to create realtime_out.bin");
+    // Subscribe before sending so no early transcript or audio chunk is lost.
+    let result = {
         let mut events = session.events();
         let mut audio = session.audio_stream();
 
-        loop {
-            tokio::select! {
-                ev = events.next() => match ev {
-                    Some(ServerEvent::ResponseAudioTranscriptDelta { delta, .. }) => {
-                        print!("{delta}");
-                        let _ = std::io::stdout().flush();
-                    },
-                    Some(ServerEvent::ResponseDone { response }) => {
-                        println!(
-                            "\n[realtime] response done (status={:?})",
-                            response.status
-                        );
-                        break;
-                    },
-                    Some(ServerEvent::Error { error }) => {
-                        eprintln!(
-                            "[realtime] server error: {}",
-                            error.message.as_deref().unwrap_or("(no message)")
-                        );
-                        break;
-                    },
-                    _ => {},
-                },
-                chunk = audio.next() => {
-                    if let Some(chunk) = chunk {
-                        let _ = audio_out.write_all(&chunk);
-                    }
-                },
-            }
-        }
-    }
+        tokio::time::timeout(Duration::from_secs(120), async {
+            let mut output = tokio::fs::File::create(&output_path).await?;
+            session.send_text(prompt).await?;
+            session.create_response().await?;
 
-    session.close().await
+            loop {
+                tokio::select! {
+                    event = events.next() => match event {
+                        Some(Ok(ServerEvent::ResponseAudioTranscriptDelta { delta, .. })) => {
+                            print!("{delta}");
+                            std::io::stdout().flush()?;
+                        },
+                        Some(Ok(ServerEvent::ResponseDone { response })) => {
+                            if response.status == "completed" {
+                                break;
+                            }
+                            return Err(format!(
+                                "realtime response ended with status {}",
+                                response.status
+                            ).into());
+                        },
+                        Some(Ok(ServerEvent::Error { error })) => {
+                            return Err::<(), Box<dyn std::error::Error>>(
+                                error.message.into()
+                            );
+                        },
+                        Some(Ok(_)) => {},
+                        Some(Err(error)) => return Err(error.into()),
+                        None => return Err("realtime event stream ended unexpectedly".into()),
+                    },
+                    chunk = audio.next() => match chunk {
+                        Some(Ok(chunk)) => output.write_all(&chunk.data).await?,
+                        Some(Err(error)) => return Err(error.into()),
+                        None => return Err("realtime audio stream ended unexpectedly".into()),
+                    },
+                }
+            }
+
+            // Audio events are queued before the matching done event; drain any
+            // ready chunks that lost the final `select!` race.
+            while let Some(Some(chunk)) = audio.next().now_or_never() {
+                output.write_all(&chunk?.data).await?;
+            }
+            output.flush().await?;
+            println!("\nsaved to {}", output_path.display());
+            Ok::<(), Box<dyn std::error::Error>>(())
+        })
+        .await
+    };
+
+    session.close().await?;
+    result??;
+    Ok(())
 }

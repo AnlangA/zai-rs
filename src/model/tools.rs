@@ -11,31 +11,20 @@
 //! - `Function` — Defines a callable function with JSON-schema parameters
 //! - `WebSearch` — Enables live web search within chat
 //! - [`Retrieval`] — Enables knowledge-base retrieval
-//! - [`ToolChoice`] — Controls tool-selection behaviour (`auto`, `none`, or
-//!   specific function)
+//! - [`ToolChoice`] — Enables the frozen automatic tool-selection policy
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use serde::Serialize;
-use validator::*;
+use validator::Validate;
 
 use super::model_validate::validate_json_schema_value;
 use crate::tool::web_search::{ContentSize, SearchEngine, SearchRecencyFilter};
 
-/// Controls thinking/reasoning capabilities in AI models.
+/// Controls extended reasoning and whether reasoning context is cleared between
+/// turns.
 ///
-/// This structure determines whether a model should engage in step-by-step
-/// reasoning when processing requests, and whether to preserve reasoning
-/// content across turns via `clear_thinking`. Thinking mode can improve
-/// accuracy for complex tasks but may increase response time and token usage.
-///
-/// ## Fields
-///
-/// - `mode` - Whether thinking is enabled or disabled
-/// - `clear_thinking` - When `false`, preserves `reasoning_content` across
-///   turns (recommended for Coding / Agent scenarios)
-///
-/// ## Usage
+/// # Examples
 ///
 /// ```
 /// use zai_rs::model::{
@@ -48,17 +37,16 @@ use crate::tool::web_search::{ContentSize, SearchEngine, SearchRecencyFilter};
 /// let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("Solve this"))
 ///     .with_thinking(ThinkingType::enabled());
 ///
-/// // Preserve reasoning content across turns (Coding / Agent)
 /// let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("Continue"))
 ///     .with_thinking(ThinkingType::enabled().with_clear_thinking(false));
 /// ```
 ///
-/// ## Model Compatibility
+/// # Model compatibility
 ///
 /// Thinking capabilities are available only on models that implement the
 /// `ThinkEnable` trait, such as GLM-5.2, GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5
 /// series models.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ThinkingType {
     /// Whether thinking is enabled or disabled.
     #[serde(rename = "type")]
@@ -74,7 +62,7 @@ pub struct ThinkingType {
 }
 
 /// Thinking mode variants.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThinkingMode {
     /// Extended reasoning is enabled; exposure of reasoning text depends on the
@@ -171,38 +159,17 @@ pub enum ReasoningEffort {
     None,
 }
 
-/// Available tools that AI assistants can invoke during conversations.
+/// External capability attached to a chat request.
 ///
-/// This enum defines the different categories of external tools and
-/// capabilities that can be made available to AI models. Each tool type serves
-/// specific purposes and has its own configuration requirements.
+/// Variants cover caller-defined functions, knowledge retrieval, web search,
+/// and Model Context Protocol servers.
 ///
-/// ## Tool Categories
-///
-/// ### Function Tools
-/// Custom user-defined functions that the AI can call with structured
-/// parameters. Useful for integrating external APIs, databases, or business
-/// logic.
-///
-/// ### Retrieval Tools
-/// Access to knowledge bases, document collections, or information retrieval
-/// systems. Enables the AI to query structured knowledge sources.
-///
-/// ### Web Search Tools
-/// Internet search capabilities for accessing current information.
-/// Allows the AI to perform web searches and retrieve up-to-date information.
-///
-/// ### MCP Tools
-/// Model Context Protocol tools for standardized tool integration.
-/// Provides a standardized interface for tool communication.
-///
-/// ## Usage
+/// # Examples
 ///
 /// ```
 /// use zai_rs::model::tools::{Function, Tools, WebSearch};
 /// use zai_rs::tool::web_search::SearchEngine;
 ///
-/// // Function tool
 /// let function_tool = Tools::Function {
 ///     function: Function::new(
 ///         "get_weather",
@@ -211,7 +178,6 @@ pub enum ReasoningEffort {
 ///     ),
 /// };
 ///
-/// // Web search tool
 /// let search_tool = Tools::WebSearch {
 ///     web_search: WebSearch::new(SearchEngine::SearchPro)
 ///         .with_enable(true)
@@ -261,45 +227,81 @@ pub enum Tools {
     },
 }
 
-/// Definition of a callable function tool.
-///
-/// This structure defines a function that can be called by the assistant,
-/// including its name, description, and parameter schema.
+impl Validate for Tools {
+    fn validate(&self) -> Result<(), validator::ValidationErrors> {
+        match self {
+            Self::Function { function } => function.validate(),
+            Self::Retrieval { retrieval } => retrieval.validate(),
+            Self::WebSearch { web_search } => web_search.validate(),
+            Self::MCP { mcp } => mcp.validate(),
+        }
+    }
+}
+
+impl From<Function> for Tools {
+    fn from(function: Function) -> Self {
+        Self::Function { function }
+    }
+}
+
+/// Definition of a caller-provided function that the model may invoke.
 ///
 /// # Validation
 ///
-/// * `name` - Must be between 1 and 64 characters
+/// * `name` - Must be 1 to 64 ASCII letters, digits, underscores, or hyphens
 /// * `parameters` - Must be a valid JSON schema
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Clone, Serialize, Validate)]
+#[validate(schema(function = "validate_function"))]
 pub struct Function {
-    /// The name of the function. Must be between 1 and 64 characters.
+    /// The name of the function. Must match `[A-Za-z0-9_-]{1,64}`.
     #[validate(length(min = 1, max = 64))]
     pub name: String,
 
     /// A description of what the function does.
     pub description: String,
 
-    /// JSON schema describing the function's parameters.
-    /// Server expects an object; keep as Value to avoid double-encoding
-    /// strings.
+    /// JSON Schema object describing the function parameters.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(custom(function = "validate_json_schema_value"))]
     pub parameters: Option<serde_json::Value>,
 }
 
+impl std::fmt::Debug for Function {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Function")
+            .field("name", &self.name)
+            .field("description", &"[REDACTED]")
+            .field("parameters_configured", &self.parameters.is_some())
+            .finish()
+    }
+}
+
+fn validate_function(function: &Function) -> Result<(), validator::ValidationError> {
+    if function.name.trim().is_empty() {
+        return Err(validator::ValidationError::new("name_must_not_be_blank"));
+    }
+    if !function
+        .name
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(validator::ValidationError::new("invalid_function_name"));
+    }
+    if function
+        .parameters
+        .as_ref()
+        .is_some_and(|parameters| !parameters.is_object())
+    {
+        return Err(validator::ValidationError::new(
+            "function_parameters_must_be_an_object_schema",
+        ));
+    }
+    Ok(())
+}
+
 impl Function {
-    /// Creates a new function call definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the function
-    /// * `description` - A description of what the function does
-    /// * `parameters` - JSON Schema describing the function parameters, as a
-    ///   `serde_json::Value` (e.g. built with `serde_json::json!`)
-    ///
-    /// # Returns
-    ///
-    /// A new `Function` instance.
+    /// Create a function definition with a JSON Schema parameter object.
     ///
     /// # Examples
     ///
@@ -345,42 +347,67 @@ impl Function {
 ///
 /// # Usage
 ///
-/// ```text
+/// ```rust
 /// use zai_rs::model::tools::{Retrieval, Tools};
 ///
 /// let tool = Tools::Retrieval {
-///     retrieval: Retrieval::new("kb_1234567890", None),
+///     retrieval: Retrieval::new("kb_1234567890"),
 /// };
-/// // Or with a custom prompt template:
+/// // Or attach a custom prompt template:
 /// let tool = Tools::Retrieval {
-///     retrieval: Retrieval::builder("kb_1234567890")
+///     retrieval: Retrieval::new("kb_1234567890")
 ///         .with_prompt_template("仅依据知识库回答：{knowledge}"),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize, Validate)]
+#[validate(schema(function = "validate_retrieval"))]
 pub struct Retrieval {
     /// Knowledge-base id (required). Obtain it from the BigModel console after
     /// creating and populating a knowledge base.
+    #[validate(length(min = 1))]
     pub knowledge_id: String,
     /// Optional prompt template applied when the model consumes retrieved
     /// knowledge. Serialized as `prompt_template`; omitted when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(length(min = 1))]
     pub prompt_template: Option<String>,
 }
 
-impl Retrieval {
-    /// Creates a new retrieval tool bound to `knowledge_id`.
-    ///
-    /// Pass `None` for `prompt_template` to use the server default.
-    pub fn new(knowledge_id: impl Into<String>, prompt_template: Option<String>) -> Self {
-        Self {
-            knowledge_id: knowledge_id.into(),
-            prompt_template,
-        }
+impl std::fmt::Debug for Retrieval {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Retrieval")
+            .field("knowledge_id", &"[REDACTED]")
+            .field(
+                "prompt_template_configured",
+                &self.prompt_template.is_some(),
+            )
+            .finish()
     }
+}
 
-    /// Start a builder for a retrieval tool bound to `knowledge_id`.
-    pub fn builder(knowledge_id: impl Into<String>) -> Self {
+fn validate_retrieval(retrieval: &Retrieval) -> Result<(), validator::ValidationError> {
+    if retrieval.knowledge_id.trim().is_empty() {
+        return Err(validator::ValidationError::new(
+            "knowledge_id_must_not_be_blank",
+        ));
+    }
+    if retrieval
+        .prompt_template
+        .as_deref()
+        .is_some_and(|template| template.trim().is_empty())
+    {
+        return Err(validator::ValidationError::new(
+            "prompt_template_must_not_be_blank",
+        ));
+    }
+    Ok(())
+}
+
+impl Retrieval {
+    /// Create a retrieval tool bound to `knowledge_id`.
+    ///
+    pub fn new(knowledge_id: impl Into<String>) -> Self {
         Self {
             knowledge_id: knowledge_id.into(),
             prompt_template: None,
@@ -395,7 +422,7 @@ impl Retrieval {
 }
 
 /// The order in which search results are returned.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ResultSequence {
     /// Search results appear before the model's answer.
@@ -404,9 +431,9 @@ pub enum ResultSequence {
     After,
 }
 
-/// This structure represents a web search tool that can perform internet
-/// searches. Fields mirror the external web_search schema.
-#[derive(Debug, Clone, Serialize, Validate)]
+/// Web-search configuration attached to a chat request.
+#[derive(Clone, Serialize, Validate)]
+#[validate(schema(function = "validate_web_search"))]
 pub struct WebSearch {
     /// Search engine type (required). Supported: search_std, search_pro,
     /// search_pro_sogou, search_pro_quark.
@@ -457,6 +484,47 @@ pub struct WebSearch {
     /// Custom prompt to post-process search results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_prompt: Option<String>,
+}
+
+impl std::fmt::Debug for WebSearch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WebSearch")
+            .field("search_engine", &self.search_engine)
+            .field("enable", &self.enable)
+            .field("search_query_configured", &self.search_query.is_some())
+            .field("search_intent", &self.search_intent)
+            .field("count", &self.count)
+            .field(
+                "search_domain_filter_configured",
+                &self.search_domain_filter.is_some(),
+            )
+            .field("search_recency_filter", &self.search_recency_filter)
+            .field("content_size", &self.content_size)
+            .field("result_sequence", &self.result_sequence)
+            .field("search_result", &self.search_result)
+            .field("require_search", &self.require_search)
+            .field("search_prompt_configured", &self.search_prompt.is_some())
+            .finish()
+    }
+}
+
+fn validate_web_search(web_search: &WebSearch) -> Result<(), validator::ValidationError> {
+    if [
+        web_search.search_query.as_deref(),
+        web_search.search_domain_filter.as_deref(),
+        web_search.search_prompt.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|value| value.trim().is_empty())
+    {
+        Err(validator::ValidationError::new(
+            "search_text_must_not_be_blank",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 impl WebSearch {
@@ -540,7 +608,8 @@ impl WebSearch {
 /// This does not create a local MCP connection. For Zhipu-hosted MCP servers,
 /// put the MCP code in `server_label` and leave `server_url` unset. To call MCP
 /// tools directly from this SDK, use [`crate::mcp::McpClient`].
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Clone, Serialize, Validate)]
+#[validate(schema(function = "validate_mcp"))]
 pub struct MCP {
     /// MCP server identifier (required). If connecting to Zhipu MCP via code,
     /// put the code here.
@@ -562,7 +631,84 @@ pub struct MCP {
 
     /// Authentication headers required by the MCP server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers: Option<HashMap<String, String>>,
+    pub headers: Option<BTreeMap<String, String>>,
+}
+
+fn validate_mcp(mcp: &MCP) -> Result<(), validator::ValidationError> {
+    if mcp.server_label.trim().is_empty() {
+        return Err(validator::ValidationError::new(
+            "server_label_must_not_be_blank",
+        ));
+    }
+    if let Some(server_url) = mcp.server_url.as_deref() {
+        let Ok(url) = server_url.parse::<url::Url>() else {
+            return Err(validator::ValidationError::new("invalid_server_url"));
+        };
+        if !matches!(url.scheme(), "http" | "https")
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(validator::ValidationError::new("invalid_server_url"));
+        }
+    }
+    if mcp.allowed_tools.iter().any(|tool| tool.trim().is_empty()) {
+        return Err(validator::ValidationError::new(
+            "allowed_tool_must_not_be_blank",
+        ));
+    }
+    if mcp.headers.as_ref().is_some_and(|headers| {
+        headers.iter().any(|(name, value)| {
+            !valid_forwarded_header_name(name) || !valid_forwarded_header_value(value)
+        })
+    }) {
+        return Err(validator::ValidationError::new("invalid_forwarded_header"));
+    }
+    Ok(())
+}
+
+fn valid_forwarded_header_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
+
+fn valid_forwarded_header_value(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value
+            .chars()
+            .all(|character| character == '\t' || !character.is_control())
+}
+
+impl std::fmt::Debug for MCP {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MCP")
+            .field("server_label", &"[REDACTED]")
+            .field("server_url_configured", &self.server_url.is_some())
+            .field("transport_type", &self.transport_type)
+            .field("allowed_tool_count", &self.allowed_tools.len())
+            .field("header_count", &self.headers.as_ref().map(BTreeMap::len))
+            .finish()
+    }
 }
 
 impl MCP {
@@ -599,21 +745,21 @@ impl MCP {
         self
     }
     /// Set authentication headers map.
-    pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
+    pub fn with_headers(mut self, headers: BTreeMap<String, String>) -> Self {
         self.headers = Some(headers);
         self
     }
     /// Add or update a single header entry.
     pub fn with_header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        let mut map = self.headers.unwrap_or_default();
-        map.insert(key.into(), value.into());
-        self.headers = Some(map);
+        self.headers
+            .get_or_insert_with(BTreeMap::new)
+            .insert(key.into(), value.into());
         self
     }
 }
 
 /// Allowed MCP transport types.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum MCPTransportType {
     /// Server-Sent Events transport.
@@ -622,15 +768,7 @@ pub enum MCPTransportType {
     StreamableHttp,
 }
 
-/// Specifies the format for the model's response.
-///
-/// This enum controls how the model should structure its output, either as
-/// plain text or as a structured JSON object.
-///
-/// # Variants
-///
-/// * `Text` - Plain text response format
-/// * `JsonObject` - Structured JSON object response format
+/// Requested response representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
@@ -641,114 +779,32 @@ pub enum ResponseFormat {
     JsonObject,
 }
 
-// Marker types used only to drive `ToolChoice` serialization. The API expects
-// the `auto` / `none` variants as a bare JSON string and the function variant
-// as an object, so we model each as a `#[serde(transparent)]` newtype that
-// serializes to exactly `"auto"` / `"none"` and combine them via `untagged`.
-mod tool_choice_wire {
-    use serde::{Serialize, Serializer};
-
-    /// Serializes to the bare JSON string `"auto"`.
-    #[derive(Debug, Clone, Copy)]
-    pub struct Auto;
-
-    impl Serialize for Auto {
-        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-            s.serialize_str("auto")
-        }
-    }
-
-    /// Serializes to the bare JSON string `"none"`.
-    #[derive(Debug, Clone, Copy)]
-    pub struct NoneChoice;
-
-    impl Serialize for NoneChoice {
-        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-            s.serialize_str("none")
-        }
-    }
-}
-
-/// Name of a specific function the model must call when
-/// [`ToolChoice::Function`] is selected.
-///
-/// Serializes as `{"type":"function","function":{"name":"..."}}`, matching the
-/// Zhipu AI / OpenAI-compatible `tool_choice` object form.
-#[derive(Debug, Clone, Serialize)]
-pub struct ToolChoiceFunction {
-    /// Always `"function"` on the wire.
-    #[serde(rename = "type")]
-    kind: &'static str,
-    /// The function descriptor.
-    function: ToolChoiceFunctionRef,
-}
-
-impl ToolChoiceFunction {
-    /// Wrap a function name into the wire object form.
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            kind: "function",
-            function: ToolChoiceFunctionRef { name: name.into() },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ToolChoiceFunctionRef {
-    name: String,
-}
-
-/// Controls whether the model calls a tool during a chat completion, and which
-/// one.
+/// Controls how the model selects tools during a chat completion.
 ///
 /// This is the value carried by the `tool_choice` request parameter. It is only
-/// meaningful when [`Tools`] are also attached to the request.
-///
-/// # Variants
-///
-/// * [`ToolChoice::Auto`] — serialized as the bare string `"auto"`; the model
-///   decides whether to call a tool (the API default).
-/// * [`ToolChoice::None`] — serialized as the bare string `"none"`; the model
-///   never calls a tool and always answers directly.
-/// * [`ToolChoice::Function`] — serialized as
-///   `{"type":"function","function":{"name":"…"}}`; forces the model to call
-///   the named function.
+/// meaningful when [`Tools`] are also attached to the request. The frozen API
+/// schema accepts only the bare string `"auto"`; the older `"none"` and forced
+/// function object forms were never part of this operation's contract.
 ///
 /// # Usage
 ///
-/// ```text
+/// ```rust
 /// use zai_rs::model::tools::ToolChoice;
 ///
 /// // Let the model decide (default behaviour):
 /// let choice = ToolChoice::auto();
-/// // Force a specific function:
-/// let choice = ToolChoice::function("get_weather");
 /// ```
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ToolChoice {
     /// The model decides whether to call a tool (`"auto"` on the wire).
-    Auto(tool_choice_wire::Auto),
-    /// The model never calls a tool (`"none"` on the wire).
-    None(tool_choice_wire::NoneChoice),
-    /// Force the model to call the named function.
-    Function(ToolChoiceFunction),
+    Auto,
 }
 
 impl ToolChoice {
     /// Let the model decide whether to call a tool (`"auto"`).
-    pub fn auto() -> Self {
-        ToolChoice::Auto(tool_choice_wire::Auto)
-    }
-
-    /// Forbid tool calls for this request (`"none"`).
-    pub fn none() -> Self {
-        ToolChoice::None(tool_choice_wire::NoneChoice)
-    }
-
-    /// Force the model to call the named function.
-    pub fn function(name: impl Into<String>) -> Self {
-        ToolChoice::Function(ToolChoiceFunction::new(name))
+    pub const fn auto() -> Self {
+        Self::Auto
     }
 }
 
@@ -831,9 +887,18 @@ mod tests {
 
         // Name length validation: 1-64 characters
         assert!(func.validate().is_ok());
+        assert!(
+            Function::new("valid-name", "Description", params.clone())
+                .validate()
+                .is_ok()
+        );
 
         let invalid_name = Function::new("", "Description", params.clone());
         assert!(invalid_name.validate().is_err());
+        let blank_name = Function::new("   ", "Description", params.clone());
+        assert!(blank_name.validate().is_err());
+        let punctuation = Function::new("invalid!", "Description", params.clone());
+        assert!(punctuation.validate().is_err());
 
         let long_name = Function::new("a".repeat(65), "Description", params);
         assert!(long_name.validate().is_err());
@@ -842,21 +907,21 @@ mod tests {
     // Retrieval tests
     #[test]
     fn test_retrieval_new() {
-        let retrieval = Retrieval::new("kb_123", Some("template".to_string()));
+        let retrieval = Retrieval::new("kb_123").with_prompt_template("template");
         assert_eq!(retrieval.knowledge_id, "kb_123");
         assert_eq!(retrieval.prompt_template, Some("template".to_string()));
     }
 
     #[test]
     fn test_retrieval_new_without_template() {
-        let retrieval = Retrieval::new("kb_456", None);
+        let retrieval = Retrieval::new("kb_456");
         assert_eq!(retrieval.knowledge_id, "kb_456");
         assert!(retrieval.prompt_template.is_none());
     }
 
     #[test]
     fn test_retrieval_serialization() {
-        let retrieval = Retrieval::new("kb_789", None);
+        let retrieval = Retrieval::new("kb_789");
         let json = serde_json::to_string(&retrieval).unwrap();
         assert!(json.contains("\"knowledge_id\":\"kb_789\""));
         // prompt_template should be omitted when None
@@ -864,21 +929,35 @@ mod tests {
     }
 
     #[test]
-    fn test_retrieval_builder_omits_template_by_default() {
-        let retrieval = Retrieval::builder("kb_builder");
-        assert_eq!(retrieval.knowledge_id, "kb_builder");
-        assert!(retrieval.prompt_template.is_none());
-        let json = serde_json::to_value(&retrieval).unwrap();
-        assert_eq!(json["knowledge_id"], "kb_builder");
-        assert!(json.get("prompt_template").is_none());
-    }
-
-    #[test]
-    fn test_retrieval_builder_with_prompt_template_serializes() {
-        let retrieval = Retrieval::builder("kb_builder").with_prompt_template("ctx: {knowledge}");
+    fn retrieval_prompt_template_serializes() {
+        let retrieval = Retrieval::new("kb_builder").with_prompt_template("ctx: {knowledge}");
         let json = serde_json::to_value(&retrieval).unwrap();
         assert_eq!(json["knowledge_id"], "kb_builder");
         assert_eq!(json["prompt_template"], "ctx: {knowledge}");
+    }
+
+    #[test]
+    fn tool_validation_rejects_blank_optional_values() {
+        assert!(Retrieval::new(" ").validate().is_err());
+        assert!(
+            WebSearch::new(SearchEngine::SearchPro)
+                .with_search_query(" ")
+                .validate()
+                .is_err()
+        );
+        assert!(MCP::new(" ").validate().is_err());
+        assert!(
+            MCP::new("server")
+                .with_server_url("ftp://example.com")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            MCP::new("server")
+                .with_header("Authorization\r\nInjected", "secret")
+                .validate()
+                .is_err()
+        );
     }
 
     // WebSearch tests
@@ -926,22 +1005,21 @@ mod tests {
     #[test]
     fn test_web_search_with_search_recency_filter() {
         let filter = SearchRecencyFilter::OneDay;
-        let web_search =
-            WebSearch::new(SearchEngine::SearchPro).with_search_recency_filter(filter.clone());
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_search_recency_filter(filter);
         assert_eq!(web_search.search_recency_filter, Some(filter));
     }
 
     #[test]
     fn test_web_search_with_content_size() {
         let size = ContentSize::Medium;
-        let web_search = WebSearch::new(SearchEngine::SearchPro).with_content_size(size.clone());
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_content_size(size);
         assert_eq!(web_search.content_size, Some(size));
     }
 
     #[test]
     fn test_web_search_with_result_sequence() {
         let seq = ResultSequence::After;
-        let web_search = WebSearch::new(SearchEngine::SearchPro).with_result_sequence(seq.clone());
+        let web_search = WebSearch::new(SearchEngine::SearchPro).with_result_sequence(seq);
         assert_eq!(web_search.result_sequence, Some(seq));
     }
 
@@ -1014,7 +1092,7 @@ mod tests {
 
     #[test]
     fn test_mcp_with_headers() {
-        let mut headers = HashMap::new();
+        let mut headers = BTreeMap::new();
         headers.insert("Authorization".to_string(), "Bearer token".to_string());
         let mcp = MCP::new("server_label").with_headers(headers.clone());
         assert_eq!(mcp.headers, Some(headers));
@@ -1023,6 +1101,10 @@ mod tests {
     #[test]
     fn test_mcp_with_header() {
         let mcp = MCP::new("server_label").with_header("Authorization", "Bearer token");
+        let debug = format!("{mcp:?}");
+        assert!(!debug.contains("Bearer token"));
+        assert!(!debug.contains("Authorization"));
+        assert!(debug.contains("header_count"));
         let headers = mcp.headers.unwrap();
         assert_eq!(
             headers.get("Authorization"),
@@ -1041,6 +1123,58 @@ mod tests {
         assert!(json.contains("\"transport_type\":\"sse\""));
         // allowed_tools should be omitted when empty
         assert!(!json.contains("allowed_tools"));
+    }
+
+    #[test]
+    fn mcp_validation_rejects_credentialed_or_fragmented_urls() {
+        assert!(
+            MCP::new("server")
+                .with_server_url("https://user:secret@example.com/mcp")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            MCP::new("server")
+                .with_server_url("https://example.com/mcp#secret")
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn tool_debug_output_redacts_caller_content_and_remote_configuration() {
+        let function = Function::new(
+            "lookup",
+            "private-description",
+            serde_json::json!({"private-schema-key": {"type": "string"}}),
+        );
+        let retrieval =
+            Retrieval::new("private-knowledge").with_prompt_template("private-template");
+        let search = WebSearch::new(SearchEngine::SearchPro)
+            .with_search_query("private-query")
+            .with_search_domain_filter("private.example")
+            .with_search_prompt("private-search-prompt");
+        let mcp = MCP::new("private-server")
+            .with_server_url("https://private.example/mcp?token=private-token")
+            .add_allowed_tool("private-tool")
+            .with_header("Authorization", "private-header");
+        let debug = format!("{function:?} {retrieval:?} {search:?} {mcp:?}");
+        for secret in [
+            "private-description",
+            "private-schema-key",
+            "private-knowledge",
+            "private-template",
+            "private-query",
+            "private.example",
+            "private-search-prompt",
+            "private-server",
+            "private-token",
+            "private-tool",
+            "Authorization",
+            "private-header",
+        ] {
+            assert!(!debug.contains(secret), "Debug leaked {secret}");
+        }
     }
 
     // MCPTransportType tests
@@ -1080,24 +1214,6 @@ mod tests {
         assert_eq!(json, serde_json::json!("auto"));
     }
 
-    #[test]
-    fn test_tool_choice_none_serializes_as_bare_string() {
-        let json = serde_json::to_value(ToolChoice::none()).unwrap();
-        assert_eq!(json, serde_json::json!("none"));
-    }
-
-    #[test]
-    fn test_tool_choice_function_serializes_as_object() {
-        let json = serde_json::to_value(ToolChoice::function("get_weather")).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({
-                "type": "function",
-                "function": { "name": "get_weather" }
-            })
-        );
-    }
-
     // Tools enum tests
     #[test]
     fn test_tools_function_serialization() {
@@ -1110,7 +1226,7 @@ mod tests {
 
     #[test]
     fn test_tools_retrieval_serialization() {
-        let retrieval = Retrieval::new("kb_123", None);
+        let retrieval = Retrieval::new("kb_123");
         let tools = Tools::Retrieval { retrieval };
         let json = serde_json::to_string(&tools).unwrap();
         assert!(json.contains("\"type\":\"retrieval\""));

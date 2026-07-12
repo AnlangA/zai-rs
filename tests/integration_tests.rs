@@ -6,7 +6,6 @@
 use std::{
     convert::Infallible,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
 use bytes::Bytes;
@@ -14,16 +13,13 @@ use http_body_util::{BodyExt, Full};
 use hyper::{Request, Response, body::Incoming, http::StatusCode, service::service_fn};
 use hyper_util::{rt::TokioIo, server::conn::auto::Builder as ConnBuilder};
 use serde_json::json;
-use tokio::{net::TcpListener, sync::oneshot, time::sleep};
+use tokio::{net::TcpListener, sync::oneshot};
 use zai_rs::{
     client::{ApiFamily, ZaiClient},
-    file::{FileListQuery, FileListRequest, FilePurpose, FileUploadRequest},
+    file::{FileListPurpose, FileListQuery, FileListRequest, FileUploadPurpose, FileUploadRequest},
     model::{ChatCompletion, GLM5_2, TextMessage},
     usage::CodingPlanUsageRequest,
 };
-
-mod common;
-use common::mock_server::{MockServerClient, MockServerConfig};
 
 #[derive(Debug)]
 struct CapturedHttpRequest {
@@ -38,68 +34,15 @@ struct CapturedHttpRequest {
 async fn capture_one_sdk_request(
     response_body: serde_json::Value,
 ) -> (String, oneshot::Receiver<CapturedHttpRequest>) {
-    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let (tx, rx) = oneshot::channel::<CapturedHttpRequest>();
-    let tx = Arc::new(Mutex::new(Some(tx)));
-
-    tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let io = TokioIo::new(stream);
-        let response_body = response_body.clone();
-
-        let service = service_fn(move |req: Request<Incoming>| {
-            let tx = Arc::clone(&tx);
-            let response_body = response_body.clone();
-            async move {
-                let method = req.method().as_str().to_string();
-                let uri = req.uri().clone();
-                let authorization = req
-                    .headers()
-                    .get(hyper::header::AUTHORIZATION)
-                    .and_then(|value| value.to_str().ok())
-                    .map(str::to_string);
-                let content_type = req
-                    .headers()
-                    .get(hyper::header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-                    .map(str::to_string);
-                let body = req.collect().await.unwrap().to_bytes().to_vec();
-
-                if let Some(tx) = tx.lock().unwrap().take() {
-                    let _ = tx.send(CapturedHttpRequest {
-                        method,
-                        path: uri.path().to_string(),
-                        query: uri.query().map(str::to_string),
-                        authorization,
-                        content_type,
-                        body,
-                    });
-                }
-
-                let mut response = Response::new(Full::new(Bytes::from(response_body.to_string())));
-                *response.status_mut() = StatusCode::OK;
-                Ok::<_, Infallible>(response)
-            }
-        });
-
-        ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
-            .serve_connection(io, service)
-            .await
-            .unwrap();
-    });
-
-    (format!("http://{addr}/api/paas/v4"), rx)
+    capture_one_request_under("/api/paas/v4", response_body).await
 }
 
 /// Build a `ZaiClient` whose PaasV4 endpoint points at the mock `base_url`
 /// so chat requests can be captured without external network access.
 fn client_for_mock_base(base_url: &str, key: &str) -> ZaiClient {
-    let ep = base_url.to_string();
-    let leaked: &'static str = Box::leak(ep.into_boxed_str());
     ZaiClient::builder(key)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::PaasV4, leaked)
+        .endpoint(ApiFamily::PaasV4, base_url)
         .build()
         .unwrap()
 }
@@ -107,27 +50,11 @@ fn client_for_mock_base(base_url: &str, key: &str) -> ZaiClient {
 /// Build a `ZaiClient` whose Monitor endpoint points at the mock `base_url`
 /// so usage requests can be captured without external network access.
 fn monitor_client_for_base(base_url: &str, key: &str) -> ZaiClient {
-    let ep = base_url.to_string();
-    let leaked: &'static str = Box::leak(ep.into_boxed_str());
     ZaiClient::builder(key)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::Monitor, leaked)
+        .endpoint(ApiFamily::Monitor, base_url)
         .build()
         .unwrap()
-}
-
-/// Integration test for chat completion
-#[tokio::test]
-async fn test_chat_completion_integration() {
-    let config = MockServerConfig::default();
-    let client = MockServerClient::new(config.base_url);
-
-    // Verify URL construction
-    let expected_url = client.url("/api/paas/v4/chat/completions");
-    assert_eq!(
-        expected_url,
-        "http://127.0.0.1:9876/api/paas/v4/chat/completions"
-    );
 }
 
 #[tokio::test]
@@ -166,8 +93,8 @@ async fn test_sdk_json_post_uses_dynamic_mock_base() {
 }
 
 #[tokio::test]
-async fn test_sdk_chat_serializes_tool_choice_and_response_format() {
-    use zai_rs::model::tools::{ResponseFormat, ToolChoice};
+async fn test_sdk_chat_serializes_frozen_tool_choice_and_response_format() {
+    use zai_rs::model::tools::{Function, ResponseFormat, ToolChoice, Tools};
 
     let key = "test.12345678901234567890".to_string();
     let (base_url, captured) = capture_one_sdk_request(json!({
@@ -183,8 +110,15 @@ async fn test_sdk_chat_serializes_tool_choice_and_response_format() {
     }))
     .await;
 
-    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
-        .with_tool_choice(ToolChoice::function("get_weather"))
+    ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
+        .add_tool(Tools::Function {
+            function: Function::new(
+                "get_weather",
+                "Get current weather",
+                json!({"type": "object"}),
+            ),
+        })
+        .with_tool_choice(ToolChoice::auto())
         .with_response_format(ResponseFormat::JsonObject)
         .send_via(&client_for_mock_base(&base_url, &key))
         .await
@@ -192,43 +126,10 @@ async fn test_sdk_chat_serializes_tool_choice_and_response_format() {
 
     let request = captured.await.unwrap();
     let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
-    // tool_choice reaches the wire in the documented object form.
-    assert_eq!(
-        body["tool_choice"],
-        json!({"type": "function", "function": {"name": "get_weather"}})
-    );
+    assert_eq!(body["tool_choice"], json!("auto"));
+    assert_eq!(body["tools"][0]["function"]["name"], "get_weather");
     // response_format reaches the wire too.
     assert_eq!(body["response_format"]["type"], "json_object");
-}
-
-#[tokio::test]
-async fn test_sdk_chat_tool_choice_auto_serializes_as_bare_string() {
-    use zai_rs::model::tools::ToolChoice;
-
-    let key = "test.12345678901234567890".to_string();
-    let (base_url, captured) = capture_one_sdk_request(json!({
-        "id": "chatcmpl-tc-auto",
-        "created": 1,
-        "model": "glm-5.2",
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": "ok"},
-            "finish_reason": "stop"
-        }],
-        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
-    }))
-    .await;
-
-    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
-        .with_tool_choice(ToolChoice::auto())
-        .send_via(&client_for_mock_base(&base_url, &key))
-        .await
-        .unwrap();
-
-    let request = captured.await.unwrap();
-    let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
-    // auto must serialize as a bare JSON string, not an object.
-    assert_eq!(body["tool_choice"], json!("auto"));
 }
 
 #[tokio::test]
@@ -250,11 +151,9 @@ async fn test_sdk_chat_uses_configured_coding_plan_base() {
     )
     .await;
 
-    let coding_ep = coding_base_url.clone();
-    let leaked: &'static str = Box::leak(coding_ep.into_boxed_str());
     let client = ZaiClient::builder(&key)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::CodingPaasV4, leaked)
+        .endpoint(ApiFamily::CodingPaasV4, coding_base_url)
         .build()
         .unwrap();
 
@@ -287,12 +186,8 @@ async fn test_sdk_get_uses_dynamic_mock_base_and_query() {
     .await;
 
     let client = client_for_mock_base(&base_url, &key);
-    let response = FileListRequest::new()
-        .with_query(
-            FileListQuery::new()
-                .with_purpose(FilePurpose::Batch)
-                .with_limit(2),
-        )
+    let response = FileListRequest::new(FileListPurpose::Batch)
+        .with_query(FileListQuery::new(FileListPurpose::Batch).with_limit(2))
         .send_via(&client)
         .await
         .unwrap();
@@ -325,11 +220,8 @@ async fn test_sdk_get_uses_dynamic_mock_base_and_query() {
 #[tokio::test]
 async fn test_sdk_multipart_uses_dynamic_mock_base() {
     let key = "test.12345678901234567890".to_string();
-    let temp_path = std::env::temp_dir().join(format!(
-        "zai-rs-upload-{}-{}.txt",
-        std::process::id(),
-        chrono::Utc::now().timestamp_nanos_opt().unwrap()
-    ));
+    let temp_dir = tempfile::tempdir().unwrap();
+    let temp_path = temp_dir.path().join("upload.txt");
     std::fs::write(&temp_path, b"hello upload").unwrap();
 
     let (base_url, captured) = capture_one_sdk_request(json!({
@@ -343,14 +235,12 @@ async fn test_sdk_multipart_uses_dynamic_mock_base() {
     .await;
 
     let client = client_for_mock_base(&base_url, &key);
-    let response = FileUploadRequest::new(FilePurpose::Batch, &temp_path)
+    let response = FileUploadRequest::new(FileUploadPurpose::Batch, &temp_path)
         .with_file_name("sample.txt")
         .with_content_type("text/plain")
         .send_via(&client)
         .await
         .unwrap();
-
-    std::fs::remove_file(&temp_path).unwrap();
 
     assert_eq!(response.id.as_deref(), Some("file-test"));
     let request = captured.await.unwrap();
@@ -372,195 +262,6 @@ async fn test_sdk_multipart_uses_dynamic_mock_base() {
     assert!(body.contains("batch"));
     assert!(body.contains("filename=\"sample.txt\""));
     assert!(body.contains("hello upload"));
-}
-
-/// Integration test for error handling
-#[tokio::test]
-async fn test_error_handling_integration() {
-    let config = MockServerConfig::default();
-    let client = MockServerClient::new(config.base_url);
-
-    // Test URL construction for different endpoints
-    let embeddings_url = client.url("/api/paas/v4/embeddings");
-    assert_eq!(
-        embeddings_url,
-        "http://127.0.0.1:9876/api/paas/v4/embeddings"
-    );
-
-    let files_url = client.url("/api/paas/v4/files/file-123");
-    assert_eq!(
-        files_url,
-        "http://127.0.0.1:9876/api/paas/v4/files/file-123"
-    );
-}
-
-/// Integration test for file operations
-#[tokio::test]
-async fn test_file_operations_integration() {
-    let config = MockServerConfig::default();
-    let client = MockServerClient::new(config.base_url);
-
-    // Test file URL construction
-    let file_url = client.url("/api/paas/v4/files/file-123456");
-    assert_eq!(
-        file_url,
-        "http://127.0.0.1:9876/api/paas/v4/files/file-123456"
-    );
-}
-
-/// Integration test for API key authentication simulation
-#[tokio::test]
-async fn test_api_key_authentication() {
-    let config = MockServerConfig::default();
-    assert!(!config.api_key.is_empty());
-    assert!(config.api_key.contains('.'));
-}
-
-/// Test request serialization
-#[test]
-fn test_request_serialization() {
-    let request_body = json!({
-        "model": "glm-4",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "temperature": 0.7
-    });
-
-    let serialized = serde_json::to_string(&request_body).unwrap();
-    assert!(serialized.contains("glm-4"));
-    assert!(serialized.contains("Hello"));
-}
-
-/// Test response deserialization
-#[test]
-fn test_response_deserialization() {
-    let response_body = json!({
-        "id": "chatcmpl-123",
-        "object": "chat.completion",
-        "created": 1704067200,
-        "model": "glm-4",
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "Test response"
-            },
-            "finish_reason": "stop"
-        }],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15
-        }
-    });
-
-    let response: serde_json::Value = serde_json::from_str(&response_body.to_string()).unwrap();
-    assert_eq!(response["model"], "glm-4");
-    assert_eq!(
-        response["choices"][0]["message"]["content"],
-        "Test response"
-    );
-}
-
-/// Test error response parsing
-#[test]
-fn test_error_response_parsing() {
-    let error_body = json!({
-        "error": {
-            "code": 1001,
-            "message": "Invalid API key"
-        }
-    });
-
-    let error: serde_json::Value = serde_json::from_str(&error_body.to_string()).unwrap();
-    assert_eq!(error["error"]["code"], 1001);
-    assert_eq!(error["error"]["message"], "Invalid API key");
-}
-
-/// Test streaming response format
-#[test]
-fn test_streaming_response_format() {
-    let stream_chunk = json!({
-        "id": "chatcmpl-123",
-        "object": "chat.completion.chunk",
-        "created": 1704067200,
-        "model": "glm-4",
-        "choices": [{
-            "index": 0,
-            "delta": {
-                "content": "Hello"
-            }
-        }]
-    });
-
-    let chunk: serde_json::Value = serde_json::from_str(&stream_chunk.to_string()).unwrap();
-    assert_eq!(chunk["choices"][0]["delta"]["content"], "Hello");
-}
-
-/// Test timeout handling
-#[tokio::test]
-async fn test_timeout_handling() {
-    let start = std::time::Instant::now();
-
-    // Simulate a timeout scenario
-    sleep(Duration::from_millis(100)).await;
-
-    let elapsed = start.elapsed();
-    assert!(elapsed >= Duration::from_millis(100));
-}
-
-/// Test concurrent request handling
-#[tokio::test]
-async fn test_concurrent_requests() {
-    let config = MockServerConfig::default();
-    let base_url = config.base_url.clone();
-    let client = MockServerClient::new(base_url.clone());
-
-    // Clone URLs for each task
-    let url1 = base_url.clone();
-    let url2 = base_url.clone();
-    let _url3 = base_url.clone();
-
-    // Simulate multiple concurrent requests
-    let handles = vec![
-        tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
-            client.url("/api/paas/v4/chat/completions")
-        }),
-        tokio::spawn(async move {
-            let client = MockServerClient::new(url1);
-            sleep(Duration::from_millis(10)).await;
-            client.url("/api/paas/v4/embeddings")
-        }),
-        tokio::spawn(async move {
-            let client = MockServerClient::new(url2);
-            sleep(Duration::from_millis(10)).await;
-            client.url("/api/paas/v4/files")
-        }),
-    ];
-
-    let results = futures_util::future::join_all(handles).await;
-    assert_eq!(results.len(), 3);
-}
-
-/// Test retry mechanism simulation
-#[tokio::test]
-async fn test_retry_simulation() {
-    let mut retry_count = 0;
-    let max_retries = 3;
-
-    while retry_count < max_retries {
-        // Simulate a request that fails twice then succeeds
-        retry_count += 1;
-
-        if retry_count < max_retries {
-            sleep(Duration::from_millis(10)).await;
-            continue;
-        }
-
-        break;
-    }
-
-    assert_eq!(retry_count, 3);
 }
 
 /// POST requests are non-idempotent by contract and must not be replayed after
@@ -587,7 +288,7 @@ async fn test_send_path_does_not_retry_non_idempotent_post() {
                 let counter = Arc::clone(&counter);
                 async move {
                     // Drain the request body so the connection can be reused.
-                    let _ = req.collect().await.unwrap().to_bytes();
+                    req.collect().await.unwrap();
                     let n = counter.fetch_add(1, Ordering::SeqCst);
                     if n < 2 {
                         // First two attempts: 500 with empty body -> HttpError
@@ -613,9 +314,10 @@ async fn test_send_path_does_not_retry_non_idempotent_post() {
                     }
                 }
             });
-            let _ = ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
+            ConnBuilder::new(hyper_util::rt::TokioExecutor::new())
                 .serve_connection(io, service)
-                .await;
+                .await
+                .unwrap();
         }
     });
 
@@ -631,62 +333,6 @@ async fn test_send_path_does_not_retry_non_idempotent_post() {
         1,
         "a non-idempotent POST must be sent exactly once"
     );
-}
-
-/// Test request validation
-#[test]
-fn test_request_validation() {
-    // Valid request
-    let valid_request = json!({
-        "model": "glm-4",
-        "messages": [{"role": "user", "content": "Test"}]
-    });
-
-    assert!(valid_request["model"].is_string());
-    assert!(valid_request["messages"].is_array());
-    assert!(!valid_request["messages"].as_array().unwrap().is_empty());
-}
-
-/// Test response validation
-#[test]
-fn test_response_validation() {
-    let valid_response = json!({
-        "id": "chatcmpl-123",
-        "choices": [{
-            "message": {"content": "Response"}
-        }],
-        "usage": {"total_tokens": 100}
-    });
-
-    assert!(valid_response["id"].is_string());
-    assert!(valid_response["choices"].is_array());
-    assert!(valid_response["usage"]["total_tokens"].is_number());
-}
-
-/// Test large payload handling
-#[test]
-fn test_large_payload_handling() {
-    // Create a large message
-    let large_content = "x".repeat(10000);
-    let large_request = json!({
-        "model": "glm-4",
-        "messages": [{"role": "user", "content": large_content}]
-    });
-
-    let serialized = serde_json::to_string(&large_request).unwrap();
-    assert!(serialized.len() > 10000);
-}
-
-/// Test empty response handling
-#[test]
-fn test_empty_response_handling() {
-    let empty_response = json!({
-        "id": "chatcmpl-123",
-        "choices": [],
-        "usage": {"total_tokens": 0}
-    });
-
-    assert!(empty_response["choices"].as_array().unwrap().is_empty());
 }
 
 /// Capture a single SDK request against a mock server bound to `base_path`
@@ -717,21 +363,31 @@ async fn capture_one_request_under(
                     .get(hyper::header::AUTHORIZATION)
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_string);
+                let content_type = req
+                    .headers()
+                    .get(hyper::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
                 let body = req.collect().await.unwrap().to_bytes().to_vec();
 
                 if let Some(tx) = tx.lock().unwrap().take() {
-                    let _ = tx.send(CapturedHttpRequest {
+                    tx.send(CapturedHttpRequest {
                         method,
                         path: uri.path().to_string(),
                         query: uri.query().map(str::to_string),
                         authorization,
-                        content_type: None,
+                        content_type,
                         body,
-                    });
+                    })
+                    .expect("capture receiver must remain alive until the request arrives");
                 }
 
                 let mut response = Response::new(Full::new(Bytes::from(response_body.to_string())));
                 *response.status_mut() = StatusCode::OK;
+                response.headers_mut().insert(
+                    hyper::header::CONTENT_TYPE,
+                    hyper::header::HeaderValue::from_static("application/json"),
+                );
                 Ok::<_, Infallible>(response)
             }
         });

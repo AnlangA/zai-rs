@@ -17,11 +17,11 @@
 //! use zai_rs::{ZaiResult, batches::*, client::ZaiClient};
 //!
 //! # async fn example(client: &ZaiClient) -> ZaiResult<()> {
-//! let job = CreateBatchRequest::new("batch-input-file-id", BatchEndpoint::ChatCompletions)
+//! let job = BatchCreateRequest::new("batch-input-file-id", BatchEndpoint::ChatCompletions)
 //!     .send_via(client)
 //!     .await?;
-//! let current = BatchesRetrieveRequest::new("batch-id").send_via(client).await?;
-//! let cancelled = CancelBatchRequest::new("batch-id").send_via(client).await?;
+//! let current = BatchGetRequest::new("batch-id").send_via(client).await?;
+//! let cancelled = BatchCancelRequest::new("batch-id").send_via(client).await?;
 //! # let _ = (job, current, cancelled);
 //! # Ok(())
 //! # }
@@ -37,8 +37,8 @@ mod list;
 mod retrieve;
 mod types;
 
-pub use cancel::{CancelBatchRequest, CancelBatchResponse};
-pub use create::{BatchEndpoint, CreateBatchBody, CreateBatchRequest, CreateBatchResponse};
-pub use list::{BatchesListQuery, BatchesListRequest, BatchesListResponse, ListObject};
-pub use retrieve::{BatchesRetrieveRequest, BatchesRetrieveResponse};
+pub use cancel::{BatchCancelRequest, BatchCancelResponse};
+pub use create::{BatchCreateBody, BatchCreateRequest, BatchCreateResponse, BatchEndpoint};
+pub use list::{BatchListObject, BatchListQuery, BatchListRequest, BatchListResponse};
+pub use retrieve::{BatchGetRequest, BatchGetResponse};
 pub use types::BatchItem;

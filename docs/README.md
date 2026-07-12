@@ -1,6 +1,6 @@
-# ZAI-RS 文档
+# zai-rs 文档
 
-欢迎来到 zai-rs - Zhipu AI Rust SDK 的文档中心。
+这里是 zai-rs（Zhipu AI Rust SDK）的使用与维护文档。
 
 ## 入门指南
 
@@ -50,18 +50,22 @@
 
 ## API 参考
 
-- **[Rustdoc 文档](../src/)** - 完整的 API 文档和类型定义
-  - 使用 `cargo doc --open` 生成并查看本地文档
+- **Rustdoc** - 在仓库根目录运行 `cargo doc --all-features --open`
 
 ## 示例代码
 
 - **[示例目录](../examples/)** - 实际使用示例
   - 聊天补全
-  - 流式响应
+  - typed SSE 流式响应
   - 图像和视频生成
   - 语音处理
   - 工具调用
   - 文件管理
+
+书中的 Rust 代码块依赖本 crate 及 Tokio 等 Cargo 依赖。`mdbook test` 无法为
+独立章节注入这些依赖，因此标记为 `rust,ignore`；同一 API 的可执行版本位于
+`examples/`，并由工作区的 examples 构建检查验证。crate 内的 rustdoc 示例则
+使用可编译的 `rust` 或 `rust,no_run`。
 
 ## 外部资源
 
@@ -69,16 +73,7 @@
 - [智谱AI开放平台](https://open.bigmodel.cn/) - API 密钥申请和管理
 - [GitHub Issues](https://github.com/AnlangA/zai-rs/issues) - 问题反馈和讨论
 
-## 文档贡献
-
-我们欢迎文档改进！如果您发现错误或有改进建议，请：
-1. 提交 Issue 描述问题
-2. 或提交 Pull Request 修复
-
 ## 版本说明
 
-本文档基于 zai-rs v0.4.0 版本编写。
-
----
-
-**© 2024-2026 ZAI-RS. All rights reserved.**
+本文档与仓库中的 `0.6.0` API 同步。版本升级前请阅读
+[0.6 迁移指南](MIGRATING-0.6.md)。

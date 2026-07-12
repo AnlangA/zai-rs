@@ -2,6 +2,43 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::ZaiResult;
+
+pub(crate) trait McpRequest {
+    fn validate(&self) -> ZaiResult<()>;
+}
+
+fn validate_required(fields: &[(&'static str, &str)]) -> ZaiResult<()> {
+    if let Some((name, _)) = fields.iter().find(|(_, value)| value.trim().is_empty()) {
+        return Err(crate::client::validation::invalid(format!(
+            "MCP request field `{name}` must not be empty"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_optional(name: &'static str, value: Option<&str>) -> ZaiResult<()> {
+    if value.is_some_and(|value| value.trim().is_empty()) {
+        return Err(crate::client::validation::invalid(format!(
+            "MCP request field `{name}` must not be empty when provided"
+        )));
+    }
+    Ok(())
+}
+
+macro_rules! impl_redacted_debug {
+    ($request:ty, redacted[$($redacted:ident),* $(,)?], visible[$($visible:ident),* $(,)?]) => {
+        impl std::fmt::Debug for $request {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut debug = formatter.debug_struct(stringify!($request));
+                $(debug.field(stringify!($redacted), &"[REDACTED]");)*
+                $(debug.field(stringify!($visible), &self.$visible);)*
+                debug.finish()
+            }
+        }
+    };
+}
+
 /// Web-search result summary size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -47,7 +84,7 @@ pub enum SearchRecency {
 }
 
 /// Complete request for `web_search_prime`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebSearchRequest {
     #[serde(rename = "search_query")]
     query: String,
@@ -66,6 +103,12 @@ pub struct WebSearchRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     location: Option<SearchLocation>,
 }
+
+impl_redacted_debug!(
+    WebSearchRequest,
+    redacted[query, domain],
+    visible[recency, content_size, location]
+);
 
 impl WebSearchRequest {
     /// Create a web-search request using server defaults for optional fields.
@@ -109,6 +152,18 @@ impl WebSearchRequest {
     }
 }
 
+impl McpRequest for WebSearchRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[("search_query", &self.query)])?;
+        if self.query.chars().count() > 70 {
+            return Err(crate::client::validation::invalid(
+                "MCP search_query must not exceed 70 characters",
+            ));
+        }
+        validate_optional("search_domain_filter", self.domain.as_deref())
+    }
+}
+
 /// Web-reader output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -121,7 +176,7 @@ pub enum WebReaderFormat {
 }
 
 /// Complete request for `webReader`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WebReaderRequest {
     url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -141,6 +196,21 @@ pub struct WebReaderRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     timeout: Option<u32>,
 }
+
+impl_redacted_debug!(
+    WebReaderRequest,
+    redacted[url],
+    visible[
+        return_format,
+        retain_images,
+        with_links_summary,
+        with_images_summary,
+        keep_img_data_url,
+        no_gfm,
+        no_cache,
+        timeout,
+    ]
+);
 
 impl WebReaderRequest {
     /// Create a page-reader request using server defaults.
@@ -210,6 +280,30 @@ impl WebReaderRequest {
     }
 }
 
+impl McpRequest for WebReaderRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[("url", &self.url)])?;
+        let url = url::Url::parse(&self.url)
+            .map_err(|_| crate::client::validation::invalid("invalid web-reader URL"))?;
+        if !matches!(url.scheme(), "http" | "https") {
+            return Err(crate::client::validation::invalid(
+                "web-reader URL must use the http or https scheme",
+            ));
+        }
+        if !url.username().is_empty() || url.password().is_some() {
+            return Err(crate::client::validation::invalid(
+                "web-reader URL must not contain user information",
+            ));
+        }
+        if self.timeout == Some(0) {
+            return Err(crate::client::validation::invalid(
+                "web-reader timeout must be greater than zero",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Repository-search response language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -222,13 +316,19 @@ pub enum RepositoryLanguage {
 }
 
 /// Complete request for `search_doc`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchDocRequest {
     repo_name: String,
     query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     language: Option<RepositoryLanguage>,
 }
+
+impl_redacted_debug!(
+    SearchDocRequest,
+    redacted[repo_name, query],
+    visible[language]
+);
 
 impl SearchDocRequest {
     /// Create a repository search for `owner/repository`.
@@ -247,13 +347,21 @@ impl SearchDocRequest {
     }
 }
 
+impl McpRequest for SearchDocRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[("repo_name", &self.repo_name), ("query", &self.query)])
+    }
+}
+
 /// Complete request for `get_repo_structure`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RepoStructureRequest {
     repo_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     dir_path: Option<String>,
 }
+
+impl_redacted_debug!(RepoStructureRequest, redacted[repo_name, dir_path], visible[]);
 
 impl RepoStructureRequest {
     /// Create a request for the root tree of `owner/repository`.
@@ -271,12 +379,21 @@ impl RepoStructureRequest {
     }
 }
 
+impl McpRequest for RepoStructureRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[("repo_name", &self.repo_name)])?;
+        validate_optional("dir_path", self.dir_path.as_deref())
+    }
+}
+
 /// Complete request for `read_file`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReadRepoFileRequest {
     repo_name: String,
     file_path: String,
 }
+
+impl_redacted_debug!(ReadRepoFileRequest, redacted[repo_name, file_path], visible[]);
 
 impl ReadRepoFileRequest {
     /// Create a request for a repository-relative file path.
@@ -285,6 +402,15 @@ impl ReadRepoFileRequest {
             repo_name: repository.into(),
             file_path: path.into(),
         }
+    }
+}
+
+impl McpRequest for ReadRepoFileRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[
+            ("repo_name", &self.repo_name),
+            ("file_path", &self.file_path),
+        ])
     }
 }
 
@@ -305,12 +431,18 @@ pub enum UiArtifactOutput {
 }
 
 /// Complete request for `ui_to_artifact`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiToArtifactRequest {
     image_source: String,
     output_type: UiArtifactOutput,
     prompt: String,
 }
+
+impl_redacted_debug!(
+    UiToArtifactRequest,
+    redacted[image_source, prompt],
+    visible[output_type]
+);
 
 impl UiToArtifactRequest {
     /// Create a UI-conversion request from a local image path or remote URL.
@@ -328,13 +460,19 @@ impl UiToArtifactRequest {
 }
 
 /// Complete request for `extract_text_from_screenshot`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtractTextRequest {
     image_source: String,
     prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     programming_language: Option<String>,
 }
+
+impl_redacted_debug!(
+    ExtractTextRequest,
+    redacted[image_source, prompt, programming_language],
+    visible[]
+);
 
 impl ExtractTextRequest {
     /// Create an OCR request from a local image path or remote URL.
@@ -354,13 +492,19 @@ impl ExtractTextRequest {
 }
 
 /// Complete request for `diagnose_error_screenshot`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnoseErrorRequest {
     image_source: String,
     prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     context: Option<String>,
 }
+
+impl_redacted_debug!(
+    DiagnoseErrorRequest,
+    redacted[image_source, prompt, context],
+    visible[]
+);
 
 impl DiagnoseErrorRequest {
     /// Create an error-diagnosis request from a local image path or remote URL.
@@ -380,13 +524,19 @@ impl DiagnoseErrorRequest {
 }
 
 /// Complete request for `understand_technical_diagram`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnderstandDiagramRequest {
     image_source: String,
     prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagram_type: Option<String>,
 }
+
+impl_redacted_debug!(
+    UnderstandDiagramRequest,
+    redacted[image_source, prompt, diagram_type],
+    visible[]
+);
 
 impl UnderstandDiagramRequest {
     /// Create a technical-diagram request from a local image path or remote URL.
@@ -406,13 +556,19 @@ impl UnderstandDiagramRequest {
 }
 
 /// Complete request for `analyze_data_visualization`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalyzeVisualizationRequest {
     image_source: String,
     prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     analysis_focus: Option<String>,
 }
+
+impl_redacted_debug!(
+    AnalyzeVisualizationRequest,
+    redacted[image_source, prompt, analysis_focus],
+    visible[]
+);
 
 impl AnalyzeVisualizationRequest {
     /// Create a visualization-analysis request from a local image path or URL.
@@ -432,12 +588,18 @@ impl AnalyzeVisualizationRequest {
 }
 
 /// Complete request for `ui_diff_check`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiDiffRequest {
     expected_image_source: String,
     actual_image_source: String,
     prompt: String,
 }
+
+impl_redacted_debug!(
+    UiDiffRequest,
+    redacted[expected_image_source, actual_image_source, prompt],
+    visible[]
+);
 
 impl UiDiffRequest {
     /// Create a comparison between expected and actual UI screenshots.
@@ -457,11 +619,13 @@ impl UiDiffRequest {
 }
 
 /// Complete request for `analyze_image`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalyzeImageRequest {
     image_source: String,
     prompt: String,
 }
+
+impl_redacted_debug!(AnalyzeImageRequest, redacted[image_source, prompt], visible[]);
 
 impl AnalyzeImageRequest {
     /// Create a general image-analysis request from a local path or remote URL.
@@ -474,11 +638,13 @@ impl AnalyzeImageRequest {
 }
 
 /// Complete request for `analyze_video`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalyzeVideoRequest {
     video_source: String,
     prompt: String,
 }
+
+impl_redacted_debug!(AnalyzeVideoRequest, redacted[video_source, prompt], visible[]);
 
 impl AnalyzeVideoRequest {
     /// Create a video-analysis request from a local path or remote URL.
@@ -489,6 +655,61 @@ impl AnalyzeVideoRequest {
             video_source: video_source.into(),
             prompt: prompt.into(),
         }
+    }
+}
+
+macro_rules! impl_required_mcp_request {
+    ($request:ty => $($field:ident),+ $(,)?) => {
+        impl McpRequest for $request {
+            fn validate(&self) -> ZaiResult<()> {
+                validate_required(&[$((stringify!($field), &self.$field)),+])
+            }
+        }
+    };
+}
+
+impl_required_mcp_request!(UiToArtifactRequest => image_source, prompt);
+impl_required_mcp_request!(UiDiffRequest => expected_image_source, actual_image_source, prompt);
+impl_required_mcp_request!(AnalyzeImageRequest => image_source, prompt);
+impl_required_mcp_request!(AnalyzeVideoRequest => video_source, prompt);
+
+impl McpRequest for ExtractTextRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[
+            ("image_source", &self.image_source),
+            ("prompt", &self.prompt),
+        ])?;
+        validate_optional("programming_language", self.programming_language.as_deref())
+    }
+}
+
+impl McpRequest for DiagnoseErrorRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[
+            ("image_source", &self.image_source),
+            ("prompt", &self.prompt),
+        ])?;
+        validate_optional("context", self.context.as_deref())
+    }
+}
+
+impl McpRequest for UnderstandDiagramRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[
+            ("image_source", &self.image_source),
+            ("prompt", &self.prompt),
+        ])?;
+        validate_optional("diagram_type", self.diagram_type.as_deref())
+    }
+}
+
+impl McpRequest for AnalyzeVisualizationRequest {
+    fn validate(&self) -> ZaiResult<()> {
+        validate_required(&[
+            ("image_source", &self.image_source),
+            ("prompt", &self.prompt),
+        ])?;
+        validate_optional("analysis_focus", self.analysis_focus.as_deref())
     }
 }
 
@@ -711,6 +932,94 @@ mod tests {
         ];
         for (value, expected) in cases {
             assert_eq!(to_value(value).unwrap(), Value::String(expected.to_owned()));
+        }
+    }
+
+    #[test]
+    fn request_validation_rejects_blank_required_fields() {
+        assert!(WebSearchRequest::new(" ").validate().is_err());
+        assert!(WebSearchRequest::new("x".repeat(71)).validate().is_err());
+        assert!(SearchDocRequest::new("owner/repo", "").validate().is_err());
+        assert!(AnalyzeImageRequest::new("", "describe").validate().is_err());
+        assert!(
+            ExtractTextRequest::new("image.png", "extract")
+                .programming_language(" ")
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn web_reader_requires_http_url_and_positive_timeout() {
+        assert!(
+            WebReaderRequest::new("file:///tmp/page.html")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            WebReaderRequest::new("https://example.com")
+                .timeout_seconds(0)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            WebReaderRequest::new("https://example.com")
+                .timeout_seconds(30)
+                .validate()
+                .is_ok()
+        );
+        assert!(
+            WebReaderRequest::new("https://user:password@example.com/private")
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn request_debug_output_redacts_queries_paths_and_media_sources() {
+        let requests = [
+            format!(
+                "{:?}",
+                WebSearchRequest::new("private-query").domain("private.example")
+            ),
+            format!(
+                "{:?}",
+                WebReaderRequest::new("https://private.example/page")
+            ),
+            format!(
+                "{:?}",
+                SearchDocRequest::new("private/repository", "private-doc-query")
+            ),
+            format!(
+                "{:?}",
+                DiagnoseErrorRequest::new("private-image.png", "private-prompt")
+                    .context("private-context")
+            ),
+            format!(
+                "{:?}",
+                UiDiffRequest::new("private-expected.png", "private-actual.png", "compare")
+            ),
+            format!(
+                "{:?}",
+                AnalyzeVideoRequest::new("private-video.mp4", "private-video-prompt")
+            ),
+        ];
+        for debug in requests {
+            for secret in [
+                "private-query",
+                "private.example",
+                "private/repository",
+                "private-doc-query",
+                "private-image.png",
+                "private-prompt",
+                "private-context",
+                "private-expected.png",
+                "private-actual.png",
+                "private-video.mp4",
+                "private-video-prompt",
+            ] {
+                assert!(!debug.contains(secret), "Debug leaked {secret}");
+            }
         }
     }
 }

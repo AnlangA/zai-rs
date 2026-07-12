@@ -2,11 +2,11 @@
 //!
 //! The GLM-Realtime protocol exchanges audio as base64-encoded payloads:
 //!
-//! - **Input** (`input_audio_buffer.append`): a base64-encoded **WAV** file
-//!   (`input_audio_format: "wav"` = 16 kHz, `"wav48"` = 48 kHz).
-//! - **Output** (`response.audio.delta`): base64-encoded raw **PCM** (when
-//!   `output_audio_format: "pcm"`) or **MP3** (`"mp3"`); decoded to bytes by
-//!   the transport layer before being handed to the caller.
+//! - **Input** (`input_audio_buffer.append`): base64-encoded WAV or raw PCM.
+//!   Raw PCM declares its sample rate in `input_audio_format` (`"pcm16"` for
+//!   16 kHz or `"pcm24"` for 24 kHz).
+//! - **Output** (`response.audio.delta`): base64-encoded raw 24 kHz, mono,
+//!   16-bit PCM. The session decodes each delta before handing it to callers.
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -15,28 +15,29 @@ use crate::{ZaiResult, client::error::RealtimeErrorKind};
 
 /// Input audio format for `session.update`.
 ///
-/// `Wav` ⇒ 16 kHz, `Wav48` ⇒ 48 kHz (per the official protocol).
+/// The current GLM-Realtime protocol accepts WAV or raw PCM at 16/24 kHz.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum InputAudioFormat {
-    /// 16 kHz WAV.
+    /// A WAV container. [`RealtimeSession::send_audio`](super::RealtimeSession::send_audio)
+    /// creates a mono, 16-bit, 16 kHz WAV when this format is selected.
     #[default]
     #[serde(rename = "wav")]
     Wav,
-    /// 48 kHz WAV.
-    #[serde(rename = "wav48")]
-    Wav48,
+    /// Raw 16-bit little-endian mono PCM sampled at 16 kHz.
+    #[serde(rename = "pcm16")]
+    Pcm16,
+    /// Raw 16-bit little-endian mono PCM sampled at 24 kHz.
+    #[serde(rename = "pcm24")]
+    Pcm24,
 }
 
 /// Output audio format for `session.update`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum OutputAudioFormat {
-    /// Raw PCM (server default).
+    /// Raw 24 kHz, mono, 16-bit PCM (the only current output format).
     #[default]
     #[serde(rename = "pcm")]
     Pcm,
-    /// MP3 frames.
-    #[serde(rename = "mp3")]
-    Mp3,
 }
 
 /// Standard (non-URL) base64-encode, matching the wire format used by the
@@ -56,20 +57,35 @@ pub fn decode_base64(s: &str) -> ZaiResult<Vec<u8>> {
 /// return the base64-encoded file body for `input_audio_buffer.append`.
 ///
 /// `samples` must be the raw PCM byte stream (two bytes per sample, mono).
-pub fn encode_wav_pcm_base64(samples: &[u8], sample_rate: u32) -> String {
+pub fn encode_wav_pcm_base64(samples: &[u8], sample_rate: u32) -> ZaiResult<String> {
+    if samples.len() % 2 != 0 {
+        return Err(RealtimeErrorKind::Protocol(
+            "16-bit PCM input must contain an even number of bytes".into(),
+        )
+        .into());
+    }
+    if sample_rate == 0 {
+        return Err(RealtimeErrorKind::Protocol("WAV sample rate must be positive".into()).into());
+    }
+
     let bytes_per_sample: u32 = 2;
     let channels: u32 = 1;
-    // Saturating math: WAV sizes are 32-bit, so guard against silent `as`
-    // truncation on absurdly large inputs rather than emitting a corrupt
-    // header (a >4 GiB PCM buffer can't be represented in WAV anyway).
     let byte_rate = sample_rate
-        .saturating_mul(channels)
-        .saturating_mul(bytes_per_sample);
-    let block_align = (channels * bytes_per_sample).min(u16::MAX as u32) as u16;
-    let data_len = u32::try_from(samples.len()).unwrap_or(u32::MAX);
-    let chunk_size = data_len.saturating_add(36);
+        .checked_mul(channels * bytes_per_sample)
+        .ok_or_else(|| RealtimeErrorKind::Protocol("WAV byte rate overflow".into()))?;
+    let block_align = u16::try_from(channels * bytes_per_sample)
+        .map_err(|_| RealtimeErrorKind::Protocol("WAV block alignment overflow".into()))?;
+    let data_len = u32::try_from(samples.len())
+        .map_err(|_| RealtimeErrorKind::Protocol("PCM input is too large for WAV".into()))?;
+    let chunk_size = data_len
+        .checked_add(36)
+        .ok_or_else(|| RealtimeErrorKind::Protocol("PCM input is too large for WAV".into()))?;
+    let capacity = samples
+        .len()
+        .checked_add(44)
+        .ok_or_else(|| RealtimeErrorKind::Protocol("PCM input is too large for WAV".into()))?;
 
-    let mut wav = Vec::with_capacity(44 + samples.len());
+    let mut wav = Vec::with_capacity(capacity);
     // RIFF header
     wav.extend_from_slice(b"RIFF");
     wav.extend_from_slice(&chunk_size.to_le_bytes());
@@ -88,7 +104,7 @@ pub fn encode_wav_pcm_base64(samples: &[u8], sample_rate: u32) -> String {
     wav.extend_from_slice(&data_len.to_le_bytes());
     wav.extend_from_slice(samples);
 
-    encode_base64(&wav)
+    Ok(encode_base64(&wav))
 }
 
 /// Base64-encode a JPEG video frame for
@@ -105,7 +121,7 @@ mod tests {
     fn wav_round_trip_has_valid_header() {
         // 100 samples of silence = 200 bytes of PCM.
         let pcm = vec![0u8; 200];
-        let wav_b64 = encode_wav_pcm_base64(&pcm, 16000);
+        let wav_b64 = encode_wav_pcm_base64(&pcm, 16000).unwrap();
         let wav = decode_base64(&wav_b64).unwrap();
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
@@ -122,5 +138,33 @@ mod tests {
     fn base64_round_trip() {
         let data = b"hello realtime";
         assert_eq!(decode_base64(&encode_base64(data)).unwrap(), data);
+    }
+
+    #[test]
+    fn wav_encoder_rejects_invalid_pcm_metadata() {
+        assert!(encode_wav_pcm_base64(&[0], 16_000).is_err());
+        assert!(encode_wav_pcm_base64(&[0, 0], 0).is_err());
+    }
+
+    #[test]
+    fn current_formats_use_official_wire_values() {
+        assert_eq!(
+            serde_json::to_string(&InputAudioFormat::Wav).unwrap(),
+            r#""wav""#
+        );
+        assert_eq!(
+            serde_json::to_string(&InputAudioFormat::Pcm16).unwrap(),
+            r#""pcm16""#
+        );
+        assert_eq!(
+            serde_json::to_string(&InputAudioFormat::Pcm24).unwrap(),
+            r#""pcm24""#
+        );
+        assert_eq!(
+            serde_json::to_string(&OutputAudioFormat::Pcm).unwrap(),
+            r#""pcm""#
+        );
+        assert!(serde_json::from_str::<InputAudioFormat>(r#""wav48""#).is_err());
+        assert!(serde_json::from_str::<OutputAudioFormat>(r#""mp3""#).is_err());
     }
 }

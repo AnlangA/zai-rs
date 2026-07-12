@@ -1,4 +1,10 @@
-//! Speech-to-text (ASR) — transcribe audio into text.
+//! Speech-to-text (ASR) for local or standard-base64 WAV/MP3 input.
+//!
+//! Requests are non-streaming by default. Calling
+//! [`AudioToTextRequest::enable_stream`](crate::model::audio_to_text::AudioToTextRequest::enable_stream)
+//! changes the type-state and exposes a
+//! [`SpeechToTextStream`](crate::model::audio_to_text::SpeechToTextStream) of
+//! [`SpeechToTextEvent`](crate::model::audio_to_text::SpeechToTextEvent) values.
 
 /// Request builder and client for audio transcription.
 mod data;

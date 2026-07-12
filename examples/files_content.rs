@@ -1,17 +1,24 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::file::FileContentRequest;
+//! Download a remote file to an explicit local path.
+
+use std::path::PathBuf;
+
+use zai_rs::{client::ZaiClient, file::FileContentRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    let file_id = args
+        .next()
+        .ok_or("usage: files_content <file-id> <output-path>")?;
+    let path = args
+        .next()
+        .map(PathBuf::from)
+        .ok_or("usage: files_content <file-id> <output-path>")?;
+
     let client = ZaiClient::from_env()?;
-    let file_id = std::env::args()
-        .nth(1)
-        .expect("usage: files_content <file_id>");
-    let path = std::env::temp_dir().join("zai_file_content.bin");
-    let p = path.to_str().unwrap();
     FileContentRequest::new(file_id)
-        .send_to_via(&client, p)
+        .send_to_via(&client, &path)
         .await?;
-    println!("saved to {p}");
+    println!("saved to {}", path.display());
     Ok(())
 }

@@ -29,15 +29,11 @@ pub struct ZaiClient {
 
 /// Interior of a [`ZaiClient`], shared via `Arc`.
 pub(crate) struct ClientInner {
-    /// The API key, wrapped so it never appears in Debug/Display.
-    pub(crate) secret: ApiSecret,
     /// Validated per-family base URLs.
     pub(crate) endpoints: EndpointConfig,
     /// Transport policy.
     pub(crate) transport: HttpTransportConfig,
-    /// The single reqwest client built by the SDK.
-    #[allow(dead_code)]
-    pub(crate) reqwest: reqwest::Client,
+    /// Unified request sender, which owns the shared reqwest connection pool.
     pub(crate) sender: crate::client::transport::Transport,
 }
 
@@ -75,17 +71,6 @@ impl ZaiClient {
     /// Borrow the transport policy.
     pub fn transport(&self) -> &HttpTransportConfig {
         &self.inner.transport
-    }
-
-    /// Borrow the shared reqwest client (crate-private use only).
-    #[allow(dead_code)]
-    pub(crate) fn reqwest(&self) -> &reqwest::Client {
-        &self.inner.reqwest
-    }
-
-    /// Borrow the API secret (crate-private; only for Authorization construction).
-    pub(crate) fn secret(&self) -> &ApiSecret {
-        &self.inner.secret
     }
 
     /// Send a JSON request through the unified transport and decode its body.
@@ -143,7 +128,7 @@ impl ZaiClient {
             body: crate::client::transport::request::BodyKind::Bytes(&bytes),
             retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
             retry_override: None,
-            response_mode: crate::client::transport::request::ResponseMode::Binary,
+            response_mode: crate::client::transport::request::ResponseMode::Audio,
             route_template: "binary-api-request",
         };
         self.inner.sender.send(&request).await?.bytes()
@@ -161,7 +146,7 @@ impl ZaiClient {
             body: crate::client::transport::request::BodyKind::None,
             retry_safety: crate::client::transport::retry::RetrySafety::for_method(method),
             retry_override: None,
-            response_mode: crate::client::transport::request::ResponseMode::Binary,
+            response_mode: crate::client::transport::request::ResponseMode::File,
             route_template: "binary-api-request",
         };
         self.inner.sender.send(&request).await?.bytes()
@@ -185,13 +170,54 @@ impl ZaiClient {
         };
         self.inner.sender.send(&request).await?.json()
     }
+
+    /// Send a JSON request whose successful response is an SSE byte stream.
+    /// Authentication remains inside the shared transport so callers never
+    /// receive or copy the API secret.
+    pub(crate) async fn send_sse_json<B: serde::Serialize + ?Sized>(
+        &self,
+        method: &'static str,
+        url: String,
+        body: &B,
+    ) -> ZaiResult<crate::client::transport::SseByteStream> {
+        let bytes = bytes::Bytes::from(serde_json::to_vec(body).map_err(crate::ZaiError::from)?);
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::Bytes(&bytes),
+            retry_safety: crate::client::transport::retry::RetrySafety::NonIdempotent,
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Json,
+            route_template: "sse-api-request",
+        };
+        self.inner.sender.send_sse(&request).await
+    }
+
+    /// Send a multipart request whose successful response is an SSE stream.
+    pub(crate) async fn send_sse_multipart(
+        &self,
+        method: &'static str,
+        url: String,
+        factory: &crate::client::transport::multipart::MultipartBodyFactory,
+    ) -> ZaiResult<crate::client::transport::SseByteStream> {
+        let request = crate::client::transport::request::PreparedRequest {
+            method,
+            url,
+            body: crate::client::transport::request::BodyKind::Multipart(factory),
+            retry_safety: crate::client::transport::retry::RetrySafety::NonIdempotent,
+            retry_override: None,
+            response_mode: crate::client::transport::request::ResponseMode::Json,
+            route_template: "multipart-sse-api-request",
+        };
+        self.inner.sender.send_sse(&request).await
+    }
 }
 
 impl std::fmt::Debug for ZaiClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Never exposes the secret; the inner secret's own Debug is [REDACTED].
         f.debug_struct("ZaiClient")
-            .field("secret", &self.inner.secret)
+            .field("credentials", &"[REDACTED]")
             .field("endpoints", &self.inner.endpoints)
             .field("transport", &self.inner.transport)
             .finish_non_exhaustive()
@@ -209,13 +235,12 @@ pub struct ZaiClientBuilder {
 impl ZaiClientBuilder {
     /// Override a family base URL.
     ///
-    /// The API currently requires a `&'static str`; it does not restrict the
-    /// value to an official host. The URL is validated when [`Self::build`] is
-    /// called.
+    /// The value does not need to be static and is validated when
+    /// [`Self::build`] is called.
     pub fn endpoint(
         mut self,
         family: crate::client::endpoint::ApiFamily,
-        base: &'static str,
+        base: impl Into<String>,
     ) -> Self {
         use crate::client::endpoint::ApiFamily::*;
         match family {
@@ -255,19 +280,30 @@ impl ZaiClientBuilder {
                 message: "ZaiClient requires a non-empty api_key".to_string(),
             });
         }
+        if self.api_key.trim() != self.api_key {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "ZaiClient api_key must not contain surrounding whitespace".to_string(),
+            });
+        }
+        if !self.api_key.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "ZaiClient api_key must contain printable ASCII without whitespace"
+                    .to_string(),
+            });
+        }
+        self.transport.validate()?;
         let endpoints = self.endpoints.build(self.allow_insecure)?;
         let reqwest = build_reqwest_client(&self.transport)?;
-        let secret = ApiSecret::new(self.api_key);
         let sender = crate::client::transport::Transport::new(
-            reqwest.clone(),
-            secret.clone(),
+            reqwest,
+            ApiSecret::new(self.api_key),
             &self.transport,
         );
         let inner = Arc::new(ClientInner {
-            secret,
             endpoints,
             transport: self.transport,
-            reqwest,
             sender,
         });
         Ok(ZaiClient { inner })
@@ -284,11 +320,11 @@ fn build_reqwest_client(transport: &HttpTransportConfig) -> ZaiResult<reqwest::C
         .pool_max_idle_per_host(8)
         .pool_idle_timeout(Some(Duration::from_secs(90)))
         .tcp_keepalive(Some(Duration::from_secs(60)))
-        .connect_timeout(transport.connect_timeout)
-        .timeout(transport.request_timeout);
-    if transport.enable_compression {
-        builder = builder.gzip(true);
-    }
+        .connect_timeout(transport.connect_timeout);
+    // The transport applies per-attempt and overall deadlines itself. A
+    // reqwest-wide timeout would also cap the lifetime of an SSE response,
+    // terminating otherwise healthy long-running streams.
+    builder = builder.gzip(transport.enable_compression);
     builder.build().map_err(crate::ZaiError::from)
 }
 
@@ -298,41 +334,48 @@ fn build_reqwest_client(transport: &HttpTransportConfig) -> ZaiResult<reqwest::C
 const ALLOWED_HEADER_NAMES: &[&str] = &["Accept-Language", "X-Correlation-ID", "X-Test-Client"];
 
 /// A single allow-listed additional header.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AdditionalHeader {
     name: &'static str,
     value: String,
 }
 
+impl std::fmt::Debug for AdditionalHeader {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AdditionalHeader")
+            .field("name", &self.name)
+            .field("value", &"[REDACTED]")
+            .finish()
+    }
+}
+
 impl AdditionalHeader {
     /// Construct an allow-listed header. Returns `Err` for disallowed names or
-    /// over-long / non-printable values (>1024 bytes).
+    /// over-long / non-printable-ASCII values (>1024 bytes).
     pub fn new(name: &str, value: &str) -> ZaiResult<Self> {
-        let allowed = ALLOWED_HEADER_NAMES.contains(&name);
-        if !allowed {
+        let Some(static_name) = ALLOWED_HEADER_NAMES
+            .iter()
+            .copied()
+            .find(|candidate| candidate.eq_ignore_ascii_case(name))
+        else {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
                 message: format!("header name {name:?} is not allow-listed"),
             });
-        }
+        };
         if value.len() > 1024 {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
                 message: "additional header value exceeds 1024 bytes".to_string(),
             });
         }
-        if !value.chars().all(|c| !c.is_control()) {
+        if !value.bytes().all(|byte| (0x20..=0x7e).contains(&byte)) {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
-                message: "additional header value must be printable".to_string(),
+                message: "additional header value must contain printable ASCII only".to_string(),
             });
         }
-        // Resolve to the matching static entry in the fixed allow-list.
-        let static_name = ALLOWED_HEADER_NAMES
-            .iter()
-            .copied()
-            .find(|n| *n == name)
-            .expect("validated above");
         Ok(Self {
             name: static_name,
             value: value.to_string(),
@@ -362,8 +405,9 @@ pub enum RetryOverride {
 /// Transport policy for [`ZaiClient`].
 ///
 /// The `with_*` helpers and [`HttpTransportConfigBuilder`] reject timeout values
-/// above their defaults and attempt counts above three. The fields remain public,
-/// so direct struct construction can bypass those helper checks.
+/// outside their supported ranges and attempt counts outside `1..=3`. Fields
+/// remain public for direct construction; [`ZaiClientBuilder::build`] validates
+/// the same invariants before creating any network client.
 #[derive(Debug, Clone)]
 pub struct HttpTransportConfig {
     /// Connect timeout (default 10s).
@@ -398,13 +442,49 @@ impl HttpTransportConfig {
         }
     }
 
+    /// Validate all transport invariants, including values set through public
+    /// struct fields rather than the checked builder methods.
+    pub fn validate(&self) -> ZaiResult<()> {
+        if self.connect_timeout.is_zero() || self.connect_timeout > Duration::from_secs(10) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "connect_timeout must be in 1ns..=10s".to_string(),
+            });
+        }
+        if self.request_timeout.is_zero() || self.request_timeout > Duration::from_secs(60) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "request_timeout must be in 1ns..=60s".to_string(),
+            });
+        }
+        if !(1..=3).contains(&self.max_attempts) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "max_attempts must be 1, 2 or 3".to_string(),
+            });
+        }
+        let mut names = std::collections::HashSet::with_capacity(self.additional_headers.len());
+        for header in &self.additional_headers {
+            if !names.insert(header.name()) {
+                return Err(crate::ZaiError::ApiError {
+                    code: crate::client::error::codes::SDK_CONFIG,
+                    message: format!(
+                        "additional header {:?} must not be configured more than once",
+                        header.name()
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Lower the per-attempt request timeout. Values above the default are
     /// rejected by this helper.
     pub fn with_request_timeout(mut self, d: Duration) -> ZaiResult<Self> {
-        if d > Duration::from_secs(60) {
+        if d.is_zero() || d > Duration::from_secs(60) {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
-                message: "request_timeout may only be lowered (max 60s)".to_string(),
+                message: "request_timeout must be in 1ns..=60s".to_string(),
             });
         }
         self.request_timeout = d;
@@ -413,10 +493,10 @@ impl HttpTransportConfig {
 
     /// Lower the connect timeout (max 10s).
     pub fn with_connect_timeout(mut self, d: Duration) -> ZaiResult<Self> {
-        if d > Duration::from_secs(10) {
+        if d.is_zero() || d > Duration::from_secs(10) {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
-                message: "connect_timeout may only be lowered (max 10s)".to_string(),
+                message: "connect_timeout must be in 1ns..=10s".to_string(),
             });
         }
         self.connect_timeout = d;
@@ -443,6 +523,7 @@ impl HttpTransportConfig {
 }
 
 /// Builder for [`HttpTransportConfig`] (tighten-only).
+#[derive(Debug, Clone)]
 pub struct HttpTransportConfigBuilder {
     config: HttpTransportConfig,
 }
@@ -485,6 +566,13 @@ mod tests {
     }
 
     #[test]
+    fn builder_rejects_keys_that_cannot_be_safe_header_credentials() {
+        assert!(ZaiClient::builder("abc.def\nghi").build().is_err());
+        assert!(ZaiClient::builder("abc.def ghi").build().is_err());
+        assert!(ZaiClient::builder("密钥.abcdefghij").build().is_err());
+    }
+
+    #[test]
     fn clone_shares_inner_no_secret_leak() {
         let c = ZaiClient::builder("abcdefghij.0123456789abcdef")
             .build()
@@ -499,6 +587,12 @@ mod tests {
     #[test]
     fn additional_header_allow_list() {
         assert!(AdditionalHeader::new("X-Test-Client", "preserved").is_ok());
+        assert_eq!(
+            AdditionalHeader::new("x-test-client", "preserved")
+                .unwrap()
+                .name(),
+            "X-Test-Client"
+        );
         assert!(AdditionalHeader::new("Authorization", "nope").is_err());
         assert!(AdditionalHeader::new("Cookie", "nope").is_err());
         assert!(AdditionalHeader::new("Proxy-Authorization", "nope").is_err());
@@ -509,6 +603,7 @@ mod tests {
         let long = "x".repeat(1025);
         assert!(AdditionalHeader::new("X-Test-Client", &long).is_err());
         assert!(AdditionalHeader::new("X-Test-Client", "ok\0bad").is_err());
+        assert!(AdditionalHeader::new("X-Test-Client", "非 ASCII").is_err());
     }
 
     #[test]
@@ -529,5 +624,34 @@ mod tests {
         assert!(HttpTransportConfig::default().with_max_attempts(0).is_err());
         assert!(HttpTransportConfig::default().with_max_attempts(4).is_err());
         assert!(HttpTransportConfig::default().with_max_attempts(2).is_ok());
+        assert!(
+            HttpTransportConfig::default()
+                .with_request_timeout(Duration::ZERO)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn client_build_validates_direct_transport_fields() {
+        let invalid = HttpTransportConfig {
+            max_attempts: 0,
+            ..HttpTransportConfig::default()
+        };
+        assert!(
+            ZaiClient::builder("abcdefghij.0123456789abcdef")
+                .transport(invalid)
+                .build()
+                .is_err()
+        );
+        assert!(
+            ZaiClient::builder(" abcdefghij.0123456789abcdef ")
+                .build()
+                .is_err()
+        );
+
+        let duplicate_headers = HttpTransportConfig::default()
+            .with_additional_header(AdditionalHeader::new("X-Test-Client", "a").unwrap())
+            .with_additional_header(AdditionalHeader::new("x-test-client", "b").unwrap());
+        assert!(duplicate_headers.validate().is_err());
     }
 }

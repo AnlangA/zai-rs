@@ -8,20 +8,21 @@ use super::super::traits::*;
 #[validate(schema(function = "validate_prompt_or_image"))]
 pub struct VideoBody<N>
 where
-    N: ModelName + Serialize,
+    N: VideoGen,
 {
     /// Model identifier for video generation API
     pub model: N,
     /// Image input used as the video-generation source.
     ///
-    /// URL constructors serialize one or two URLs as an array; pre-encoded image
-    /// data serializes as a string. Either this field or `prompt` must be set.
+    /// A single URL or pre-encoded image serializes as a string. A first/last
+    /// frame pair serializes as a two-element array. Either this field or
+    /// `prompt` must be set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_url: Option<ImageUrl>,
-    /// Text description for video generation, max 1500 characters
+    /// Text description for video generation, at most 512 characters.
     /// Either prompt or image_url must be provided (or both)
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[validate(length(max = 1500))]
+    #[validate(length(max = 512))]
     pub prompt: Option<String>,
     /// Output quality mode, defaults to "speed"
     /// "quality": prioritize higher generation quality
@@ -41,10 +42,10 @@ where
     /// aspect ratio Supports up to 4K resolution
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<VideoSize>,
-    /// Video frame-rate selector (`"fps30"` or `"fps60"` on the wire).
+    /// Video frame-rate selector (`30` or `60` on the wire).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fps: Option<Fps>,
-    /// Video-duration selector (`"duration5"` or `"duration10"` on the wire).
+    /// Video-duration selector (`5` or `10` on the wire).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<VideoDuration>,
     /// Unique request identifier provided by client
@@ -60,7 +61,7 @@ where
 
 impl<N> VideoBody<N>
 where
-    N: ModelName + Serialize,
+    N: VideoGen,
 {
     /// Create a new VideoBody with the specified model
     pub fn new(model: N) -> Self {
@@ -161,18 +162,24 @@ where
     /// Returns an error if `image_urls` does not contain exactly 1 or 2 URLs.
     pub fn with_multiple_images(
         model: N,
-        mut image_urls: Vec<impl Into<String>>,
+        image_urls: Vec<impl Into<String>>,
         prompt: impl Into<String>,
     ) -> Result<Self, crate::ZaiError> {
-        let image_url = if image_urls.len() == 1 {
-            ImageUrl::from_url(image_urls.remove(0))
-        } else if image_urls.len() == 2 {
-            ImageUrl::from_two_urls(image_urls.remove(0), image_urls.remove(0))
-        } else {
+        let count = image_urls.len();
+        if !(1..=2).contains(&count) {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
                 message: "with_multiple_images requires 1 or 2 URLs".to_string(),
             });
+        }
+        let mut image_urls = image_urls.into_iter();
+        let first = image_urls.next().ok_or_else(|| crate::ZaiError::ApiError {
+            code: crate::client::error::codes::SDK_VALIDATION,
+            message: "with_multiple_images requires 1 or 2 URLs".to_string(),
+        })?;
+        let image_url = match image_urls.next() {
+            Some(second) => ImageUrl::from_two_urls(first, second),
+            None => ImageUrl::from_url(first),
         };
 
         Ok(Self::new(model)
@@ -191,22 +198,51 @@ where
     }
 }
 
-// Struct-level validation: require at least one of prompt or image_url.
 fn validate_prompt_or_image<N>(body: &VideoBody<N>) -> Result<(), validator::ValidationError>
 where
-    N: ModelName + Serialize,
+    N: VideoGen,
 {
-    let has_prompt = body.prompt.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
-    let has_image = body.image_url.is_some();
-    if has_prompt || has_image {
-        Ok(())
-    } else {
-        Err(validator::ValidationError::new("prompt_or_image_required"))
+    let has_prompt = body.prompt.is_some();
+    if body
+        .prompt
+        .as_deref()
+        .is_some_and(|prompt| prompt.trim().is_empty())
+    {
+        return Err(validator::ValidationError::new("prompt_must_not_be_blank"));
     }
+
+    let image_is_valid = match body.image_url.as_ref() {
+        Some(ImageUrl::Url(url)) => is_http_url(url),
+        Some(ImageUrl::Base64(data)) => is_image_data_url(data),
+        Some(ImageUrl::VecUrl(urls)) => urls.len() == 2 && urls.iter().all(|url| is_http_url(url)),
+        None => true,
+    };
+    if !image_is_valid {
+        return Err(validator::ValidationError::new("invalid_image_url"));
+    }
+    if !has_prompt && body.image_url.is_none() {
+        return Err(validator::ValidationError::new("prompt_or_image_required"));
+    }
+    Ok(())
+}
+
+fn is_http_url(value: &str) -> bool {
+    value
+        .parse::<url::Url>()
+        .is_ok_and(|url| matches!(url.scheme(), "http" | "https"))
+}
+
+fn is_image_data_url(value: &str) -> bool {
+    let Some((metadata, payload)) = value.trim().split_once(',') else {
+        return false;
+    };
+    metadata.starts_with("data:image/")
+        && metadata.ends_with(";base64")
+        && !payload.trim().is_empty()
 }
 
 /// Output quality mode for video generation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VideoQuality {
     /// Prioritize faster generation with slightly lower quality
@@ -216,12 +252,14 @@ pub enum VideoQuality {
 }
 
 /// Image input for video generation: a pre-encoded string or one/two URLs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum ImageUrl {
-    /// Pre-encoded image string, typically a `data:` URL; sent unchanged.
+    /// One HTTP(S) image URL.
+    Url(String),
+    /// Base64-encoded image data URL; sent unchanged.
     Base64(String),
-    /// One or two URLs, serialized as a JSON array.
+    /// First- and last-frame URLs, serialized as a two-element JSON array.
     VecUrl(Vec<String>),
 }
 
@@ -231,9 +269,9 @@ impl ImageUrl {
         ImageUrl::Base64(data.into())
     }
 
-    /// Wrap a URL as a one-element JSON array.
+    /// Wrap one HTTP(S) URL as a JSON string.
     pub fn from_url(url: impl Into<String>) -> Self {
-        ImageUrl::VecUrl(vec![url.into()])
+        ImageUrl::Url(url.into())
     }
 
     /// Wrap exactly two URLs as a JSON array.
@@ -243,7 +281,7 @@ impl ImageUrl {
 }
 
 /// Supported video resolution presets.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum VideoSize {
     /// 1280x720 resolution (HD)
     #[serde(rename = "1280x720")]
@@ -269,21 +307,43 @@ pub enum VideoSize {
 }
 
 /// Video frame rate.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fps {
-    /// 30-frame-rate selector (`"fps30"`).
+    /// 30 frames per second.
     Fps30,
-    /// 60-frame-rate selector (`"fps60"`).
+    /// 60 frames per second.
     Fps60,
 }
 
+impl Serialize for Fps {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u8(match self {
+            Self::Fps30 => 30,
+            Self::Fps60 => 60,
+        })
+    }
+}
+
 /// Video duration in seconds.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoDuration {
-    /// Five-second duration selector (`"duration5"`).
+    /// Five seconds.
     Duration5,
-    /// Ten-second duration selector (`"duration10"`).
+    /// Ten seconds.
     Duration10,
+}
+
+impl Serialize for VideoDuration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u8(match self {
+            Self::Duration5 => 5,
+            Self::Duration10 => 10,
+        })
+    }
 }

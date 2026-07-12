@@ -1,10 +1,57 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use validator::Validate;
 
 use super::request::{OcrBody, OcrLanguageType, OcrToolType};
 use crate::client::ZaiClient;
 use crate::client::error::codes;
+
+const MAX_FILE_SIZE: u64 = 8 * 1024 * 1024;
+
+fn file_error(code: u16, message: impl Into<String>) -> crate::ZaiError {
+    crate::ZaiError::FileError {
+        code,
+        message: message.into(),
+    }
+}
+
+fn image_mime_type(path: &Path) -> crate::ZaiResult<&'static str> {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => Ok("image/png"),
+        Some("jpg" | "jpeg") => Ok("image/jpeg"),
+        Some("bmp") => Ok("image/bmp"),
+        extension => Err(file_error(
+            codes::SDK_FILE_TYPE_UNSUPPORTED,
+            format!(
+                "unsupported OCR image extension {extension:?}; expected png, jpg, jpeg, or bmp"
+            ),
+        )),
+    }
+}
+
+fn validate_file_metadata(path: &Path, metadata: &std::fs::Metadata) -> crate::ZaiResult<()> {
+    if !metadata.is_file() {
+        return Err(file_error(
+            codes::SDK_FILE_NOT_FOUND,
+            format!("file_path is not a regular file: {}", path.display()),
+        ));
+    }
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(file_error(
+            codes::SDK_FILE_TOO_LARGE,
+            format!(
+                "OCR image exceeds the 8 MiB limit: {} bytes",
+                metadata.len()
+            ),
+        ));
+    }
+    image_mime_type(path).map(|_| ())
+}
 
 /// OCR recognition request encoded as `multipart/form-data`.
 ///
@@ -13,7 +60,7 @@ use crate::client::error::codes;
 pub struct OcrRequest {
     /// Multipart form fields (tool type, language, …).
     pub body: OcrBody,
-    file_path: Option<String>,
+    file_path: Option<PathBuf>,
 }
 
 impl Default for OcrRequest {
@@ -32,7 +79,7 @@ impl OcrRequest {
     }
 
     /// Set the local image file path to recognize (required).
-    pub fn with_file_path(mut self, path: impl Into<String>) -> Self {
+    pub fn with_file_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.file_path = Some(path.into());
         self
     }
@@ -70,54 +117,21 @@ impl OcrRequest {
     /// Validate the request: body constraints, file existence, size (≤8MB),
     /// and supported extension (png/jpg/jpeg/bmp).
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        // Check body constraints
         self.body
             .validate()
             .map_err(crate::client::error::ZaiError::from)?;
-
-        // Ensure file path exists
-        let p =
-            self.file_path
-                .as_ref()
-                .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: crate::client::error::codes::SDK_VALIDATION,
-                    message: "file_path is required".to_string(),
-                })?;
-
-        if !Path::new(p).exists() {
-            return Err(crate::client::error::ZaiError::FileError {
-                code: codes::SDK_FILE_NOT_FOUND,
-                message: format!("file_path not found: {p}"),
-            });
-        }
-
-        // Validate file size (max 8MB)
-        let metadata = std::fs::metadata(p)?;
-        let file_size = metadata.len();
-        const MAX_SIZE: u64 = 8 * 1024 * 1024; // 8MB
-        if file_size > MAX_SIZE {
-            return Err(crate::client::error::ZaiError::FileError {
-                code: codes::SDK_FILE_TOO_LARGE,
-                message: format!("file_size exceeds 8MB limit: {file_size} bytes"),
-            });
-        }
-
-        // Validate file extension
-        let ext = Path::new(p)
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(str::to_ascii_lowercase);
-        let valid_ext = matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "bmp"));
-        if !valid_ext {
-            return Err(crate::client::error::ZaiError::FileError {
-                code: codes::SDK_FILE_TYPE_UNSUPPORTED,
-                message: format!(
-                    "invalid file format: {ext:?}. Only PNG, JPG, JPEG, BMP are supported"
-                ),
-            });
-        }
-
-        Ok(())
+        let path = self.required_file_path()?;
+        let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                file_error(
+                    codes::SDK_FILE_NOT_FOUND,
+                    format!("file_path not found: {}", path.display()),
+                )
+            } else {
+                crate::ZaiError::from(error)
+            }
+        })?;
+        validate_file_metadata(path, &metadata)
     }
 
     /// Async counterpart of the file probes in [`validate`](Self::validate).
@@ -127,53 +141,27 @@ impl OcrRequest {
     /// `async fn send_via` would stall the executor on a slow/networked filesystem.
     /// This helper performs the same existence/size/extension checks via
     /// `tokio::fs` so the async path stays non-blocking. Keep the two in sync.
-    async fn validate_file_async(&self) -> crate::ZaiResult<()> {
-        let p =
-            self.file_path
-                .as_ref()
-                .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: crate::client::error::codes::SDK_VALIDATION,
-                    message: "file_path is required".to_string(),
-                })?;
-
-        // A single async `metadata` call covers both existence (a missing path
-        // yields `NotFound`) and size, replacing the sync `Path::exists()` +
-        // `std::fs::metadata` pair.
-        let metadata = match tokio::fs::metadata(p).await {
+    async fn validate_file_async(&self) -> crate::ZaiResult<&Path> {
+        let path = self.required_file_path()?;
+        let metadata = match tokio::fs::symlink_metadata(path).await {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(crate::client::error::ZaiError::FileError {
-                    code: codes::SDK_FILE_NOT_FOUND,
-                    message: format!("file_path not found: {p}"),
-                });
+                return Err(file_error(
+                    codes::SDK_FILE_NOT_FOUND,
+                    format!("file_path not found: {}", path.display()),
+                ));
             },
-            Err(e) => return Err(crate::client::error::ZaiError::from(e)),
+            Err(e) => return Err(crate::ZaiError::from(e)),
         };
+        validate_file_metadata(path, &metadata)?;
+        Ok(path)
+    }
 
-        const MAX_SIZE: u64 = 8 * 1024 * 1024; // 8MB
-        let file_size = metadata.len();
-        if file_size > MAX_SIZE {
-            return Err(crate::client::error::ZaiError::FileError {
-                code: codes::SDK_FILE_TOO_LARGE,
-                message: format!("file_size exceeds 8MB limit: {file_size} bytes"),
-            });
-        }
-
-        // Pure-path extension check (no I/O).
-        let ext = Path::new(p)
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(str::to_ascii_lowercase);
-        let valid_ext = matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "bmp"));
-        if !valid_ext {
-            return Err(crate::client::error::ZaiError::FileError {
-                code: codes::SDK_FILE_TYPE_UNSUPPORTED,
-                message: format!(
-                    "invalid file format: {ext:?}. Only PNG, JPG, JPEG, BMP are supported"
-                ),
-            });
-        }
-        Ok(())
+    fn required_file_path(&self) -> crate::ZaiResult<&Path> {
+        self.file_path
+            .as_deref()
+            .filter(|path| !path.as_os_str().is_empty())
+            .ok_or_else(|| crate::client::validation::invalid("file_path is required"))
     }
 
     /// Submit the multipart request via a [`ZaiClient`] and parse the typed
@@ -182,62 +170,29 @@ impl OcrRequest {
         &self,
         client: &ZaiClient,
     ) -> crate::ZaiResult<super::response::OcrResponse> {
-        // Field-level validation is cheap and I/O-free; run it inline. The file
-        // probes go through `validate_file_async` so no blocking std::fs stat
-        // runs on the async executor (the public sync `validate()` still does).
         self.body
             .validate()
             .map_err(crate::client::error::ZaiError::from)?;
-        self.validate_file_async().await?;
+        let file_path = self.validate_file_async().await?;
 
         let route = crate::client::routes::FILES_OCR;
         let url = client.endpoints().resolve_route(route, &[])?;
-        let file_path =
-            self.file_path
-                .clone()
-                .ok_or_else(|| crate::client::error::ZaiError::ApiError {
-                    code: crate::client::error::codes::SDK_VALIDATION,
-                    message: "file_path is required".to_string(),
-                })?;
-
-        let file_name = Path::new(&file_path)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("image.png")
-            .to_string();
-        let file_bytes = tokio::fs::read(&file_path).await?;
-
-        // Determine MIME type by extension
-        let ext = Path::new(&file_path)
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(str::to_ascii_lowercase);
-        let mime = match ext.as_deref() {
-            Some("png") => "image/png",
-            Some("jpg" | "jpeg") => "image/jpeg",
-            Some("bmp") => "image/bmp",
-            _ => "image/png",
-        };
-
-        let tool_type_str = match &self.body.tool_type {
-            Some(OcrToolType::HandWrite) => "hand_write",
-            None => "hand_write",
-        }
-        .to_string();
-
-        let language_type = self.body.language_type.as_ref().map(|lang| {
-            serde_json::to_string(lang)
-                .unwrap_or_default()
-                .trim_matches('"')
-                .to_string()
-        });
+        let mime = image_mime_type(file_path)?;
+        let file_part = crate::client::transport::multipart::FilePart::from_path(file_path)?
+            .with_content_type(mime)?;
+        let tool_type = self
+            .body
+            .tool_type
+            .unwrap_or(OcrToolType::HandWrite)
+            .as_str();
+        let language_type = self.body.language_type.map(OcrLanguageType::as_str);
         let probability = self.body.probability;
         let request_id = self.body.request_id.clone();
         let user_id = self.body.user_id.clone();
 
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
-            .field("tool_type", tool_type_str)?
-            .bytes_named("file", file_name, mime, file_bytes)?;
+            .field("tool_type", tool_type)?
+            .file_named("file", file_part)?;
         if let Some(lang) = language_type {
             factory = factory.field("language_type", lang)?;
         }

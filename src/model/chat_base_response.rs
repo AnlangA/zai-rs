@@ -11,52 +11,8 @@
 //!   custom deserializers.
 //! - In non-stream responses, `choices` typically has length 1 unless the API
 //!   supports multi-candidate responses.
-/// Internal helper: Accepts string or number and deserializes into
-/// `Option<String>`.
-///
-/// Why: Some upstream fields (e.g., various `id`/`request_id`) may occasionally
-/// be returned as numbers. This keeps the public structs strongly typed while
-/// maximizing compatibility with heterogeneous payloads.
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use validator::Validate;
-
-// Helper: accept string or number and always deserialize into Option<String>
-fn de_opt_string_from_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let v = serde_json::Value::deserialize(deserializer)?;
-    match v {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::String(s) => Ok(Some(s)),
-        serde_json::Value::Number(n) => Ok(Some(n.to_string())),
-        other => Err(serde::de::Error::custom(format!(
-            "expected string or number, got {other}"
-        ))),
-    }
-}
-
-/// Lenient deserializer for tool/MCP `arguments` fields.
-///
-/// The field is semantically a JSON-encoded string, but OpenAI-compatible
-/// streaming deltas and some edge payloads send `"arguments": {}` (empty
-/// object) or `null` on the first/empty delta rather than the string `""`.
-/// A bare `Option<String>` rejects an object value and fails the whole response
-/// with a `JsonError`. This accepts any JSON value — a string is stored as-is,
-/// `null` becomes `None`, and any other value (object/array/number/bool) is
-/// stored as its compact JSON string. It is strictly more permissive than the
-/// previous `Option<String>`: it only rescues payloads that currently fail.
-fn de_opt_arguments_lenient<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let v = serde_json::Value::deserialize(deserializer)?;
-    match v {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::String(s) => Ok(Some(s)),
-        other => Ok(Some(serde_json::to_string(&other).unwrap_or_default())),
-    }
-}
 
 /// Successful business response (HTTP 200, application/json).
 /// Notes:
@@ -66,20 +22,19 @@ where
 ///   numbers.
 /// - `usage` is typically present only after completion (not during streaming).
 
-#[derive(Clone, Serialize, Deserialize, Validate, Default)]
-#[serde(default)]
+#[derive(Clone, Serialize, Validate)]
 pub struct ChatCompletionResponse {
     /// Task ID
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub id: Option<String>,
 
     /// Request ID
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub request_id: Option<String>,
 
@@ -118,6 +73,65 @@ pub struct ChatCompletionResponse {
     pub task_status: Option<TaskStatus>,
 }
 
+#[derive(Deserialize)]
+struct ChatCompletionResponseWire {
+    #[serde(
+        default,
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
+    )]
+    id: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
+    )]
+    request_id: Option<String>,
+    created: Option<u64>,
+    model: Option<String>,
+    choices: Option<Vec<Choice>>,
+    usage: Option<Usage>,
+    video_result: Option<Vec<VideoResultItem>>,
+    web_search: Option<Vec<WebSearchInfo>>,
+    content_filter: Option<Vec<ContentFilterInfo>>,
+    task_status: Option<TaskStatus>,
+}
+
+impl<'de> Deserialize<'de> for ChatCompletionResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ChatCompletionResponseWire::deserialize(deserializer)?;
+        let response = Self {
+            id: wire.id,
+            request_id: wire.request_id,
+            created: wire.created,
+            model: wire.model,
+            choices: wire.choices,
+            usage: wire.usage,
+            video_result: wire.video_result,
+            web_search: wire.web_search,
+            content_filter: wire.content_filter,
+            task_status: wire.task_status,
+        };
+        if response.id.is_none()
+            && response.request_id.is_none()
+            && response.created.is_none()
+            && response.model.is_none()
+            && response.choices.is_none()
+            && response.usage.is_none()
+            && response.video_result.is_none()
+            && response.web_search.is_none()
+            && response.content_filter.is_none()
+            && response.task_status.is_none()
+        {
+            return Err(D::Error::custom(
+                "chat completion response contained no documented fields",
+            ));
+        }
+        Ok(response)
+    }
+}
+
 impl std::fmt::Debug for ChatCompletionResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match serde_json::to_string_pretty(self) {
@@ -128,7 +142,7 @@ impl std::fmt::Debug for ChatCompletionResponse {
 }
 /// Task processing status.
 /// Values correspond to upstream payload strings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum TaskStatus {
     /// Task is still running; poll again to retrieve the final result.
@@ -170,10 +184,12 @@ impl std::fmt::Display for TaskStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct Choice {
     /// Index of this result
-    pub index: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<i32>,
 
     /// Message content
-    pub message: Message,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<Message>,
 
     /// Why generation finished
 
@@ -199,7 +215,7 @@ pub struct Message {
     /// the inference result. For some models, content may include thinking
     /// traces within `<think>` tags, with final output outside.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub content: Option<serde_json::Value>,
+    pub content: Option<MessageContent>,
 
     /// Reasoning chain content (only for specific models)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -214,6 +230,53 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCallMessage>>,
 }
 
+/// Assistant response content in either plain-text or multimodal-parts form.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MessageContent {
+    /// Plain assistant text.
+    Text(String),
+    /// Multimodal response parts.
+    Parts(Vec<MessageContentPart>),
+}
+
+impl MessageContent {
+    /// Borrow plain text when this is the text form.
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            Self::Parts(_) => None,
+        }
+    }
+
+    /// Borrow multimodal parts when this is the parts form.
+    pub fn as_parts(&self) -> Option<&[MessageContentPart]> {
+        match self {
+            Self::Text(_) => None,
+            Self::Parts(parts) => Some(parts),
+        }
+    }
+}
+
+/// One item in a multimodal assistant response.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+pub struct MessageContentPart {
+    /// Part kind. The current response schema only defines `text`.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_: Option<MessageContentPartType>,
+    /// Text carried by this part.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// Supported multimodal assistant response part kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageContentPartType {
+    /// Text response part.
+    Text,
+}
+
 /// Tool/function call description inside message
 /// Notes:
 /// - When `function` is present, `type` is typically "function"; `mcp` is used
@@ -224,8 +287,9 @@ pub struct Message {
 pub struct ToolCallMessage {
     /// Unique id of this tool/function call (server may return numbers).
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub id: Option<String>,
     /// Tool call type — typically `"function"` for function calls.
@@ -243,15 +307,9 @@ pub struct ToolCallMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ToolFunction {
     /// Name of the function/tool to invoke.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+    pub name: String,
     /// JSON-encoded arguments to pass to the function.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_arguments_lenient"
-    )]
-    pub arguments: Option<String>,
+    pub arguments: String,
 }
 
 /// MCP tool call payload
@@ -259,8 +317,9 @@ pub struct ToolFunction {
 pub struct MCPMessage {
     /// Unique id of this MCP tool call
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub id: Option<String>,
     /// Tool call type: mcp_list_tools, mcp_call
@@ -277,11 +336,12 @@ pub struct MCPMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<MCPTool>>,
 
-    /// Tool call arguments (JSON string) when type = mcp_call
+    /// Tool call arguments (JSON string) when type = mcp_call. A directly
+    /// encoded JSON value is normalized to its compact string representation.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_arguments_lenient"
+        deserialize_with = "super::serde_helpers::optional_json_string"
     )]
     pub arguments: Option<String>,
     /// Tool name when type = mcp_call
@@ -368,8 +428,9 @@ pub enum MCPInputType {
 pub struct AudioContent {
     /// Audio content id, can be used for multi-turn inputs
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub id: Option<String>,
     /// Base64 encoded audio data
@@ -377,8 +438,9 @@ pub struct AudioContent {
     pub data: Option<String>,
     /// Expiration time for the audio content
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub expires_at: Option<String>,
 }
@@ -530,12 +592,12 @@ impl ChatCompletionResponse {
 
 impl Choice {
     /// Index of this choice within the `choices` array.
-    pub fn index(&self) -> i32 {
+    pub fn index(&self) -> Option<i32> {
         self.index
     }
-    /// The assistant message payload.
-    pub fn message(&self) -> &Message {
-        &self.message
+    /// The assistant message payload, when returned.
+    pub fn message(&self) -> Option<&Message> {
+        self.message.as_ref()
     }
     /// Reason generation finished (e.g. `"stop"`, `"length"`).
     pub fn finish_reason(&self) -> Option<&str> {
@@ -549,7 +611,7 @@ impl Message {
         self.role.as_deref()
     }
     /// Dialog content (may include `<think>` traces for some models).
-    pub fn content(&self) -> Option<&serde_json::Value> {
+    pub fn content(&self) -> Option<&MessageContent> {
         self.content.as_ref()
     }
     /// Return the assistant text when `content` is a JSON string; `None`
@@ -557,7 +619,7 @@ impl Message {
     /// [`content`](Self::content) for the common case where the model returns a
     /// plain string.
     pub fn content_str(&self) -> Option<&str> {
-        self.content.as_ref().and_then(|v| v.as_str())
+        self.content.as_ref().and_then(MessageContent::as_str)
     }
     /// Reasoning-chain content, when the model exposes it.
     pub fn reasoning_content(&self) -> Option<&str> {
@@ -594,12 +656,12 @@ impl ToolCallMessage {
 
 impl ToolFunction {
     /// Name of the function/tool to invoke.
-    pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+    pub fn name(&self) -> &str {
+        &self.name
     }
     /// JSON-encoded arguments for the function call.
-    pub fn arguments(&self) -> Option<&str> {
-        self.arguments.as_deref()
+    pub fn arguments(&self) -> &str {
+        &self.arguments
     }
 }
 
@@ -775,24 +837,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_function_arguments_accepts_string_object_and_null() {
-        // String form (the documented shape).
+    fn tool_function_requires_the_documented_string_fields() {
         let tf: ToolFunction =
             serde_json::from_str(r#"{"name":"f","arguments":"{\"a\":1}"}"#).unwrap();
-        assert_eq!(tf.arguments.as_deref(), Some(r#"{"a":1}"#));
-
-        // Object form (sent by some streaming deltas / edge payloads) — previously
-        // failed the whole response; now coerced to its compact JSON string.
-        let tf: ToolFunction = serde_json::from_str(r#"{"arguments":{}}"#).unwrap();
-        assert_eq!(tf.arguments.as_deref(), Some("{}"));
-
-        // null -> None.
-        let tf: ToolFunction = serde_json::from_str(r#"{"arguments":null}"#).unwrap();
-        assert!(tf.arguments.is_none());
-
-        // Absent -> None (field is default-Option).
-        let tf: ToolFunction = serde_json::from_str(r#"{"name":"f"}"#).unwrap();
-        assert!(tf.arguments.is_none());
+        assert_eq!(tf.name, "f");
+        assert_eq!(tf.arguments, r#"{"a":1}"#);
+        assert!(serde_json::from_str::<ToolFunction>(r#"{"arguments":"{}"}"#).is_err());
+        assert!(serde_json::from_str::<ToolFunction>(r#"{"name":"f"}"#).is_err());
+        assert!(serde_json::from_str::<ToolFunction>(r#"{"name":"f","arguments":{}}"#).is_err());
     }
 
     #[test]
@@ -801,6 +853,58 @@ mod tests {
         assert_eq!(m.arguments.as_deref(), Some("{}"));
         let m: MCPMessage = serde_json::from_str(r#"{"id":"x","arguments":null}"#).unwrap();
         assert!(m.arguments.is_none());
+    }
+
+    #[test]
+    fn optional_custom_deserialized_fields_may_be_omitted() {
+        let tool_call: ToolCallMessage = serde_json::from_str("{}").unwrap();
+        assert!(tool_call.id.is_none());
+        let mcp: MCPMessage = serde_json::from_str("{}").unwrap();
+        assert!(mcp.id.is_none());
+        assert!(mcp.arguments.is_none());
+        let audio: AudioContent = serde_json::from_str("{}").unwrap();
+        assert!(audio.id.is_none());
+        assert!(audio.expires_at.is_none());
+    }
+
+    #[test]
+    fn completion_response_rejects_empty_success_bodies() {
+        assert!(serde_json::from_str::<ChatCompletionResponse>("{}").is_err());
+        assert!(serde_json::from_str::<ChatCompletionResponse>(r#"{"id":null}"#).is_err());
+        assert!(serde_json::from_str::<ChatCompletionResponse>(r#"{"id":"task-1"}"#).is_ok());
+        assert!(serde_json::from_str::<ChatCompletionResponse>(r#"{"choices":[]}"#).is_ok());
+    }
+
+    #[test]
+    fn choice_fields_follow_their_optional_openapi_shape() {
+        let choice: Choice = serde_json::from_str("{}").unwrap();
+        assert_eq!(choice.index(), None);
+        assert!(choice.message().is_none());
+    }
+
+    #[test]
+    fn assistant_content_accepts_only_the_documented_union() {
+        let text: Message = serde_json::from_value(serde_json::json!({
+            "content": "hello"
+        }))
+        .unwrap();
+        assert_eq!(text.content_str(), Some("hello"));
+
+        let parts: Message = serde_json::from_value(serde_json::json!({
+            "content": [{"type": "text", "text": "hello"}]
+        }))
+        .unwrap();
+        assert_eq!(
+            parts
+                .content()
+                .and_then(MessageContent::as_parts)
+                .and_then(|parts| parts.first())
+                .and_then(|part| part.text.as_deref()),
+            Some("hello")
+        );
+
+        assert!(serde_json::from_value::<Message>(serde_json::json!({"content": 42})).is_err());
+        assert!(serde_json::from_value::<Message>(serde_json::json!({"content": {}})).is_err());
     }
 
     #[test]

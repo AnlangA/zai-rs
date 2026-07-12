@@ -26,12 +26,12 @@ impl EmbeddingRequest {
         self
     }
 
-    /// Optional: validate constraints before sending.
+    /// Validate input and model/dimension constraints before sending.
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        self.body.validate_model_constraints().map_err(|e| {
+        self.body.validate_model_constraints().map_err(|error| {
             crate::client::error::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("Validation error: {e:?}"),
+                message: format!("embedding request validation failed: {}", error.code),
             }
         })
     }

@@ -1,9 +1,7 @@
-//! Server module containing all backend functionality
+//! HTTP handlers and in-memory state for the web chat example.
 
 pub mod config;
 pub mod error;
-pub mod middleware;
 pub mod models;
 pub mod routes;
 pub mod state;
-pub mod utils;

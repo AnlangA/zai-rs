@@ -8,11 +8,11 @@
 //!
 //! | Variant | Code range | Description |
 //! |---------|------------|-------------|
-//! | [`ZaiError::AuthError`] | 1000–1004, 1100 | Authentication / authorization (invalid API key, etc.) |
-//! | [`ZaiError::AccountError`] | 1110–1121 | Account/package-related errors |
-//! | [`ZaiError::ApiError`] | 1200–1234 | Request validation / API call errors |
-//! | [`ZaiError::ContentPolicyError`] | 1300–1301 | API policy / unsafe-content blocks |
-//! | [`ZaiError::RateLimitError`] | 1302–1305, 1308–1313 | Rate-limit, quota, package pressure or fair-use errors |
+//! | [`ZaiError::AuthError`] | 1000, 1001, 1003, 1005, 1220 | Authentication / authorization (invalid API key, etc.) |
+//! | [`ZaiError::AccountError`] | 1110–1121 except 1113 | Account/package-related errors |
+//! | [`ZaiError::ApiError`] | 1200–1234, 1261 | Request validation or upstream execution errors |
+//! | [`ZaiError::ContentPolicyError`] | 1301 | API policy / unsafe-content blocks |
+//! | [`ZaiError::RateLimitError`] | 1113, 1302, 1305, 1308–1311, 1313–1321 | Rate-limit, quota, package pressure or fair-use errors |
 //! | [`ZaiError::FileError`] | 1400–1499 | File-processing errors |
 //! | [`ZaiError::Unknown`] | other | Unrecognized business or HTTP errors |
 //! | [`ZaiError::NetworkError`] | — | Network / timeout errors |
@@ -26,14 +26,14 @@
 //!
 //! # Example
 //!
-//! ```text
+//! ```rust,no_run
 //! use zai_rs::client::error::{ZaiError, ZaiResult};
 //!
 //! async fn call_api() -> ZaiResult<String> {
-//!     // ... API call ...
 //!     Ok("result".to_string())
 //! }
 //!
+//! # async fn example() {
 //! match call_api().await {
 //!     Ok(data) => println!("Success: {}", data),
 //!     Err(ZaiError::AuthError { code, message }) => {
@@ -44,6 +44,7 @@
 //!     },
 //!     Err(e) => tracing::error!("Error: {}", e),
 //! }
+//! # }
 //! ```
 
 use std::sync::{Arc, LazyLock};
@@ -51,13 +52,15 @@ use std::sync::{Arc, LazyLock};
 use regex::Regex;
 use thiserror::Error;
 
-/// Pre-compiled regex patterns for sensitive data masking (avoids recompilation
-/// on every call). Every pattern is a static literal, so each `Regex::new` here
-/// always succeeds — but the plumbing stores `Option`/filtered vecs and resolves
-/// via `.ok()` rather than `.expect()`, keeping the crate's no-`unwrap`/`expect`
-/// policy honest (a malformed literal would be skipped, not panic at first use).
-static API_KEY_PATTERN: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r"\b[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}\b").ok());
+/// Compile a built-in redaction pattern. A bad literal is a programming error:
+/// failing closed is safer than silently disabling credential filtering.
+fn built_in_regex(pattern: &str) -> Regex {
+    Regex::new(pattern)
+        .unwrap_or_else(|error| panic!("invalid built-in regex {pattern:?}: {error}"))
+}
+
+static API_KEY_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| built_in_regex(r"[a-zA-Z0-9_-]{3,}\.[a-zA-Z0-9_-]{10,}"));
 
 static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     [
@@ -65,10 +68,7 @@ static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(
         (r"(?i)(password\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
         (r"(?i)(token\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
         (r"(?i)(secret\s*[=:]\s*)[^\s,]+", "$1[FILTERED]"),
-        (
-            r"(?i)(bearer\s+)[a-zA-Z0-9_-]+\.([a-zA-Z0-9_-]{10,})",
-            "$1[FILTERED]",
-        ),
+        (r"(?i)(\bbearer\s+)[^\s,]+", "$1[FILTERED]"),
         (
             // Redact the entire `Authorization: Bearer <token>`, including the
             // header name and authentication scheme.
@@ -77,7 +77,7 @@ static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(
         ),
     ]
     .into_iter()
-    .filter_map(|(pat, repl)| Regex::new(pat).ok().map(|re| (re, repl)))
+    .map(|(pattern, replacement)| (built_in_regex(pattern), replacement))
     .collect()
 });
 
@@ -87,26 +87,18 @@ static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         r"(?i)password\s*[=:]",
         r"(?i)token\s*[=:]",
         r"(?i)secret\s*[=:]",
+        r"(?i)\bbearer\s+[^\s,]+",
         r"(?i)authorization\s*:\s*Bearer",
     ]
     .into_iter()
-    .filter_map(|pat| Regex::new(pat).ok())
+    .map(built_in_regex)
     .collect()
 });
 
-/// Masks sensitive information in text for secure logging
+/// Mask recognized credentials in `text` before it is written to a log.
 ///
-/// This function filters out potentially sensitive data such as API keys,
-/// passwords, and tokens from log messages.
-///
-/// # Arguments
-///
-/// * `text` - The text to filter
-///
-/// # Returns
-///
-/// Text with sensitive information masked as `[FILTERED]`, or
-/// `[AUTH_REDACTED]` for a complete Authorization header
+/// Values are replaced with `[FILTERED]`; a complete Authorization header is
+/// replaced with `[AUTH_REDACTED]`.
 ///
 /// # Patterns Masked
 ///
@@ -129,10 +121,7 @@ static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 /// assert!(!filtered.contains("abc123"));
 /// ```
 pub fn mask_sensitive_info(text: &str) -> String {
-    let mut result = match API_KEY_PATTERN.as_ref() {
-        Some(re) => re.replace_all(text, "[FILTERED]").into_owned(),
-        None => text.to_string(),
-    };
+    let mut result = API_KEY_PATTERN.replace_all(text, "[FILTERED]").into_owned();
 
     for (re, replacement) in SENSITIVE_PATTERNS.iter() {
         result = re.replace_all(&result, *replacement).into_owned();
@@ -146,15 +135,12 @@ pub fn mask_sensitive_info(text: &str) -> String {
 /// A specialized function that only masks API keys following the ZhipuAI
 /// format.
 pub fn mask_api_key(text: &str) -> String {
-    match API_KEY_PATTERN.as_ref() {
-        Some(re) => re.replace_all(text, "[FILTERED]").into_owned(),
-        None => text.to_string(),
-    }
+    API_KEY_PATTERN.replace_all(text, "[FILTERED]").into_owned()
 }
 
-/// Checks if text contains sensitive information patterns
+/// Return whether `text` matches a recognized credential pattern.
 pub fn contains_sensitive_info(text: &str) -> bool {
-    if API_KEY_PATTERN.as_ref().is_some_and(|re| re.is_match(text)) {
+    if API_KEY_PATTERN.is_match(text) {
         return true;
     }
 
@@ -163,21 +149,12 @@ pub fn contains_sensitive_info(text: &str) -> bool {
         .any(|re| re.is_match(text))
 }
 
-/// Validates Zhipu AI API key format
+/// Validate the Zhipu AI API key format.
 ///
 /// Zhipu AI API keys follow the format `<id>.<secret>`, where both parts contain
-/// letters, digits, `_`, or `-`.
+/// ASCII letters, digits, `_`, or `-`.
 ///
-/// # Arguments
-///
-/// * `api_key` - The API key to validate
-///
-/// # Returns
-///
-/// * `Ok(())` if API key is valid
-/// * `Err(ZaiError)` if API key is invalid
-///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// use zai_rs::client::error::validate_api_key;
@@ -195,15 +172,19 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
         });
     }
 
-    let parts: Vec<&str> = api_key.split('.').collect();
-    if parts.len() != 2 {
+    let Some((id, secret)) = api_key.split_once('.') else {
         return Err(ZaiError::ApiError {
             code: codes::SDK_VALIDATION,
             message: "API key must be in format '<id>.<secret>'".to_string(),
         });
-    }
+    };
 
-    let (id, secret) = (parts[0], parts[1]);
+    if secret.contains('.') {
+        return Err(ZaiError::ApiError {
+            code: codes::SDK_VALIDATION,
+            message: "API key must contain exactly one dot".to_string(),
+        });
+    }
 
     if id.is_empty() || secret.is_empty() {
         return Err(ZaiError::ApiError {
@@ -212,11 +193,9 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
         });
     }
 
-    // Check if parts contain only valid characters (alphanumeric and some special
-    // chars)
-    let valid_chars = |s: &str| -> bool {
-        s.chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    let valid_chars = |part: &str| {
+        part.bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
     };
 
     if !valid_chars(id) || !valid_chars(secret) {
@@ -226,8 +205,6 @@ pub fn validate_api_key(api_key: &str) -> ZaiResult<()> {
         });
     }
 
-    // Check reasonable length (id should be at least 3 chars, secret at least 10
-    // chars)
     if id.len() < 3 {
         return Err(ZaiError::ApiError {
             code: codes::SDK_VALIDATION,
@@ -295,7 +272,7 @@ pub enum ZaiError {
     /// Authentication and authorization errors
     #[error("Authentication error [{code}]: {message}")]
     AuthError {
-        /// Zhipu AI business error code (`1000`–`1004`, `1100`).
+        /// Zhipu AI authentication/authorization business error code.
         code: u16,
         /// Human-readable error message.
         message: String,
@@ -304,7 +281,8 @@ pub enum ZaiError {
     /// Account-related errors
     #[error("Account error [{code}]: {message}")]
     AccountError {
-        /// Zhipu AI business error code (`1110`–`1121`).
+        /// Zhipu AI account business error code (`1110`–`1121`, excluding
+        /// quota/billing code `1113`).
         code: u16,
         /// Human-readable error message.
         message: String,
@@ -313,8 +291,9 @@ pub enum ZaiError {
     /// API call errors
     #[error("API error [{code}]: {message}")]
     ApiError {
-        /// Zhipu AI business error code (`1200`–`1234`) or a reserved SDK
-        /// code from [`codes`] (`9000`–`9999`).
+        /// Zhipu AI business error code (`1200`–`1234` or `1261`) or a
+        /// reserved SDK code from [`codes`] (`9000`–`9999`). Business codes
+        /// `1200`, `1230`, and `1234` are categorized as server failures.
         code: u16,
         /// Human-readable error message.
         message: String,
@@ -323,7 +302,7 @@ pub enum ZaiError {
     /// Rate limiting and quota errors
     #[error("Rate limit error [{code}]: {message}")]
     RateLimitError {
-        /// Zhipu AI business error code (`1302`–`1305`, `1308`–`1313`).
+        /// Zhipu AI rate-limit, quota, or billing business error code.
         code: u16,
         /// Human-readable error message.
         message: String,
@@ -332,7 +311,7 @@ pub enum ZaiError {
     /// Content policy errors
     #[error("Content policy error [{code}]: {message}")]
     ContentPolicyError {
-        /// Zhipu AI business error code (`1300`–`1301`) for policy blocks or
+        /// Zhipu AI business error code `1301` for policy blocks or
         /// unsafe-content violations.
         code: u16,
         /// Human-readable error message.
@@ -394,7 +373,8 @@ pub enum ErrorCategory {
     Client,
     /// Server-side (5xx): transient backend failure.
     Server,
-    /// Rate limiting / quota (HTTP 429, business `1302`–`1313`).
+    /// Rate limiting / quota (HTTP 429 and the documented quota business
+    /// codes).
     RateLimit,
     /// Network / transport failure (connection, timeout, WebSocket).
     Network,
@@ -411,7 +391,7 @@ fn classify_status(status: u16) -> ErrorCategory {
     match status {
         429 => ErrorCategory::RateLimit,
         s if (400..500).contains(&s) => ErrorCategory::Client,
-        s if (500..600).contains(&s) => ErrorCategory::Server,
+        s if (500..600).contains(&s) && !matches!(s, 501 | 505) => ErrorCategory::Server,
         _ => ErrorCategory::Other,
     }
 }
@@ -435,25 +415,15 @@ pub enum RealtimeErrorKind {
         source: tokio_tungstenite::tungstenite::Error,
     },
 
-    /// (De)serialization of a realtime event failed.
-    #[error("serialize: {source}")]
-    Serialize {
-        /// The underlying serde_json error.
-        #[source]
-        source: serde_json::Error,
-    },
-
     /// Protocol violation — unexpected or malformed server event.
     #[error("protocol: {0}")]
     Protocol(String),
 
-    /// The server emitted an `error` event.
-    #[error("server error event [code={code:?}]: {message}")]
-    ServerEvent {
-        /// Machine-readable error code (may be numeric or textual).
-        code: String,
-        /// Human-readable error message.
-        message: String,
+    /// A realtime connect, write, or close operation exceeded its deadline.
+    #[error("{operation} timed out")]
+    Timeout {
+        /// Operation whose deadline elapsed.
+        operation: &'static str,
     },
 
     /// The WebSocket session has been closed.
@@ -462,12 +432,22 @@ pub enum RealtimeErrorKind {
 }
 
 impl ZaiError {
-    /// Convert an HTTP status code and API error response to a ZaiError
+    /// Convert an HTTP status code and API error response to a [`ZaiError`].
     pub fn from_api_response(status: u16, api_code: u16, api_message: String) -> Self {
+        // Provider and proxy error bodies are untrusted and occasionally echo
+        // request metadata. Remove recognizable credentials before the text
+        // enters a public, loggable error value.
+        let api_message = mask_sensitive_info(&api_message);
         if api_code != 0 {
             return match api_code {
                 // Authentication errors
-                1000..=1004 | 1100 => ZaiError::AuthError {
+                1000 | 1001 | 1003 | 1005 | 1220 => ZaiError::AuthError {
+                    code: api_code,
+                    message: api_message,
+                },
+                // Billing exhaustion is surfaced with the other quota errors,
+                // not as a generic account-state failure.
+                1113 => ZaiError::RateLimitError {
                     code: api_code,
                     message: api_message,
                 },
@@ -476,18 +456,20 @@ impl ZaiError {
                     code: api_code,
                     message: api_message,
                 },
-                // API call/validation errors
-                1200..=1234 => ZaiError::ApiError {
+                // API call and validation errors. Code 1261 is the documented
+                // context-window validation failure outside the main 12xx
+                // range used by the other request errors.
+                1200..=1234 | 1261 => ZaiError::ApiError {
                     code: api_code,
                     message: api_message,
                 },
                 // API policy and unsafe-content blocks are not transient.
-                1300..=1301 => ZaiError::ContentPolicyError {
+                1301 => ZaiError::ContentPolicyError {
                     code: api_code,
                     message: api_message,
                 },
                 // Rate limiting, quota, package access pressure/fair-use errors.
-                1302..=1305 | 1308..=1313 => ZaiError::RateLimitError {
+                1302 | 1305 | 1308..=1311 | 1313..=1321 => ZaiError::RateLimitError {
                     code: api_code,
                     message: api_message,
                 },
@@ -498,11 +480,7 @@ impl ZaiError {
                 },
                 _ => ZaiError::Unknown {
                     code: api_code,
-                    message: if api_message.is_empty() {
-                        "Unknown error".to_string()
-                    } else {
-                        api_message
-                    },
+                    message: message_or(api_message, "Unknown error"),
                 },
             };
         }
@@ -513,39 +491,27 @@ impl ZaiError {
         match status {
             400 => ZaiError::HttpError {
                 status,
-                message: if api_message.is_empty() {
-                    "Bad request - check your parameters".to_string()
-                } else {
-                    api_message
-                },
+                message: message_or(api_message, "Bad request - check your parameters"),
             },
             401 | 403 => ZaiError::AuthError {
                 code: status,
-                message: if api_message.is_empty() {
-                    "Unauthorized - check your API key".to_string()
-                } else {
-                    api_message
-                },
+                message: message_or(api_message, "Unauthorized - check your API key"),
             },
             404 => ZaiError::HttpError {
                 status,
-                message: "Not found - requested resource doesn't exist".to_string(),
+                message: message_or(api_message, "Not found - requested resource doesn't exist"),
             },
             429 => ZaiError::RateLimitError {
                 code: status,
-                message: if api_message.is_empty() {
-                    "Too many requests - rate limit exceeded".to_string()
-                } else {
-                    api_message
-                },
+                message: message_or(api_message, "Too many requests - rate limit exceeded"),
             },
             434 => ZaiError::HttpError {
                 status,
-                message: "No API permission - feature not available".to_string(),
+                message: message_or(api_message, "No API permission - feature not available"),
             },
             435 => ZaiError::HttpError {
                 status,
-                message: "File size exceeds 100MB limit".to_string(),
+                message: message_or(api_message, "File size exceeds 100MB limit"),
             },
             // All 5xx keep the status so classification can use it directly.
             s if (500..600).contains(&s) => ZaiError::HttpError {
@@ -556,25 +522,25 @@ impl ZaiError {
                     api_message
                 },
             },
+            s if (400..500).contains(&s) => ZaiError::HttpError {
+                status,
+                message: message_or(api_message, "HTTP client error"),
+            },
             _ => ZaiError::Unknown {
                 code: status,
-                message: if api_message.is_empty() {
-                    "Unknown error".to_string()
-                } else {
-                    api_message
-                },
+                message: message_or(api_message, "Unknown error"),
             },
         }
     }
 
     /// Check if the error is a rate limit error
     pub fn is_rate_limit(&self) -> bool {
-        matches!(self, ZaiError::RateLimitError { .. })
+        self.category() == ErrorCategory::RateLimit
     }
 
     /// Check if the error is an authentication error
     pub fn is_auth_error(&self) -> bool {
-        matches!(self, ZaiError::AuthError { .. })
+        self.category() == ErrorCategory::Auth
     }
 
     /// Classify this error into a single canonical [`ErrorCategory`].
@@ -588,20 +554,25 @@ impl ZaiError {
         match self {
             ZaiError::RateLimitError { .. } => ErrorCategory::RateLimit,
             ZaiError::NetworkError(_) => ErrorCategory::Network,
+            ZaiError::ApiError { code, .. } if *code == codes::SDK_TIMEOUT => {
+                ErrorCategory::Network
+            },
             ZaiError::AuthError { .. } | ZaiError::RealtimeAuthError(_) => ErrorCategory::Auth,
+            ZaiError::ApiError { code, .. } if is_server_business_code(*code) => {
+                ErrorCategory::Server
+            },
             ZaiError::AccountError { .. }
             | ZaiError::ApiError { .. }
             | ZaiError::ContentPolicyError { .. }
             | ZaiError::FileError { .. } => ErrorCategory::Client,
             ZaiError::JsonError(_) => ErrorCategory::Serialization,
             ZaiError::RealtimeError(kind) => match kind.as_ref() {
-                // Protocol/serialize/server-event failures are client-caused;
-                // transport failures are network-level; closure is neither.
-                RealtimeErrorKind::Protocol(_)
-                | RealtimeErrorKind::Serialize { .. }
-                | RealtimeErrorKind::ServerEvent { .. } => ErrorCategory::Client,
+                // Protocol failures are client-caused; transport timeouts and
+                // WebSocket failures are network-level; closure is neither.
+                RealtimeErrorKind::Protocol(_) => ErrorCategory::Client,
                 #[cfg(feature = "realtime")]
                 RealtimeErrorKind::WebSocket { .. } => ErrorCategory::Network,
+                RealtimeErrorKind::Timeout { .. } => ErrorCategory::Network,
                 RealtimeErrorKind::Closed => ErrorCategory::Other,
             },
             ZaiError::HttpError { status, .. } => classify_status(*status),
@@ -636,15 +607,32 @@ impl ZaiError {
 
     /// Whether retrying the request that produced this error could succeed.
     ///
-    /// This caller-facing helper marks rate-limit, network, HTTP 429, and HTTP
-    /// 5xx errors as potentially retryable. It does not account for request
-    /// idempotency or attempt limits. The internal HTTP transport uses its own
-    /// status-and-business-code matrix before constructing a final `ZaiError`.
+    /// This caller-facing helper marks transient rate limits (`429`, `1302`,
+    /// `1305`), documented upstream execution failures, network failures, and
+    /// HTTP 5xx errors as potentially retryable. Quota/billing exhaustion is
+    /// deliberately not retryable. This method does not account for request
+    /// idempotency or attempt limits; the internal HTTP transport applies those
+    /// additional constraints.
     pub fn is_retryable(&self) -> bool {
         match self {
-            ZaiError::HttpError { status, .. } => *status == 429 || (500..600).contains(status),
-            ZaiError::RateLimitError { .. } => true,
+            ZaiError::HttpError { status, .. } => {
+                crate::client::transport::retry::RETRYABLE_STATUSES.contains(status)
+            },
+            ZaiError::RateLimitError { code, .. } => matches!(*code, 429 | 1302 | 1305),
             ZaiError::NetworkError(_) => true,
+            ZaiError::ApiError { code, .. } if *code == codes::SDK_TIMEOUT => true,
+            ZaiError::ApiError { code, .. } if is_server_business_code(*code) => true,
+            ZaiError::RealtimeError(kind)
+                if matches!(kind.as_ref(), RealtimeErrorKind::Timeout { .. }) =>
+            {
+                true
+            },
+            #[cfg(feature = "realtime")]
+            ZaiError::RealtimeError(kind)
+                if matches!(kind.as_ref(), RealtimeErrorKind::WebSocket { .. }) =>
+            {
+                true
+            },
             _ => false,
         }
     }
@@ -804,12 +792,30 @@ impl ZaiError {
     }
 }
 
+/// Business errors documented by the upstream API as server-side execution
+/// failures even though they share the broad `12xx` API-error namespace.
+const fn is_server_business_code(code: u16) -> bool {
+    matches!(code, 1200 | 1230 | 1234)
+}
+
+fn message_or(message: String, fallback: &str) -> String {
+    if message.is_empty() {
+        fallback.to_string()
+    } else {
+        message
+    }
+}
+
 /// Type alias for Result with ZaiError
 pub type ZaiResult<T> = Result<T, ZaiError>;
 
 /// Convert from reqwest::Error to ZaiError
 impl From<reqwest::Error> for ZaiError {
     fn from(err: reqwest::Error) -> Self {
+        // Reqwest attaches the request URL to many errors. Strip it before the
+        // error enters the public type so paths and query values cannot leak
+        // through Display, Debug, `compact()`, or tracing.
+        let err = err.without_url();
         if let Some(status) = err.status() {
             ZaiError::from_api_response(status.as_u16(), 0, err.to_string())
         } else {
@@ -830,8 +836,59 @@ impl From<validator::ValidationErrors> for ZaiError {
     fn from(err: validator::ValidationErrors) -> Self {
         ZaiError::ApiError {
             code: codes::SDK_VALIDATION,
-            message: format!("Validation error: {err:?}"),
+            message: sanitized_validation_message(&err),
         }
+    }
+}
+
+fn sanitized_validation_message(errors: &validator::ValidationErrors) -> String {
+    fn collect(errors: &validator::ValidationErrors, prefix: &str, output: &mut Vec<String>) {
+        use validator::ValidationErrorsKind;
+
+        for (field, kind) in errors.errors() {
+            let path = if prefix.is_empty() {
+                field.to_string()
+            } else {
+                format!("{prefix}.{field}")
+            };
+            match kind {
+                ValidationErrorsKind::Field(field_errors) => {
+                    for error in field_errors {
+                        let mut constraints = error
+                            .params
+                            .keys()
+                            .filter(|name| name.as_ref() != "value")
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>();
+                        constraints.sort_unstable();
+                        if constraints.is_empty() {
+                            output.push(format!("{path}:{}", error.code));
+                        } else {
+                            output.push(format!(
+                                "{path}:{} ({})",
+                                error.code,
+                                constraints.join(",")
+                            ));
+                        }
+                    }
+                },
+                ValidationErrorsKind::Struct(nested) => collect(nested, &path, output),
+                ValidationErrorsKind::List(items) => {
+                    for (index, nested) in items {
+                        collect(nested, &format!("{path}[{index}]"), output);
+                    }
+                },
+            }
+        }
+    }
+
+    let mut issues = Vec::new();
+    collect(errors, "", &mut issues);
+    issues.sort_unstable();
+    if issues.is_empty() {
+        "validation failed".to_owned()
+    } else {
+        format!("validation failed: {}", issues.join("; "))
     }
 }
 
@@ -891,6 +948,29 @@ mod tests {
     // `Error`; bring `std::io`'s `Error`/`ErrorKind` into scope for the io-Error
     // conversion tests below.
     use std::io::{Error, ErrorKind};
+    use validator::Validate;
+
+    #[derive(Validate)]
+    struct SensitiveValidationInput {
+        #[validate(length(min = 64))]
+        prompt: String,
+    }
+
+    #[test]
+    fn validation_conversion_never_includes_the_rejected_value() {
+        let sensitive = "private customer prompt";
+        let errors = SensitiveValidationInput {
+            prompt: sensitive.to_owned(),
+        }
+        .validate()
+        .expect_err("the short prompt must fail the test validator");
+        let error = ZaiError::from(errors);
+        let rendered = error.to_string();
+
+        assert!(rendered.contains("prompt:length"));
+        assert!(rendered.contains("min"));
+        assert!(!rendered.contains(sensitive));
+    }
 
     #[test]
     fn test_from_api_response_bad_request() {
@@ -898,6 +978,18 @@ mod tests {
         assert!(err.is_client_error());
         assert!(!err.is_server_error());
         assert_eq!(err.code(), Some(400));
+    }
+
+    #[test]
+    fn api_response_messages_are_credential_redacted() {
+        let error = ZaiError::from_api_response(
+            400,
+            1210,
+            "authorization: Bearer abc123.abcdefghijklmnopqrstuvwxyz".to_owned(),
+        );
+        let rendered = error.to_string();
+        assert!(!rendered.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(rendered.contains("[AUTH_REDACTED]"));
     }
 
     #[test]
@@ -925,22 +1017,37 @@ mod tests {
 
     #[test]
     fn test_from_api_response_package_limit_codes() {
-        for code in [1302, 1303, 1304, 1305, 1308, 1309, 1310, 1311, 1312, 1313] {
+        for code in [
+            1113, 1302, 1305, 1308, 1309, 1310, 1311, 1313, 1314, 1315, 1316, 1317, 1318, 1319,
+            1320, 1321,
+        ] {
             let err = ZaiError::from_api_response(429, code, "Limited".to_string());
             assert!(err.is_rate_limit());
             assert_eq!(err.code(), Some(code));
+        }
+
+        for code in [1113, 1308, 1314, 1321] {
+            let err = ZaiError::from_api_response(429, code, "Limited".to_string());
+            assert!(!err.is_retryable(), "quota code {code} must not retry");
         }
     }
 
     #[test]
     fn test_from_api_response_content_policy_codes() {
-        for code in [1300, 1301] {
-            let err = ZaiError::from_api_response(400, code, "Blocked".to_string());
-            assert!(matches!(err, ZaiError::ContentPolicyError { .. }));
-            assert!(err.is_client_error());
-            assert!(!err.is_rate_limit());
-            assert_eq!(err.code(), Some(code));
-        }
+        let err = ZaiError::from_api_response(400, 1301, "Blocked".to_string());
+        assert!(matches!(err, ZaiError::ContentPolicyError { .. }));
+        assert!(err.is_client_error());
+        assert!(!err.is_rate_limit());
+        assert_eq!(err.code(), Some(1301));
+    }
+
+    #[test]
+    fn context_window_code_is_a_non_retryable_client_validation_error() {
+        let error =
+            ZaiError::from_api_response(400, 1261, "model context window exceeded".to_owned());
+        assert!(matches!(error, ZaiError::ApiError { code: 1261, .. }));
+        assert_eq!(error.category(), ErrorCategory::Client);
+        assert!(!error.is_retryable());
     }
 
     #[test]
@@ -952,10 +1059,12 @@ mod tests {
 
     #[test]
     fn test_from_api_response_auth_error_code() {
-        let err = ZaiError::from_api_response(200, 1001, "Invalid API key".to_string());
-        assert!(err.is_auth_error());
-        assert_eq!(err.code(), Some(1001));
-        assert_eq!(err.message(), "Invalid API key");
+        for code in [1001, 1005, 1220] {
+            let err = ZaiError::from_api_response(200, code, "Invalid API key".to_string());
+            assert!(err.is_auth_error());
+            assert_eq!(err.code(), Some(code));
+            assert_eq!(err.message(), "Invalid API key");
+        }
     }
 
     #[test]
@@ -967,9 +1076,22 @@ mod tests {
 
     #[test]
     fn test_from_api_response_api_error() {
-        let err = ZaiError::from_api_response(200, 1200, "Invalid parameters".to_string());
+        let err = ZaiError::from_api_response(200, 1210, "Invalid parameters".to_string());
         assert!(err.is_client_error());
-        assert_eq!(err.code(), Some(1200));
+        assert_eq!(err.code(), Some(1210));
+    }
+
+    #[test]
+    fn server_business_codes_preserve_code_and_retryability() {
+        for code in [1200, 1230, 1234] {
+            let err = ZaiError::from_api_response(200, code, "upstream failed".to_string());
+            assert!(matches!(err, ZaiError::ApiError { .. }));
+            assert_eq!(err.code(), Some(code));
+            assert_eq!(err.category(), ErrorCategory::Server);
+            assert!(err.is_server_error());
+            assert!(err.is_retryable());
+            assert!(!err.is_client_error());
+        }
     }
 
     #[test]
@@ -1164,6 +1286,9 @@ mod tests {
         };
         assert!(!err.is_rate_limit());
         assert!(err.is_sdk_error());
+        assert_eq!(err.category(), ErrorCategory::Network);
+        assert!(err.is_retryable());
+        assert!(!err.is_client_error());
     }
 
     #[test]
@@ -1281,6 +1406,16 @@ mod tests {
     }
 
     #[test]
+    fn test_mask_standalone_bearer_jwt_and_opaque_token() {
+        let jwt = "Bearer header.payload.signature";
+        let opaque = "bearer opaque-token-value";
+        assert_eq!(mask_sensitive_info(jwt), "Bearer [FILTERED]");
+        assert_eq!(mask_sensitive_info(opaque), "bearer [FILTERED]");
+        assert!(contains_sensitive_info(jwt));
+        assert!(contains_sensitive_info(opaque));
+    }
+
+    #[test]
     fn test_mask_sensitive_info_multiple() {
         let text = "api_key=abc123.xyz456, password=secret123";
         let filtered = mask_sensitive_info(text);
@@ -1306,7 +1441,16 @@ mod tests {
     #[test]
     fn test_contains_sensitive_info_api_key() {
         assert!(contains_sensitive_info("api_key: abc123.abc1234567890"));
+        assert!(contains_sensitive_info("-id.secret-value-"));
         assert!(!contains_sensitive_info("regular text"));
+    }
+
+    #[test]
+    fn api_key_masking_handles_hyphen_boundaries_and_multiple_values() {
+        let filtered = mask_sensitive_info("keys=-id.secret-value-,-next.another-secret-value-");
+        assert_eq!(filtered.matches("[FILTERED]").count(), 2);
+        assert!(!filtered.contains("secret-value"));
+        assert!(!contains_sensitive_info(&filtered));
     }
 
     #[test]
@@ -1391,10 +1535,9 @@ mod tests {
 
     #[test]
     fn test_business_code_band_boundaries() {
-        // 1306/1307 sit in the unmapped gap between content-policy
-        // (1300-1301) and rate-limit (1308-1313): they must classify as
-        // Unknown, NOT RateLimitError.
-        for code in [1306, 1307] {
+        // Undocumented gaps remain Unknown instead of being absorbed by broad
+        // numeric ranges.
+        for code in [1002, 1004, 1100, 1300, 1303, 1304, 1306, 1307, 1312] {
             let e = ZaiError::from_api_response(400, code, "gap".to_string());
             assert!(
                 matches!(e, ZaiError::Unknown { .. }),
@@ -1408,8 +1551,8 @@ mod tests {
         // 1400 is the bottom of the FileError band.
         let e = ZaiError::from_api_response(400, 1400, "file".to_string());
         assert!(matches!(e, ZaiError::FileError { code, .. } if code == 1400));
-        // The rate-limit band edges (1302, 1305, 1308, 1313) are rate-limit.
-        for code in [1302, 1305, 1308, 1313] {
+        // Documented rate-limit band edges and billing code are rate-limit errors.
+        for code in [1113, 1302, 1305, 1308, 1321] {
             let e = ZaiError::from_api_response(429, code, "rl".to_string());
             assert!(e.is_rate_limit(), "code {code} -> RateLimitError");
         }
@@ -1442,6 +1585,23 @@ mod tests {
         let e = ZaiError::from_api_response(500, 0, String::new());
         assert!(matches!(e, ZaiError::HttpError { status: 500, .. }));
         assert!(e.is_server_error());
+    }
+
+    #[test]
+    fn retry_helper_uses_the_transport_status_matrix() {
+        for status in [408, 425, 429, 500, 502, 503, 504] {
+            let error = ZaiError::from_api_response(status, 0, String::new());
+            assert!(error.is_retryable(), "HTTP {status} should be retryable");
+        }
+        for status in [400, 501, 505] {
+            let error = ZaiError::from_api_response(status, 0, String::new());
+            assert!(!error.is_retryable(), "HTTP {status} must not retry");
+        }
+        for status in [501, 505] {
+            let error = ZaiError::from_api_response(status, 0, String::new());
+            assert_eq!(error.category(), ErrorCategory::Other);
+            assert!(!error.is_server_error());
+        }
     }
 
     #[test]

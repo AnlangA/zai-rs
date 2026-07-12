@@ -33,15 +33,16 @@ async fn mock_200_with_body(body: Value) -> String {
         let service = service_fn(move |req: Request<Incoming>| {
             let body = body.clone();
             async move {
-                let _ = req.collect().await;
+                req.collect().await.unwrap();
                 let mut resp = Response::new(Full::new(Bytes::from(body.to_string())));
                 *resp.status_mut() = hyper::StatusCode::OK;
                 Ok::<_, Infallible>(resp)
             }
         });
-        let _ = ConnBuilder::new(TokioExecutor::new())
+        ConnBuilder::new(TokioExecutor::new())
             .serve_connection(io, service)
-            .await;
+            .await
+            .unwrap();
     });
     format!("http://{addr}/api/paas/v4")
 }
@@ -50,14 +51,9 @@ const TEST_KEY: &str = "test.12345678901234567890";
 
 /// Build a `ZaiClient` whose PaasV4 endpoint points at the mock base.
 fn client_for_mock(base: &str) -> ZaiClient {
-    // The mock base is `http://127.0.0.1:PORT/api/paas/v4`; strip the
-    // `/api/paas/v4` suffix to get the origin for the endpoint override.
-    let origin = base.trim_end_matches("/api/paas/v4");
-    let ep = format!("{origin}/api/paas/v4");
-    let leaked: &'static str = Box::leak(ep.into_boxed_str());
     ZaiClient::builder(TEST_KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::PaasV4, leaked)
+        .endpoint(ApiFamily::PaasV4, base)
         .build()
         .unwrap()
 }
@@ -66,13 +62,11 @@ fn client_for_mock(base: &str) -> ZaiClient {
 async fn two_xx_with_code_500_business_error_returns_err() {
     let base = mock_200_with_body(json!({"code": 500, "message": "internal error"})).await;
     let client = client_for_mock(&base);
-    let result = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
+    let error = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
         .send_via(&client)
-        .await;
-    assert!(
-        result.is_err(),
-        "2xx + code=500 business error must return Err, got Ok"
-    );
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), Some(500));
 }
 
 #[tokio::test]
@@ -82,21 +76,9 @@ async fn two_xx_with_nested_error_envelope_returns_err() {
     }))
     .await;
     let client = client_for_mock(&base);
-    let result = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
+    let error = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
         .send_via(&client)
-        .await;
-    assert!(result.is_err(), "nested error envelope must return Err");
-}
-
-#[tokio::test]
-async fn two_xx_with_flat_rate_limit_envelope_returns_err() {
-    let base = mock_200_with_body(json!({
-        "code": 1302, "message": "rate limited"
-    }))
-    .await;
-    let client = client_for_mock(&base);
-    let result = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
-        .send_via(&client)
-        .await;
-    assert!(result.is_err(), "flat rate-limit envelope must return Err");
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), Some(1302));
 }

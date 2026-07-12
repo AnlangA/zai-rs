@@ -2,14 +2,15 @@ use serde::Serialize;
 use validator::Validate;
 
 use super::super::{chat_base_request::*, tools::*, traits::*};
-use crate::client::ZaiClient;
+use crate::{client::ZaiClient, model::async_chat_get::AsyncResponse};
 
 /// Builder for submitting a queued chat-completion task through a [`ZaiClient`].
 ///
 /// Posts to the `async/chat/completions` task-submission endpoint.
 pub struct AsyncChatCompletion<N, M>
 where
-    N: ModelName + AsyncChat,
+    N: ChatRequestModel + AsyncChat,
+    M: Serialize,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
@@ -18,7 +19,8 @@ where
 
 impl<N, M> AsyncChatCompletion<N, M>
 where
-    N: ModelName + AsyncChat,
+    N: ChatRequestModel + AsyncChat,
+    M: Serialize,
     (N, M): Bounded,
     ChatBody<N, M>: Serialize,
 {
@@ -29,15 +31,19 @@ where
         }
     }
 
-    /// Borrow the request body mutably for options that are not exposed by this
-    /// builder.
-    pub fn body_mut(&mut self) -> &mut ChatBody<N, M> {
-        &mut self.body
+    /// Borrow the frozen request body.
+    pub const fn body(&self) -> &ChatBody<N, M> {
+        &self.body
     }
 
-    /// Append another message to the conversation.
-    pub fn add_messages(mut self, messages: M) -> Self {
-        self.body = self.body.add_messages(messages);
+    /// Append one message to the conversation.
+    pub fn add_message(mut self, message: M) -> Self {
+        self.body = self.body.add_message(message);
+        self
+    }
+    /// Append multiple messages to the conversation.
+    pub fn extend_messages(mut self, messages: impl IntoIterator<Item = M>) -> Self {
+        self.body = self.body.extend_messages(messages);
         self
     }
     /// Set the client-provided request identifier.
@@ -48,18 +54,6 @@ where
     /// Enable or disable probabilistic sampling.
     pub fn with_do_sample(mut self, do_sample: bool) -> Self {
         self.body = self.body.with_do_sample(do_sample);
-        self
-    }
-    /// Enable or disable incremental tool-call arguments.
-    ///
-    /// This option is available only for models implementing
-    /// [`ToolStreamEnable`]. Passing `true` also sets `stream=true`; consequently
-    /// [`validate`](Self::validate) rejects it for this queued endpoint.
-    pub fn with_tool_stream(mut self, tool_stream: bool) -> Self
-    where
-        N: ToolStreamEnable,
-    {
-        self.body = self.body.with_tool_stream(tool_stream);
         self
     }
     /// Set the sampling temperature.
@@ -78,13 +72,51 @@ where
         self
     }
     /// Add one tool the model may call.
-    pub fn add_tool(mut self, tool: Tools) -> Self {
+    pub fn add_tool(mut self, tool: N::Tool) -> Self
+    where
+        N: ChatToolSupport,
+    {
         self.body = self.body.add_tool(tool);
         self
     }
     /// Add multiple tools the model may call.
-    pub fn add_tools(mut self, tools: Vec<Tools>) -> Self {
-        self.body = self.body.extend_tools(tools);
+    pub fn add_tools(mut self, tools: impl IntoIterator<Item = N::Tool>) -> Self
+    where
+        N: ChatToolSupport,
+    {
+        self.body = self.body.add_tools(tools);
+        self
+    }
+    /// Set automatic tool selection.
+    pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self
+    where
+        N: ChatToolSupport,
+    {
+        self.body = self.body.with_tool_choice(tool_choice);
+        self
+    }
+    /// Remove all tools and their selection policy.
+    pub fn clear_tools(mut self) -> Self
+    where
+        N: ChatToolSupport,
+    {
+        self.body = self.body.clear_tools();
+        self
+    }
+    /// Set the response format for a text model.
+    pub fn with_response_format(mut self, format: ResponseFormat) -> Self
+    where
+        N: ResponseFormatEnable,
+    {
+        self.body = self.body.with_response_format(format);
+        self
+    }
+    /// Enable or disable audio-output watermarking.
+    pub fn with_watermark_enabled(mut self, enabled: bool) -> Self
+    where
+        N: WatermarkEnable,
+    {
+        self.body = self.body.with_watermark_enabled(enabled);
         self
     }
     /// Set the end-user identifier used for abuse monitoring.
@@ -93,7 +125,7 @@ where
         self
     }
     /// Add the stop sequence for this request.
-    pub fn with_stop(mut self, stop: String) -> Self {
+    pub fn with_stop(mut self, stop: impl Into<String>) -> Self {
         self.body = self.body.with_stop(stop);
         self
     }
@@ -114,26 +146,16 @@ where
         self
     }
 
-    /// Validate field constraints and reject streaming on the queued endpoint.
+    /// Validate field constraints for the queued endpoint.
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
             .map_err(crate::client::error::ZaiError::from)?;
-        if matches!(self.body.stream, Some(true)) {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "async chat is a task-submission endpoint and does not accept stream"
-                    .to_string(),
-            });
-        }
         Ok(())
     }
 
     /// Submit via a [`ZaiClient`] and await the task-creation response.
-    pub async fn send_via(
-        &self,
-        client: &ZaiClient,
-    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<AsyncResponse>
     where
         N: serde::Serialize,
         M: serde::Serialize,
@@ -141,12 +163,57 @@ where
         self.validate()?;
         let route = crate::client::routes::CHAT_COMPLETE_ASYNC;
         let url = client.endpoints().resolve_route(route, &[])?;
-        client
-            .send_json::<_, crate::model::chat_base_response::ChatCompletionResponse>(
-                route.method(),
-                url,
-                &self.body,
-            )
-            .await
+        let response = client
+            .send_json::<_, AsyncResponse>(route.method(), url, &self.body)
+            .await?;
+        response.validate()?;
+        Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{
+        chat_message_types::{TextMessage, VoiceMessage},
+        chat_models::{GLM4_voice, GLM5_2},
+    };
+
+    #[test]
+    fn async_text_schema_never_serializes_stream_fields() {
+        let request = AsyncChatCompletion::new(GLM5_2 {}, TextMessage::user("hello"))
+            .add_tool(Tools::Function {
+                function: Function::new("lookup", "Lookup", serde_json::json!({"type": "object"})),
+            })
+            .with_tool_choice(ToolChoice::auto())
+            .with_response_format(ResponseFormat::JsonObject);
+        let json = serde_json::to_value(request.body()).unwrap();
+
+        assert_eq!(json["tool_choice"], "auto");
+        assert_eq!(json["response_format"]["type"], "json_object");
+        assert!(json.get("stream").is_none());
+        assert!(json.get("tool_stream").is_none());
+        assert!(json.get("watermark_enabled").is_none());
+    }
+
+    #[test]
+    fn async_audio_schema_serializes_only_its_specialized_field() {
+        let request = AsyncChatCompletion::new(GLM4_voice {}, VoiceMessage::new_user())
+            .with_watermark_enabled(true);
+        let json = serde_json::to_value(request.body()).unwrap();
+
+        assert_eq!(json["watermark_enabled"], true);
+        for field in [
+            "stream",
+            "tool_stream",
+            "tools",
+            "tool_choice",
+            "response_format",
+        ] {
+            assert!(
+                json.get(field).is_none(),
+                "unexpected async audio field: {field}"
+            );
+        }
     }
 }

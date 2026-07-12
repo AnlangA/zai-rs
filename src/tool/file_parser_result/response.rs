@@ -1,21 +1,18 @@
-//! File parser result response models.
-//!
-//! This module provides data structures for file parser result responses,
-//! including task status and parsed content.
+//! File-parser result response types.
 
 use serde::{Deserialize, Serialize};
 
 use super::request::FormatType;
 
 /// Task processing status.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ParserStatus {
-    /// Task is currently being processed
+    /// The task is still being processed.
     Processing,
-    /// Task completed successfully
+    /// The task completed successfully.
     Succeeded,
-    /// Task failed to complete
+    /// The task failed.
     Failed,
 }
 
@@ -29,54 +26,54 @@ impl std::fmt::Display for ParserStatus {
     }
 }
 
-/// Response from file parser result retrieval.
+/// Current state and available output for a parsing task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileParserResultResponse {
-    /// Current processing status of the task
+pub struct FileParseResultResponse {
+    /// Current processing status.
     pub status: ParserStatus,
-    /// Message about the result status
+    /// Provider status message.
     pub message: String,
-    /// Unique identifier for the parsing task
+    /// Unique parsing-task identifier.
     pub task_id: String,
-    /// Parsed text content (when format_type=text)
+    /// Parsed text when the requested format is [`FormatType::Text`].
     pub content: Option<String>,
-    /// Download link for results (when format_type=download_link)
+    /// Download URL when the requested format is [`FormatType::DownloadLink`].
     #[serde(rename = "parsing_result_url")]
     pub parsing_result_url: Option<String>,
 }
 
-impl FileParserResultResponse {
-    /// Check if the task completed successfully.
+impl FileParseResultResponse {
+    /// Return whether the task completed successfully.
     pub fn is_success(&self) -> bool {
         self.status == ParserStatus::Succeeded
     }
 
-    /// Check if the task is still processing.
+    /// Return whether the task is still processing.
     pub fn is_processing(&self) -> bool {
         self.status == ParserStatus::Processing
     }
 
-    /// Check if the task failed.
+    /// Return whether the task failed.
     pub fn is_failed(&self) -> bool {
         self.status == ParserStatus::Failed
     }
 
-    /// Get the task ID.
+    /// Borrow the task identifier.
     pub fn task_id(&self) -> &str {
         &self.task_id
     }
 
-    /// Get the parsed content if available.
+    /// Borrow parsed text, when available.
     pub fn content(&self) -> Option<&str> {
         self.content.as_deref()
     }
 
-    /// Get the download URL if available.
+    /// Borrow the result download URL, when available.
     pub fn download_url(&self) -> Option<&str> {
         self.parsing_result_url.as_deref()
     }
 
-    /// Get the result based on the format type.
+    /// Borrow the value corresponding to `format_type`, when available.
     pub fn get_result(&self, format_type: &FormatType) -> Option<&str> {
         match format_type {
             FormatType::Text => self.content(),

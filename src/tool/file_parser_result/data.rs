@@ -1,7 +1,4 @@
-//! # File Parser Result API
-//!
-//! This module provides the file parser result client for retrieving file
-//! parsing results.
+//! File-parser result request and polling helpers.
 
 use tracing::{debug, trace, warn};
 
@@ -11,100 +8,104 @@ use crate::{
     client::{ZaiClient, error::codes},
 };
 
-/// Client-side handle for retrieving and polling a file-parsing task.
+/// Handle for retrieving or polling one file-parsing task.
 ///
-/// This client provides functionality to retrieve file parsing results,
-/// supporting multiple result formats and asynchronous task monitoring.
+/// # Examples
 ///
-/// ## Examples
+/// ```rust,no_run
+/// use zai_rs::tool::file_parser_result::{FileParseResultRequest, FormatType};
+/// use zai_rs::ZaiClient;
 ///
-/// ```text
-/// use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
-///
-/// let task_id = "task_123456789";
-///
-/// let request = FileParserResultRequest::new(task_id);
-///
-/// let response = request.get_result_via(&client, FormatType::Text).await?;
+/// # async fn fetch(client: &ZaiClient) -> zai_rs::ZaiResult<()> {
+/// let request = FileParseResultRequest::new("task_123456789");
+/// let response = request.get_result_via(client, FormatType::Text).await?;
 /// if let Some(content) = response.content() {
 ///     println!("Parsed content: {}", content);
 /// }
+/// # Ok(())
+/// # }
 /// ```
-pub struct FileParserResultRequest {
-    /// Task ID for the parsing job
-    pub task_id: String,
+pub struct FileParseResultRequest {
+    /// Task identifier returned by the creation endpoint.
+    task_id: String,
 }
 
-impl FileParserResultRequest {
-    /// Creates a new file parser result request.
-    ///
-    /// ## Arguments
-    ///
-    /// * `task_id` - ID of the parsing task
-    ///
-    /// ## Returns
-    ///
-    /// A new `FileParserResultRequest` instance.
+impl FileParseResultRequest {
+    /// Create a result handle for `task_id`.
     pub fn new(task_id: impl Into<String>) -> Self {
         Self {
             task_id: task_id.into(),
         }
     }
 
-    /// Gets the parsing result for the given format type via a [`ZaiClient`].
-    ///
-    /// ## Arguments
-    ///
-    /// * `client` - The [`ZaiClient`] providing credentials and transport
-    /// * `format_type` - Format type for the result
-    ///
-    /// ## Returns
-    ///
-    /// A `FileParserResultResponse` containing the parsing result.
+    /// Borrow the task identifier used by result requests.
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    /// Fetch the current task result in `format_type` through `client`.
     pub async fn get_result_via(
         &self,
         client: &ZaiClient,
         format_type: FormatType,
-    ) -> ZaiResult<FileParserResultResponse> {
+    ) -> ZaiResult<FileParseResultResponse> {
+        if self.task_id.trim().is_empty() {
+            return Err(crate::ZaiError::ApiError {
+                code: codes::SDK_VALIDATION,
+                message: "task_id cannot be blank".to_string(),
+            });
+        }
         let route = crate::client::routes::FILES_PARSE_RESULT;
         let format_type = format_type.to_string();
         let url = client
             .endpoints()
             .resolve_route(route, &[&self.task_id, &format_type])?;
-        trace!(url = %url, "Fetching file parser result");
+        trace!(format = %format_type, "Fetching file parser result");
         client
-            .send_empty::<FileParserResultResponse>(route.method(), url)
+            .send_empty::<FileParseResultResponse>(route.method(), url)
             .await
     }
 
-    /// Polls for the result until it's completed or timeout is reached.
+    /// Poll until the task succeeds, fails, or reaches `timeout_seconds`.
     ///
-    /// ## Arguments
-    ///
-    /// * `client` - The [`ZaiClient`] providing credentials and transport
-    /// * `format_type` - Format type for the result
-    /// * `timeout_seconds` - Maximum time to wait for result
-    /// * `poll_interval_seconds` - Interval between status checks
-    ///
-    /// ## Returns
-    ///
-    /// A `FileParserResultResponse` containing the parsing result.
+    /// `poll_interval_seconds` must be at least one. A provider failure and a
+    /// local timeout are returned as errors rather than successful responses.
     pub async fn wait_for_result_via(
         &self,
         client: &ZaiClient,
         format_type: FormatType,
         timeout_seconds: u64,
         poll_interval_seconds: u64,
-    ) -> ZaiResult<FileParserResultResponse> {
+    ) -> ZaiResult<FileParseResultResponse> {
+        if poll_interval_seconds == 0 {
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: codes::SDK_VALIDATION,
+                message: "poll_interval_seconds must be at least 1".to_string(),
+            });
+        }
+        if timeout_seconds == 0 {
+            return Err(crate::client::validation::invalid(
+                "timeout_seconds must be at least 1",
+            ));
+        }
         debug!(
             timeout_seconds,
             poll_interval_seconds, "Polling file parser result"
         );
-        let start_time = std::time::Instant::now();
+        let timeout = tokio::time::Duration::from_secs(timeout_seconds);
+        let deadline = tokio::time::Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| crate::client::error::ZaiError::ApiError {
+                code: codes::SDK_VALIDATION,
+                message: "timeout_seconds is too large".to_string(),
+            })?;
 
         loop {
             trace!("Checking file parser result status");
-            let result = self.get_result_via(client, format_type.clone()).await?;
+            let result =
+                tokio::time::timeout_at(deadline, self.get_result_via(client, format_type))
+                    .await
+                    .map_err(|_| polling_timeout())??;
 
             match result.status {
                 ParserStatus::Succeeded => {
@@ -112,57 +113,73 @@ impl FileParserResultRequest {
                     return Ok(result);
                 },
                 ParserStatus::Failed => {
-                    warn!(
-                        task_id = %self.task_id,
-                        message = %result.message,
-                        "File parsing task reported failure"
-                    );
-                    return Err(crate::client::error::ZaiError::ApiError {
-                        code: codes::SDK_EXTERNAL_TOOL,
-                        message: format!("Parsing failed: {}", result.message),
-                    });
+                    warn!("File parsing task reported failure");
+                    return Err(parsing_failure(&result.message));
                 },
                 ParserStatus::Processing => {
-                    let elapsed = start_time.elapsed().as_secs();
-                    trace!(elapsed, "File parser result still processing");
-                    if elapsed > timeout_seconds {
+                    let now = tokio::time::Instant::now();
+                    let elapsed = timeout.saturating_sub(deadline.saturating_duration_since(now));
+                    trace!(elapsed = ?elapsed, "File parser result still processing");
+                    if now >= deadline {
                         warn!(
-                            task_id = %self.task_id,
-                            elapsed,
-                            timeout_seconds,
-                            "Polling timed out waiting for parsing result"
+                            elapsed_seconds = elapsed.as_secs(),
+                            timeout_seconds, "Polling timed out waiting for parsing result"
                         );
-                        return Err(crate::client::error::ZaiError::ApiError {
-                            code: codes::SDK_TIMEOUT,
-                            message: "Timeout waiting for parsing result".to_string(),
-                        });
+                        return Err(polling_timeout());
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_secs(poll_interval_seconds))
-                        .await;
+                    let interval = tokio::time::Duration::from_secs(poll_interval_seconds);
+                    let wake_at = now.checked_add(interval).unwrap_or(deadline).min(deadline);
+                    tokio::time::sleep_until(wake_at).await;
+                    if wake_at == deadline {
+                        return Err(polling_timeout());
+                    }
                 },
             }
         }
     }
 
-    /// Fetches both text and download-link representations.
+    /// Fetch both text and download-link representations.
     ///
-    /// This performs two HTTP requests in sequence, one for each format.
+    /// This performs the two independent HTTP requests concurrently.
     ///
-    /// ## Arguments
-    ///
-    /// * `client` - The [`ZaiClient`] providing credentials and transport
-    ///
-    /// ## Returns
-    ///
-    /// A tuple containing text result and download link result.
     pub async fn get_all_results_via(
         &self,
         client: &ZaiClient,
-    ) -> ZaiResult<(FileParserResultResponse, FileParserResultResponse)> {
-        let text_result = self.get_result_via(client, FormatType::Text).await?;
-        let download_result = self
-            .get_result_via(client, FormatType::DownloadLink)
-            .await?;
+    ) -> ZaiResult<(FileParseResultResponse, FileParseResultResponse)> {
+        let (text_result, download_result) = tokio::try_join!(
+            self.get_result_via(client, FormatType::Text),
+            self.get_result_via(client, FormatType::DownloadLink),
+        )?;
         Ok((text_result, download_result))
+    }
+}
+
+fn polling_timeout() -> crate::client::error::ZaiError {
+    crate::client::error::ZaiError::ApiError {
+        code: codes::SDK_TIMEOUT,
+        message: "Timeout waiting for parsing result".to_string(),
+    }
+}
+
+fn parsing_failure(message: &str) -> crate::client::error::ZaiError {
+    crate::client::error::ZaiError::ApiError {
+        code: codes::SDK_EXTERNAL_TOOL,
+        message: format!(
+            "Parsing failed: {}",
+            crate::client::error::mask_sensitive_info(message)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_failure_messages_are_sanitized() {
+        let error = parsing_failure("Authorization: Bearer private-token-value");
+        let rendered = error.to_string();
+        assert!(!rendered.contains("private-token-value"));
+        assert!(rendered.contains("[AUTH_REDACTED]"));
     }
 }

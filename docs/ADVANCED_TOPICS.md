@@ -5,144 +5,82 @@
 ## 目录
 
 1. [重试机制](#重试机制)
-2. [配置选项](#配置选项)
-3. [日志和追踪](#日志和追踪)
-4. [流式处理](#流式处理)
-5. [工具调用](#工具调用)
-6. [GLM-4.5 思考模式](#glm-45-思考模式)
-7. [OCR 手写识别](#ocr-手写识别)
-8. [Agent API](#agent-api)
-9. [实时 API](#实时-api)
-10. [异步聊天](#异步聊天)
-11. [文件管理](#文件管理)
-12. [知识库](#知识库)
-13. [批量处理](#批量处理)
+2. [流式处理](#流式处理)
+3. [工具调用](#工具调用)
+4. [异步聊天](#异步聊天)
+5. [实时 API](#实时-api)
+6. [文件管理](#文件管理)
+7. [知识库](#知识库)
+8. [批量处理](#批量处理)
+9. [性能优化](#性能优化)
+10. [安全最佳实践](#安全最佳实践)
 
 ## 重试机制
 
 ### 概述
 
-SDK 内置了智能重试机制，自动处理临时性故障，提高请求成功率。
+统一传输层只自动重试幂等方法（`GET`、`HEAD`、`OPTIONS`、`PUT`、
+`DELETE`）。`POST` 和 `PATCH` 默认不会重放，以免重复产生服务端副作用。
 
 ### 重试策略
 
-SDK 使用指数退避算法配合随机抖动：
-
-```rust
-// 重试延迟计算
-delay = base * 2^attempt
-delay_with_jitter = delay + random(0, delay/4)
-
-// 示例（base=500ms, max=5s）
-attempt 0: 500ms  + 0-125ms
-attempt 1: 1000ms + 0-250ms
-attempt 2: 2000ms + 0-500ms
-attempt 3: 4000ms + 0-1000ms (capped at 5s)
-```
+重试采用 full jitter。第 `n` 次重试的随机等待上限为
+`min(8s, 200ms × 2^n)`；正整数秒格式的 `Retry-After` 可能延长等待。
 
 ### 哪些错误会重试
 
 | 错误类型 | 重试 | 说明 |
 |----------|------|------|
-| 5xx 服务器错误 | ✅ | 临时性服务器故障 |
-| 速率/配额错误（1302-1305、1308-1313） | ✅ | 短期内稍后重试 |
-| 网络错误 | ✅ | 连接问题 |
-| 4xx 客户端错误 | ❌ | 请求参数错误 |
+| 408/425/429/500/502/503/504 | 条件重试 | 仅限幂等请求，且业务码未将其排除 |
+| 网络错误 | 条件重试 | 仅限幂等请求和剩余尝试次数 |
+| POST/PATCH | ❌ | 默认不重放 |
+| 其他 4xx/5xx | ❌ | 不在固定重试状态集合中 |
 | 认证错误 | ❌ | 需要修正 API 密钥 |
-| 内容策略错误（1300-1301） | ❌ | 需要调整输入内容 |
-
-### 重试日志
-
-SDK 会记录重试信息：
-
-```
-WARN Request failed (attempt 1/4), retrying after 512ms: HTTP[503]: Service Unavailable
-WARN Request failed (attempt 2/4), retrying after 1.2s: HTTP[503]: Service Unavailable
-```
+| 配额、校验、内容策略业务码 | ❌ | 业务码优先于 HTTP 状态 |
 
 ### 重试限制
 
 默认配置：
-- 最大重试次数：3
-- 基础延迟：500ms
-- 最大延迟：5s
+- `max_attempts = 3`，包含首次请求，因此最多重试两次
+- full-jitter 基础上限 `200ms`，指数增长并封顶 `8s`
 
 所有重试都失败后，返回最后一次错误。
 
 ## 流式处理
 
-### SSE 流式响应
+### 类型安全的 SSE 聊天流
 
-对于实时响应需求，使用 Server-Sent Events (SSE) 流：
+`ChatCompletion::enable_stream()` 把请求切换到流式类型状态，随后
+`stream_via(&client)` 返回 `ChatStreamResponse` 流。API 密钥不会离开
+`ZaiClient`，内容类型、超时与大小限制也由统一传输层处理：
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user("写一个科幻故事");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    // 启用流式输出
-    let mut client = ChatCompletion::new(model, messages, key)
-        .enable_stream();
-    
-    // 获取 SSE 流
-    let mut stream = client.sse_stream().await?;
-    
-    // 处理流式数据
+    let client = ZaiClient::from_env()?;
+    let mut stream = ChatCompletion::new(
+        GLM4_5_flash {},
+        TextMessage::user("写一个科幻故事"),
+    )
+    .with_max_tokens(1_000)
+    .enable_stream()
+    .stream_via(&client)
+    .await?;
+
     while let Some(chunk) = stream.next().await {
-        if let Some(delta) = chunk.choices().first().unwrap().delta.content() {
-            print!("{}", delta);
-            std::io::stdout().flush()?;
+        let chunk = chunk?;
+        if let Some(text) = chunk
+            .choices
+            .first()
+            .and_then(|choice| choice.delta.as_ref())
+            .and_then(|delta| delta.content.as_deref())
+        {
+            print!("{text}");
         }
     }
-    
-    println!("\n--- 完成 ---");
     Ok(())
-}
-```
-
-### 流式响应处理技巧
-
-#### 1. 累积完整响应
-
-```rust,ignore
-let mut full_response = String::new();
-let mut stream = client.sse_stream().await?;
-
-while let Some(chunk) = stream.next().await {
-    if let Some(delta) = chunk.choices().first().unwrap().delta.content() {
-        full_response.push_str(delta);
-        print!("{}", delta);
-    }
-}
-
-println!("\n完整响应: {}", full_response);
-```
-
-#### 2. 处理流式错误
-
-```rust,ignore
-let mut stream = client.sse_stream().await?;
-
-loop {
-    match stream.next().await {
-        Some(Ok(chunk)) => {
-            // 处理正常的流式数据
-        }
-        Some(Err(e)) => {
-            tracing::error!("流式错误: {}", e);
-            // 可以选择继续或终止
-            break;
-        }
-        None => {
-            // 流结束
-            println!("流式响应完成");
-            break;
-        }
-    }
 }
 ```
 
@@ -155,84 +93,66 @@ loop {
 ### 定义工具
 
 ```rust,ignore
-use zai_rs::model::tools::*;
-use serde_json::{json, Value};
+use zai_rs::model::tools::{Function, Tools};
+use serde_json::json;
 
-fn get_weather() -> FunctionTool {
-    FunctionTool::new(
-        "get_weather",
-        "获取指定城市的天气信息"
-    )
-    .with_param("city", "城市名称", json!({"type": "string"}))
+fn get_weather() -> Tools {
+    Tools::Function {
+        function: Function::new(
+            "get_weather",
+            "获取指定城市的天气信息",
+            json!({
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"]
+            }),
+        ),
+    }
 }
 ```
 
 ### 使用工具
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5_flash {};
-    let tool = get_weather();
-    
-    let messages = vec![
+    let client = ZaiClient::from_env()?;
+    let request = ChatCompletion::new(
+        GLM4_5_flash {},
         TextMessage::system("你是一个有用的助手。"),
-        TextMessage::user("北京今天的天气如何？"),
-    ];
-    
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let mut client = ChatCompletion::new(model, messages, key);
-    
-    // 添加工具
-    client.body_mut().tools = Some(vec![tool]);
-    
-    let resp = client.post().await?;
-    
+    )
+    .add_message(TextMessage::user("北京今天的天气如何？"))
+    .add_tool(get_weather());
+    let resp = request.send_via(&client).await?;
+
     // 检查是否有工具调用
-    if let Some(tool_calls) = resp.choices().first()
-        .unwrap()
-        .message
-        .tool_calls() 
+    if let Some(tool_calls) = resp
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.tool_calls())
     {
         for call in tool_calls {
-            println!("调用工具: {}", call.function().name());
-            println!("参数: {}", call.function().arguments());
+            if let Some(function) = call.function() {
+                println!("调用工具: {}", function.name());
+                println!("参数: {}", function.arguments());
+            }
         }
     }
-    
+
     Ok(())
 }
 ```
 
 ### 使用 Toolkits
 
-SDK 提供了 Toolkits 框架用于更高级的工具管理：
-
-```rust,ignore
-use zai_rs::toolkits::core::*;
-use zai_rs::toolkits::executor::*;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let executor = ToolExecutor::new();
-    
-    // 注册工具
-    executor.register_tool(get_weather())?;
-    
-    // 执行工具调用
-    let tool_calls = vec![/* ... */];
-    let results = executor.execute_all(tool_calls).await?;
-    
-    for (name, result) in results {
-        println!("{}: {:?}", name, result);
-    }
-    
-    Ok(())
-}
-```
+`model::Tools` 描述发送给模型的工具协议；本地 `toolkits` 模块提供独立的工具
+注册和执行框架，`toolkits` feature 额外启用 JSON-Schema 参数校验。两者不是同一
+种类型。完整闭环请参考
+`examples/function_call_with_toolkits.rs`，不要把 `model::Tools` 直接注册到
+`ToolExecutor`。
 
 ## 异步聊天
 
@@ -243,20 +163,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 提交异步任务
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user("分析这段长文本...");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let request = AsyncChatRequest::new(model, messages, key);
-    let resp = request.post().await?;
-    
-    let task_id = resp.id().unwrap();
+    let client = ZaiClient::from_env()?;
+    let request = AsyncChatCompletion::new(
+        GLM4_5_flash {},
+        TextMessage::user("分析这段长文本..."),
+    );
+    let resp = request.send_via(&client).await?;
+
+    let task_id = resp.id().ok_or("async response omitted task id")?;
     println!("任务ID: {}", task_id);
-    
+
     Ok(())
 }
 ```
@@ -264,68 +184,101 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 获取异步结果
 
 ```rust,ignore
-use zai_rs::model::*;
+use std::time::Duration;
+use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let task_id = "your-task-id";
-    
-    let request = AsyncChatGetRequest::new(GLM4_5_flash {}, task_id, key);
-    
-    // 轮询直到完成
-    loop {
-        let resp = request.get().await?;
-        
-        match resp.task_status() {
-            Some(TaskStatus::Success) => {
+    let request = AsyncTaskGetRequest::new(task_id);
+
+    // 最多轮询 60 次，避免服务端异常时永久挂起。
+    for _ in 0..60 {
+        let resp = request.send_via(&client).await?;
+
+        match resp {
+            AsyncTaskResult::Chat(result) => {
                 println!("任务完成");
-                if let Some(content) = resp.choices()
-                    .and_then(|c| c.first())
-                    .and_then(|c| c.message.content())
+                if let Some(content) = result
+                    .choices()
+                    .and_then(|choices| choices.first())
+                    .and_then(|choice| choice.message())
+                    .and_then(|message| message.content_str())
                 {
                     println!("结果: {}", content);
                 }
                 break;
             }
-            Some(TaskStatus::Processing) => {
+            AsyncTaskResult::State(state) if state.is_processing() => {
                 println!("处理中...");
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
-            Some(TaskStatus::Fail) => {
+            AsyncTaskResult::State(state) if state.is_failed() => {
                 tracing::error!("任务失败");
                 break;
             }
-            _ => {
+            AsyncTaskResult::State(_) => {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            AsyncTaskResult::Video(_) | AsyncTaskResult::Image(_) => {
                 tracing::error!("未知状态");
                 break;
             }
         }
     }
-    
+    // 生产代码应把“超过轮询上限”转换为自己的超时错误。
+
     Ok(())
 }
 ```
+
+## 实时 API
+
+实时 WebSocket 需启用 `realtime` feature。当前协议只接受
+`GLM_realtime_flash`（`glm-realtime-flash`）和
+`GLM_realtime_air`（`glm-realtime-air`）：
+
+```rust,ignore
+use zai_rs::{
+    model::GLM_realtime_flash,
+    realtime::{RealtimeClient, TurnDetectionType},
+};
+
+let key = std::env::var("ZHIPU_API_KEY")?;
+let session = RealtimeClient::new(key)
+    .session(GLM_realtime_flash {})
+    .turn_detection(TurnDetectionType::ServerVad)
+    .build()
+    .await?;
+session.send_text("你好").await?;
+session.create_response().await?;
+```
+
+首次调用 `events()` / `audio_stream()` 会收到会话建立后已经缓冲的事件；两个流的
+元素都是 `ZaiResult`。消费速度不足导致丢帧或后台会话异常时，流会返回错误并
+终止，调用方不能把不完整 PCM 当作成功结果。音频元素为 `RealtimeAudioChunk`，
+其 `data` 是 24 kHz、单声道、16 位小端 PCM，关联 ID 保留在同一结构中。
+
+Realtime 模型 trait 已密封，其他模型会在编译期被拒绝。`GLM4_voice` 仅用于
+HTTP 语音聊天，不能用于 Realtime WebSocket；无可用操作能力的旧 Realtime
+marker 已在 0.6 删除。
 
 ## 文件管理
 
 ### 上传文件
 
 ```rust,ignore
-use zai_rs::file::*;
-use std::fs::File;
+use zai_rs::{ZaiClient, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    let path = "document.pdf";
-    let purpose = FilePurpose::Batch;
-    
-    let file = File::new(path, purpose, key);
-    let upload = file.upload().await?;
-    
-    println!("文件ID: {}", upload.id().unwrap());
-    
+    let client = ZaiClient::from_env()?;
+    let upload = FileUploadRequest::new(FileUploadPurpose::Batch, "document.pdf")
+        .send_via(&client)
+        .await?;
+    println!("文件ID: {:?}", upload.id);
+
     Ok(())
 }
 ```
@@ -333,19 +286,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 列出文件
 
 ```rust,ignore
-use zai_rs::file::*;
+use zai_rs::{ZaiClient, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let request = FileListRequest::new(key);
-    let list = request.send().await?;
-    
-    for file in list.data() {
-        println!("{}: {}", file.id().unwrap(), file.filename());
+    let client = ZaiClient::from_env()?;
+    let list = FileListRequest::new(FileListPurpose::Batch)
+        .send_via(&client)
+        .await?;
+
+    for file in list.data.as_deref().unwrap_or_default() {
+        println!("{:?}: {:?}", file.id, file.filename);
     }
-    
+
     Ok(())
 }
 ```
@@ -353,18 +306,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 获取文件内容
 
 ```rust,ignore
-use zai_rs::file::*;
+use zai_rs::{ZaiClient, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let file_id = "file-abc123";
-    
-    let request = FileContentRequest::new(file_id, key);
-    let content = request.send().await?;
-    
-    println!("文件内容: {}", content);
-    
+
+    let content = FileContentRequest::new(file_id).send_via(&client).await?;
+    println!("文件字节数: {}", content.len());
+
     Ok(())
 }
 ```
@@ -372,18 +323,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 删除文件
 
 ```rust,ignore
-use zai_rs::file::*;
+use zai_rs::{ZaiClient, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let file_id = "file-abc123";
-    
-    let request = FileDeleteRequest::new(file_id, key);
-    request.send().await?;
-    
+
+    FileDeleteRequest::new(file_id).send_via(&client).await?;
+
     println!("文件已删除");
-    
+
     Ok(())
 }
 ```
@@ -393,22 +343,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 创建知识库
 
 ```rust,ignore
-use zai_rs::knowledge::*;
+use zai_rs::{ZaiClient, knowledge::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let request = CreateKnowledgeRequest::new(
-        "我的知识库",
-        "描述",
-        key
+    let client = ZaiClient::from_env()?;
+    let resp = KnowledgeCreateRequest::new(EmbeddingId::Embedding3New, "我的知识库")
+        .with_description("描述")
+        .send_via(&client)
+        .await?;
+    println!(
+        "知识库ID: {:?}",
+        resp.data.as_ref().and_then(|data| data.id.as_deref())
     );
-    
-    let resp = request.send().await?;
-    let kb_id = resp.id().unwrap();
-    println!("知识库ID: {}", kb_id);
-    
+
     Ok(())
 }
 ```
@@ -416,23 +364,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 上传文档
 
 ```rust,ignore
-use zai_rs::knowledge::*;
+use zai_rs::{ZaiClient, knowledge::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let kb_id = "kb-abc123";
-    let file_path = "document.pdf";
-    
-    let request = DocumentUploadFileRequest::new(
-        kb_id,
-        file_path,
-        key
-    );
-    
-    let resp = request.send().await?;
-    println!("文档ID: {}", resp.document_id().unwrap());
-    
+    let resp = DocumentUploadRequest::new(kb_id)
+        .add_file_path("document.pdf")
+        .send_via(&client)
+        .await?;
+    println!("上传结果: {resp:#?}");
+
     Ok(())
 }
 ```
@@ -440,23 +383,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 查询知识库
 
 ```rust,ignore
-use zai_rs::knowledge::*;
+use zai_rs::{ZaiClient, knowledge::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let kb_id = "kb-abc123";
     let query = "什么是机器学习？";
-    
-    let request = RetrieveKnowledgeRequest::new(
-        kb_id,
-        query,
-        key
-    );
-    
-    let resp = request.send().await?;
+
+    let resp = KnowledgeSearchRequest::new(kb_id, query)
+        .send_via(&client)
+        .await?;
     println!("相关内容: {:?}", resp);
-    
+
     Ok(())
 }
 ```
@@ -466,34 +405,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 创建批量任务
 
 ```rust,ignore
-use zai_rs::batches::*;
-use zai_rs::file::*;
+use zai_rs::{ZaiClient, batches::*, file::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
+    let client = ZaiClient::from_env()?;
+
     // 1. 上传包含批量请求的文件
-    let upload = FileUploadRequest::new(
-        key.clone(),
-        FilePurpose::Batch,
-        "requests.jsonl"
-    );
-    let file: FileObject = upload.send().await?;
-    let file_id = file.id().unwrap();
-    
+    let file = FileUploadRequest::new(FileUploadPurpose::Batch, "requests.jsonl")
+        .send_via(&client)
+        .await?;
+    let file_id = file.id.ok_or("upload response omitted file id")?;
+
     // 2. 创建批量任务
-    let create = CreateBatchRequest::new(
-        key.clone(),
-        file_id,
-        BatchEndpoint::ChatCompletions
-    )
-    .with_completion_window("24h");
-    
-    let resp: CreateBatchResponse = create.send().await?;
-    let batch_id = resp.id().unwrap();
-    println!("批量任务ID: {}", batch_id);
-    
+    let resp = BatchCreateRequest::new(file_id, BatchEndpoint::ChatCompletions)
+        .send_via(&client)
+        .await?;
+    println!("批量任务ID: {:?}", resp.id);
+
     Ok(())
 }
 ```
@@ -501,19 +430,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 检查批量任务状态
 
 ```rust,ignore
-use zai_rs::batches::*;
+use zai_rs::{ZaiClient, batches::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let batch_id = "batch-abc123";
-    
-    let request = RetrieveBatchRequest::new(batch_id, key);
-    let batch: Batch = request.send().await?;
-    
-    println!("状态: {:?}", batch.status());
-    println!("完成数: {}", batch.request_counts().completed());
-    
+
+    let batch = BatchGetRequest::new(batch_id)
+        .send_via(&client)
+        .await?;
+    println!("状态: {:?}", batch.status);
+    println!("请求计数: {:?}", batch.request_counts);
+
     Ok(())
 }
 ```
@@ -521,18 +450,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 取消批量任务
 
 ```rust,ignore
-use zai_rs::batches::*;
+use zai_rs::{ZaiClient, batches::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let key = std::env::var("ZHIPU_API_KEY")?;
+    let client = ZaiClient::from_env()?;
     let batch_id = "batch-abc123";
-    
-    let request = CancelBatchRequest::new(batch_id, key);
-    request.send().await?;
-    
+
+    BatchCancelRequest::new(batch_id)
+        .send_via(&client)
+        .await?;
+
     println!("批量任务已取消");
-    
+
     Ok(())
 }
 ```
@@ -541,13 +471,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### 1. 连接复用
 
-SDK 使用单例 HTTP 客户端，自动复用连接：
+每个 `ZaiClient` 持有并复用一个 HTTP 连接池：
 
 ```rust,ignore
-// ✅ 自动连接复用
+use zai_rs::{ZaiClient, model::*};
+
+let client = ZaiClient::from_env()?;
+
+// ✅ 所有请求共享一个 ZaiClient 连接池
 for i in 0..10 {
-    let client = ChatCompletion::new(model, messages, key);
-    let resp = client.post().await?;
+    let request = ChatCompletion::new(
+        GLM4_5_flash {},
+        TextMessage::user(format!("问题 {i}")),
+    );
+    let resp = request.send_via(&client).await?;
 }
 ```
 
@@ -556,30 +493,28 @@ for i in 0..10 {
 使用 Tokio 进行并发处理：
 
 ```rust,ignore
-use futures::future::join_all;
+use tokio::task::JoinSet;
+use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queries = vec!["问题1", "问题2", "问题3"];
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let futures: Vec<_> = queries.into_iter()
-        .map(|q| {
-            let client = ChatCompletion::new(
-                GLM4_5_flash {},
-                TextMessage::user(q),
-                key.clone()
-            );
-            client.post()
-        })
-        .collect();
-    
-    let results = join_all(futures).await;
-    
-    for result in results {
-        println!("{:?}", result);
+    let client = ZaiClient::from_env()?;
+
+    let mut tasks = JoinSet::new();
+    for query in queries {
+        let client = client.clone();
+        tasks.spawn(async move {
+            ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(query))
+                .send_via(&client)
+                .await
+        });
     }
-    
+
+    while let Some(result) = tasks.join_next().await {
+        println!("{:?}", result??);
+    }
+
     Ok(())
 }
 ```
@@ -587,8 +522,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 3. 合理设置超时
 
 ```rust,ignore
-// 注意：当前版本不支持自定义超时，使用默认 60 秒
-// 通过 ZaiClient::builder(...).transport(HttpTransportConfig) 自定义统一传输层
+// 通过 ZaiClient::builder(...).transport(HttpTransportConfig) 收紧统一传输层超时。
 ```
 
 ## 安全最佳实践
@@ -603,14 +537,14 @@ let key = std::env::var("ZHIPU_API_KEY")?;
 let key = "sk-abc123.xyz";
 ```
 
-### 2. 使用敏感信息过滤
+### 2. 不记录敏感信息
 
 ```rust,ignore
 use zai_rs::client::error::mask_sensitive_info;
 
-fn log_request(api_key: &str, content: &str) {
-    let log = format!("Key: {}, Content: {}", api_key, content);
-    println!("{}", mask_sensitive_info(&log));
+fn log_external_message(message: &str) {
+    // 仅在必须记录外部文本时做兜底清理；不要先把 API key 拼进日志。
+    tracing::info!(message = %mask_sensitive_info(message));
 }
 ```
 

@@ -1,4 +1,3 @@
-use serde::Serialize;
 use validator::Validate;
 
 use super::{super::traits::*, request::VoiceCloneBody};
@@ -11,14 +10,14 @@ use crate::client::ZaiClient;
 /// [`VoiceCloneRequest::send_via`].
 pub struct VoiceCloneRequest<N>
 where
-    N: ModelName + VoiceClone + Serialize,
+    N: VoiceClone,
 {
     body: VoiceCloneBody<N>,
 }
 
 impl<N> VoiceCloneRequest<N>
 where
-    N: ModelName + VoiceClone + Serialize,
+    N: VoiceClone,
 {
     /// Create a new voice clone request with required fields.
     pub fn new(
@@ -52,10 +51,7 @@ where
     pub fn validate(&self) -> crate::ZaiResult<()> {
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("Validation error: {e:?}"),
-            })?;
+            .map_err(crate::client::error::ZaiError::from)?;
         Ok(())
     }
 

@@ -13,7 +13,7 @@
 
 ```toml
 [dependencies]
-zai-rs = "0.5"
+zai-rs = "0.6"
 ```
 
 ## 配置
@@ -77,14 +77,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let request = ChatCompletion::new(model, messages);
     let resp = request.send_via(&client).await?;
 
-    println!("{}", resp.choices().first().unwrap().message.content_str().unwrap_or_default());
+    if let Some(text) = resp
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.content_str())
+    {
+        println!("{text}");
+    }
     Ok(())
 }
 ```
 
-### 2. 流式响应
+### 2. 流式聊天响应
 
-对于实时响应，启用流式输出：
+调用 `enable_stream()` 进入流式类型状态，再用 `stream_via(&client)` 获取
+强类型 SSE 流。鉴权和响应限制始终由 `ZaiClient` 管理：
 
 ```rust,ignore
 use zai_rs::{client::ZaiClient, model::*};
@@ -94,9 +102,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = GLM4_5_flash {};
     let messages = TextMessage::user("讲一个短故事");
     let client = ZaiClient::from_env()?;
-    // 0.5 当前请使用非流式统一传输路径；SSE 接口将在后续版本恢复。
-    let response = ChatCompletion::new(model, messages).send_via(&client).await?;
-    println!("{:?}", response);
+    let mut stream = ChatCompletion::new(model, messages)
+        .enable_stream()
+        .stream_via(&client)
+        .await?;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if let Some(text) = chunk
+            .choices
+            .first()
+            .and_then(|choice| choice.delta.as_ref())
+            .and_then(|delta| delta.content.as_deref())
+        {
+            print!("{text}");
+        }
+    }
 
     Ok(())
 }
@@ -106,14 +127,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust,ignore
 use zai_rs::model::gen_image::*;
+use zai_rs::ZaiClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = CogView4 {};
-    let key = std::env::var("ZHIPU_API_KEY")?;
-
-    let client = ImageGenRequest::new(model, key).with_prompt("一只可爱的猫咪");
-    let resp: ImageResponse = client.send().await?;
+    let client = ZaiClient::from_env()?;
+    let request = ImageGenRequest::new(GlmImage {})
+        .with_prompt("一只可爱的猫咪")
+        .with_size(ImageSize::Size1280x1280)
+        .with_quality(ImageQuality::Hd);
+    let resp: ImageResponse = request.send_via(&client).await?;
     println!("生成的图像: {:#?}", resp);
 
     Ok(())
@@ -123,17 +146,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 4. 语音转文字
 
 ```rust,ignore
-use zai_rs::model::audio_to_text::{AudioToTextResponse, GlmAsr, *};
+use zai_rs::model::audio_to_text::{AudioToTextRequest, AudioToTextResponse, GlmAsr};
+use zai_rs::ZaiClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GlmAsr {};
-    let key = std::env::var("ZHIPU_API_KEY")?;
-
-    let client = AudioToTextRequest::new(model, key)
-        .with_file_path("audio.mp3")
-        .with_stream(false);
-    let resp: AudioToTextResponse = client.send().await?;
+    let client = ZaiClient::from_env()?;
+    let request = AudioToTextRequest::new(GlmAsr {}).with_file_path("audio.mp3");
+    let resp: AudioToTextResponse = request.send_via(&client).await?;
     println!("识别结果: {:#?}", resp);
 
     Ok(())
@@ -145,17 +165,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 SDK 提供了全面的错误类型：
 
 ```rust,ignore
-use zai_rs::client::error::{ZaiError, ZaiResult};
+use zai_rs::{ZaiClient, client::error::{ZaiError, ZaiResult}, model::*};
 
 async fn chat() -> ZaiResult<String> {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user("Hello");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let client = ChatCompletion::new(model, messages, key);
-    let resp = client.post().await?;
-    
-    Ok(resp.choices().first().unwrap().message.content_str().unwrap_or_default().to_string())
+    let client = ZaiClient::from_env()?;
+    let response = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("Hello"))
+        .send_via(&client)
+        .await?;
+
+    Ok(response
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.content_str())
+        .unwrap_or_default()
+        .to_owned())
 }
 
 #[tokio::main]
@@ -183,8 +207,8 @@ SDK 自动验证 API 密钥格式：
 use zai_rs::client::error::validate_api_key;
 
 fn main() {
-    let api_key = "your-api-key.here";
-    
+    let api_key = "example-id.example-secret-value";
+
     match validate_api_key(api_key) {
         Ok(()) => println!("API 密钥格式正确"),
         Err(e) => tracing::error!("API 密钥格式错误: {}", e),
@@ -197,24 +221,19 @@ fn main() {
 ### 自定义参数
 
 ```rust,ignore
-use zai_rs::model::*;
+use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user("写一首诗");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let mut client = ChatCompletion::new(model, messages, key);
-    
-    // 自定义生成参数
-    client.body_mut().temperature = Some(0.7);
-    client.body_mut().top_p = Some(0.9);
-    client.body_mut().max_tokens = Some(1000);
-    
-    let resp = client.post().await?;
-    println!("{}", resp.choices().first().unwrap().message.content_str().unwrap_or_default());
-    
+    let client = ZaiClient::from_env()?;
+    let request = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("写一首诗"))
+        .with_temperature(0.7)
+        .with_top_p(0.9)
+        .with_max_tokens(1000);
+
+    let resp = request.send_via(&client).await?;
+    println!("{resp:#?}");
+
     Ok(())
 }
 ```
@@ -229,7 +248,7 @@ use zai_rs::client::error::mask_sensitive_info;
 fn main() {
     let log_text = "API key: abc123.abcdefghijklmnopqrstuvwxyz12345, password: secret";
     let filtered = mask_sensitive_info(log_text);
-    
+
     // 输出: API key: [FILTERED], password: [FILTERED]
     println!("{}", filtered);
 }

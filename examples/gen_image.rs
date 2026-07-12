@@ -1,53 +1,22 @@
-//! # Image Generation Example
-//!
-//! This example demonstrates how to use the ZAI-RS SDK for AI-powered image
-//! generation using the CogView4 model from Zhipu AI.
-//!
-//! ## Features Demonstrated
-//!
-//! - Image model selection (CogView4)
-//! - Text prompt creation for image generation
-//! - Image size configuration
-//! - Request building and submission
-//! - Response handling with generated image data
-//!
-//! ## Prerequisites
-//!
-//! Set the `ZHIPU_API_KEY` environment variable with your API key:
-//! ```bash
-//! export ZHIPU_API_KEY="your-api-key-here"
-//! ```
-//!
-//! ## Running the Example
-//!
-//! ```bash
-//! cargo run --example gen_image
-//! ```
+//! Generate one square image with CogView.
 
-use zai_rs::client::ZaiClient;
-use zai_rs::model::gen_image::*;
+use zai_rs::{
+    client::ZaiClient,
+    model::gen_image::{CogView4, ImageGenRequest, ImageResponse, ImageSize},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Shared client reads ZHIPU_API_KEY from the environment.
+    let prompt = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "一只坐在阳光窗台上的猫".to_owned());
+
     let client = ZaiClient::from_env()?;
-    let model = CogView4 {};
-
-    // Example prompt and size (equivalent to the curl example)
-    // Chinese: "A cute little kitten sitting on a sunny windowsill with blue sky
-    // and white clouds in the background"
-    let prompt = "一只可爱的小猫咪，坐在阳光明媚的窗台上，背景是蓝天白云.";
-    let size = ImageSize::Size1024x1024;
-
-    // The request carries generation input; ZaiClient supplies credentials.
-    let request = ImageGenRequest::new(model)
+    let request = ImageGenRequest::new(CogView4 {})
         .with_prompt(prompt)
-        .with_size(size);
+        .with_size(ImageSize::Size1024x1024);
 
-    // Send the request and await the generated image
     let body: ImageResponse = request.send_via(&client).await?;
-
-    // Display the response containing image information
     println!("{body:#?}");
 
     Ok(())

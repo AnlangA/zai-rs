@@ -1,149 +1,139 @@
-//! Application configuration management
+//! Environment-backed startup configuration.
 
-use std::env;
+use std::{env, net::IpAddr, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use axum::http::{HeaderValue, Uri};
 
-/// Application configuration loaded from environment variables
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Validated configuration used to construct the server.
 pub struct Config {
-    /// Server port
+    pub bind_address: IpAddr,
     pub port: u16,
-
-    /// API key for Zhipu AI
     pub api_key: String,
-
-    /// CORS allowed origins
-    pub cors_origins: Vec<String>,
-
-    /// Maximum session duration in seconds
-    pub session_timeout: u64,
-
-    /// Maximum messages per session
+    pub cors_origins: Vec<HeaderValue>,
+    pub session_timeout_secs: u64,
     pub max_messages_per_session: usize,
-
-    /// Request timeout in seconds
-    pub request_timeout: u64,
-
-    /// Enable request logging
-    pub enable_logging: bool,
-
-    /// Static file directory
-    pub static_dir: String,
-
-    /// Maximum upload file size in bytes
-    pub max_file_size: usize,
-
-    /// Enable file uploads
-    pub enable_file_upload: bool,
 }
 
 impl Config {
-    /// Load configuration from environment variables
+    /// Read configuration from environment variables and reject invalid or
+    /// unsafe values before the listener starts.
     pub fn from_env() -> Result<Self, ConfigError> {
-        Ok(Config {
-            port: env::var("PORT")
-                .unwrap_or_else(|_| "3000".to_string())
-                .parse()
-                .map_err(|_| ConfigError::InvalidPort)?,
+        let bind_address = parse_env("BIND_ADDRESS", "127.0.0.1")?;
+        let port = parse_env("PORT", "3000")?;
+        let session_timeout_secs = parse_env("SESSION_TIMEOUT", "3600")?;
+        let max_messages_per_session = parse_env("MAX_MESSAGES_PER_SESSION", "1000")?;
 
-            api_key: env::var("ZHIPU_API_KEY").map_err(|_| ConfigError::MissingApiKey)?,
-
-            cors_origins: env::var("CORS_ORIGINS")
-                .unwrap_or_else(|_| "http://localhost:3000,http://127.0.0.1:3000".to_string())
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect(),
-
-            session_timeout: env::var("SESSION_TIMEOUT")
-                .unwrap_or_else(|_| "3600".to_string()) // 1 hour
-                .parse()
-                .map_err(|_| ConfigError::InvalidSessionTimeout)?,
-
-            max_messages_per_session: env::var("MAX_MESSAGES_PER_SESSION")
-                .unwrap_or_else(|_| "1000".to_string())
-                .parse()
-                .map_err(|_| ConfigError::InvalidMaxMessages)?,
-
-            request_timeout: env::var("REQUEST_TIMEOUT")
-                .unwrap_or_else(|_| "30".to_string()) // 30 seconds
-                .parse()
-                .map_err(|_| ConfigError::InvalidRequestTimeout)?,
-
-            enable_logging: env::var("ENABLE_LOGGING")
-                .unwrap_or_else(|_| "true".to_string())
-                .parse()
-                .map_err(|_| ConfigError::InvalidLoggingFlag)?,
-
-            static_dir: env::var("STATIC_DIR")
-                .unwrap_or_else(|_| "examples/web_chat/static".to_string()),
-
-            max_file_size: env::var("MAX_FILE_SIZE")
-                .unwrap_or_else(|_| "10485760".to_string()) // 10MB
-                .parse()
-                .map_err(|_| ConfigError::InvalidMaxFileSize)?,
-
-            enable_file_upload: env::var("ENABLE_FILE_UPLOAD")
-                .unwrap_or_else(|_| "false".to_string())
-                .parse()
-                .map_err(|_| ConfigError::InvalidFileUploadFlag)?,
-        })
-    }
-
-    /// Validate configuration
-    pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.port == 0 {
-            return Err(ConfigError::InvalidPort);
-        }
-
-        if self.api_key.is_empty() {
+        let api_key = env::var("ZHIPU_API_KEY").map_err(|_| ConfigError::MissingApiKey)?;
+        if api_key.trim().is_empty() {
             return Err(ConfigError::MissingApiKey);
         }
-
-        if self.session_timeout == 0 {
-            return Err(ConfigError::InvalidSessionTimeout);
+        if !api_key.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return Err(ConfigError::InvalidApiKey);
+        }
+        if port == 0 {
+            return Err(ConfigError::OutOfRange("PORT"));
+        }
+        if session_timeout_secs == 0 {
+            return Err(ConfigError::OutOfRange("SESSION_TIMEOUT"));
+        }
+        if max_messages_per_session == 0 {
+            return Err(ConfigError::OutOfRange("MAX_MESSAGES_PER_SESSION"));
         }
 
-        if self.max_messages_per_session == 0 {
-            return Err(ConfigError::InvalidMaxMessages);
+        let default_origins = format!("http://localhost:{port},http://127.0.0.1:{port}");
+        let origins = env::var("CORS_ORIGINS").unwrap_or(default_origins);
+        let cors_origins = origins
+            .split(',')
+            .map(str::trim)
+            .filter(|origin| !origin.is_empty())
+            .map(parse_cors_origin)
+            .collect::<Result<Vec<_>, _>>()?;
+        if cors_origins.is_empty() {
+            return Err(ConfigError::InvalidCorsOrigin);
         }
 
-        if self.request_timeout == 0 {
-            return Err(ConfigError::InvalidRequestTimeout);
-        }
-
-        if self.max_file_size == 0 {
-            return Err(ConfigError::InvalidMaxFileSize);
-        }
-
-        Ok(())
+        Ok(Self {
+            bind_address,
+            port,
+            api_key,
+            cors_origins,
+            session_timeout_secs,
+            max_messages_per_session,
+        })
     }
 }
 
-/// Configuration-related errors
+fn parse_cors_origin(origin: &str) -> Result<HeaderValue, ConfigError> {
+    let uri = Uri::from_str(origin).map_err(|_| ConfigError::InvalidCorsOrigin)?;
+    let valid_scheme = matches!(uri.scheme_str(), Some("http" | "https"));
+    let valid_authority = uri
+        .authority()
+        .is_some_and(|authority| !authority.as_str().contains('@'));
+    let valid_target = uri.path() == "/" && uri.query().is_none() && !origin.ends_with('/');
+    if !valid_scheme || !valid_authority || !valid_target {
+        return Err(ConfigError::InvalidCorsOrigin);
+    }
+    HeaderValue::from_str(origin).map_err(|_| ConfigError::InvalidCorsOrigin)
+}
+
+fn parse_env<T>(name: &'static str, default: &str) -> Result<T, ConfigError>
+where
+    T: FromStr,
+{
+    let value = env::var(name).unwrap_or_else(|_| default.to_owned());
+    value
+        .parse()
+        .map_err(|_| ConfigError::InvalidValue { name, value })
+}
+
+/// Configuration errors reported before any network listener is opened.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("Missing ZHIPU_API_KEY environment variable")]
+    #[error("ZHIPU_API_KEY is missing or empty")]
     MissingApiKey,
+    #[error("ZHIPU_API_KEY must contain printable ASCII without whitespace")]
+    InvalidApiKey,
+    #[error("{name} has an invalid value: {value}")]
+    InvalidValue { name: &'static str, value: String },
+    #[error("{0} must be greater than zero")]
+    OutOfRange(&'static str),
+    #[error("CORS_ORIGINS contains an invalid HTTP(S) origin")]
+    InvalidCorsOrigin,
+}
 
-    #[error("Invalid port number")]
-    InvalidPort,
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    #[error("Invalid session timeout")]
-    InvalidSessionTimeout,
+    #[test]
+    fn cors_origins_require_http_origin_syntax() {
+        assert!(parse_cors_origin("https://example.com").is_ok());
+        assert!(parse_cors_origin("http://127.0.0.1:3000").is_ok());
 
-    #[error("Invalid max messages per session")]
-    InvalidMaxMessages,
+        for invalid in [
+            "*",
+            "example.com",
+            "ftp://example.com",
+            "https://user@example.com",
+            "https://example.com/",
+            "https://example.com/path",
+            "https://example.com?query=1",
+        ] {
+            assert!(parse_cors_origin(invalid).is_err(), "accepted {invalid}");
+        }
+    }
 
-    #[error("Invalid request timeout")]
-    InvalidRequestTimeout,
+    #[test]
+    fn invalid_cors_errors_never_echo_rejected_credentials() {
+        let rejected = "https://user:password@example.com";
+        let error = parse_cors_origin(rejected).unwrap_err();
+        let display = error.to_string();
+        let debug = format!("{error:?}");
 
-    #[error("Invalid logging flag")]
-    InvalidLoggingFlag,
-
-    #[error("Invalid max file size")]
-    InvalidMaxFileSize,
-
-    #[error("Invalid file upload flag")]
-    InvalidFileUploadFlag,
+        for sensitive in [rejected, "user", "password"] {
+            assert!(!display.contains(sensitive));
+            assert!(!debug.contains(sensitive));
+        }
+        assert_eq!(display, "CORS_ORIGINS contains an invalid HTTP(S) origin");
+    }
 }

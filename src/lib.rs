@@ -95,12 +95,12 @@
 //! | `realtime` | disabled | Real-time audio/video over WebSocket (GLM-Realtime) |
 //! | `mcp` | disabled | Unified high-level MCP capability client |
 //! | `rmcp-kits` | disabled | Enable RMCP protocol bridge for MCP tool calling |
-//! | `toolkits` | disabled | Tool execution with JSON-Schema argument validation |
+//! | `toolkits` | disabled | JSON-Schema validation for the tool-execution framework |
 //!
 //! Enable in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! zai-rs = { version = "0.5", features = ["mcp"] }
+//! zai-rs = { version = "0.6", features = ["mcp"] }
 //! ```
 //!
 //! # Error Handling
@@ -147,6 +147,7 @@ pub mod model;
 /// Gated behind the `realtime` Cargo feature (off by default).
 #[cfg(feature = "realtime")]
 pub mod realtime;
+mod serde_helpers;
 /// Typed service facades for application, assistant, image, and document tools.
 pub mod services;
 pub mod tool;

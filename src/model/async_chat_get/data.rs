@@ -1,27 +1,32 @@
-use std::marker::PhantomData;
-
-use super::super::traits::*;
+use super::response::AsyncTaskResult;
 use crate::client::ZaiClient;
 
-/// Request for retrieving an asynchronous chat task by its task id.
-pub struct AsyncChatGetRequest<N>
-where
-    N: ModelName + AsyncChat,
-{
+/// Request for retrieving any asynchronous task by its task identifier.
+#[derive(Clone)]
+pub struct AsyncTaskGetRequest {
     task_id: String,
-    _marker: PhantomData<N>,
 }
 
-impl<N> AsyncChatGetRequest<N>
-where
-    N: ModelName + AsyncChat,
-{
+impl std::fmt::Debug for AsyncTaskGetRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AsyncTaskGetRequest")
+            .field("task_id", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl AsyncTaskGetRequest {
     /// Create a new get-result request for the given task id.
-    pub fn new(_model: N, task_id: String) -> Self {
+    pub fn new(task_id: impl Into<String>) -> Self {
         Self {
-            task_id,
-            _marker: PhantomData,
+            task_id: task_id.into(),
         }
+    }
+
+    /// Borrow the task identifier used in the result URL.
+    pub fn task_id(&self) -> &str {
+        &self.task_id
     }
 
     /// Validate that the task id is non-empty.
@@ -36,18 +41,25 @@ where
     }
 
     /// Fetch the asynchronous task result via a [`ZaiClient`].
-    pub async fn send_via(
-        &self,
-        client: &ZaiClient,
-    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse> {
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<AsyncTaskResult> {
         self.validate()?;
         let route = crate::client::routes::TASKS_GET;
         let url = client.endpoints().resolve_route(route, &[&self.task_id])?;
         client
-            .send_empty::<crate::model::chat_base_response::ChatCompletionResponse>(
-                route.method(),
-                url,
-            )
+            .send_empty::<AsyncTaskResult>(route.method(), url)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_validates_and_redacts_the_task_identifier() {
+        assert!(AsyncTaskGetRequest::new(" ").validate().is_err());
+        let request = AsyncTaskGetRequest::new("private-task-id");
+        assert_eq!(request.task_id(), "private-task-id");
+        assert!(!format!("{request:?}").contains("private-task-id"));
     }
 }

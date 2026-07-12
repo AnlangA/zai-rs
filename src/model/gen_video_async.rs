@@ -16,33 +16,9 @@ mod tests {
     use serde_json;
 
     use super::*;
-    use crate::model::traits::{ModelName, VideoGen};
-
-    // Mock model type for testing
-    #[derive(Debug, Clone)]
-    struct TestModel {}
-
-    impl From<TestModel> for String {
-        fn from(_val: TestModel) -> Self {
-            "cogvideox-3".to_string()
-        }
-    }
-
-    impl serde::Serialize for TestModel {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            serializer.serialize_str("cogvideox-3")
-        }
-    }
-
-    impl ModelName for TestModel {}
-    impl VideoGen for TestModel {}
-
     #[test]
     fn test_video_body_prompt_only_serialization() {
-        let model = TestModel {};
+        let model = CogVideoX3 {};
         let video_body = VideoBody::prompt_only(model, "A cat is playing with a ball.")
             .with_quality(VideoQuality::Quality)
             .with_audio(true)
@@ -50,14 +26,14 @@ mod tests {
             .with_fps(Fps::Fps30);
 
         let json = serde_json::to_string(&video_body).unwrap();
-        let expected = r#"{"model":"cogvideox-3","prompt":"A cat is playing with a ball.","quality":"quality","with_audio":true,"size":"1920x1080","fps":"fps30"}"#;
+        let expected = r#"{"model":"cogvideox-3","prompt":"A cat is playing with a ball.","quality":"quality","with_audio":true,"size":"1920x1080","fps":30}"#;
 
         assert_eq!(json, expected);
     }
 
     #[test]
     fn test_video_body_single_image_serialization() {
-        let model = TestModel {};
+        let model = CogVideoX3 {};
         let video_body = VideoBody::with_single_image(
             model,
             "https://img.iplaysoft.com/wp-content/uploads/2019/free-images/free_stock_photo.jpg",
@@ -69,14 +45,14 @@ mod tests {
         .with_fps(Fps::Fps30);
 
         let json = serde_json::to_string(&video_body).unwrap();
-        let expected = r#"{"model":"cogvideox-3","image_url":["https://img.iplaysoft.com/wp-content/uploads/2019/free-images/free_stock_photo.jpg"],"prompt":"让画面动起来","quality":"quality","with_audio":true,"size":"1920x1080","fps":"fps30"}"#;
+        let expected = r#"{"model":"cogvideox-3","image_url":"https://img.iplaysoft.com/wp-content/uploads/2019/free-images/free_stock_photo.jpg","prompt":"让画面动起来","quality":"quality","with_audio":true,"size":"1920x1080","fps":30}"#;
 
         assert_eq!(json, expected);
     }
 
     #[test]
     fn test_video_body_multiple_images_serialization() {
-        let model = TestModel {};
+        let model = CogVideoX3 {};
         let image_urls = vec![
             "https://gd-hbimg.huaban.com/ccee58d77afe8f5e17a572246b1994f7e027657fe9e6-qD66In_fw1200webp",
             "https://gd-hbimg.huaban.com/cc2601d568a72d18d90b2cc7f1065b16b2d693f7fa3f7-hDAwNq_fw1200webp",
@@ -89,7 +65,7 @@ mod tests {
             .with_fps(Fps::Fps30);
 
         let json = serde_json::to_string(&video_body).unwrap();
-        let expected = r#"{"model":"cogvideox-3","image_url":["https://gd-hbimg.huaban.com/ccee58d77afe8f5e17a572246b1994f7e027657fe9e6-qD66In_fw1200webp","https://gd-hbimg.huaban.com/cc2601d568a72d18d90b2cc7f1065b16b2d693f7fa3f7-hDAwNq_fw1200webp"],"prompt":"让画面动起来","quality":"quality","with_audio":true,"size":"1920x1080","fps":"fps30"}"#;
+        let expected = r#"{"model":"cogvideox-3","image_url":["https://gd-hbimg.huaban.com/ccee58d77afe8f5e17a572246b1994f7e027657fe9e6-qD66In_fw1200webp","https://gd-hbimg.huaban.com/cc2601d568a72d18d90b2cc7f1065b16b2d693f7fa3f7-hDAwNq_fw1200webp"],"prompt":"让画面动起来","quality":"quality","with_audio":true,"size":"1920x1080","fps":30}"#;
 
         assert_eq!(json, expected);
     }
@@ -107,7 +83,7 @@ mod tests {
     fn test_image_url_single_url_serialization() {
         let image_url = ImageUrl::from_url("https://example.com/image.jpg");
         let json = serde_json::to_string(&image_url).unwrap();
-        let expected = r#"["https://example.com/image.jpg"]"#;
+        let expected = r#""https://example.com/image.jpg""#;
 
         assert_eq!(json, expected);
     }
@@ -150,25 +126,25 @@ mod tests {
 
     #[test]
     fn test_fps_serialization() {
-        assert_eq!(serde_json::to_string(&Fps::Fps30).unwrap(), r#""fps30""#);
-        assert_eq!(serde_json::to_string(&Fps::Fps60).unwrap(), r#""fps60""#);
+        assert_eq!(serde_json::to_string(&Fps::Fps30).unwrap(), "30");
+        assert_eq!(serde_json::to_string(&Fps::Fps60).unwrap(), "60");
     }
 
     #[test]
     fn test_video_duration_serialization() {
         assert_eq!(
             serde_json::to_string(&VideoDuration::Duration5).unwrap(),
-            r#""duration5""#
+            "5"
         );
         assert_eq!(
             serde_json::to_string(&VideoDuration::Duration10).unwrap(),
-            r#""duration10""#
+            "10"
         );
     }
 
     #[test]
     fn test_video_body_builder_methods() {
-        let model = TestModel {};
+        let model = CogVideoX3 {};
         let video_body = VideoBody::new(model)
             .with_prompt("Test prompt")
             .with_quality(VideoQuality::Speed)
@@ -182,13 +158,13 @@ mod tests {
         assert!(json.contains(r#""quality":"speed""#));
         assert!(json.contains(r#""with_audio":false"#));
         assert!(json.contains(r#""size":"1280x720""#));
-        assert!(json.contains(r#""fps":"fps60""#));
-        assert!(json.contains(r#""duration":"duration10""#));
+        assert!(json.contains(r#""fps":60"#));
+        assert!(json.contains(r#""duration":10"#));
     }
 
     #[test]
     fn test_video_body_skip_none_fields() {
-        let model = TestModel {};
+        let model = CogVideoX3 {};
         let video_body = VideoBody::new(model).with_prompt("Test prompt");
 
         let json = serde_json::to_string(&video_body).unwrap();
@@ -198,5 +174,49 @@ mod tests {
         assert!(!json.contains("size"));
         assert!(!json.contains("fps"));
         assert!(!json.contains("duration"));
+    }
+
+    #[test]
+    fn video_body_rejects_blank_or_malformed_inputs() {
+        use validator::Validate;
+
+        assert!(
+            VideoBody::new(CogVideoX3 {})
+                .with_prompt("   ")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            VideoBody::new(CogVideoX3 {})
+                .with_image_url(ImageUrl::VecUrl(Vec::new()))
+                .validate()
+                .is_err()
+        );
+        assert!(
+            VideoBody::new(CogVideoX3 {})
+                .with_image_url(ImageUrl::from_url("not-a-url"))
+                .validate()
+                .is_err()
+        );
+        assert!(
+            VideoBody::new(CogVideoX3 {})
+                .with_prompt("valid")
+                .with_image_url(ImageUrl::from_url("not-a-url"))
+                .validate()
+                .is_err()
+        );
+        assert!(
+            VideoBody::new(CogVideoX3 {})
+                .with_prompt(" ")
+                .with_image_url(ImageUrl::from_url("https://example.com/image.png"))
+                .validate()
+                .is_err()
+        );
+        assert!(
+            VideoBody::new(CogVideoX3 {})
+                .with_image_url(ImageUrl::VecUrl(vec!["a".into(), "b".into(), "c".into()]))
+                .validate()
+                .is_err()
+        );
     }
 }

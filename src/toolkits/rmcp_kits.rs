@@ -9,7 +9,7 @@
 //! All APIs are feature-gated behind `rmcp-kits`.
 //!
 //! Example: convert RMCP tools and wire them into a chat request
-//! ```no_run
+//! ```rust,no_run
 //! use rmcp::{
 //!     ServiceExt,
 //!     model::ClientInfo,
@@ -27,7 +27,7 @@
 //! ```
 //!
 //! Example: execute a tool call and collect results by tool name
-//! ```no_run
+//! ```rust,no_run
 //! use rmcp::service::ServerSink;
 //! use zai_rs::toolkits::rmcp_kits::{call_mcp_tool, call_mcp_tools_collect};
 //! # async fn run(server: &ServerSink) -> Result<(), Box<dyn std::error::Error>> {
@@ -48,7 +48,6 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, warn};
-use validator::Validate;
 
 use crate::{
     client::error::codes,
@@ -80,30 +79,53 @@ pub fn mcp_tools_to_functions(tools: &[Tool]) -> Vec<Tools> {
 /// 1) `structured_content` if present
 /// 2) Fallback: serialize the whole result
 ///
-/// This conversion does not turn MCP's in-band `is_error` flag into a Rust
-/// error. When structured content is present, callers that need that flag must
-/// inspect the original `CallToolResult` before converting it.
+/// MCP error results retain their full envelope so the `isError` marker is not
+/// lost when structured content is present.
 #[inline]
 pub fn call_tool_result_to_json(res: &CallToolResult) -> Value {
+    if res.is_error == Some(true) {
+        return serde_json::to_value(res).unwrap_or_else(|_| serialization_error_value());
+    }
     if let Some(structured) = &res.structured_content {
         return structured.clone();
     }
-    serde_json::to_value(res).unwrap_or_else(|_| {
-        serde_json::json!({
-            "error": {"type": "serialization_error", "message": "failed to serialize tool result"}
-        })
+    serde_json::to_value(res).unwrap_or_else(|_| serialization_error_value())
+}
+
+fn serialization_error_value() -> Value {
+    serde_json::json!({
+        "error": {"type": "serialization_error", "message": "failed to serialize tool result"}
     })
 }
 
+fn text_tool_message(
+    content: String,
+    id: Option<&str>,
+) -> crate::model::chat_message_types::TextMessage {
+    match id {
+        Some(id) => crate::model::chat_message_types::TextMessage::tool_with_id(content, id),
+        None => crate::model::chat_message_types::TextMessage::tool(content),
+    }
+}
+
 /// Request payload for calling a single MCP tool.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct McpCallSpec {
-    /// Tool name (non-empty)
-    #[validate(length(min = 1))]
+    /// Tool name matching `[A-Za-z0-9_-]{1,64}`.
     pub name: String,
     /// JSON arguments; must be an object when provided
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<Value>,
+}
+
+impl std::fmt::Debug for McpCallSpec {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("McpCallSpec")
+            .field("name", &self.name)
+            .field("arguments", &self.arguments.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 impl McpCallSpec {
@@ -117,40 +139,46 @@ impl McpCallSpec {
             arguments,
         }
     }
+
+    /// Validate the tool name and require arguments to be a JSON object when
+    /// present.
+    pub fn validate(&self) -> crate::ZaiResult<()> {
+        crate::toolkits::core::validate_tool_name(&self.name)
+            .map_err(|error| validation_error(&error.to_string()))?;
+        if self
+            .arguments
+            .as_ref()
+            .is_some_and(|arguments| !arguments.is_object())
+        {
+            return Err(validation_error("arguments must be a JSON object"));
+        }
+        Ok(())
+    }
+}
+
+fn validation_error(message: &str) -> crate::client::error::ZaiError {
+    crate::client::error::ZaiError::ApiError {
+        code: codes::SDK_VALIDATION,
+        message: message.to_string(),
+    }
 }
 
 /// Call a single MCP tool and return `(tool name, JSON result)`.
 ///
-/// Transport/protocol failures are returned as [`Err`]. MCP in-band tool errors
-/// remain encoded in the returned JSON. Non-object arguments are also returned
-/// as an in-band `invalid_arguments` JSON object rather than an [`Err`].
+/// Transport/protocol and local validation failures are returned as [`Err`].
+/// MCP in-band tool errors remain encoded in the returned JSON.
 pub async fn call_mcp_tool(
     server: &ServerSink,
     name: impl Into<String>,
     args: Option<Value>,
 ) -> crate::ZaiResult<(String, Value)> {
-    // Validate name and normalize args
-    let name: String = name.into();
-    if name.trim().is_empty() {
-        warn!(
-            code = codes::SDK_VALIDATION,
-            "MCP tool call rejected: empty tool name"
-        );
-        return Err(crate::client::error::ZaiError::Unknown {
-            code: codes::SDK_VALIDATION,
-            message: "tool name cannot be empty".to_string(),
-        });
-    }
-    let arguments = match args {
-        Some(Value::Object(map)) => Some(map),
-        Some(other) => {
-            // Keep interface forgiving: warn by encoding into a wrapper error object
-            let val = serde_json::json!({
-                "error": {"type": "invalid_arguments", "message": "arguments must be a JSON object", "got": other}
-            });
-            return Ok((name.clone(), val));
-        },
+    let spec = McpCallSpec::new(name, args);
+    spec.validate()?;
+    let McpCallSpec { name, arguments } = spec;
+    let arguments = match arguments {
+        Some(Value::Object(arguments)) => Some(arguments),
         None => None,
+        Some(_) => return Err(validation_error("arguments must be a JSON object")),
     };
 
     let mut request = CallToolRequestParams::new(name.clone());
@@ -158,16 +186,11 @@ pub async fn call_mcp_tool(
         request = request.with_arguments(arguments);
     }
 
-    let res = server.call_tool(request).await.map_err(|e| {
-        warn!(
-            code = codes::SDK_EXTERNAL_TOOL,
-            tool = %name,
-            error = %e,
-            "RMCP call_tool failed"
-        );
-        crate::client::error::ZaiError::Unknown {
+    let res = server.call_tool(request).await.map_err(|_| {
+        warn!(code = codes::SDK_EXTERNAL_TOOL, "RMCP call_tool failed");
+        crate::client::error::ZaiError::ApiError {
             code: codes::SDK_EXTERNAL_TOOL,
-            message: format!("RMCP service error: {e}"),
+            message: "RMCP service error".to_string(),
         }
     })?;
     Ok((name, call_tool_result_to_json(&res)))
@@ -187,17 +210,13 @@ pub async fn call_mcp_tools_collect<I>(
 where
     I: IntoIterator<Item = (String, Option<Value>)>,
 {
-    use futures_util::stream::{FuturesUnordered, StreamExt};
-    let mut futs = FuturesUnordered::new();
-    for (name, args) in calls {
-        futs.push(call_mcp_tool(server, name, args));
-    }
-    let mut map = HashMap::new();
-    while let Some(item) = futs.next().await {
-        let (name, value) = item?;
-        map.insert(name, value);
-    }
-    Ok(map)
+    use futures_util::{StreamExt, TryStreamExt};
+
+    futures_util::stream::iter(calls)
+        .map(|(name, arguments)| call_mcp_tool(server, name, arguments))
+        .buffered(8)
+        .try_collect::<HashMap<_, _>>()
+        .await
 }
 
 /// A small helper that encapsulates a server handle and provides a concise call
@@ -241,85 +260,124 @@ impl McpToolCaller {
 /// - Packaging results as TextMessage::tool_with_id
 ///
 /// Returns an empty Vec when there are no tool calls.
-/// Calls without an id or function name are skipped. Invalid or non-object
-/// argument JSON is treated as absent arguments and logged.
-#[cfg(feature = "rmcp-kits")]
+/// Malformed calls become in-band error tool messages and are never dispatched
+/// to the MCP server. Valid calls run concurrently (up to eight at a time) and
+/// their result order matches the request order.
 pub async fn execute_tool_calls_as_messages(
     caller: &McpToolCaller,
     resp: &crate::model::chat_base_response::ChatCompletionResponse,
 ) -> crate::ZaiResult<Vec<crate::model::chat_message_types::TextMessage>> {
     use crate::model::{chat_base_response::ToolCallMessage, chat_message_types::TextMessage};
 
-    let mut out: Vec<TextMessage> = Vec::new();
     let calls: Option<&[ToolCallMessage]> = resp
         .choices()
         .and_then(|v| v.first())
-        .and_then(|c| c.message().tool_calls());
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.tool_calls());
 
-    let Some(calls) = calls else { return Ok(out) };
+    let Some(calls) = calls else {
+        return Ok(Vec::new());
+    };
     debug!(tool_calls = calls.len(), "Dispatching tool calls");
 
-    for tc in calls {
-        // Extract tool call id
-        let id = match tc.id() {
-            Some(id) => id.to_string(),
-            None => {
-                warn!(reason = "missing_id", "Skipping tool call");
-                continue;
+    async fn execute_one(
+        caller: &McpToolCaller,
+        call: &ToolCallMessage,
+    ) -> crate::ZaiResult<TextMessage> {
+        let id = call.id();
+        let message = |error_type: &str, message: String| {
+            let payload = serde_json::json!({
+                "error": {"type": error_type, "message": message}
+            })
+            .to_string();
+            text_tool_message(payload, id)
+        };
+        let Some(function) = call.function() else {
+            return Ok(message(
+                "missing_function",
+                "tool_call.function is missing".to_string(),
+            ));
+        };
+        let name = function.name();
+        if name.trim().is_empty() {
+            return Ok(message(
+                "missing_function_name",
+                "tool_call.function.name is blank".to_string(),
+            ));
+        }
+        let arguments = match serde_json::from_str(function.arguments()) {
+            Ok(Value::Object(arguments)) => Some(Value::Object(arguments)),
+            Ok(_) => {
+                return Ok(message(
+                    "invalid_arguments",
+                    "tool arguments must decode to a JSON object".to_string(),
+                ));
+            },
+            Err(error) => {
+                return Ok(message(
+                    "invalid_arguments",
+                    format!("tool arguments are not valid JSON: {error}"),
+                ));
             },
         };
-
-        // Extract function payload
-        let func = match tc.function() {
-            Some(f) => f,
-            None => {
-                warn!(reason = "missing_function", "Skipping tool call");
-                continue;
-            },
-        };
-
-        // Name must be present
-        let name = match func.name() {
-            Some(n) => n.to_string(),
-            None => {
-                warn!(reason = "missing_function_name", "Skipping tool call");
-                continue;
-            },
-        };
-
-        // Parse JSON arguments if present, and only accept JSON object
-        let args_value: Option<serde_json::Value> = match func.arguments() {
-            Some(arg_str) => match serde_json::from_str::<serde_json::Value>(arg_str) {
-                Ok(serde_json::Value::Object(map)) => Some(serde_json::Value::Object(map)),
-                Ok(_) => {
-                    warn!(
-                        reason = "non_object_arguments",
-                        "Function arguments are not an object; passing None"
-                    );
-                    None
-                },
-                Err(e) => {
-                    warn!(reason = "invalid_arguments_json", error = %e, "Failed to parse function arguments JSON");
-                    None
-                },
-            },
-            None => None,
-        };
-
-        // Call RMCP server via rmcp-kits
-        let (_tool, payload): (String, Value) =
-            caller.call(name, args_value).await.map_err(|e| {
-                crate::client::error::ZaiError::Unknown {
-                    code: codes::SDK_EXTERNAL_TOOL,
-                    message: format!("RMCP call_tool failed: {e}"),
-                }
-            })?;
-
-        // Wrap tool result as a tool message with id
-        out.push(TextMessage::tool_with_id(payload.to_string(), id));
+        let (_, payload) = caller.call(name, arguments).await?;
+        Ok(text_tool_message(payload.to_string(), id))
     }
 
-    Ok(out)
+    use futures_util::{StreamExt, TryStreamExt};
+    futures_util::stream::iter(calls)
+        .map(|call| execute_one(caller, call))
+        .buffered(8)
+        .try_collect()
+        .await
+}
+
+fn assistant_request_message(
+    response: &crate::model::chat_base_response::ChatCompletionResponse,
+) -> crate::ZaiResult<Option<crate::model::TextMessage>> {
+    use crate::model::{FunctionParams, TextMessage, ToolCall};
+
+    let Some(message) = response
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+    else {
+        return Ok(None);
+    };
+    let Some(calls) = message.tool_calls().filter(|calls| !calls.is_empty()) else {
+        return Ok(None);
+    };
+    let request_calls = calls
+        .iter()
+        .map(|call| {
+            let id = call
+                .id()
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| validation_error("tool call id must not be blank"))?;
+            let function = call
+                .function()
+                .ok_or_else(|| validation_error("tool call function is required"))?;
+            crate::toolkits::core::validate_tool_name(function.name())
+                .map_err(|_| validation_error("tool call function name is invalid"))?;
+            if !matches!(
+                serde_json::from_str(function.arguments()),
+                Ok(Value::Object(_))
+            ) {
+                return Err(validation_error(
+                    "tool call arguments must decode to a JSON object",
+                ));
+            }
+            Ok(ToolCall::new_function(
+                id,
+                FunctionParams::new(function.name(), function.arguments()),
+            ))
+        })
+        .collect::<crate::ZaiResult<Vec<_>>>()?;
+
+    Ok(Some(TextMessage::assistant_with_tools(
+        message.content_str().map(str::to_owned),
+        request_calls,
+    )))
 }
 
 /// Perform a complete MCP tool-call roundtrip:
@@ -330,7 +388,6 @@ pub async fn execute_tool_calls_as_messages(
 /// - Send the second request and return the final response
 ///
 /// If no tool calls are requested, returns the first response directly.
-#[cfg(feature = "rmcp-kits")]
 pub async fn run_mcp_tool_roundtrip<N>(
     caller: &McpToolCaller,
     client: &crate::client::ZaiClient,
@@ -342,29 +399,32 @@ pub async fn run_mcp_tool_roundtrip<N>(
     system_hint_after_tools: Option<&str>,
 ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
 where
-    N: crate::model::traits::ModelName + crate::model::traits::Chat + serde::Serialize,
+    N: crate::model::traits::Chat
+        + crate::model::traits::ChatToolSupport<Tool = crate::model::tools::Tools>
+        + serde::Serialize,
     (N, crate::model::chat_message_types::TextMessage): crate::model::traits::Bounded,
 {
-    use crate::model::chat_message_types::TextMessage;
+    use crate::model::TextMessage;
 
     let first_resp = chat.send_via(client).await?;
+    let Some(assistant_message) = assistant_request_message(&first_resp)? else {
+        return Ok(first_resp);
+    };
 
     let tool_msgs: Vec<crate::model::chat_message_types::TextMessage> =
         execute_tool_calls_as_messages(caller, &first_resp).await?;
 
-    if tool_msgs.is_empty() {
-        return Ok(first_resp);
-    }
+    chat = chat.add_message(assistant_message);
 
     for m in tool_msgs {
-        chat = chat.add_messages(m);
+        chat = chat.add_message(m);
     }
 
     // Disable tools for the second round to encourage final answer
-    chat.body_mut().tools = None;
+    chat = chat.clear_tools();
 
     if let Some(hint) = system_hint_after_tools {
-        chat = chat.add_messages(TextMessage::system(hint));
+        chat = chat.add_message(TextMessage::system(hint));
     }
 
     let final_resp = chat.send_via(client).await?;
@@ -376,24 +436,73 @@ where
 /// - If content is an array, return the first item of type "text"'s `text`
 ///   field
 /// - Otherwise return None
-#[cfg(feature = "rmcp-kits")]
 pub fn extract_final_text(
     resp: &crate::model::chat_base_response::ChatCompletionResponse,
 ) -> Option<String> {
-    let msg = resp.choices()?.first()?.message();
+    let msg = resp.choices()?.first()?.message()?;
     match msg.content() {
-        Some(serde_json::Value::String(s)) => Some(s.clone()),
-        Some(serde_json::Value::Array(arr)) => arr.iter().find_map(|item| {
-            if let serde_json::Value::Object(obj) = item
-                && obj.get("type").and_then(|v| v.as_str()) == Some("text")
-            {
-                return obj
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .map(std::string::ToString::to_string);
-            }
-            None
-        }),
+        Some(crate::model::chat_base_response::MessageContent::Text(text)) => Some(text.clone()),
+        Some(crate::model::chat_base_response::MessageContent::Parts(parts)) => parts
+            .iter()
+            .find(|part| {
+                matches!(
+                    part.type_,
+                    Some(crate::model::chat_base_response::MessageContentPartType::Text)
+                )
+            })
+            .and_then(|part| part.text.clone()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn response_with_arguments(
+        arguments: &str,
+    ) -> crate::model::chat_base_response::ChatCompletionResponse {
+        serde_json::from_value(serde_json::json!({
+            "id": "response-id",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "call-id",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": arguments}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn call_spec_debug_redacts_arguments() {
+        let spec = McpCallSpec::new("lookup", Some(serde_json::json!({"token": "secret-value"})));
+
+        let debug = format!("{spec:?}");
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("secret-value"));
+    }
+
+    #[test]
+    fn roundtrip_replays_the_assistant_tool_request() {
+        let response = response_with_arguments(r#"{"query":"weather"}"#);
+        let message = assistant_request_message(&response).unwrap().unwrap();
+        let value = serde_json::to_value(message).unwrap();
+
+        assert_eq!(value["role"], "assistant");
+        assert_eq!(value["tool_calls"][0]["id"], "call-id");
+        assert_eq!(value["tool_calls"][0]["function"]["name"], "lookup");
+    }
+
+    #[test]
+    fn roundtrip_rejects_malformed_calls_before_dispatch() {
+        let response = response_with_arguments("[]");
+        assert!(assistant_request_message(&response).is_err());
     }
 }

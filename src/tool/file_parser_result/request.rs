@@ -1,17 +1,14 @@
-//! File parser result request models and types.
-//!
-//! This module provides data structures for file parser result requests,
-//! supporting multiple result formats.
+//! File-parser result format.
 
 use serde::{Deserialize, Serialize};
 
-/// Result format types for parser output.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Representation requested from the parser-result endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FormatType {
-    /// Return result as plain text
+    /// Return parsed plain text.
     Text,
-    /// Return result as download link
+    /// Return a result download URL.
     DownloadLink,
 }
 

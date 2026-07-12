@@ -35,9 +35,6 @@ pub fn follow(
     method: &str,
     hops: u8,
 ) -> ZaiResult<Option<Url>> {
-    if hops >= MAX_REDIRECTS {
-        return Err(redirect_err("redirect limit (3) exceeded"));
-    }
     // NonIdempotent never follows.
     if safety == RetrySafety::NonIdempotent {
         return Ok(None);
@@ -53,6 +50,9 @@ pub fn follow(
     };
     if !allowed {
         return Ok(None);
+    }
+    if hops >= MAX_REDIRECTS {
+        return Err(redirect_err("redirect limit (3) exceeded"));
     }
 
     let target = current
@@ -79,7 +79,9 @@ pub fn follow(
         // Any other scheme change is cross-origin.
         return Err(redirect_err("cross-origin redirect refused"));
     }
-    if target.host_str() != current.host_str() || target.port() != current.port() {
+    if target.host_str() != current.host_str()
+        || target.port_or_known_default() != current.port_or_known_default()
+    {
         return Err(redirect_err("cross-origin redirect refused"));
     }
     Ok(Some(target))
@@ -107,37 +109,50 @@ mod tests {
     #[test]
     fn nonidempotent_never_follows() {
         let cur = url("https://open.bigmodel.cn/api/paas/v4/x");
-        let r = follow(
-            &cur,
-            302,
-            "/api/paas/v4/y",
-            RetrySafety::NonIdempotent,
-            "POST",
-            0,
-        )
-        .unwrap();
-        assert!(r.is_none());
+        for status in [301, 302, 303, 307, 308] {
+            let result = follow(
+                &cur,
+                status,
+                "/api/paas/v4/y",
+                RetrySafety::NonIdempotent,
+                "POST",
+                0,
+            )
+            .unwrap();
+            assert!(result.is_none(), "POST must not follow {status}");
+        }
     }
 
     #[test]
     fn get_follows_301_to_same_origin() {
         let cur = url("https://open.bigmodel.cn/a");
-        let r = follow(&cur, 301, "/b", RetrySafety::Idempotent, "GET", 0).unwrap();
-        assert_eq!(r.unwrap().as_str(), "https://open.bigmodel.cn/b");
+        for status in [301, 302, 303, 307, 308] {
+            let result = follow(&cur, status, "/b", RetrySafety::Idempotent, "GET", 0)
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.as_str(), "https://open.bigmodel.cn/b");
+        }
     }
 
     #[test]
     fn put_only_follows_307_308() {
         let cur = url("https://open.bigmodel.cn/a");
-        // 302 not followed by PUT.
-        assert!(
-            follow(&cur, 302, "/b", RetrySafety::Idempotent, "PUT", 0)
-                .unwrap()
-                .is_none()
-        );
-        // 307 followed.
-        let r = follow(&cur, 307, "/b", RetrySafety::Idempotent, "PUT", 0).unwrap();
-        assert_eq!(r.unwrap().as_str(), "https://open.bigmodel.cn/b");
+        for method in ["PUT", "DELETE", "OPTIONS"] {
+            for status in [301, 302, 303] {
+                assert!(
+                    follow(&cur, status, "/b", RetrySafety::Idempotent, method, 0)
+                        .unwrap()
+                        .is_none(),
+                    "{method} must not follow {status}"
+                );
+            }
+            for status in [307, 308] {
+                let result = follow(&cur, status, "/b", RetrySafety::Idempotent, method, 0)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(result.as_str(), "https://open.bigmodel.cn/b");
+            }
+        }
     }
 
     #[test]
@@ -173,6 +188,44 @@ mod tests {
     }
 
     #[test]
+    fn userinfo_and_fragment_are_refused() {
+        let cur = url("https://open.bigmodel.cn/a");
+        let userinfo = follow(
+            &cur,
+            302,
+            "https://u:p@open.bigmodel.cn/b",
+            RetrySafety::Idempotent,
+            "GET",
+            0,
+        )
+        .unwrap_err();
+        assert!(userinfo.to_string().contains("userinfo"));
+
+        let fragment = follow(
+            &cur,
+            302,
+            "https://open.bigmodel.cn/b#fragment",
+            RetrySafety::Idempotent,
+            "GET",
+            0,
+        )
+        .unwrap_err();
+        assert!(fragment.to_string().contains("fragment"));
+    }
+
+    #[test]
+    fn non_redirect_status_is_ignored() {
+        let cur = url("https://open.bigmodel.cn/a");
+        for status in [200, 404] {
+            assert!(
+                follow(&cur, status, "/b", RetrySafety::Idempotent, "GET", 0)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
     fn redirect_limit_enforced() {
         let cur = url("https://open.bigmodel.cn/a");
         assert!(
@@ -186,5 +239,33 @@ mod tests {
             )
             .is_err()
         );
+        assert!(
+            follow(
+                &cur,
+                200,
+                "/b",
+                RetrySafety::Idempotent,
+                "GET",
+                MAX_REDIRECTS
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn explicit_default_port_is_same_origin() {
+        let cur = url("https://open.bigmodel.cn/a");
+        let target = follow(
+            &cur,
+            302,
+            "https://open.bigmodel.cn:443/b",
+            RetrySafety::Idempotent,
+            "GET",
+            0,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(target.path(), "/b");
     }
 }

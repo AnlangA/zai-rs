@@ -115,14 +115,38 @@ impl EndpointConfig {
     /// Start a builder.
     pub fn builder() -> EndpointConfigBuilder {
         EndpointConfigBuilder {
-            paas_v4: ApiFamily::PaasV4.default_base(),
-            coding_paas_v4: ApiFamily::CodingPaasV4.default_base(),
-            agent_v1: ApiFamily::AgentV1.default_base(),
-            llm_application: ApiFamily::LlmApplication.default_base(),
-            zrag: ApiFamily::Zrag.default_base(),
-            monitor: ApiFamily::Monitor.default_base(),
-            realtime: ApiFamily::Realtime.default_base(),
+            paas_v4: ApiFamily::PaasV4.default_base().to_string(),
+            coding_paas_v4: ApiFamily::CodingPaasV4.default_base().to_string(),
+            agent_v1: ApiFamily::AgentV1.default_base().to_string(),
+            llm_application: ApiFamily::LlmApplication.default_base().to_string(),
+            zrag: ApiFamily::Zrag.default_base().to_string(),
+            monitor: ApiFamily::Monitor.default_base().to_string(),
+            realtime: ApiFamily::Realtime.default_base().to_string(),
         }
+    }
+
+    /// Replace one validated family base while preserving every other base.
+    /// Insecure HTTP/WS bases are accepted only for literal loopback hosts when
+    /// `allow_insecure` is true.
+    pub fn with_base(
+        mut self,
+        family: ApiFamily,
+        base: impl AsRef<str>,
+        allow_insecure: bool,
+    ) -> ZaiResult<Self> {
+        let parsed = parse_family_base(base.as_ref(), family, allow_insecure)?;
+        match family {
+            ApiFamily::PaasV4 => self.paas_v4 = parsed,
+            ApiFamily::CodingPaasV4 => self.coding_paas_v4 = parsed,
+            ApiFamily::AgentV1 => self.agent_v1 = parsed,
+            ApiFamily::LlmApplication | ApiFamily::ApplicationV2 | ApiFamily::ApplicationV3 => {
+                self.llm_application = parsed;
+            },
+            ApiFamily::Zrag => self.zrag = parsed,
+            ApiFamily::Monitor => self.monitor = parsed,
+            ApiFamily::Realtime => self.realtime = parsed,
+        }
+        Ok(self)
     }
 
     /// The validated base [`Url`] for `family`.
@@ -237,13 +261,14 @@ impl EndpointConfig {
                 .map_err(|_| invalid("base URL cannot be a base"))?;
             for segment in route.segments() {
                 match segment {
-                    Segment::Static(value) => path.push(value),
+                    Segment::Static(value) => {
+                        path.push(value);
+                    },
                     Segment::Parameter => {
                         path.push(parameters[parameter_index]);
                         parameter_index += 1;
-                        &mut path
                     },
-                };
+                }
             }
         }
         if !query.is_empty() {
@@ -258,49 +283,49 @@ impl EndpointConfig {
 
 /// Builder for [`EndpointConfig`].
 pub struct EndpointConfigBuilder {
-    paas_v4: &'static str,
-    coding_paas_v4: &'static str,
-    agent_v1: &'static str,
-    llm_application: &'static str,
-    zrag: &'static str,
-    monitor: &'static str,
-    realtime: &'static str,
+    paas_v4: String,
+    coding_paas_v4: String,
+    agent_v1: String,
+    llm_application: String,
+    zrag: String,
+    monitor: String,
+    realtime: String,
 }
 
 impl EndpointConfigBuilder {
     /// Override the PAAS v4 base.
-    pub fn paas_v4(mut self, base: &'static str) -> Self {
-        self.paas_v4 = base;
+    pub fn paas_v4(mut self, base: impl Into<String>) -> Self {
+        self.paas_v4 = base.into();
         self
     }
     /// Override the Coding PAAS v4 base.
-    pub fn coding_paas_v4(mut self, base: &'static str) -> Self {
-        self.coding_paas_v4 = base;
+    pub fn coding_paas_v4(mut self, base: impl Into<String>) -> Self {
+        self.coding_paas_v4 = base.into();
         self
     }
     /// Override the Agent v1 base.
-    pub fn agent_v1(mut self, base: &'static str) -> Self {
-        self.agent_v1 = base;
+    pub fn agent_v1(mut self, base: impl Into<String>) -> Self {
+        self.agent_v1 = base.into();
         self
     }
     /// Override the LLM-application base (also covers ApplicationV2/V3).
-    pub fn llm_application(mut self, base: &'static str) -> Self {
-        self.llm_application = base;
+    pub fn llm_application(mut self, base: impl Into<String>) -> Self {
+        self.llm_application = base.into();
         self
     }
     /// Override the Zrag base.
-    pub fn zrag(mut self, base: &'static str) -> Self {
-        self.zrag = base;
+    pub fn zrag(mut self, base: impl Into<String>) -> Self {
+        self.zrag = base.into();
         self
     }
     /// Override the monitor base.
-    pub fn monitor(mut self, base: &'static str) -> Self {
-        self.monitor = base;
+    pub fn monitor(mut self, base: impl Into<String>) -> Self {
+        self.monitor = base.into();
         self
     }
     /// Override the realtime base.
-    pub fn realtime(mut self, base: &'static str) -> Self {
-        self.realtime = base;
+    pub fn realtime(mut self, base: impl Into<String>) -> Self {
+        self.realtime = base.into();
         self
     }
 
@@ -308,21 +333,21 @@ impl EndpointConfigBuilder {
     /// When true, HTTP/WS is accepted but only for loopback/localhost hosts.
     pub fn build(self, allow_insecure: bool) -> ZaiResult<EndpointConfig> {
         Ok(EndpointConfig {
-            paas_v4: parse_family_base(self.paas_v4, ApiFamily::PaasV4, allow_insecure)?,
+            paas_v4: parse_family_base(&self.paas_v4, ApiFamily::PaasV4, allow_insecure)?,
             coding_paas_v4: parse_family_base(
-                self.coding_paas_v4,
+                &self.coding_paas_v4,
                 ApiFamily::CodingPaasV4,
                 allow_insecure,
             )?,
-            agent_v1: parse_family_base(self.agent_v1, ApiFamily::AgentV1, allow_insecure)?,
+            agent_v1: parse_family_base(&self.agent_v1, ApiFamily::AgentV1, allow_insecure)?,
             llm_application: parse_family_base(
-                self.llm_application,
+                &self.llm_application,
                 ApiFamily::LlmApplication,
                 allow_insecure,
             )?,
-            zrag: parse_family_base(self.zrag, ApiFamily::Zrag, allow_insecure)?,
-            monitor: parse_family_base(self.monitor, ApiFamily::Monitor, allow_insecure)?,
-            realtime: parse_family_base(self.realtime, ApiFamily::Realtime, allow_insecure)?,
+            zrag: parse_family_base(&self.zrag, ApiFamily::Zrag, allow_insecure)?,
+            monitor: parse_family_base(&self.monitor, ApiFamily::Monitor, allow_insecure)?,
+            realtime: parse_family_base(&self.realtime, ApiFamily::Realtime, allow_insecure)?,
         })
     }
 }
@@ -335,7 +360,10 @@ impl EndpointConfigBuilder {
 /// - scheme must be the family's secure scheme, OR the insecure scheme when
 ///   `allow_insecure` is true AND the host is loopback/localhost.
 fn parse_family_base(raw: &str, family: ApiFamily, allow_insecure: bool) -> ZaiResult<Url> {
-    let url = Url::parse(raw).map_err(|e| invalid(&format!("invalid base URL {raw:?}: {e}")))?;
+    // Do not echo the raw value: a malformed URL may contain userinfo or query
+    // credentials, and configuration errors are commonly written to logs.
+    let mut url =
+        Url::parse(raw).map_err(|error| invalid(&format!("invalid base URL: {error}")))?;
 
     if url.cannot_be_a_base() {
         return Err(invalid("base URL must be absolute, not a relative URL"));
@@ -351,14 +379,16 @@ fn parse_family_base(raw: &str, family: ApiFamily, allow_insecure: bool) -> ZaiR
     }
 
     let scheme = url.scheme();
-    let host = url.host_str().unwrap_or("");
+    let host = url
+        .host()
+        .ok_or_else(|| invalid("base URL must contain a host"))?;
     if scheme == family.secure_scheme() {
         // Always-allowed secure scheme.
     } else if allow_insecure && scheme == family.insecure_scheme() {
         // Insecure scheme: host must be loopback/localhost.
         if !is_loopback(host) {
             return Err(invalid(&format!(
-                "insecure {scheme} transport is only allowed for loopback/localhost, got host {host:?}"
+                "insecure {scheme} transport is only allowed for loopback/localhost"
             )));
         }
     } else {
@@ -370,19 +400,29 @@ fn parse_family_base(raw: &str, family: ApiFamily, allow_insecure: bool) -> ZaiR
         )));
     }
 
+    // `Url::path_segments_mut().push()` preserves an existing trailing empty
+    // segment, which would turn a conventional `.../v4/` base into
+    // `.../v4//chat/completions`. Normalize only trailing separators; encoded
+    // and interior path segments remain untouched.
+    while url.path().len() > 1 && url.path().ends_with('/') {
+        url.path_segments_mut()
+            .map_err(|_| invalid("base URL cannot be a base"))?
+            .pop_if_empty();
+    }
+
     Ok(url)
 }
 
 /// Apply the syntactic host allow-list used for insecure transport.
 ///
-/// This function does not resolve DNS. It accepts `localhost`, IPv4/IPv6
-/// loopback literals, and any host string beginning with `127.`.
-fn is_loopback(host: &str) -> bool {
-    host == "localhost"
-        || host == "127.0.0.1"
-        || host == "::1"
-        || host == "[::1]"
-        || host.starts_with("127.")
+/// This function does not resolve DNS. It accepts the exact `localhost` name
+/// and IPv4/IPv6 literals for which [`std::net::IpAddr::is_loopback`] is true.
+fn is_loopback(host: url::Host<&str>) -> bool {
+    match host {
+        url::Host::Domain(domain) => domain.eq_ignore_ascii_case("localhost"),
+        url::Host::Ipv4(address) => address.is_loopback(),
+        url::Host::Ipv6(address) => address.is_loopback(),
+    }
 }
 
 /// Reject empty, `.` and `..` path segments.
@@ -428,10 +468,7 @@ mod tests {
         let ec = EndpointConfig::defaults().unwrap();
         // `a/b` becomes a single percent-encoded segment `a%2Fb`.
         let url = ec.resolve(ApiFamily::PaasV4, &["a/b"]).unwrap();
-        assert!(
-            url.contains("a%2Fb") || url.contains("a/b"),
-            "segment should be encoded into the path: {url}"
-        );
+        assert!(url.contains("a%2Fb"), "segment was not encoded: {url}");
         // Exactly one path segment added beyond the base.
         let base = ec.base(ApiFamily::PaasV4).as_str();
         assert!(url.starts_with(base));
@@ -473,6 +510,18 @@ mod tests {
             url,
             "https://open.bigmodel.cn/api/paas/v4/files/parser/result/task%2Fwith%2Fslash/md?name=a%26b"
         );
+    }
+
+    #[test]
+    fn trailing_slash_base_does_not_create_an_empty_route_segment() {
+        let endpoints = EndpointConfig::builder()
+            .paas_v4("http://127.0.0.1:8080/api/paas/v4/")
+            .build(true)
+            .unwrap();
+        let url = endpoints
+            .resolve_route(crate::client::routes::CHAT_COMPLETE, &[])
+            .unwrap();
+        assert_eq!(url, "http://127.0.0.1:8080/api/paas/v4/chat/completions");
     }
 
     #[test]
@@ -545,6 +594,37 @@ mod tests {
                 .paas_v4("http://open.bigmodel.cn/api/paas/v4")
                 .build(true)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn insecure_dns_name_with_127_prefix_is_rejected() {
+        assert!(
+            EndpointConfig::builder()
+                .paas_v4("http://127.evil.example/api/paas/v4")
+                .build(true)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn replacing_one_base_preserves_the_rest() {
+        let defaults = EndpointConfig::defaults().unwrap();
+        let updated = defaults
+            .clone()
+            .with_base(
+                ApiFamily::Realtime,
+                "wss://example.com/custom-realtime",
+                false,
+            )
+            .unwrap();
+        assert_eq!(
+            updated.base(ApiFamily::PaasV4),
+            defaults.base(ApiFamily::PaasV4)
+        );
+        assert_eq!(
+            updated.base(ApiFamily::Realtime).as_str(),
+            "wss://example.com/custom-realtime"
         );
     }
 

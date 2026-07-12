@@ -1,11 +1,11 @@
-# Verify and publish the v0.5.0 annotated tag. Set SKIP_PUBLISH=true in the
-# release environment to run the quality and packaging checks without upload.
+# Verify and publish an annotated tag whose version matches Cargo.toml. Set
+# SKIP_PUBLISH=true in the release environment to run the checks without upload.
 name: Release
 
 on:
   push:
     tags:
-      - "v0.5.0"
+      - "v*"
 
 permissions:
   contents: read
@@ -23,32 +23,43 @@ jobs:
   publish:
     needs: quality
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: crates-io
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.1.7
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify annotated tag
+        env:
+          TAG_REF: ${{ github.ref }}
         run: |
-          git cat-file -t '${{ github.ref }}^{tag}' || {
-            echo "ERROR: ${{ github.ref }} is not an annotated tag"
+          git cat-file -t "${TAG_REF}^{tag}" || {
+            echo "ERROR: ${TAG_REF} is not an annotated tag"
             exit 1
           }
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install release Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: "1.88.0"
+          cache: true
 
-      - name: Package dry-run
-        run: cargo publish --dry-run --locked -p zai-rs --all-features
+      - name: Verify tag matches crate version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          crate_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "zai-rs") | .version')"
+          if [ "${TAG_NAME}" != "v${crate_version}" ]; then
+            echo "ERROR: tag ${TAG_NAME} does not match zai-rs v${crate_version}"
+            exit 1
+          fi
 
       - name: Publish (requires CRATES_IO_TOKEN)
         if: ${{ vars.SKIP_PUBLISH != 'true' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --locked -p zai-rs --all-features --no-verify
+        run: cargo publish --locked -p zai-rs --all-features

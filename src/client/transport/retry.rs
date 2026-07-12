@@ -8,8 +8,8 @@
 //!   retryable; effective safety + max_attempts then bound the attempts.
 //! - Backoff uses full jitter (cap `min(8s, 200ms * 2^n)` for zero-based retry
 //!   index `n`). A positive integer `Retry-After` hint replaces the jitter delay
-//!   only when it is at least as long as that delay. HTTP-date hints are not
-//!   currently honored.
+//!   only when it is at least as long as that delay. The SDK currently accepts
+//!   the standard delta-seconds form and ignores HTTP-date values.
 
 use std::time::Duration;
 
@@ -57,17 +57,31 @@ pub const NON_RETRYABLE_QUOTA_CODES: &[u16] = &[
 pub const NON_RETRYABLE_VALIDATION_CODES: &[u16] =
     &[1210, 1211, 1212, 1213, 1214, 1215, 1221, 1222, 1261, 1301];
 
+/// Business codes that identify transient upstream execution failures.
+pub const RETRYABLE_SERVER_CODES: &[u16] = &[1200, 1230, 1234];
+
+/// Business codes for temporary rate limits that are safe to retry when the
+/// request itself is idempotent.
+pub const RETRYABLE_RATE_CODES: &[u16] = &[1302, 1305];
+
 /// Decide whether a `(status, business_code)` outcome is retryable for an
 /// idempotent request.
 ///
-/// Non-retryable quota/billing and validation/content codes override the status
-/// retry set; otherwise the status retry set applies.
+/// Non-retryable quota/billing and validation/content codes override every
+/// retry signal. Documented server-side business errors are retryable even when
+/// an intermediary returned an unusual status; otherwise the HTTP status set
+/// applies.
 pub fn is_retryable_outcome(status: u16, business_code: Option<u16>) -> bool {
     if let Some(code) = business_code
         && (NON_RETRYABLE_QUOTA_CODES.contains(&code)
             || NON_RETRYABLE_VALIDATION_CODES.contains(&code))
     {
         return false;
+    }
+    if business_code.is_some_and(|code| {
+        RETRYABLE_RATE_CODES.contains(&code) || RETRYABLE_SERVER_CODES.contains(&code)
+    }) {
+        return true;
     }
     RETRYABLE_STATUSES.contains(&status)
 }
@@ -96,68 +110,15 @@ pub fn backoff_delay(retry_index: u32, jitter: &dyn JitterSource) -> Duration {
 
 /// Parse a `Retry-After` header value expressed as positive integer seconds.
 ///
-/// Zero, malformed values, and HTTP-date values currently return `None`, which
-/// makes the caller fall back to jitter.
+/// Zero, malformed values, and HTTP-date values return `None`, which makes the
+/// caller fall back to jitter.
 pub fn parse_retry_after(value: &str) -> Option<Duration> {
     let trimmed = value.trim();
-    if let Ok(secs) = trimmed.parse::<u64>() {
-        return (secs > 0).then(|| Duration::from_secs(secs));
-    }
-    // The helper recognizes the IMF-fixdate shape but intentionally returns
-    // None until a complete calendar conversion is available.
-    parse_http_date(trimmed)
-}
-
-fn parse_http_date(s: &str) -> Option<Duration> {
-    // Minimal RFC 7231 IMF-fixdate parser covering the common weekday
-    // abbreviated-name prefix. Returns the delta from now if the date is in the
-    // future.
-    let t = httpdate_to_unix(s)?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?;
-    if t > now.as_secs() {
-        Some(Duration::from_secs(t - now.as_secs()))
-    } else {
-        None
-    }
-}
-
-/// Recognize fields from an IMF-fixdate value.
-///
-/// Calendar conversion is intentionally not implemented, so this currently
-/// returns `None` even for a well-formed value.
-fn httpdate_to_unix(s: &str) -> Option<u64> {
-    // Strip leading "Wkd, ".
-    let s = s.split_once(',').map(|(_, r)| r.trim()).unwrap_or(s);
-    let parts: Vec<&str> = s.split_whitespace().collect();
-    if parts.len() != 4 {
-        return None;
-    }
-    let day: u32 = parts[0].parse().ok()?;
-    let month = month_index(parts[1])?;
-    let year: u32 = parts[2].split(':').next().and_then(|y| y.parse().ok())?;
-    // Keep parsing strict while calendar conversion remains unimplemented.
-    let _ = (day, month, year);
-    None
-}
-
-fn month_index(name: &str) -> Option<u32> {
-    match name {
-        "Jan" => Some(1),
-        "Feb" => Some(2),
-        "Mar" => Some(3),
-        "Apr" => Some(4),
-        "May" => Some(5),
-        "Jun" => Some(6),
-        "Jul" => Some(7),
-        "Aug" => Some(8),
-        "Sep" => Some(9),
-        "Oct" => Some(10),
-        "Nov" => Some(11),
-        "Dec" => Some(12),
-        _ => None,
-    }
+    trimmed
+        .parse::<u64>()
+        .ok()
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
 }
 
 /// Reconcile a `Retry-After` hint with the computed jitter delay: the hint
@@ -178,21 +139,12 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    /// Deterministic jitter source returning a fixed value (tests use virtual
-    /// time, never real randomness).
-    struct FixedJitter(Duration);
-    impl JitterSource for FixedJitter {
-        fn jitter(&self, _upper: Duration) -> Duration {
-            self.0
-        }
-    }
-
     struct CountingJitter(AtomicU64);
     impl JitterSource for CountingJitter {
         fn jitter(&self, upper: Duration) -> Duration {
             let n = self.0.fetch_add(1, Ordering::SeqCst);
             // Return a deterministic fraction of upper so backoff is bounded.
-            Duration::from_millis((upper.as_millis() as u64 / (n + 1)).max(1))
+            upper / u32::try_from(n.saturating_add(1)).unwrap_or(u32::MAX)
         }
     }
 
@@ -219,8 +171,17 @@ mod tests {
         assert!(!is_retryable_outcome(429, Some(1210)));
         // 429 + no business code → retryable.
         assert!(is_retryable_outcome(429, None));
-        // 503 + retryable code 1305 → retryable.
-        assert!(is_retryable_outcome(503, Some(1305)));
+        // A retryable rate code is sufficient even if a proxy normalized the
+        // HTTP status away from 429.
+        for code in RETRYABLE_RATE_CODES {
+            assert!(is_retryable_outcome(200, Some(*code)));
+            assert!(is_retryable_outcome(400, Some(*code)));
+        }
+        // Server business errors remain retryable even if a proxy normalized
+        // the HTTP status.
+        for code in RETRYABLE_SERVER_CODES {
+            assert!(is_retryable_outcome(200, Some(*code)));
+        }
     }
 
     #[test]
@@ -229,6 +190,14 @@ mod tests {
         assert!(!is_retryable_outcome(505, None));
         assert!(!is_retryable_outcome(400, None));
         assert!(!is_retryable_outcome(404, None));
+
+        for status in 100_u16..600 {
+            assert_eq!(
+                is_retryable_outcome(status, None),
+                matches!(status, 408 | 425 | 429 | 500 | 502 | 503 | 504),
+                "HTTP {status}"
+            );
+        }
     }
 
     #[test]
@@ -241,6 +210,12 @@ mod tests {
         assert_eq!(full_jitter_cap(6), Duration::from_secs(8));
         // Saturation: huge index does not overflow.
         assert_eq!(full_jitter_cap(100), Duration::from_secs(8));
+        for retry in 0..30 {
+            assert!(full_jitter_cap(retry) <= Duration::from_secs(8));
+        }
+        for retry in 0..6 {
+            assert!(full_jitter_cap(retry + 1) >= full_jitter_cap(retry));
+        }
     }
 
     #[test]
@@ -257,6 +232,7 @@ mod tests {
         assert_eq!(parse_retry_after("120"), Some(Duration::from_secs(120)));
         assert_eq!(parse_retry_after("0"), None);
         assert_eq!(parse_retry_after("garbage"), None);
+        assert_eq!(parse_retry_after("Sun, 06 Nov 1994 08:49:37 GMT"), None);
         assert_eq!(parse_retry_after("  5  "), Some(Duration::from_secs(5)));
     }
 

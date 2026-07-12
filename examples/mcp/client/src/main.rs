@@ -22,9 +22,10 @@ async fn main() -> Result<()> {
     // 1) Connect to MCP server via streamable HTTP
     let transport = StreamableHttpClientTransport::from_uri("http://localhost:8000/mcp");
     let client_info = ClientInfo::default();
-    let client = client_info.serve(transport).await.inspect_err(|e| {
-        eprintln!("client error: {e:?}");
-    })?;
+    let client = client_info
+        .serve(transport)
+        .await
+        .context("failed to connect to the MCP server")?;
 
     // Initialize
     println!("Connected to server: {:#?}", client.peer_info());

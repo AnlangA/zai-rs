@@ -1,5 +1,6 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::*;
+//! List knowledge bases visible to the configured account.
+
+use zai_rs::{client::ZaiClient, knowledge::KnowledgeListRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

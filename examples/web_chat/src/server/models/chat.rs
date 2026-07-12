@@ -1,409 +1,229 @@
-//! Chat-related data models
-
 use serde::{Deserialize, Serialize};
-use validator::Validate;
+use validator::{Validate, ValidationError};
 use zai_rs::model::{
-    chat_base_response::ChatCompletionResponse, chat_models::GLM4_6, TextMessage, ThinkingType,
+    ChatCompletion, TextMessage, ThinkingType,
+    chat_base_response::{ChatCompletionResponse, Usage},
+    chat_models::GLM4_6,
 };
 
-use crate::server::error::AppResult;
+use crate::server::error::{AppError, AppResult};
 
-/// Chat request payload
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+const MAX_SESSION_ID_BYTES: usize = 128;
+
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct ChatRequest {
-    /// User's message
-    #[validate(length(
-        min = 1,
-        max = 10000,
-        message = "Message must be between 1 and 10000 characters"
-    ))]
-    pub message: String,
+    #[validate(length(min = 1, max = 10_000), custom(function = "validate_nonblank"))]
+    message: String,
+    #[validate(custom(function = "validate_session_id"))]
+    session_id: Option<String>,
+    think: Option<bool>,
+    #[validate(range(min = 0.0, max = 1.0))]
+    temperature: Option<f64>,
+    #[validate(range(min = 1, max = 8192))]
+    max_tokens: Option<u32>,
+}
 
-    /// Session ID for conversation continuity
-    pub session_id: Option<String>,
+fn validate_nonblank(value: &str) -> Result<(), ValidationError> {
+    if value.trim().is_empty() {
+        return Err(ValidationError::new("blank"));
+    }
+    Ok(())
+}
 
-    /// Enable think mode for enhanced reasoning
-    pub think: Option<bool>,
+fn validate_session_id(value: &str) -> Result<(), ValidationError> {
+    if is_valid_session_id(value) {
+        return Ok(());
+    }
+    Err(ValidationError::new("unsafe_characters"))
+}
 
-    /// Model to use (optional, defaults to GLM4_6)
-    pub model: Option<String>,
+fn is_valid_session_id(value: &str) -> bool {
+    (1..=MAX_SESSION_ID_BYTES).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
 
-    /// Temperature for response generation (0.0 - 2.0)
-    #[validate(range(
-        min = 0.0,
-        max = 2.0,
-        message = "Temperature must be between 0.0 and 2.0"
-    ))]
-    pub temperature: Option<f64>,
-
-    /// Top-p sampling parameter (0.0 - 1.0)
-    #[validate(range(min = 0.0, max = 1.0, message = "Top-p must be between 0.0 and 1.0"))]
-    pub top_p: Option<f64>,
-
-    /// Maximum tokens to generate
-    #[validate(range(min = 1, max = 8192, message = "Max tokens must be between 1 and 8192"))]
-    pub max_tokens: Option<u32>,
-
-    /// Enable streaming response
-    pub stream: Option<bool>,
-
-    /// System prompt override
-    pub system_prompt: Option<String>,
+/// Validate session identifiers supplied in route paths. Request-body IDs use
+/// the same predicate through `validator` above.
+pub fn ensure_valid_session_id(value: &str) -> AppResult<()> {
+    if is_valid_session_id(value) {
+        Ok(())
+    } else {
+        Err(AppError::InvalidRequest(
+            "session_id must contain 1-128 ASCII letters, digits, '-' or '_'".to_owned(),
+        ))
+    }
 }
 
 impl ChatRequest {
-    /// Create a new chat request with defaults
-    pub fn new(message: String) -> Self {
-        Self {
-            message,
-            session_id: None,
-            think: None,
-            model: None,
-            temperature: Some(0.7),
-            top_p: Some(0.9),
-            max_tokens: Some(2048),
-            stream: Some(true),
-            system_prompt: None,
-        }
+    pub fn message(&self) -> &str {
+        &self.message
     }
 
-    /// Get the effective model
-    pub fn get_model(&self) -> String {
-        self.model.clone().unwrap_or_else(|| "GLM4_6".to_string())
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
 
-    /// Get the effective temperature
-    pub fn get_temperature(&self) -> f64 {
+    pub fn thinking_enabled(&self) -> bool {
+        self.think.unwrap_or(false)
+    }
+
+    pub fn temperature(&self) -> f64 {
         self.temperature.unwrap_or(0.7)
     }
 
-    /// Get the effective top-p
-    pub fn get_top_p(&self) -> f64 {
-        self.top_p.unwrap_or(0.9)
-    }
-
-    /// Get the effective max tokens
-    pub fn get_max_tokens(&self) -> u32 {
+    pub fn max_tokens(&self) -> u32 {
         self.max_tokens.unwrap_or(2048)
-    }
-
-    /// Check if streaming is enabled
-    pub fn is_streaming(&self) -> bool {
-        self.stream.unwrap_or(true)
-    }
-
-    /// Check if think mode is enabled
-    pub fn is_think_mode(&self) -> bool {
-        self.think.unwrap_or(false)
     }
 }
 
-/// Chat response payload
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct ChatResponse {
-    /// AI's response
     pub reply: String,
-
-    /// Session ID for conversation continuity
     pub session_id: String,
-
-    /// Response metadata
     pub metadata: ResponseMetadata,
-
-    /// Usage statistics
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageStats>,
 }
 
-/// Response metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct ResponseMetadata {
-    /// Model used for generation
     pub model: String,
-
-    /// Whether think mode was enabled
     pub think_mode: bool,
-
-    /// Generation parameters used
-    pub parameters: GenerationParameters,
-
-    /// Response timestamp
+    pub temperature: f64,
+    pub max_tokens: u32,
     pub timestamp: String,
-
-    /// Processing time in milliseconds
     pub processing_time_ms: u64,
 }
 
-/// Generation parameters
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GenerationParameters {
-    pub temperature: f64,
-    pub top_p: f64,
-    pub max_tokens: u32,
-}
-
-/// Usage statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct UsageStats {
-    /// Prompt tokens used
     pub prompt_tokens: u32,
-
-    /// Completion tokens used
     pub completion_tokens: u32,
-
-    /// Total tokens used
     pub total_tokens: u32,
-
-    /// Estimated cost (optional)
-    pub estimated_cost: Option<f64>,
 }
 
-/// Streaming response chunk
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl From<&Usage> for UsageStats {
+    fn from(usage: &Usage) -> Self {
+        Self {
+            prompt_tokens: usage.prompt_tokens.unwrap_or_default(),
+            completion_tokens: usage.completion_tokens.unwrap_or_default(),
+            total_tokens: usage.total_tokens.unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub struct StreamChunk {
-    /// Content chunk
     pub content: String,
-
-    /// Session ID
     pub session_id: String,
-
-    /// Whether this is the final chunk
     pub done: bool,
-
-    /// Chunk metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<StreamMetadata>,
-
-    /// Usage statistics (final chunk only)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageStats>,
 }
 
-/// Streaming chunk metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct StreamMetadata {
-    /// Finish reason
     pub finish_reason: Option<String>,
-
-    /// Model name
     pub model: Option<String>,
-
-    /// Whether this chunk contains reasoning content
     pub has_reasoning: bool,
 }
 
-/// Chat completion request builder
-pub struct ChatCompletionBuilder {
-    model: GLM4_6,
-    messages: Vec<TextMessage>,
-    temperature: f64,
-    top_p: f64,
-    thinking: ThinkingType,
-    stream: bool,
+pub type ChatModelRequest = ChatCompletion<GLM4_6, TextMessage>;
+
+pub fn build_completion(
+    messages: &[TextMessage],
+    request: &ChatRequest,
+) -> AppResult<ChatModelRequest> {
+    let (first, remaining) = messages
+        .split_first()
+        .ok_or_else(|| AppError::InvalidRequest("conversation is empty".to_owned()))?;
+    let thinking = if request.thinking_enabled() {
+        ThinkingType::enabled()
+    } else {
+        ThinkingType::disabled()
+    };
+    let mut completion = ChatCompletion::new(GLM4_6 {}, first.clone())
+        .with_temperature(request.temperature())
+        .with_max_tokens(request.max_tokens())
+        .with_thinking(thinking);
+    for message in remaining {
+        completion = completion.add_message(message.clone());
+    }
+    Ok(completion)
 }
 
-impl ChatCompletionBuilder {
-    /// Create a new chat completion builder
-    ///
-    /// Credentials are owned by the shared `ZaiClient` supplied to `send_via`,
-    /// not by this request builder.
-    pub fn new() -> Self {
-        Self {
-            model: GLM4_6 {},
-            messages: Vec::new(),
-            temperature: 0.7,
-            top_p: 0.9,
-            thinking: ThinkingType::disabled(),
-            stream: false,
-        }
-    }
+pub fn response_text(response: &ChatCompletionResponse) -> Option<String> {
+    response
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.content_str())
+        .filter(|content| !content.trim().is_empty())
+        .map(str::to_owned)
+}
 
-    /// Set messages
-    pub fn messages(mut self, messages: Vec<TextMessage>) -> Self {
-        self.messages = messages;
-        self
-    }
-
-    /// Set temperature
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = temperature.clamp(0.0, 2.0);
-        self
-    }
-
-    /// Set top-p
-    pub fn top_p(mut self, top_p: f64) -> Self {
-        self.top_p = top_p.clamp(0.0, 1.0);
-        self
-    }
-
-    /// Enable think mode
-    pub fn with_thinking(mut self, enabled: bool) -> Self {
-        self.thinking = if enabled {
-            ThinkingType::enabled()
-        } else {
-            ThinkingType::disabled()
-        };
-        self
-    }
-
-    /// Enable streaming
-    pub fn with_streaming(mut self, enabled: bool) -> Self {
-        self.stream = enabled;
-        self
-    }
-
-    /// Build the chat completion client
-    pub fn build(self) -> AppResult<zai_rs::model::ChatCompletion<GLM4_6, TextMessage>> {
-        if self.messages.is_empty() {
-            return Err(crate::client::error_handler::ClientError::InvalidRequest(
-                "No messages provided".to_string(),
-            )
-            .into());
-        }
-
-        let mut client = zai_rs::model::ChatCompletion::new(self.model, self.messages[0].clone())
-            .with_temperature(self.temperature)
-            .with_top_p(self.top_p)
-            .with_thinking(self.thinking);
-
-        // Add remaining messages
-        for message in self.messages.into_iter().skip(1) {
-            client = client.add_messages(message);
-        }
-
-        Ok(client)
+pub fn message_role(message: &TextMessage) -> &'static str {
+    match message {
+        TextMessage::User { .. } => "user",
+        TextMessage::Assistant { .. } => "assistant",
+        TextMessage::System { .. } => "system",
+        TextMessage::Tool { .. } => "tool",
     }
 }
 
-/// Helper functions for chat operations
-pub mod chat_utils {
-    use super::*;
-
-    /// Return the API role for a text message.
-    pub fn text_message_role(message: &TextMessage) -> &'static str {
-        match message {
-            TextMessage::User { .. } => "user",
-            TextMessage::Assistant { .. } => "assistant",
-            TextMessage::System { .. } => "system",
-            TextMessage::Tool { .. } => "tool",
-        }
-    }
-
-    /// Return text content for display/export. Tool call metadata is omitted.
-    pub fn text_message_content(message: &TextMessage) -> String {
-        match message {
-            TextMessage::User { content }
-            | TextMessage::System { content }
-            | TextMessage::Tool { content, .. } => content.clone(),
-            TextMessage::Assistant { content, .. } => content.clone().unwrap_or_default(),
-        }
-    }
-
-    /// Return JSON content for history responses.
-    pub fn text_message_content_value(message: &TextMessage) -> serde_json::Value {
-        serde_json::Value::String(text_message_content(message))
-    }
-
-    /// Create a system message
-    pub fn system_message(content: impl Into<String>) -> TextMessage {
-        TextMessage::system(content.into())
-    }
-
-    /// Create a user message
-    pub fn user_message(content: impl Into<String>) -> TextMessage {
-        TextMessage::user(content.into())
-    }
-
-    /// Create an assistant message
-    pub fn assistant_message(content: impl Into<String>) -> TextMessage {
-        TextMessage::assistant(content.into())
-    }
-
-    /// Extract text content from AI response
-    pub fn extract_text_from_response(response: &ChatCompletionResponse) -> Option<String> {
-        response
-            .choices()
-            .and_then(|choices| choices.first())
-            .and_then(|choice| choice.message().content())
-            .and_then(|content| content.as_str())
-            .map(|s| s.to_string())
-    }
-
-    /// Extract text from streaming chunk
-    pub fn extract_text_from_chunk(chunk: &zai_rs::model::ChatStreamResponse) -> Option<String> {
-        chunk.choices.first()?.delta.as_ref()?.content.clone()
-    }
-
-    /// Extract reasoning content from streaming chunk
-    pub fn extract_reasoning_from_chunk(
-        chunk: &zai_rs::model::ChatStreamResponse,
-    ) -> Option<String> {
-        chunk
-            .choices
-            .first()?
-            .delta
-            .as_ref()?
-            .reasoning_content
-            .clone()
-    }
-
-    /// Create a default system prompt
-    pub fn default_system_prompt() -> String {
-        r#"You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses.
-
-Guidelines:
-- Be concise but comprehensive
-- Use clear and simple language
-- Provide examples when helpful
-- Admit when you're unsure about something
-- Keep responses relevant to the user's question"#
-            .to_string()
+pub fn message_text(message: &TextMessage) -> String {
+    match message {
+        TextMessage::User { content }
+        | TextMessage::System { content }
+        | TextMessage::Tool { content, .. } => content.clone(),
+        TextMessage::Assistant { content, .. } => content.clone().unwrap_or_default(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zai_rs::model::ThinkingMode;
 
-    #[test]
-    fn test_chat_request_defaults() {
-        let request = ChatRequest::new("Hello".to_string());
-
-        assert_eq!(request.message, "Hello");
-        assert_eq!(request.get_temperature(), 0.7);
-        assert_eq!(request.get_top_p(), 0.9);
-        assert_eq!(request.get_max_tokens(), 2048);
-        assert!(request.is_streaming());
-        assert!(!request.is_think_mode());
+    fn request(message: &str) -> ChatRequest {
+        ChatRequest {
+            message: message.to_owned(),
+            session_id: None,
+            think: None,
+            temperature: None,
+            max_tokens: None,
+        }
     }
 
     #[test]
-    fn test_chat_completion_builder() {
-        let builder = ChatCompletionBuilder::new()
-            .temperature(0.8)
-            .top_p(0.95)
-            .with_thinking(true)
-            .with_streaming(true);
+    fn rejects_values_outside_the_core_chat_contract() {
+        assert!(request(" \n ").validate().is_err());
 
-        assert_eq!(builder.temperature, 0.8);
-        assert_eq!(builder.top_p, 0.95);
-        assert!(matches!(builder.thinking.mode, ThinkingMode::Enabled));
-        assert!(builder.stream);
+        let mut invalid_temperature = request("hello");
+        invalid_temperature.temperature = Some(1.01);
+        assert!(invalid_temperature.validate().is_err());
+
+        let mut empty_session = request("hello");
+        empty_session.session_id = Some(String::new());
+        assert!(empty_session.validate().is_err());
+
+        let mut unsafe_session = request("hello");
+        unsafe_session.session_id = Some("session/../other".to_owned());
+        assert!(unsafe_session.validate().is_err());
+
+        assert!(ensure_valid_session_id(&"x".repeat(129)).is_err());
     }
 
     #[test]
-    fn test_chat_utils() {
-        let sys_msg = chat_utils::system_message("System message");
-        assert_eq!(chat_utils::text_message_role(&sys_msg), "system");
-        assert_eq!(chat_utils::text_message_content(&sys_msg), "System message");
-
-        let user_msg = chat_utils::user_message("User message");
-        assert_eq!(chat_utils::text_message_role(&user_msg), "user");
-        assert_eq!(chat_utils::text_message_content(&user_msg), "User message");
-
-        let assistant_msg = chat_utils::assistant_message("Assistant message");
-        assert_eq!(chat_utils::text_message_role(&assistant_msg), "assistant");
-        assert_eq!(
-            chat_utils::text_message_content(&assistant_msg),
-            "Assistant message"
-        );
+    fn unknown_request_fields_are_rejected() {
+        let error = serde_json::from_str::<ChatRequest>(r#"{"message":"hello","temprature":0.5}"#)
+            .unwrap_err();
+        assert!(error.to_string().contains("unknown field"));
     }
 }

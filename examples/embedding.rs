@@ -1,5 +1,9 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::text_embedded::*;
+//! Create a text embedding.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::text_embedded::{EmbeddingInput, EmbeddingModel, EmbeddingRequest},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

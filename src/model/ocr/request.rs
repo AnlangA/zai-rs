@@ -2,15 +2,24 @@ use serde::Serialize;
 use validator::Validate;
 
 /// OCR tool types
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum OcrToolType {
     /// Handwriting recognition.
     #[serde(rename = "hand_write")]
     HandWrite,
 }
 
+impl OcrToolType {
+    /// Return the exact multipart form value expected by the OCR endpoint.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HandWrite => "hand_write",
+        }
+    }
+}
+
 /// Language types for OCR recognition
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum OcrLanguageType {
     /// Auto-detect language
     #[serde(rename = "AUTO")]
@@ -113,8 +122,41 @@ pub enum OcrLanguageType {
     Hin,
 }
 
+impl OcrLanguageType {
+    /// Return the exact multipart form value expected by the OCR endpoint.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "AUTO",
+            Self::ChnEng => "CHN_ENG",
+            Self::Eng => "ENG",
+            Self::Jap => "JAP",
+            Self::Kor => "KOR",
+            Self::Fre => "FRE",
+            Self::Spa => "SPA",
+            Self::Por => "POR",
+            Self::Ger => "GER",
+            Self::Ita => "ITA",
+            Self::Rus => "RUS",
+            Self::Dan => "DAN",
+            Self::Dut => "DUT",
+            Self::Mal => "MAL",
+            Self::Swe => "SWE",
+            Self::Ind => "IND",
+            Self::Pol => "POL",
+            Self::Rom => "ROM",
+            Self::Tur => "TUR",
+            Self::Gre => "GRE",
+            Self::Hun => "HUN",
+            Self::Tha => "THA",
+            Self::Vie => "VIE",
+            Self::Ara => "ARA",
+            Self::Hin => "HIN",
+        }
+    }
+}
+
 /// Body parameters holder for OCR request (used to build multipart form)
-#[derive(Debug, Clone, Serialize, Validate)]
+#[derive(Clone, Serialize, Validate)]
 pub struct OcrBody {
     /// Tool type (fixed as "hand_write" for handwriting recognition)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -130,12 +172,29 @@ pub struct OcrBody {
 
     /// Client-provided unique request id
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(length(min = 6, max = 64))]
     pub request_id: Option<String>,
 
     /// End user id (6..=128 chars)
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 6, max = 128))]
     pub user_id: Option<String>,
+}
+
+impl std::fmt::Debug for OcrBody {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OcrBody")
+            .field("tool_type", &self.tool_type)
+            .field("language_type", &self.language_type)
+            .field("probability", &self.probability)
+            .field(
+                "request_id",
+                &self.request_id.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("user_id", &self.user_id.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl Default for OcrBody {
@@ -184,5 +243,20 @@ impl OcrBody {
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.user_id = Some(user_id.into());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_redacts_request_and_user_identifiers() {
+        let body = OcrBody::new()
+            .with_request_id("private-request")
+            .with_user_id("private-user");
+        let debug = format!("{body:?}");
+        assert!(!debug.contains("private-request"));
+        assert!(!debug.contains("private-user"));
     }
 }

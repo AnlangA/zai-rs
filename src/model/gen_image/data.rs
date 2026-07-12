@@ -1,4 +1,3 @@
-use serde::Serialize;
 use validator::Validate;
 
 use super::{
@@ -10,7 +9,7 @@ use crate::client::ZaiClient;
 /// Typed builder for an image-generation request sent through a [`ZaiClient`].
 pub struct ImageGenRequest<N>
 where
-    N: ModelName + ImageGen + Serialize,
+    N: ImageGen,
 {
     /// Request body
     body: ImageGenBody<N>,
@@ -18,19 +17,13 @@ where
 
 impl<N> ImageGenRequest<N>
 where
-    N: ModelName + ImageGen + Serialize,
+    N: ImageGen,
 {
     /// Create a new image generation request for the given model.
     pub fn new(model: N) -> Self {
-        let body = ImageGenBody {
-            model,
-            prompt: None,
-            quality: None,
-            size: None,
-            watermark_enabled: None,
-            user_id: None,
-        };
-        Self { body }
+        Self {
+            body: ImageGenBody::new(model),
+        }
     }
 
     /// Mutable access to inner body (for advanced customizations)
@@ -71,36 +64,9 @@ where
     /// Validate body constraints: required prompt and (when set) a valid
     /// custom image size.
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        // Body-level field validations
         self.body
             .validate()
-            .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("Validation error: {e:?}"),
-            })?;
-        // Require prompt
-        if self
-            .body
-            .prompt
-            .as_deref()
-            .map(|s| s.trim().is_empty())
-            .unwrap_or(true)
-        {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "prompt is required".to_string(),
-            });
-        }
-        // Validate custom size when present
-        if let Some(size) = &self.body.size
-            && let super::image_request::ImageSize::Custom { .. } = size
-            && !size.is_valid()
-        {
-            return Err(crate::client::error::ZaiError::ApiError {
-                        code: crate::client::error::codes::SDK_VALIDATION,
-                        message: "invalid custom image size: must be 512..=2048, divisible by 16, and <= 2^21 pixels".to_string(),
-                    });
-        }
+            .map_err(crate::client::error::ZaiError::from)?;
         Ok(())
     }
 
@@ -109,10 +75,7 @@ where
     pub async fn send_via(
         &self,
         client: &ZaiClient,
-    ) -> crate::ZaiResult<super::image_response::ImageResponse>
-    where
-        N: serde::Serialize,
-    {
+    ) -> crate::ZaiResult<super::image_response::ImageResponse> {
         self.validate()?;
         let route = crate::client::routes::IMAGES_GENERATE;
         let url = client.endpoints().resolve_route(route, &[])?;

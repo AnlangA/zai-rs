@@ -1,36 +1,49 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::chat_base_response::TaskStatus;
-use zai_rs::model::{async_chat::*, async_chat_get::*, *};
+//! Submit an asynchronous chat request and poll its bounded task lifecycle.
+
+use std::time::Duration;
+
+use zai_rs::{
+    client::ZaiClient,
+    model::{
+        AsyncTaskGetRequest, AsyncTaskResult, GLM5_2, TextMessage, async_chat::AsyncChatCompletion,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ZaiClient::from_env()?;
     let message = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "hello".to_string());
-    let request =
-        AsyncChatCompletion::new(GLM4_5 {}, TextMessage::user(&message)).with_temperature(0.7);
+        .unwrap_or_else(|| "用一句话介绍 Rust。".to_owned());
+
+    let client = ZaiClient::from_env()?;
+    let request = AsyncChatCompletion::new(GLM5_2 {}, TextMessage::user(message));
     let body = request.send_via(&client).await?;
-    if let Some(task_id) = body.id() {
-        println!("Task: {task_id}");
-        let get = AsyncChatGetRequest::new(GLM4_5 {}, task_id.to_string());
+    let task_id = body.id().ok_or("response did not contain a task id")?;
+    println!("submitted task {task_id}");
+
+    let get = AsyncTaskGetRequest::new(task_id);
+    tokio::time::timeout(Duration::from_secs(300), async {
         loop {
             let result = get.send_via(&client).await?;
-            match result.task_status() {
-                Some(TaskStatus::Success) => {
-                    println!("Done: {result:#?}");
-                    break;
+            match result {
+                AsyncTaskResult::Chat(result) => {
+                    println!("{result:#?}");
+                    return Ok::<_, Box<dyn std::error::Error>>(());
                 },
-                Some(TaskStatus::Fail) => {
-                    eprintln!("Failed");
-                    break;
+                AsyncTaskResult::State(state) if state.is_failed() => {
+                    return Err("asynchronous chat task failed".into());
                 },
-                _ => {
-                    println!("Processing...");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                AsyncTaskResult::State(state) if state.is_success() => {
+                    return Err("chat task succeeded without a chat result".into());
+                },
+                AsyncTaskResult::State(_) => tokio::time::sleep(Duration::from_secs(2)).await,
+                AsyncTaskResult::Video(_) | AsyncTaskResult::Image(_) => {
+                    return Err("chat task returned an unexpected media result".into());
                 },
             }
         }
-    }
+    })
+    .await??;
+
     Ok(())
 }

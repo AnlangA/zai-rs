@@ -2,19 +2,14 @@
 name = "zai-rmcp-test"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+publish = false
 
 [dependencies]
-tokio = { version = "1.52.3", features = ["full"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-rand = "0.10.1"
-futures = "0.3.32"
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 anyhow = "1.0.102"
-url = "2.5.8"
-tower = "0.5.3"
-axum = "0.8.9"
-reqwest = "0.13"
-clap = { version = "4.6.1", features = ["derive"] }
-rmcp = { version = "2.2.0", features = ["client", "client-side-sse", "reqwest", "transport-streamable-http-client-reqwest", "transport-child-process", "tower", "auth"] }
-# Use local zai-rs with rmcp-kits feature for this example
+rmcp = { version = "2.2.0", features = [
+    "client",
+    "transport-streamable-http-client-reqwest",
+] }
 zai-rs = { path = "../../../", features = ["rmcp-kits"] }

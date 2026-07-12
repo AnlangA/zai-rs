@@ -23,34 +23,29 @@ A: 在 `Cargo.toml` 中添加：
 
 ```toml
 [dependencies]
-zai-rs = "0.4"
+zai-rs = "0.6"
 ```
 
 ### Q: 如何配置 API 密钥？
 A: 最简单的方式是使用环境变量：
 
-```rust
-use zai_rs::model::*;
+```rust,ignore
+use zai_rs::ZaiClient;
 
-// 从环境变量读取
-let key = std::env::var("ZHIPU_API_KEY")?;
-let client = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"), key);
+// 从 ZHIPU_API_KEY 读取
+let client = ZaiClient::from_env()?;
 ```
 
 或直接在代码中设置（不推荐）：
 
-```rust
-let client = ChatCompletion::new(
-    GLM4_5_flash {},
-    TextMessage::user("你好"),
-    "your.id.secret",
-);
+```rust,ignore
+let client = ZaiClient::builder("example-id.example-secret-value").build()?;
 ```
 
 ### Q: API 密钥格式是什么？
 A: 智谱 AI API 密钥格式为 `<id>.<secret>`，例如 `abc123.abcdefghijklmnopqrstuvwxyz`。可以使用 `validate_api_key` 函数验证格式：
 
-```rust
+```rust,ignore
 use zai_rs::client::error::validate_api_key;
 
 if let Err(e) = validate_api_key(&api_key) {
@@ -63,36 +58,44 @@ if let Err(e) = validate_api_key(&api_key) {
 ## 使用问题
 
 ### Q: 如何进行流式聊天？
-A: 对 `ChatCompletion` 调用 `enable_stream()`，然后消费 SSE / typed stream：
+A: 调用 `enable_stream()` 后，通过 `stream_via(&client)` 消费强类型 SSE
+chunk：
 
-```rust
-use zai_rs::model::*;
+```rust,ignore
+use zai_rs::{ZaiClient, model::*};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
-let mut client = ChatCompletion::new(
+let client = ZaiClient::from_env()?;
+let mut stream = ChatCompletion::new(
     GLM4_5_flash {},
     TextMessage::user("讲一个短故事"),
-    key,
 )
-.enable_stream();
+.enable_stream()
+.stream_via(&client)
+.await?;
 
-client
-    .stream_sse_for_each(|data| {
-        print!("{}", String::from_utf8_lossy(data));
-    })
-    .await?;
+while let Some(chunk) = stream.next().await {
+    let chunk = chunk?;
+    if let Some(text) = chunk
+        .choices
+        .first()
+        .and_then(|choice| choice.delta.as_ref())
+        .and_then(|delta| delta.content.as_deref())
+    {
+        print!("{text}");
+    }
+}
 ```
 
 ### Q: 如何处理 API 错误？
 A: 所有 API 调用返回 `ZaiResult<T>`。使用 `?` 操作符或 `match` 处理错误：
 
-```rust
-use zai_rs::{model::*, ZaiError};
+```rust,ignore
+use zai_rs::{model::*, ZaiClient, ZaiError};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
-let client = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"), key);
+let client = ZaiClient::from_env()?;
+let request = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"));
 
-match client.send().await {
+match request.send_via(&client).await {
     Ok(response) => println!("{:?}", response),
     Err(ZaiError::AuthError { code, message }) => {
         tracing::error!("Authentication failed [{}]: {}", code, message);
@@ -107,7 +110,7 @@ match client.send().await {
 ### Q: 如何配置重试机制？
 A: 使用 `HttpTransportConfig` 设置最大尝试次数。只有幂等请求会自动重试；POST/PATCH 不会被隐式重放：
 
-```rust
+```rust,ignore
 use zai_rs::client::{HttpTransportConfig, ZaiClient};
 
 let config = HttpTransportConfig::builder()
@@ -118,10 +121,11 @@ let client = ZaiClient::builder(std::env::var("ZHIPU_API_KEY")?)
     .build()?;
 ```
 
-### Q: 如何启用请求日志？
-A: 统一传输层使用 `tracing`，配置 subscriber 和 `RUST_LOG` 即可：
+### Q: 如何接收 SDK 的 tracing 事件？
+A: 应用可以配置 `tracing` subscriber；SDK 只在已有埋点处产生事件，并不保证记录
+每一次请求或重试：
 
-```rust
+```rust,ignore
 tracing_subscriber::fmt()
     .with_env_filter("zai_rs=debug")
     .init();
@@ -137,12 +141,13 @@ tracing_subscriber::fmt()
 A: 错误码 1001 表示认证失败，通常是 API 密钥无效或过期。请检查您的 API 密钥是否正确。
 
 ### Q: 1301 错误码是什么意思？
-A: 错误码 1301 表示内容安全/策略阻断，请调整输入内容后再请求；SDK 不会自动重试此类错误。频率、并发、配额类错误通常是 1302-1305、1308-1313，SDK 会按重试配置处理。
+A: 错误码 1301 表示内容安全/策略阻断，请调整输入内容后再请求；SDK 不会自动重试
+此类错误。自动重试还取决于 HTTP 方法、状态码和业务码，不能仅凭错误码范围判断。
 
 ### Q: 如何区分客户端错误和服务端错误？
 A: 使用 `is_client_error()` 和 `is_server_error()` 方法：
 
-```rust
+```rust,ignore
 if error.is_client_error() {
     tracing::error!("Client error - check your request parameters");
 } else if error.is_server_error() {
@@ -151,9 +156,10 @@ if error.is_client_error() {
 ```
 
 ### Q: 如何避免在日志中暴露 API 密钥？
-A: SDK 会自动过滤敏感信息。如果需要手动过滤，使用 `mask_sensitive_info` 函数：
+A: `ZaiClient` 的 Debug 输出及 SDK 自身鉴权路径不会输出明文密钥，但 SDK 无法过滤
+应用自行拼接的任意日志。记录外部文本前可显式使用 `mask_sensitive_info`：
 
-```rust
+```rust,ignore
 use zai_rs::client::error::mask_sensitive_info;
 
 let log_msg = "Request sent with api_key=abc123.xyz456";
@@ -168,39 +174,63 @@ let safe_msg = mask_sensitive_info(log_msg);
 ### Q: 如何提高 API 调用性能？
 A: 以下是一些优化建议：
 1. 启用连接池（默认已启用）
-2. 使用流式响应减少延迟
+2. 用 `with_max_tokens` 控制响应规模
 3. 配置适当的超时和重试策略
 4. 对于批量操作，考虑使用并发调用
 
 ### Q: 如何处理并发请求？
-A: 使用 `tokio::spawn` 或 `futures` crate 并发执行：
+A: 可以使用 Tokio 自带的 `JoinSet`，无需额外 stream/futures 依赖：
 
-```rust
-use futures::future::join_all;
-use zai_rs::model::*;
+```rust,ignore
+use tokio::task::JoinSet;
+use zai_rs::{ZaiClient, model::*};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
-let clients = ["问题 1", "问题 2"]
-    .into_iter()
-    .map(|prompt| ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(prompt), key.clone()));
+let client = ZaiClient::from_env()?;
+let mut tasks = JoinSet::new();
+for prompt in ["问题 1", "问题 2"] {
+    let client = client.clone();
+    tasks.spawn(async move {
+        ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(prompt))
+            .send_via(&client)
+            .await
+    });
+}
 
-let results = join_all(clients.map(|client| async move { client.send().await })).await;
+while let Some(result) = tasks.join_next().await {
+    println!("{:?}", result??);
+}
 ```
 
 ### Q: 连接池是如何工作的？
-A: SDK 使用 `reqwest::Client` 自动管理连接池。具有相同配置的请求会复用连接，提高性能。
+A: 一个 `ZaiClient` 及其克隆共享同一传输层和连接池。不要为每个请求重新构造
+客户端。
 
 ---
 
 ## 功能特定问题
 
+### Q: 实时 WebSocket 应该使用哪个模型？
+A: 启用 `realtime` feature 后，使用 `GLM_realtime_flash` 或
+`GLM_realtime_air`。Realtime 模型 trait 已密封，其他模型会在编译期被拒绝。
+`GLM4_voice` 仅用于 HTTP 语音聊天，不能用于 Realtime WebSocket。旧 Realtime
+marker 已在 0.6 删除：
+
+```rust,ignore
+use zai_rs::{model::GLM_realtime_flash, realtime::RealtimeClient};
+
+let session = RealtimeClient::new(std::env::var("ZHIPU_API_KEY")?)
+    .session(GLM_realtime_flash {})
+    .build()
+    .await?;
+```
+
 ### Q: 如何使用工具调用（Function Calling）？
 A: 定义工具并在请求中传递：
 
-```rust
-use zai_rs::model::*;
+```rust,ignore
+use zai_rs::{ZaiClient, model::*};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
+let client = ZaiClient::from_env()?;
 let weather = Function::new(
     "get_weather",
     "Get weather information",
@@ -211,47 +241,43 @@ let weather = Function::new(
     }),
 );
 
-let client = ChatCompletion::new(
+let request = ChatCompletion::new(
     GLM4_5_flash {},
     TextMessage::user("What's the weather in Beijing?"),
-    key,
 )
 .add_tool(Tools::Function { function: weather });
+let response = request.send_via(&client).await?;
 ```
 
 ### Q: 如何上传文件？
 A: 使用文件上传 API：
 
-```rust
-use zai_rs::file::*;
+```rust,ignore
+use zai_rs::{ZaiClient, file::*};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
-let result: FileObject = FileUploadRequest::new(
-    key,
-    FilePurpose::FileExtract,
-    "document.pdf",
-)
-.with_content_type("application/pdf")
-.send()
-.await?;
+let client = ZaiClient::from_env()?;
+let result = FileUploadRequest::new(FileUploadPurpose::Agent, "document.pdf")
+    .with_content_type("application/pdf")
+    .send_via(&client)
+    .await?;
 ```
 
 ### Q: 如何使用知识库功能？
 A: 对已有知识库上传文档，然后查询知识库详情：
 
-```rust
-use zai_rs::knowledge::*;
+```rust,ignore
+use zai_rs::{ZaiClient, knowledge::*};
 
-let key = std::env::var("ZHIPU_API_KEY")?;
+let client = ZaiClient::from_env()?;
 let knowledge_id = "your-knowledge-id".to_string();
 
-let upload: UploadFileResponse = DocumentUploadFileRequest::new(key.clone(), knowledge_id.clone())
+let upload = DocumentUploadRequest::new(knowledge_id.clone())
     .add_file_path("document.pdf")
-    .send()
+    .send_via(&client)
     .await?;
 
-let retrieve: KnowledgeRetrieveResponse = KnowledgeRetrieveRequest::new(key, knowledge_id)
-    .send()
+let retrieve = KnowledgeGetRequest::new(knowledge_id)
+    .send_via(&client)
     .await?;
 ```
 
@@ -262,7 +288,8 @@ let retrieve: KnowledgeRetrieveResponse = KnowledgeRetrieveRequest::new(key, kno
 ### Q: 连接超时怎么办？
 A: 可以收紧（不能提高）SDK 的连接与单次请求超时上限：
 
-```rust
+```rust,ignore
+use std::time::Duration;
 use zai_rs::client::HttpTransportConfig;
 
 let config = HttpTransportConfig::builder()
@@ -276,13 +303,13 @@ A: 某些功能可能需要启用 feature：
 
 ```toml
 [dependencies]
-zai-rs = { version = "0.5", features = ["rmcp-kits"] }
+zai-rs = { version = "0.6", features = ["rmcp-kits"] }
 ```
 
 ### Q: 如何调试请求问题？
-A: 配置 `tracing` 详细日志（传输层不会输出鉴权头或 secret）：
+A: 可配置 `tracing` 查看 SDK 已提供的诊断事件；不要假设其中包含完整请求体或每次重试：
 
-```rust
+```rust,ignore
 tracing_subscriber::fmt()
     .with_max_level(tracing::Level::DEBUG)
     .init();
@@ -293,14 +320,11 @@ tracing_subscriber::fmt()
 ## 其他
 
 ### Q: 是否支持异步/await？
-A: 是的，zai-rs 完全基于异步编程模型（tokio），所有 API 都是异步的。
+A: 是的。所有网络请求都基于 Tokio 异步执行；请求构造、参数校验和部分本地辅助
+方法仍是同步函数。
 
 ### Q: 如何贡献代码？
 A: 欢迎贡献！请先提交 Issue 讨论您的想法，然后提交 Pull Request。确保代码通过 `cargo test` 和 `cargo clippy`。
 
 ### Q: 是否有示例代码？
 A: 是的，请查看 [examples/](../examples/) 目录，包含各种使用场景的示例代码。
-
----
-
-**如果您的问题不在这里，请查阅其他文档或在 GitHub 上提问。**

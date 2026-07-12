@@ -11,7 +11,7 @@ pub struct WebSearchRequest {
 
 impl WebSearchRequest {
     /// Create a request from a query and search engine.
-    pub fn new(search_query: String, search_engine: SearchEngine) -> Self {
+    pub fn new(search_query: impl Into<String>, search_engine: SearchEngine) -> Self {
         Self {
             body: WebSearchBody::new(search_query, search_engine),
         }
@@ -37,7 +37,7 @@ impl WebSearchRequest {
     }
     /// Restrict results to the supplied domain whitelist.
     pub fn with_domain_filter(mut self, domain: impl Into<String>) -> Self {
-        self.body = self.body.with_domain_filter(domain.into());
+        self.body = self.body.with_domain_filter(domain);
         self
     }
     /// Restrict results by publication recency.
@@ -52,12 +52,12 @@ impl WebSearchRequest {
     }
     /// Set the client-provided request identifier.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
-        self.body = self.body.with_request_id(request_id.into());
+        self.body = self.body.with_request_id(request_id);
         self
     }
     /// Set the end-user identifier used for abuse monitoring.
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
-        self.body = self.body.with_user_id(user_id.into());
+        self.body = self.body.with_user_id(user_id);
         self
     }
 

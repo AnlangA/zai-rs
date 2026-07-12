@@ -1,26 +1,33 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::voice_clone::{GlmTtsClone, VoiceCloneResponse, *};
+//! Clone a voice from an audio file already uploaded to the Files API.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::voice_clone::{GlmTtsClone, VoiceCloneRequest, VoiceCloneResponse},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ZaiClient loads credentials and transport configuration from the environment.
+    let mut args = std::env::args().skip(1);
+    let file_id = args
+        .next()
+        .ok_or("usage: voice_clone <file-id> <voice-name> [reference-transcript]")?;
+    let voice_name = args
+        .next()
+        .ok_or("usage: voice_clone <file-id> <voice-name> [reference-transcript]")?;
+
+    let mut request = VoiceCloneRequest::new(
+        GlmTtsClone {},
+        voice_name,
+        "你好，这是使用复刻音色生成的试听语音。",
+        file_id,
+    );
+    if let Some(transcript) = args.next() {
+        request = request.with_text(transcript);
+    }
+
     let client = ZaiClient::from_env()?;
-
-    // Example values from the spec
-    let model = GlmTtsClone {};
-    let voice_name = "my_custom_voice_001";
-    let text = "你好，这是一段示例音频的文本内容，用于音色复刻参考。";
-    let input = "欢迎使用我们的音色复刻服务，这将生成与示例音频相同音色的语音。";
-
-    // 通过文件上传接口上传音频文件，获取file_id。暂时用zhipu官方提供的。
-    let file_id = "abcf4765-0d08-5cbd-8bd8-6867f76166cc";
-
-    let request = VoiceCloneRequest::new(model, voice_name, input, file_id)
-        .with_request_id("voice_clone_req_001")
-        .with_text(text);
-
-    let body: VoiceCloneResponse = request.send_via(&client).await?;
-    println!("{body:#?}");
+    let response: VoiceCloneResponse = request.send_via(&client).await?;
+    println!("{response:#?}");
 
     Ok(())
 }

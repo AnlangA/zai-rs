@@ -1,15 +1,21 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::*;
+//! Update the description of an existing knowledge base.
+
+use zai_rs::{
+    client::ZaiClient,
+    knowledge::{KnowledgeUpdateRequest, KnowledgeUpdateResponse},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    let id = args
+        .next()
+        .ok_or("usage: knowledge_update <knowledge-id> <description>")?;
+    let description = args
+        .next()
+        .ok_or("usage: knowledge_update <knowledge-id> <description>")?;
+
     let client = ZaiClient::from_env()?;
-    let id = std::env::args()
-        .nth(1)
-        .expect("usage: knowledge_update <id>");
-    let description = std::env::args()
-        .nth(2)
-        .unwrap_or_else(|| "updated".to_string());
     let resp: KnowledgeUpdateResponse = KnowledgeUpdateRequest::new(id)
         .with_description(description)
         .send_via(&client)

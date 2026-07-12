@@ -3,7 +3,6 @@
 //! Async image generation under `ApiFamily::PaasV4`.
 
 mod request;
-mod response;
 
+pub use crate::model::{AsyncResponse, AsyncTaskResponse};
 pub use request::*;
-pub use response::*;
