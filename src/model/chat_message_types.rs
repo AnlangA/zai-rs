@@ -1,7 +1,7 @@
 //! Message types for text, vision and voice chat requests.
 //!
 //! Model/message compatibility is enforced by the bindings in
-//! [`chat_models`](crate::model::chat_models). Constructors in this module shape
+//! [`chat_models`]. Constructors in this module shape
 //! the JSON payload but generally do not inspect remote media or enforce
 //! provider-specific size and duration limits.
 //!
