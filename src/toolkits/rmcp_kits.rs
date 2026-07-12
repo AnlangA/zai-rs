@@ -10,10 +10,14 @@
 //!
 //! Example: convert RMCP tools and wire them into a chat request
 //! ```text
-//! use rmcp::{ServiceExt, model::ClientInfo, transport::SseClientTransport};
+//! use rmcp::{
+//!     ServiceExt,
+//!     model::ClientInfo,
+//!     transport::StreamableHttpClientTransport,
+//! };
 //! use zai_rs::{model::{Tools, Function}, toolkits::rmcp_kits};
 //! # async fn demo() -> anyhow::Result<()> {
-//! let transport = SseClientTransport::start("http://localhost:8000/sse").await?;
+//! let transport = StreamableHttpClientTransport::from_uri("http://localhost:8000/mcp");
 //! let client = ClientInfo::default().serve(transport).await?;
 //! let server = client.peer().clone();
 //! let tools = server.list_all_tools().await?;

@@ -1,3 +1,7 @@
+//! Low-level `rmcp-kits` interoperability example for an arbitrary custom MCP
+//! server. Applications using the official Z.AI MCP capabilities should use
+//! `zai_rs::mcp::McpClient`, which hides server and transport selection.
+
 use anyhow::{Context, Result};
 use rmcp::{
     ServiceExt, model::ClientInfo, service::ServerSink, transport::StreamableHttpClientTransport,

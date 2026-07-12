@@ -2,10 +2,11 @@
 //!
 //! `ApiSecret` wraps [`secrecy::SecretString`]. Its `Clone`, `Debug` and
 //! `Display` implementations ALWAYS print `[REDACTED]` — the plaintext is only
-//! reachable through [`ApiSecret::expose`], which the SDK calls solely to build
-//! the `Authorization` header value (and immediately marks that header value
-//! sensitive). This makes accidental logging of the key a compile-time-shaped
-//! impossibility rather than a discipline.
+//! reachable through [`ApiSecret::expose`], which the SDK uses only at audited
+//! authentication boundaries: building an `Authorization` header or supplying
+//! credentials to an SDK-managed local MCP process. This makes accidental
+//! logging of the key a compile-time-shaped impossibility rather than a
+//! discipline.
 
 use std::fmt;
 
@@ -26,12 +27,13 @@ impl ApiSecret {
         Self(SecretString::from(key.into()))
     }
 
-    /// Borrow the plaintext for the sole purpose of building an `Authorization`
-    /// header value. Callers must immediately call `set_sensitive(true)` on the
-    /// resulting `HeaderValue`.
+    /// Borrow the plaintext at an authentication boundary.
+    ///
+    /// Callers must not log it or retain additional copies. HTTP callers must
+    /// mark the resulting `HeaderValue` as sensitive.
     pub fn expose(&self) -> &str {
         // secrecy exposes the inner &str via `ExposeSecret::expose_secret()`;
-        // we keep that a single, audited call site.
+        // we keep its use limited to small, audited authentication call sites.
         self.0.expose_secret()
     }
 }

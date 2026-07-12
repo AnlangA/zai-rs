@@ -83,7 +83,11 @@ thiserror = "2.0.18"
 # the SDK never touches. `sink` is enabled for `SinkExt` (realtime transport).
 futures-util = { version = "0.3.32", features = ["sink"] }
 dashmap = "6.2.1"
-rmcp = { version = "1.8.0", features = ["client"], optional = true }
+rmcp = { version = "2.2.0", features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+], optional = true }
 # Only used to mint realtime event ids (`evt_<uuid>`); gated under `realtime`
 # so the default chat/embeddings build doesn't pull it in. The `serde` feature
 # is intentionally NOT enabled — no `Uuid` field is (de)serialized anywhere.
@@ -126,6 +130,9 @@ default = []
 # RMCP protocol bridge — builds on the toolkits framework to call remote MCP
 # servers (plan P09.1). Enables `zai_rs::toolkits::rmcp_kits`.
 rmcp-kits = ["dep:rmcp", "toolkits"]
+# Unified user-facing MCP API. It does not pull in the lower-level toolkits
+# framework; `rmcp-kits` remains available separately for custom MCP bridges.
+mcp = ["dep:rmcp"]
 # WebSocket realtime (GLM-Realtime) client. Off by default — most users only
 # need the HTTP chat/embeddings surface. Pulls in tokio-tungstenite, the JWT
 # crypto stack (hmac/sha2), tokio-stream, and `tokio/net`.
@@ -150,6 +157,26 @@ tool-validation = ["toolkits"]
 [[example]]
 name = "realtime_audio"
 required-features = ["realtime"]
+
+[[example]]
+name = "mcp"
+required-features = ["mcp"]
+
+[[example]]
+name = "mcp_web_search"
+required-features = ["mcp"]
+
+[[example]]
+name = "mcp_web_reader"
+required-features = ["mcp"]
+
+[[example]]
+name = "mcp_zread"
+required-features = ["mcp"]
+
+[[example]]
+name = "mcp_vision"
+required-features = ["mcp"]
 
 [dev-dependencies]
 toml = "1.1.2"

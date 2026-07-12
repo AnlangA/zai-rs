@@ -15,3 +15,6 @@ pub use crate::client::{HttpTransportConfig, ZaiClient, ZaiClientBuilder, ZaiErr
 // Essential model types for chat construction.
 pub use crate::model::traits::{ModelName, StreamOff as NonStreaming, StreamOn as Streaming};
 pub use crate::model::{ChatCompletion as ChatRequest, TextMessage as ChatMessage};
+
+#[cfg(feature = "mcp")]
+pub use crate::mcp::*;

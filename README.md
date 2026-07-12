@@ -72,6 +72,11 @@
 | `tool_stream_min` | 流式工具调用 |
 | `function_call` | 函数调用 |
 | `function_call_with_toolkits` | 工具集调用 |
+| `mcp` | 统一 MCP 搜索、阅读、仓库与视觉能力 |
+| `mcp_web_search` | Web Search MCP 完整参数调用 |
+| `mcp_web_reader` | Web Reader MCP 全部读取选项 |
+| `mcp_zread` | ZRead MCP 的搜索、目录和文件读取 |
+| `mcp_vision` | Vision MCP 的全部 8 个视觉工具 |
 | `translation_bot` | 翻译机器人 |
 | `ocr` | OCR 手写文字识别 |
 | `gen_image` | 图像生成 |
@@ -161,6 +166,59 @@ if let Some(window) = resp.time_limit() {
 # Ok(())
 # }
 ```
+
+### MCP API
+
+开启 `mcp` feature 后，可以直接使用统一 MCP API：
+
+```rust,no_run
+use zai_rs::mcp::{
+    McpClient, SearchContentSize, SearchRecency, WebSearchRequest,
+};
+
+# async fn go() -> zai_rs::ZaiResult<()> {
+let client = McpClient::from_env()?;
+let request = WebSearchRequest::new("Rust rmcp 2.2.0")
+    .domain("docs.rs")
+    .recency(SearchRecency::OneMonth)
+    .content_size(SearchContentSize::High);
+let result = client.web_search_with(request).await?;
+println!("{:#?}", result.results);
+client.close().await?;
+# Ok(())
+# }
+```
+
+用户无需选择 MCP 服务或传输方式；SDK 会根据调用的能力自动路由、按需连接并复用连接。
+所有工具都有强类型请求 API，用户无需构造模板 JSON：
+
+- 搜索与阅读：`web_search[_with]`、`read_web_page[_with]`
+- 开源仓库：`search_repo[_with]`、`repo_structure[_with]`、`read_repo_file[_with]`
+- 视觉工具：`ui_to_artifact[_with]`、`extract_text[_with]`、
+  `diagnose_error[_with]`、`understand_diagram[_with]`、
+  `analyze_visualization[_with]`、`compare_ui[_with]`、
+  `analyze_image[_with]`、`analyze_video[_with]`
+
+搜索返回 `WebSearchResponse`，网页读取返回 `WebReaderResponse`，仓库和视觉工具返回
+可直接显示或通过 `into_text()` 获取内容的 `McpTextResponse`。
+
+完整示例见 `examples/mcp.rs`。中国区可设置 `ZHIPU_API_KEY` 或
+`Z_AI_API_KEY`；国际区设置 `Z_AI_API_KEY`，并将 `Z_AI_MODE=ZAI`。首次使用
+视觉能力时 SDK 会自动启动本地 Vision MCP，因此需要 Node.js 22+。底层使用
+`rmcp 2.2.0`。
+
+每个 MCP 都有独立的完整功能示例：
+
+```bash
+cargo run --example mcp_web_search --features mcp -- "Rust rmcp 2.2.0" docs.rs
+cargo run --example mcp_web_reader --features mcp -- https://docs.rs/rmcp/2.2.0/rmcp/
+cargo run --example mcp_zread --features mcp -- modelcontextprotocol/rust-sdk CallToolResult crates/rmcp/src README.md
+cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
+```
+
+`mcp_zread` 会运行全部 3 个 ZRead 工具，`mcp_vision` 会运行全部 8 个 Vision
+工具。Vision 示例允许省略最后一个对比图片参数，此时会使用同一图片测试 UI
+差异检查；完整执行会产生多次视觉模型调用。
 
 ### 实时 API
 - [x] WebSocket 类型定义

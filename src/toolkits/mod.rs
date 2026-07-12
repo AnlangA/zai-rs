@@ -88,6 +88,8 @@ pub mod prelude {
         LlmToolCall, parse_first_tool_call, parse_tool_calls, parse_tool_calls_from_message,
     };
     // RMCP bridge exports when enabled
+    #[cfg(feature = "mcp")]
+    pub use crate::mcp::*;
     #[cfg(feature = "rmcp-kits")]
     pub use crate::toolkits::rmcp_kits::{
         McpToolCaller, call_mcp_tool, call_mcp_tools_collect, call_tool_result_to_json,

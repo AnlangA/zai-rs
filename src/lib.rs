@@ -22,6 +22,7 @@
 //! | Batch processing | Create, list, retrieve, cancel | [`batches`] |
 //! | Knowledge base | CRUD, document upload, retrieval | [`knowledge`] |
 //! | Tool calling | Function calling, web search, file parsing | [`tool`] |
+//! | MCP | Unified search, reader, repository, and vision capabilities | [`mcp`] |
 //! | Agent | Agent creation & management | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
 //! | Real-time | WebSocket audio/video (GLM-Realtime) | [`realtime`] |
@@ -37,6 +38,8 @@
 //! - [`knowledge`] — Knowledge-base management (CRUD, document upload,
 //!   retrieval)
 //! - [`tool`] — Tool implementations (web search, file parsing)
+//! - [`mcp`] — Unified MCP capabilities with automatic backend and transport
+//!   selection (feature `mcp`)
 //! - [`agent`] — Agent API (creation, chat, history)
 //! - [`toolkits`] — Tool execution framework (registration, execution, caching,
 //!   RMCP bridge)
@@ -105,13 +108,14 @@
 //! |---------|---------|-------------|
 //! | (default) | enabled | Core API functionality |
 //! | `realtime` | disabled | Real-time audio/video over WebSocket (GLM-Realtime) |
+//! | `mcp` | disabled | Unified high-level MCP capability client |
 //! | `rmcp-kits` | disabled | Enable RMCP protocol bridge for MCP tool calling |
 //! | `tool-validation` | disabled | Runtime validation of tool-call arguments against their JSON Schema |
 //!
 //! Enable in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! zai-rs = { version = "0.4", features = ["rmcp-kits"] }
+//! zai-rs = { version = "0.5", features = ["mcp"] }
 //! ```
 //!
 //! # Error Handling
@@ -147,6 +151,10 @@ pub mod client;
 pub use client::{ZaiClient, error::*};
 pub mod file;
 pub mod knowledge;
+
+/// Unified MCP capability client.
+#[cfg(feature = "mcp")]
+pub mod mcp;
 
 pub mod model;
 /// WebSocket realtime (GLM-Realtime) client — audio/video over a WebSocket.

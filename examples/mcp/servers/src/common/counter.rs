@@ -55,14 +55,14 @@ impl Counter {
     }
 
     fn _create_resource_text(&self, uri: &str, name: &str) -> Resource {
-        RawResource::new(uri, name.to_string()).no_annotation()
+        Resource::new(uri, name.to_string())
     }
 
     #[tool(description = "Increment the counter by 1")]
     async fn increment(&self) -> Result<CallToolResult, McpError> {
         let mut counter = self.counter.lock().await;
         *counter += 1;
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             counter.to_string(),
         )]))
     }
@@ -71,7 +71,7 @@ impl Counter {
     async fn decrement(&self) -> Result<CallToolResult, McpError> {
         let mut counter = self.counter.lock().await;
         *counter -= 1;
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             counter.to_string(),
         )]))
     }
@@ -79,19 +79,19 @@ impl Counter {
     #[tool(description = "Get the current counter value")]
     async fn get_value(&self) -> Result<CallToolResult, McpError> {
         let counter = self.counter.lock().await;
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             counter.to_string(),
         )]))
     }
 
     #[tool(description = "Say hello to the client")]
     fn say_hello(&self) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text("hello")]))
+        Ok(CallToolResult::success(vec![ContentBlock::text("hello")]))
     }
 
     #[tool(description = "Repeat what you say")]
     fn echo(&self, Parameters(object): Parameters<JsonObject>) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             serde_json::Value::Object(object).to_string(),
         )]))
     }
@@ -101,7 +101,7 @@ impl Counter {
         &self,
         Parameters(StructRequest { a, b }): Parameters<StructRequest>,
     ) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             (a + b).to_string(),
         )]))
     }
@@ -120,10 +120,7 @@ impl Counter {
             "This is an example prompt with your message here: '{}'",
             args.message
         );
-        Ok(vec![PromptMessage::new_text(
-            PromptMessageRole::User,
-            prompt,
-        )])
+        Ok(vec![PromptMessage::new_text(Role::User, prompt)])
     }
 
     /// Analyze the current counter value and suggest next steps
@@ -139,11 +136,11 @@ impl Counter {
 
         let messages = vec![
             PromptMessage::new_text(
-                PromptMessageRole::Assistant,
+                Role::Assistant,
                 "I'll analyze the counter situation and suggest the best approach.",
             ),
             PromptMessage::new_text(
-                PromptMessageRole::User,
+                Role::User,
                 format!(
                     "Current counter value: {}\nGoal value: {}\nDifference: {}\nStrategy preference: {}\n\nPlease analyze the situation and suggest the best approach to reach the goal.",
                     current_value, args.goal, difference, strategy
@@ -290,8 +287,8 @@ mod tests {
             message
         );
 
-        let prompt_message = PromptMessage::new_text(PromptMessageRole::User, prompt);
+        let prompt_message = PromptMessage::new_text(Role::User, prompt);
 
-        assert_eq!(prompt_message.role, PromptMessageRole::User);
+        assert_eq!(prompt_message.role, Role::User);
     }
 }

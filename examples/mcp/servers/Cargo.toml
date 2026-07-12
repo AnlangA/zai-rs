@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-rmcp = { version = "1.7.0", features = [
+rmcp = { version = "2.2.0", features = [
     "server",
     "macros",
     "client",
