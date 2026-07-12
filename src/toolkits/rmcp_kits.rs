@@ -9,11 +9,15 @@
 //! All APIs are feature-gated behind `rmcp-kits`.
 //!
 //! Example: convert RMCP tools and wire them into a chat request
-//! ```text
-//! use rmcp::{ServiceExt, model::ClientInfo, transport::SseClientTransport};
+//! ```no_run
+//! use rmcp::{
+//!     ServiceExt,
+//!     model::ClientInfo,
+//!     transport::StreamableHttpClientTransport,
+//! };
 //! use zai_rs::{model::{Tools, Function}, toolkits::rmcp_kits};
-//! # async fn demo() -> anyhow::Result<()> {
-//! let transport = SseClientTransport::start("http://localhost:8000/sse").await?;
+//! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
+//! let transport = StreamableHttpClientTransport::from_uri("http://localhost:8000/mcp");
 //! let client = ClientInfo::default().serve(transport).await?;
 //! let server = client.peer().clone();
 //! let tools = server.list_all_tools().await?;
@@ -23,10 +27,10 @@
 //! ```
 //!
 //! Example: execute a tool call and collect results by tool name
-//! ```text
+//! ```no_run
 //! use rmcp::service::ServerSink;
 //! use zai_rs::toolkits::rmcp_kits::{call_mcp_tool, call_mcp_tools_collect};
-//! # async fn run(server: &ServerSink) -> anyhow::Result<()> {
+//! # async fn run(server: &ServerSink) -> Result<(), Box<dyn std::error::Error>> {
 //! let (name, value) = call_mcp_tool(server, "increment", Some(serde_json::json!({"n": 2}))).await?;
 //! let collected = call_mcp_tools_collect(server, vec![
 //!     ("increment".to_string(), Some(serde_json::json!({"n": 1}))),
@@ -70,12 +74,15 @@ pub fn mcp_tools_to_functions(tools: &[Tool]) -> Vec<Tools> {
     tools.iter().map(mcp_tool_to_function).collect()
 }
 
-/// Normalize a CallToolResult to a compact JSON payload suitable for LLM tool
-/// results.
+/// Convert a `CallToolResult` to JSON suitable for an LLM tool message.
 ///
 /// Preference order:
 /// 1) `structured_content` if present
 /// 2) Fallback: serialize the whole result
+///
+/// This conversion does not turn MCP's in-band `is_error` flag into a Rust
+/// error. When structured content is present, callers that need that flag must
+/// inspect the original `CallToolResult` before converting it.
 #[inline]
 pub fn call_tool_result_to_json(res: &CallToolResult) -> Value {
     if let Some(structured) = &res.structured_content {
@@ -112,7 +119,11 @@ impl McpCallSpec {
     }
 }
 
-/// Call a single MCP tool and return (tool name, normalized JSON result).
+/// Call a single MCP tool and return `(tool name, JSON result)`.
+///
+/// Transport/protocol failures are returned as [`Err`]. MCP in-band tool errors
+/// remain encoded in the returned JSON. Non-object arguments are also returned
+/// as an in-band `invalid_arguments` JSON object rather than an [`Err`].
 pub async fn call_mcp_tool(
     server: &ServerSink,
     name: impl Into<String>,
@@ -220,16 +231,18 @@ impl McpToolCaller {
     }
 }
 
-/// Execute tool calls requested by the first choice in a ChatCompletionResponse
+/// Execute tool calls requested by the first choice in a `ChatCompletionResponse`
 /// and build tool messages ready to append to the chat.
 ///
 /// This encapsulates:
 /// - Extracting tool_calls from the assistant message
-/// - Parsing function name and JSON arguments safely
+/// - Parsing function names and JSON arguments
 /// - Executing the RMCP tool via McpToolCaller
 /// - Packaging results as TextMessage::tool_with_id
 ///
 /// Returns an empty Vec when there are no tool calls.
+/// Calls without an id or function name are skipped. Invalid or non-object
+/// argument JSON is treated as absent arguments and logged.
 #[cfg(feature = "rmcp-kits")]
 pub async fn execute_tool_calls_as_messages(
     caller: &McpToolCaller,
@@ -321,7 +334,7 @@ pub async fn execute_tool_calls_as_messages(
 pub async fn run_mcp_tool_roundtrip<N>(
     caller: &McpToolCaller,
     client: &crate::client::ZaiClient,
-    mut chat: crate::model::chat::data::ChatCompletion<
+    mut chat: crate::model::chat::ChatCompletion<
         N,
         crate::model::chat_message_types::TextMessage,
         crate::model::traits::StreamOff,

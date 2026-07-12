@@ -53,14 +53,14 @@ impl Serialize for EmbeddingDimensions {
 /// Request body for embeddings
 #[derive(Debug, Clone, Serialize)]
 pub struct EmbeddingBody {
-    /// 嵌入模型：embedding-3 或 embedding-2
+    /// Embedding model (`embedding-3` or `embedding-2`).
     pub model: EmbeddingModel,
 
-    /// 输入文本，支持字符串或字符串数组
+    /// A single input string or a batch of strings.
     pub input: EmbeddingInput,
 
-    /// 输出维度，Embedding-3 支持 256/512/1024/2048；Embedding-2 固定
-    /// 1024（可不填）
+    /// Output dimensions. `embedding-3` supports all variants;
+    /// `embedding-2` accepts only 1,024 dimensions or omission.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<EmbeddingDimensions>,
 }

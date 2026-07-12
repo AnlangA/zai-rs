@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prompt = "一只可爱的小猫咪，坐在阳光明媚的窗台上，背景是蓝天白云.";
     let size = ImageSize::Size1024x1024;
 
-    // Build request (P05: no key/config on the request; credentials live on the client).
+    // The request carries generation input; ZaiClient supplies credentials.
     let request = ImageGenRequest::new(model)
         .with_prompt(prompt)
         .with_size(size);

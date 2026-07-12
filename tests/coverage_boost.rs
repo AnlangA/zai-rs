@@ -37,7 +37,7 @@ fn chat_response_choices_accessors() {
 // --- Knowledge builders ---
 #[test]
 fn knowledge_create_builder() {
-    use zai_rs::knowledge::create::*;
+    use zai_rs::knowledge::*;
     let req = CreateKnowledgeRequest::new(EmbeddingId::Embedding3Pro, "test-kb")
         .with_description("desc")
         .with_background(BackgroundColor::Blue)
@@ -49,14 +49,14 @@ fn knowledge_create_builder() {
 
 #[test]
 fn knowledge_list_query() {
-    use zai_rs::knowledge::list::*;
+    use zai_rs::knowledge::*;
     let q = KnowledgeListQuery::new().with_page(2).with_size(20);
     assert_eq!(q.page, Some(2));
 }
 
 #[test]
 fn knowledge_document_list() {
-    use zai_rs::knowledge::document_list::*;
+    use zai_rs::knowledge::*;
     let req = DocumentListRequest::new();
     let _ = req;
 }

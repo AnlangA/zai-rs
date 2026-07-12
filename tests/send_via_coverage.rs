@@ -244,7 +244,7 @@ async fn llm_ok_server(body: serde_json::Value) -> (TestServer, ZaiClient) {
 #[tokio::test]
 async fn knowledge_list_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": [], "total": 0}})).await;
-    use zai_rs::knowledge::list::*;
+    use zai_rs::knowledge::*;
     let _ = KnowledgeListRequest::new().send_via(&c).await;
     s.shutdown().await;
 }
@@ -252,7 +252,7 @@ async fn knowledge_list_send_via() {
 #[tokio::test]
 async fn knowledge_create_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "kb1", "name": "test"}})).await;
-    use zai_rs::knowledge::create::*;
+    use zai_rs::knowledge::*;
     let _ = CreateKnowledgeRequest::new(EmbeddingId::Embedding2, "test")
         .send_via(&c)
         .await;
@@ -262,7 +262,7 @@ async fn knowledge_create_send_via() {
 #[tokio::test]
 async fn knowledge_capacity_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"capacity": 100}})).await;
-    use zai_rs::knowledge::capacity::*;
+    use zai_rs::knowledge::*;
     let _ = KnowledgeCapacityRequest::new().send_via(&c).await;
     s.shutdown().await;
 }
@@ -270,7 +270,7 @@ async fn knowledge_capacity_send_via() {
 #[tokio::test]
 async fn knowledge_retrieve_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "x"}})).await;
-    use zai_rs::knowledge::retrieve::*;
+    use zai_rs::knowledge::*;
     let _ = KnowledgeRetrieveRequest::new("kb1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -278,7 +278,7 @@ async fn knowledge_retrieve_send_via() {
 #[tokio::test]
 async fn knowledge_delete_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": null})).await;
-    use zai_rs::knowledge::delete::*;
+    use zai_rs::knowledge::*;
     let _ = KnowledgeDeleteRequest::new("kb1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -286,7 +286,7 @@ async fn knowledge_delete_send_via() {
 #[tokio::test]
 async fn knowledge_update_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "kb1"}})).await;
-    use zai_rs::knowledge::update::*;
+    use zai_rs::knowledge::*;
     let _ = KnowledgeUpdateRequest::new("kb1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -294,7 +294,7 @@ async fn knowledge_update_send_via() {
 #[tokio::test]
 async fn knowledge_search_send_via() {
     let (s, c) = llm_ok_server(json!({"data": []})).await;
-    use zai_rs::knowledge::search::*;
+    use zai_rs::knowledge::*;
     let _ = KnowledgeSearchRequest::new("kb1", "query")
         .send_via(&c)
         .await;
@@ -304,7 +304,7 @@ async fn knowledge_search_send_via() {
 #[tokio::test]
 async fn knowledge_document_list_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": []}})).await;
-    use zai_rs::knowledge::document_list::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentListRequest::new().send_via(&c).await;
     s.shutdown().await;
 }
@@ -361,7 +361,7 @@ async fn ocr_send_via() {
 #[tokio::test]
 async fn knowledge_doc_upload_url_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"document_id": "d1"}})).await;
-    use zai_rs::knowledge::document_upload_url::*;
+    use zai_rs::knowledge::*;
     let detail = UploadUrlDetail::new("https://example.com/doc.pdf");
     let body = UploadUrlBody {
         upload_detail: vec![detail],
@@ -375,7 +375,7 @@ async fn knowledge_doc_upload_url_send_via() {
 #[tokio::test]
 async fn knowledge_doc_list_with_query_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": []}})).await;
-    use zai_rs::knowledge::document_list::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentListRequest::new().send_via(&c).await;
     s.shutdown().await;
 }
@@ -384,7 +384,7 @@ async fn knowledge_doc_list_with_query_send_via() {
 #[tokio::test]
 async fn knowledge_doc_image_list_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": []})).await;
-    use zai_rs::knowledge::document_image_list::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentImageListRequest::new("doc1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -393,7 +393,7 @@ async fn knowledge_doc_image_list_send_via() {
 #[tokio::test]
 async fn knowledge_doc_reembedding_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"document_id": "d1"}})).await;
-    use zai_rs::knowledge::document_reembedding::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentReembeddingRequest::new("doc1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -402,7 +402,7 @@ async fn knowledge_doc_reembedding_send_via() {
 #[tokio::test]
 async fn knowledge_doc_retrieve_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"document_id": "d1"}})).await;
-    use zai_rs::knowledge::document_retrieve::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentRetrieveRequest::new("doc1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -411,7 +411,7 @@ async fn knowledge_doc_retrieve_send_via() {
 #[tokio::test]
 async fn knowledge_doc_delete_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": null})).await;
-    use zai_rs::knowledge::document_delete::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentDeleteRequest::new("doc1").send_via(&c).await;
     s.shutdown().await;
 }
@@ -548,7 +548,7 @@ async fn file_parse_sync_send_via() {
     let dir = tempfile::tempdir().unwrap();
     let doc = dir.path().join("test.txt");
     std::fs::write(&doc, b"hello").unwrap();
-    use zai_rs::file::parse_sync::*;
+    use zai_rs::file::*;
     let _ = FileParseSyncRequest::new(json!({"file_id": "f1"}))
         .send_via(&c)
         .await;
@@ -849,7 +849,7 @@ fn sse_parser_finish_incomplete() {
 // --- Knowledge document upload file builder ---
 #[test]
 fn knowledge_doc_upload_file_builder() {
-    use zai_rs::knowledge::document_upload_file::*;
+    use zai_rs::knowledge::*;
     let mut req = DocumentUploadFileRequest::new("kb-1")
         .add_file_path(std::path::PathBuf::from("/tmp/test.pdf"))
         .with_options(UploadFileOptions::default());
@@ -1043,28 +1043,28 @@ fn response_usage_all_fields() {
 // --- More knowledge builder coverage ---
 #[test]
 fn knowledge_update_full_builder() {
-    use zai_rs::knowledge::update::*;
+    use zai_rs::knowledge::*;
     let req = KnowledgeUpdateRequest::new("kb-1").with_name("new-name");
     let _ = req;
 }
 
 #[test]
 fn knowledge_retrieve_simple() {
-    use zai_rs::knowledge::retrieve::*;
+    use zai_rs::knowledge::*;
     let req = KnowledgeRetrieveRequest::new("kb-1");
     let _ = req;
 }
 
 #[test]
 fn knowledge_delete_simple() {
-    use zai_rs::knowledge::delete::*;
+    use zai_rs::knowledge::*;
     let req = KnowledgeDeleteRequest::new("kb-1");
     let _ = req;
 }
 
 #[test]
 fn knowledge_capacity_simple() {
-    use zai_rs::knowledge::capacity::*;
+    use zai_rs::knowledge::*;
     let req = KnowledgeCapacityRequest::new();
     let _ = req;
 }
@@ -1175,7 +1175,7 @@ fn function_tool_builder_chain() {
 // --- Knowledge document upload file builder deeper ---
 #[test]
 fn knowledge_doc_upload_with_options() {
-    use zai_rs::knowledge::document_upload_file::*;
+    use zai_rs::knowledge::*;
     let opts = UploadFileOptions::default();
     let req = DocumentUploadFileRequest::new("kb-1")
         .add_file_path(std::path::PathBuf::from("/tmp/a.pdf"))
@@ -1555,7 +1555,7 @@ async fn knowledge_doc_upload_file_send_via() {
     let dir = tempfile::tempdir().unwrap();
     let f = dir.path().join("test.pdf");
     std::fs::write(&f, b"fake-pdf").unwrap();
-    use zai_rs::knowledge::document_upload_file::*;
+    use zai_rs::knowledge::*;
     let _ = DocumentUploadFileRequest::new("kb-1")
         .add_file_path(f)
         .send_via(&c)

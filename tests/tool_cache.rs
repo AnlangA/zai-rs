@@ -1,4 +1,7 @@
-//! P09 acceptance: tool cache semantics (plan P09.6-P09.8, P09.11, P09.14).
+//! Standalone reference tests for canonical JSON and SHA-256 cache-key inputs.
+//!
+//! The helpers here are local fixtures and do not exercise `ToolCallCache`'s
+//! internal key representation.
 //! Requires `--features toolkits`.
 
 #![cfg(feature = "toolkits")]
@@ -82,7 +85,7 @@ fn object_key_whitespace_is_not_trimmed_by_canonical() {
 
 #[test]
 fn schema_cache_key_is_sha256() {
-    // Plan P09.13: schema cache uses full bytes equality + SHA-256, not u64 hash.
+    // A SHA-256 digest has a stable 64-character lowercase hexadecimal form.
     let mut hasher = Sha256::new();
     hasher.update(b"{\"type\":\"object\"}");
     let hash = to_hex(&hasher.finalize());

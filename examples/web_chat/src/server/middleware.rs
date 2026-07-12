@@ -2,12 +2,7 @@
 
 use std::time::Instant;
 
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::{IntoResponse, Response},
-};
+use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use tracing::{info, warn};
 
 /// Request logging middleware
@@ -72,8 +67,7 @@ pub async fn cors_middleware(req: Request, next: Next) -> Result<Response, Statu
 
 /// Rate limiting middleware
 pub async fn rate_limit_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
-    // This is a placeholder for rate limiting
-    // In a real application, you would implement proper rate limiting here
+    // Example hook only: this middleware does not enforce a rate limit.
 
     let response = next.run(req).await;
     Ok(response)

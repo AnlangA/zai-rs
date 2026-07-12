@@ -1,5 +1,5 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::model::text_to_audio::{model::GlmTts, *};
+use zai_rs::model::text_to_audio::{GlmTts, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .try_init();
     }
 
-    // Credentials and transport come from the environment via ZaiClient (P05).
+    // ZaiClient loads credentials and transport configuration from the environment.
     let client = ZaiClient::from_env()?;
 
     // Build TTS request

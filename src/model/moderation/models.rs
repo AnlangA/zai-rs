@@ -86,6 +86,9 @@ pub struct ModerationRequest {
 
 impl ModerationRequest {
     /// Create a new moderation request with text content.
+    ///
+    /// [`validate`](Self::validate) currently measures the 2,000-unit limit in
+    /// UTF-8 bytes (`String::len`), not Unicode characters.
     pub fn new_text(text: impl Into<String>) -> Self {
         Self {
             model: ModerationModel::default(),

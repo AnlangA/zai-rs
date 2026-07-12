@@ -1,18 +1,17 @@
-//! Tracing redaction (plan P03.10).
+//! Standalone helpers for sanitizing correlation identifiers before tracing.
 //!
-//! The Transport only ever records fixed metadata: method, normalized route
-//! template, status, byte count, attempt, elapsed and the server correlation
-//! `request_id`. It NEVER logs the materialized URL, header values, query
-//! values, user-supplied path/resource IDs, the request body or the response
-//! body.
-//!
-//! `request_id` is sanitized to at most [`REQUEST_ID_MAX`] printable ASCII
-//! bytes (control chars replaced).
+//! The buffered HTTP transport does not currently call these helpers or emit a
+//! correlation-ID trace. Callers that add such tracing can use
+//! [`sanitize_request_id`] to retain at most [`REQUEST_ID_MAX`] printable ASCII
+//! bytes.
 
 use crate::client::transport::limits::REQUEST_ID_MAX;
 
-/// Sanitize a server correlation `request_id`: keep at most 128 bytes of
-/// printable ASCII, replacing control characters with `_`.
+/// Sanitize a server correlation `request_id`.
+///
+/// Non-printable and non-ASCII characters are removed, then the result is
+/// truncated to at most 128 printable ASCII bytes. An input with no retained
+/// characters produces an empty string.
 pub fn sanitize_request_id(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
@@ -20,8 +19,7 @@ pub fn sanitize_request_id(raw: &str) -> String {
         .take(REQUEST_ID_MAX)
         .collect();
     if cleaned.is_empty() {
-        // A non-printable / overlong id is dropped to None upstream; here we
-        // return empty to signal "no usable id".
+        // Empty signals that no usable identifier remains.
         String::new()
     } else {
         cleaned

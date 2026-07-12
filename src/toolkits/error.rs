@@ -1,4 +1,4 @@
-//! Enhanced error handling with better Rust idioms
+//! Error types and context builders for tool operations.
 
 use std::borrow::Cow;
 
@@ -7,7 +7,7 @@ use thiserror::Error;
 /// Result type for tool operations
 pub type ToolResult<T> = Result<T, ToolError>;
 
-/// Error severity levels for better error handling strategies
+/// Coarse severity used to select an error-handling strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ErrorSeverity {
@@ -21,7 +21,7 @@ pub enum ErrorSeverity {
     Critical,
 }
 
-/// Enhanced error type with better context and error chaining
+/// Error returned while registering, validating, or executing a tool.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ToolError {
@@ -147,7 +147,7 @@ impl ToolError {
     }
 }
 
-/// Error context builder for better error reporting
+/// Builder that attaches tool and operation context to a [`ToolError`].
 pub struct ErrorContext {
     tool_name: Option<String>,
     operation: Option<String>,

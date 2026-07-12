@@ -1,6 +1,6 @@
 //! Chat API routes
 
-use std::{convert::Infallible, sync::Arc, time::Instant};
+use std::{convert::Infallible, time::Instant};
 
 use axum::{
     extract::State,
@@ -51,8 +51,7 @@ pub async fn send_message(
     let user_message = zai_rs::model::TextMessage::user(&request.message);
     session.add_message(user_message.clone());
 
-    // Build chat completion client (P05: the ZaiClient owns the key and is
-    // supplied to `.send_via` at send time; the builder no longer takes a key).
+    // Build the request separately from the shared ZaiClient used at send time.
     let messages = session.get_recent_messages(50); // Keep last 50 messages for context
 
     let client = crate::server::models::ChatCompletionBuilder::new()
@@ -129,10 +128,8 @@ pub async fn stream_message(
     let user_message = zai_rs::model::TextMessage::user(&request.message);
     session.add_message(user_message.clone());
 
-    // Build chat completion client (P05: the ZaiClient owns the key and is
-    // supplied via `.send_via`; P08: streaming was removed temporarily, so the
-    // SSE stream now emits the full response as a single content chunk plus a
-    // terminal `done` chunk instead of incrementally per-stream-delta).
+    // This endpoint wraps one complete model response in SSE: one content chunk
+    // followed by a terminal `done` chunk. It does not forward model deltas.
     let messages = session.get_recent_messages(50);
 
     let client = crate::server::models::ChatCompletionBuilder::new()

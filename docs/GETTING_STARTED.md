@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### 4. 语音转文字
 
 ```rust,ignore
-use zai_rs::model::audio_to_text::{model::GlmAsr, response::AudioToTextResponse, *};
+use zai_rs::model::audio_to_text::{AudioToTextResponse, GlmAsr, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

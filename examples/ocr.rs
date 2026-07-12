@@ -1,9 +1,5 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::model::ocr::{
-    request::{OcrLanguageType, OcrToolType},
-    response::OcrResponse,
-    *,
-};
+use zai_rs::model::ocr::{OcrLanguageType, OcrResponse, OcrToolType, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== OCR Handwriting Recognition Example ===\n");
 
-    // Build and send OCR request (P05: credentials live on the client).
+    // Build the OCR request; ZaiClient supplies credentials and transport.
     let request = OcrRequest::new()
         .with_file_path(&file_path)
         .with_tool_type(OcrToolType::HandWrite)

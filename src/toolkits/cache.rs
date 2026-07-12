@@ -1,4 +1,4 @@
-//! Tool call result cache with intelligent invalidation
+//! Concurrent tool-call result cache with TTL and FIFO eviction.
 
 use std::{
     collections::VecDeque,
@@ -14,7 +14,8 @@ use serde_json::Value;
 pub struct CacheKey {
     /// Name of the tool.
     pub tool_name: String,
-    /// Normalized (whitespace-trimmed) JSON arguments string.
+    /// Canonically serialized arguments with surrounding whitespace removed
+    /// from object keys.
     pub arguments: String,
 }
 
@@ -67,10 +68,10 @@ impl CacheEntry {
     }
 }
 
-/// Intelligent tool call result cache
+/// Concurrent in-memory cache for tool-call results.
 ///
 /// Concurrent (`DashMap`-backed) cache of tool-call results with per-entry TTL,
-/// O(1) FIFO eviction at capacity, and hit/miss statistics. Cloning is cheap
+/// O(1) FIFO eviction at capacity, and per-entry hit counts. Cloning is cheap
 /// (an `Arc` bump) — all clones share the same cached entries, so a
 /// [`ToolExecutor`](crate::toolkits::executor::ToolExecutor) cloned per tool
 /// call does not deep-copy the cache.
@@ -87,10 +88,8 @@ pub struct ToolCallCache {
 struct CacheState {
     entries: dashmap::DashMap<CacheKey, CacheEntry>,
     /// Insertion-order queue driving O(1) FIFO eviction (see
-    /// [`ToolCallCache::evict_oldest`]). Mirrors the prior timestamp-based
-    /// eviction, which was insertion-ordered since `get` does not refresh the
-    /// timestamp. Stale keys (removed via expiry/invalidate before eviction)
-    /// are skipped lazily.
+    /// [`ToolCallCache::evict_oldest`]). Reads do not refresh position, and stale
+    /// keys removed through expiry or invalidation are skipped lazily.
     insertion_order: Mutex<VecDeque<CacheKey>>,
 }
 

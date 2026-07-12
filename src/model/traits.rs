@@ -62,20 +62,20 @@ pub trait Bounded {}
 
 /// Indicates that a model supports synchronous chat completion.
 ///
-/// Models implementing this trait can be used with the chat completion API
-/// API for real-time conversational interactions.
+/// Models implementing this trait can be used with the chat-completion API for
+/// real-time conversational interactions.
 pub trait Chat {}
 
 /// Indicates that a model supports asynchronous chat completion.
 ///
-/// Models implementing this trait can be used with the async chat completion
-/// API API for queued, background processing of conversational requests.
+/// Models implementing this trait can be used with the asynchronous
+/// chat-completion API for queued conversational requests.
 pub trait AsyncChat {}
 
 /// Indicates that a model supports thinking/reasoning capabilities.
 ///
-/// Models implementing this trait can utilize advanced reasoning modes
-/// that show step-by-step thinking processes for complex problem solving.
+/// Models implementing this trait can enable the provider's extended reasoning
+/// mode. Whether reasoning text is returned is model- and endpoint-dependent.
 pub trait ThinkEnable {}
 
 /// Indicates that a model supports the `reasoning_effort` parameter, which
@@ -148,13 +148,9 @@ pub struct StreamOff;
 impl StreamState for StreamOn {}
 impl StreamState for StreamOff {}
 
-// P05 cleanup: the HttpClient trait is removed. SseStreamable was its only
-// consumer and the SSE streaming path is rebuilt in P08. The trait definition
-// and stream_ext are retained as empty stubs for backward-compat until P08
-// fully replaces them.
-
-/// Marker trait retained for backward compatibility — the SSE streaming path
-/// is rebuilt in P08. No types implement this in the current codebase.
+/// Legacy SSE marker retained for source compatibility.
+///
+/// It has no methods, and no type in this crate currently implements it.
 pub trait SseStreamable {}
 
 /// Macro for defining AI model types with standard implementations.

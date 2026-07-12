@@ -20,9 +20,8 @@ async fn main() -> anyhow::Result<()> {
             .init();
     }
 
-    // Streamable-HTTP server transport (the SSE server transport was removed in
-    // rmcp 1.0). Each client session gets a fresh `Counter` handler from the
-    // factory closure; the service is mounted at `/mcp`.
+    // Each Streamable HTTP client session gets a fresh `Counter` handler from
+    // the factory closure; the service is mounted at `/mcp`.
     let service = StreamableHttpService::new(
         || Ok(Counter::new()),
         LocalSessionManager::default().into(),

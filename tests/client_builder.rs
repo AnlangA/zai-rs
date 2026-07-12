@@ -1,4 +1,4 @@
-//! Integration tests for the new 0.5 `ZaiClient` / `ZaiClientBuilder` (plan P02).
+//! Integration tests for `ZaiClient` and `ZaiClientBuilder`.
 //!
 //! These exercise the builder invariants (blank-key rejection, validated
 //! endpoints, insecure-loopback, additional-header allow-list, secret redaction)

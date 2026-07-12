@@ -1,9 +1,9 @@
-//! P04 acceptance: agent v1 contract (plan §13.2 / P04 验证 — agent_contract).
+//! Serialization and validation tests for the agent API contract.
 
 use zai_rs::agent::{
     AgentAsyncResult, AgentConversationResponse, AgentInvokeRequest, AgentInvokeResponse,
-    NonStreaming, message, response::validate_async_result,
-    response::validate_conversation_response, response::validate_invoke_response,
+    NonStreaming, message, validate_async_result, validate_conversation_response,
+    validate_invoke_response,
 };
 
 #[test]
@@ -85,9 +85,7 @@ fn conversation_success_validates() {
 
 #[test]
 fn old_crud_symbols_are_absent() {
-    // The removed 0.4 surface (create/update/delete_agent, AgentClient, history)
-    // must not exist. These would be compile errors if re-added — this test is
-    // a presence check that the new module does NOT export them.
-    // (If any of these names existed, the `use` above would resolve them.)
+    // Keep at least one direct use of the current message helper in this
+    // contract suite; removed legacy CRUD symbols are intentionally not used.
     let _ = message("user", "x");
 }

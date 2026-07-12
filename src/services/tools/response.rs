@@ -1,4 +1,4 @@
-//! Tools response types (plan P06).
+//! Response types for document layout parsing and content extraction.
 //!
 //! All fields use `#[serde(default)]` for forward-compatibility.
 

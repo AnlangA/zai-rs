@@ -1,4 +1,4 @@
-//! Enhanced tool executor with type-safe builder pattern
+//! Tool registry and executor with caching, retries, and bounded concurrency.
 
 use std::{
     sync::Arc,
@@ -32,7 +32,8 @@ use crate::{
 ///
 /// Prevents a model that emits many tool calls in one turn from fanning them
 /// all out at once and overwhelming downstream (e.g. MCP) services. Network
-/// calls queue on the semaphore rather than spawning unbounded tasks.
+/// Calls queue on the semaphore after their Tokio tasks have been spawned; this
+/// bounds active tool executions, not the number of queued tasks.
 const MAX_CONCURRENT_TOOL_CALLS: usize = 8;
 
 fn task_panic_tool_message() -> TextMessage {
@@ -47,7 +48,7 @@ fn task_panic_tool_message() -> TextMessage {
     )
 }
 
-/// Enhanced retry configuration with exponential backoff
+/// Retry configuration with exponential backoff.
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
     /// Maximum number of retry attempts after the first try.
@@ -92,7 +93,7 @@ impl RetryConfig {
     }
 }
 
-/// Execution configuration with type-safe builder
+/// Tool execution configuration.
 #[derive(Debug, Clone)]
 pub struct ExecutionConfig {
     /// Per-call execution timeout (`None` = no timeout).
@@ -108,7 +109,7 @@ pub struct ExecutionConfig {
     /// Whether to validate input parameters against the tool schema.
     ///
     /// **Reserved:** schema validation currently fires whenever the
-    /// `tool-validation` Cargo feature is enabled (it lives inside
+    /// `toolkits` Cargo feature is enabled (it lives inside
     /// `FunctionTool::execute_json`). This flag is reserved for a future
     /// per-call opt-out and does not yet suppress validation on its own.
     pub validate_parameters: bool,
@@ -131,7 +132,7 @@ impl Default for ExecutionConfig {
     }
 }
 
-/// Execution result with enhanced metadata
+/// Detailed outcome of a tool execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionResult {
     /// Name of the tool that was executed.
@@ -193,7 +194,7 @@ impl ExecutionResult {
     }
 }
 
-/// Enhanced tool executor with built-in registry and fluent API
+/// Tool registry and executor with optional result caching.
 #[derive(Clone)]
 pub struct ToolExecutor {
     tools: Arc<DashMap<String, Arc<dyn DynTool>>>,
@@ -304,7 +305,7 @@ impl ToolExecutor {
         self.tools.contains_key(name)
     }
 
-    /// List tool names
+    /// List tool names in unspecified order.
     pub fn tool_names(&self) -> Vec<String> {
         self.tools.iter().map(|entry| entry.key().clone()).collect()
     }
@@ -313,7 +314,12 @@ impl ToolExecutor {
         self.tools.get(name).map(|t| Arc::clone(t.value()))
     }
 
-    /// Execute a tool with detailed result and exponential backoff
+    /// Execute a tool with caching, timeout, and exponential backoff.
+    ///
+    /// Tool-level failures are returned as `Ok(ExecutionResult)` with
+    /// [`ExecutionResult::success`] set to `false`. Use
+    /// [`ToolExecutor::execute_simple`] when failures should be returned as
+    /// [`ToolError`] values instead.
     #[tracing::instrument(skip(self, input))]
     pub async fn execute(
         &self,
@@ -523,7 +529,7 @@ impl ToolExecutor {
     /// Behavior:
     /// - Parses each ToolCallMessage's function.arguments (stringified JSON
     ///   supported)
-    /// - Runs all tools concurrently using this executor
+    /// - Runs up to eight tools concurrently using this executor
     /// - Captures errors per-call and encodes them as JSON: { "error": {
     ///   "type": "...", "message": "..." } }
     /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when
@@ -621,7 +627,7 @@ impl ToolExecutor {
     /// Behavior:
     /// - Parses each ToolCallMessage's function.arguments (stringified JSON
     ///   supported)
-    /// - Runs all tools concurrently using this executor
+    /// - Runs up to eight tools concurrently using this executor
     /// - Preserves the original order of tool calls in results
     /// - Captures errors per-call and encodes them as JSON
     /// - Preserves tool_call `id` by emitting TextMessage::tool_with_id when
@@ -638,11 +644,8 @@ impl ToolExecutor {
         let mut set = JoinSet::new();
         let permits = Arc::new(Semaphore::new(MAX_CONCURRENT_TOOL_CALLS));
 
-        // Spawn each call carrying its original index, so results can be placed
-        // back in input order while still isolating panics per task (mirroring
-        // `execute_tool_calls_parallel`). Previously this used `join_all` over
-        // inline futures, so a panicking handler unwound the whole call and
-        // discarded every result.
+        // Carry each call's original index so results can be restored to input
+        // order while spawned tasks isolate handler panics from sibling calls.
         for (idx, tc) in calls.iter().enumerate() {
             let tc = tc.clone();
             let this = self.clone();
@@ -697,7 +700,7 @@ impl ToolExecutor {
         Some(Tools::Function { function: func })
     }
 
-    /// Export all registered tools as a Vec<Tools::Function>
+    /// Export all registered tools as function definitions in unspecified order.
     pub fn export_all_tools_as_functions(&self) -> Vec<Tools> {
         self.tools
             .iter()
@@ -805,7 +808,10 @@ impl ExecutorBuilder {
         self
     }
 
-    /// Enable or disable logging
+    /// Set the reserved logging flag.
+    ///
+    /// This currently has no effect; tracing output is controlled by the
+    /// installed subscriber and its filter.
     pub fn logging(mut self, enabled: bool) -> Self {
         self.config.enable_logging = enabled;
         self

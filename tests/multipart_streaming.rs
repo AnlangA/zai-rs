@@ -1,4 +1,4 @@
-//! P07 acceptance: streaming multipart upload tests (plan P07 verification).
+//! Streaming multipart-upload tests.
 
 use tempfile::tempdir;
 

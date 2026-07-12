@@ -1,9 +1,9 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::model::audio_to_text::{model::GlmAsr, response::AudioToTextResponse, *};
+use zai_rs::model::audio_to_text::{AudioToTextResponse, GlmAsr, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Credentials and transport come from the environment via ZaiClient (P05).
+    // ZaiClient loads credentials and transport configuration from the environment.
     let client = ZaiClient::from_env()?;
 
     // Read the input WAV/MP3 path from the first CLI argument.

@@ -122,7 +122,7 @@ fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
 /// - Skips empty lines
 /// - Strips the `"data: "` prefix and yields the remaining bytes
 ///
-/// Returns a vector of data payload slices (borrowed from `buf`).
+/// Returns owned byte vectors containing each data payload.
 /// Lines that are not prefixed with `"data: "` are silently skipped.
 ///
 /// If a `data: [DONE]` line is encountered, it is yielded as a

@@ -118,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create LLM function definitions (both tools)
     let tool_defs = executor.export_all_tools_as_functions();
 
-    // Setup LLM client (P05: ZaiClient provides credentials/transport)
+    // Set up the LLM client that provides credentials and transport.
     let zai_client = zai_rs::client::ZaiClient::from_env()?;
     let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
 

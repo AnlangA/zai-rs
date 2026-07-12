@@ -1,4 +1,4 @@
-//! Redirect policy (plan P03.11).
+//! Redirect policy for buffered HTTP requests.
 //!
 //! The SDK's reqwest client is built with `redirect::Policy::none()`, so the
 //! Transport observes every 3xx and decides per-response whether to follow.
@@ -9,8 +9,9 @@
 //! - GET/HEAD: follow 301/302/303/307/308.
 //! - Other Idempotent (PUT/DELETE/OPTIONS): follow 307/308 only.
 //! - No 301/302/303 method rewrite for any method.
-//! - Max 3 hops, same-origin only, no TLS downgrade. Cross-origin → Protocol
-//!   error; auth header not sent to the new origin.
+//! - Max 3 hops, same-origin only, no TLS downgrade. [`follow`] reports a
+//!   validation error for a disallowed target; the transport treats that redirect
+//!   response as terminal rather than following it.
 //! - The raw `Location` never enters an error or trace.
 
 use url::Url;
@@ -18,7 +19,7 @@ use url::Url;
 use crate::client::transport::retry::RetrySafety;
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
-/// Maximum redirect hops counted against the overall deadline (plan §4).
+/// Maximum redirect hops counted against the overall deadline.
 pub const MAX_REDIRECTS: u8 = 3;
 
 /// Decide whether to follow a redirect, returning the resolved target URL.

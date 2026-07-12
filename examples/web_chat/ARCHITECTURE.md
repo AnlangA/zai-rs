@@ -10,24 +10,23 @@ Modern, production-quality chat interface with Rust backend and sophisticated fr
 examples/web_chat/
 ├── src/
 │   ├── main.rs              # Entry point
+│   ├── server.rs            # Server module
 │   ├── server/
-│   │   ├── mod.rs           # Server module
 │   │   ├── config.rs        # Configuration management
 │   │   ├── error.rs         # Error types and handling
 │   │   ├── state.rs         # Application state
+│   │   ├── routes.rs        # Route definitions
 │   │   ├── routes/
-│   │   │   ├── mod.rs       # Route definitions
 │   │   │   ├── chat.rs      # Chat endpoints
 │   │   │   ├── health.rs    # Health check
-│   │   │   └── static.rs    # Static file serving
+│   │   │   ├── index.rs     # Index route
+│   │   │   └── static_files.rs # Static file serving
+│   │   ├── models.rs        # Data models
 │   │   ├── models/
-│   │   │   ├── mod.rs       # Data models
 │   │   │   ├── chat.rs      # Chat-related models
 │   │   │   └── session.rs   # Session management
-│   │   └── middleware/
-│   │       ├── mod.rs       # Middleware definitions
-│   │       ├── cors.rs      # CORS handling
-│   │       └── logging.rs   # Request logging
+│   │   ├── middleware.rs    # Middleware definitions
+│   │   └── utils.rs         # Utility functions
 ├── static/
 │   ├── index.html           # Main HTML template
 │   ├── assets/

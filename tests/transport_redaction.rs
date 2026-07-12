@@ -1,4 +1,4 @@
-//! P03 acceptance: tracing redaction (plan P03 验证 — transport_redaction).
+//! Transport tracing-redaction tests.
 //!
 //! Pins that the transport's redaction surface (route-template logging, request_id
 //! sanitization, content-type validation, error-envelope probing) never leaks a

@@ -1,12 +1,12 @@
-//! P04 acceptance: audio + knowledge contract alignment (plan §13.3–13.5).
+//! Contract-alignment tests for audio and knowledge APIs.
 
 use validator::Validate;
 
-use zai_rs::knowledge::create::{CreateKnowledgeBody, EmbeddingId};
+use zai_rs::knowledge::{CreateKnowledgeBody, EmbeddingId};
+use zai_rs::model::audio_to_text::AudioToTextBody;
 use zai_rs::model::audio_to_text::GlmAsr;
-use zai_rs::model::audio_to_text::request::AudioToTextBody;
 use zai_rs::model::text_to_audio::GlmTts;
-use zai_rs::model::text_to_audio::request::TextToAudioBody;
+use zai_rs::model::text_to_audio::TextToAudioBody;
 
 // ---------------------------------------------------------------------------
 // ASR (§13.3)

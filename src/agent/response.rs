@@ -1,12 +1,15 @@
-//! Agent v1 response types (plan §13.2).
+//! Agent v1 response types and explicit validation helpers.
 //!
 //! Success invariants:
 //! - `invoke` non-stream: `Completed` requires id+agent_id+non-empty choices;
 //!   `Pending` requires agent_id+async_id.
-//! - `async_result`: `Pending` requires agent_id+async_id; `Succeeded` adds
+//! - `async_result`: `Pending` requires agent_id+async_id; `Success` adds
 //!   non-empty choices; `Failed` is a normal task result (agent_id+async_id).
 //! - `conversation`: success requires conversation_id+agent_id+non-empty
-//!   choices; an embedded error is surfaced as `Err`.
+//!   choices.
+//!
+//! Deserialization alone does not run these checks. Call the corresponding
+//! `validate_*` function after decoding a response.
 
 use serde::Deserialize;
 
@@ -18,26 +21,39 @@ use crate::{ZaiError, ZaiResult, client::error::codes};
 pub enum AgentInvokeResponse {
     /// Completed synchronous result.
     Completed {
+        /// Invocation identifier.
         id: String,
+        /// Agent identifier returned by the service.
         agent_id: String,
+        /// Generated choices; validation requires this collection to be non-empty.
         choices: Vec<AgentChoice>,
     },
     /// Accepted as an async task; poll via `async_result`.
-    Pending { agent_id: String, async_id: String },
+    Pending {
+        /// Agent identifier returned by the service.
+        agent_id: String,
+        /// Identifier used to poll the asynchronous result endpoint.
+        async_id: String,
+    },
 }
 
 /// A single choice in an agent response.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentChoice {
+    /// Assistant message, when the response includes one.
     pub message: Option<AgentChoiceMessage>,
+    /// Service-provided reason that generation stopped.
     #[serde(default)]
     pub finish_reason: Option<String>,
 }
 
+/// Message contained in an [`AgentChoice`].
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentChoiceMessage {
+    /// Generated textual content, when present.
     #[serde(default)]
     pub content: Option<String>,
+    /// Message role reported by the service.
     #[serde(default)]
     pub role: Option<String>,
 }
@@ -46,18 +62,29 @@ pub struct AgentChoiceMessage {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum AgentAsyncResult {
+    /// The asynchronous invocation has not finished.
     Pending {
+        /// Agent identifier returned by the service.
         agent_id: String,
+        /// Asynchronous task identifier.
         async_id: String,
     },
+    /// The invocation completed successfully.
     Success {
+        /// Agent identifier returned by the service.
         agent_id: String,
+        /// Asynchronous task identifier.
         async_id: String,
+        /// Generated choices; validation requires this collection to be non-empty.
         choices: Vec<AgentChoice>,
     },
+    /// The invocation reached a failed terminal state.
     Failed {
+        /// Agent identifier returned by the service.
         agent_id: String,
+        /// Asynchronous task identifier.
         async_id: String,
+        /// Optional failure details supplied by the service.
         #[serde(default)]
         error: Option<AgentErrorDetail>,
     },
@@ -66,22 +93,27 @@ pub enum AgentAsyncResult {
 /// `conversation` response.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentConversationResponse {
+    /// Conversation identifier returned by the service.
     pub conversation_id: String,
+    /// Agent identifier returned by the service.
     pub agent_id: String,
+    /// Generated choices; validation requires this collection to be non-empty.
     pub choices: Vec<AgentChoice>,
 }
 
 /// Embedded error detail (conversation/async-result failed bodies).
 #[derive(Debug, Clone, Deserialize)]
 pub struct AgentErrorDetail {
+    /// Open-format service error code.
     #[serde(default)]
     pub code: Option<serde_json::Value>,
+    /// Human-readable failure message.
     #[serde(default)]
     pub message: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
-// Success-invariant validation (plan §13.2).
+// Success-invariant validation.
 // ---------------------------------------------------------------------------
 
 /// Validate an `invoke` non-stream response against the success invariant.
@@ -138,8 +170,10 @@ pub fn validate_async_result(resp: &AgentAsyncResult) -> ZaiResult<()> {
     Ok(())
 }
 
-/// Validate a `conversation` response. An embedded `error` object is surfaced
-/// as `Err`.
+/// Validate the required identifiers and choices in a `conversation` response.
+///
+/// [`AgentConversationResponse`] has no embedded error field; transport-level
+/// error-envelope handling, if needed, must happen before deserialization.
 pub fn validate_conversation_response(resp: &AgentConversationResponse) -> ZaiResult<()> {
     if resp.conversation_id.trim().is_empty()
         || resp.agent_id.trim().is_empty()
@@ -241,9 +275,8 @@ mod tests {
 
     #[test]
     fn empty_and_unknown_objects_do_not_become_success() {
-        // The success-invariant validators must reject `{}` and unknown shapes;
-        // these are enforced at the envelope-probe layer (P01.7/P03 decode), but
-        // the typed validators also guard against malformed typed decodes.
+        // The typed validators guard against malformed values constructed in
+        // code as well as values produced by permissive upstream decoding.
         let empty_completed = AgentInvokeResponse::Completed {
             id: "".into(),
             agent_id: "".into(),

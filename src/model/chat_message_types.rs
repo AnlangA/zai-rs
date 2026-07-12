@@ -1,124 +1,29 @@
-//! Comprehensive chat message types for the ZAI-RS model API.
+//! Message types for text, vision and voice chat requests.
 //!
-//! This module provides a complete suite of message types designed for various
-//! chat scenarios, including text-only conversations, vision-enabled multimodal
-//! interactions, and voice-based communications. The module is structured to
-//! support different conversation types while maintaining type safety and
-//! providing intuitive APIs for developers.
+//! Model/message compatibility is enforced by the bindings in
+//! [`chat_models`]. Constructors in this module shape
+//! the JSON payload but generally do not inspect remote media or enforce
+//! provider-specific size and duration limits.
 //!
-//! # Module Organization
+//! [`TextMessages`] is a standalone collection helper with a 1–1,000 item
+//! validator. Call [`Validate::validate`](validator::Validate::validate)
+//! explicitly when using it; adding a message does not validate automatically.
 //!
-//! The module is organized into several key components:
+//! # Examples
 //!
-//! - **TextMessages**: Collections of text-based chat messages with validation
-//!   constraints
-//! - **TextMessage**: Individual messages in text conversations (user,
-//!   assistant, system, tool)
-//! - **VisionMessage**: Messages supporting multimedia content (images, videos,
-//!   files)
-//! - **VisionRichContent**: Rich content types for vision-enabled conversations
-//! - **VoiceMessage**: Messages supporting audio input/output for voice
-//!   interactions
-//! - **VoiceRichContent**: Content types for voice-enabled conversations
-//! - **ToolCall**: Structured tool invocation capabilities for function calling
-//!
-//! # Core Features
-//!
-//! ## Type Safety
-//! All message types are strongly typed with compile-time validation to ensure
-//! correct usage patterns. The API leverages Rust's type system to prevent
-//! invalid message constructions and serialization.
-//!
-//! ## Serialization Support
-//! All types implement `Serialize` for JSON serialization, with careful
-//! attention to:
-//! - Proper field naming conventions (snake_case for JSON, camelCase for Rust)
-//! - Conditional serialization of optional fields
-//! - Custom serialization logic for complex types like `ToolCall`
-//!
-//! ## Validation
-//! Built-in validation ensures data integrity:
-//! - Message count limits for collections
-//! - Required field validation for tool calls
-//! - Format validation for audio/video content
-//!
-//! # Usage Examples
-//!
-//! ## Basic Text Conversation
-//! ```text
+//! ```
 //! use zai_rs::model::chat_message_types::*;
 //!
-//! let messages = TextMessages::new(TextMessage::user("Hello!"))
-//!     .add_message(TextMessage::assistant("Hi there!"))
-//!     .add_message(TextMessage::user("How can you help me?"));
-//! ```
+//! let text = TextMessage::user("Hello!");
+//! let vision = VisionMessage::new_user()
+//!     .add_content(VisionRichContent::image("https://example.com/image.jpg"));
+//! let voice = VoiceMessage::new_user()
+//!     .add_content(VoiceRichContent::input_audio(b"audio_data", VoiceFormat::MP3));
 //!
-//! ## Vision-Enabled Conversation
-//! ```text
-//! let image_content = VisionRichContent::image("https://example.com/image.jpg");
-//! let vision_message = VisionMessage::user(image_content);
-//! ```
-//!
-//! ## Voice-Enabled Conversation
-//! ```text
-//! let audio_content = VoiceRichContent::input_audio(b"audio_data", VoiceFormat::MP3);
-//! let voice_message = VoiceMessage::user(audio_content);
-//! ```
-//!
-//! ## Tool Calling
-//! ```text
 //! let function_params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
 //! let tool_call = ToolCall::new_function("call_123", function_params);
 //! let assistant_msg = TextMessage::assistant_with_tools(None, vec![tool_call]);
 //! ```
-//!
-//! # Message Type Compatibility
-//!
-//! Different message types are designed for specific use cases:
-//!
-//! | Message Type | Use Case | Content Support | Model Compatibility |
-//! |--------------|----------|------------------|-------------------|
-//! | TextMessage | General chat | Text only | All models |
-//! | VisionMessage | Multimodal | Text, Images, Videos, Files | Vision-capable models |
-//! | VoiceMessage | Voice interactions | Text, Audio | Voice-capable models |
-//!
-//! # Validation and Constraints
-//!
-//! ## Message Collections
-//! - `TextMessages`: 1-1000 messages per collection
-//! - Automatic validation at compile and runtime
-//!
-//! ## Multimedia Content
-//! - Images: Max 5MB, 6000x6000px, JPG/PNG formats
-//! - Videos: Max 200MB, MP4 format, model-specific limits
-//! - Audio: Max 10 minutes, WAV/MP3 formats
-//! - Files: PDF, Word documents, max 50 files
-//!
-//! ## Tool Calling
-//! - Function calls require both name and parameters
-//! - Web search and retrieval tools have specific requirements
-//! - Custom serialization ensures proper JSON structure
-//!
-//! # Error Handling
-//!
-//! The module provides clear error handling through:
-//! - Panic messages for invalid data construction
-//! - Serialization errors for malformed tool calls
-//! - Validation errors for constraint violations
-//!
-//! # Performance Considerations
-//!
-//! - Zero-copy serialization where possible
-//! - Efficient string handling with `impl Into<String>` parameters
-//! - Conditional serialization to minimize JSON size
-//! - Base64 encoding handled efficiently for binary data
-//!
-//! # Extensibility
-//!
-//! The module is designed to be extensible:
-//! - New message types can be added without breaking existing code
-//! - New content formats can be supported through enum variants
-//! - Tool types can be extended for new capabilities
 
 use base64::{Engine, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -126,9 +31,9 @@ use validator::*;
 
 /// A collection of text messages with validation constraints.
 ///
-/// This structure wraps a vector of [`TextMessage`] instances and ensures that
-/// the collection contains between 1 and 1000 messages, as required by most
-/// chat API endpoints.
+/// This structure wraps a vector of [`TextMessage`] instances. Its
+/// [`Validate`] implementation checks that the collection contains between 1
+/// and 1,000 messages; constructors do not run that check automatically.
 ///
 /// # Validation
 ///
@@ -166,8 +71,8 @@ impl TextMessages {
 
     /// Adds a message to the collection.
     ///
-    /// This method provides a fluent interface for building message collections
-    /// while maintaining encapsulation of the internal Vec structure.
+    /// Call [`Validate::validate`] after building if the collection may approach
+    /// the 1,000-message limit.
     ///
     /// # Arguments
     ///
@@ -428,27 +333,21 @@ pub enum VisionMessage {
     },
 }
 
-/// Represents video URL information.
-///
-/// This structure contains the URL information for video content.
+/// URL descriptor nested inside a `video_url` content part.
 #[derive(Debug, Clone, Serialize)]
 pub struct VideoUrlInfo {
     /// The URL of the video file.
     pub url: String,
 }
 
-/// Represents image URL information.
-///
-/// This structure contains the URL information for image content.
+/// URL or data-URL descriptor nested inside an `image_url` content part.
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageUrlInfo {
     /// The URL of the image file.
     pub url: String,
 }
 
-/// Represents file URL information.
-///
-/// This structure contains the URL information for file content.
+/// URL descriptor nested inside a `file_url` content part.
 #[derive(Debug, Clone, Serialize)]
 pub struct FileUrlInfo {
     /// The URL of the file.
@@ -474,36 +373,20 @@ pub enum VisionRichContent {
         /// The text value.
         text: String,
     },
-    /// Image URL or Base64 encoded image data.
+    /// Image URL or base64 data URL.
     ///
-    /// Upload constraints: Each image must be under 5MB with maximum resolution
-    /// of 6000*6000 pixels. Supported formats: jpg, png, jpeg.
-    ///
-    /// Model-specific limits:
-    /// - GLM4.5V: maximum 50 images
-    /// - GLM-4V-Plus-0111: maximum 5 images
-    /// - GLM-4V-Flash: maximum 1 image (Base64 encoding not supported)
+    /// Media limits vary by model and are enforced by the service, not by this
+    /// constructor.
     ImageUrl {
         /// Image URL / base64 descriptor.
         image_url: ImageUrlInfo,
     },
-    /// Video URL for video content.
-    ///
-    /// Video size limits:
-    /// - GLM-4.5V: maximum 200MB
-    /// - GLM-4V-Plus: maximum 20MB, video duration not exceeding 30 seconds
-    /// - Other multimodal models: maximum 200MB
-    ///
-    /// Supported format: mp4
+    /// Video URL. Supported formats and size limits vary by model.
     VideoUrl {
         /// Video URL descriptor.
         video_url: VideoUrlInfo,
     },
-    /// File URL for document content.
-    ///
-    /// File URL address, Base64 encoding is not supported.
-    /// Supported formats: PDF, Word, and other document formats.
-    /// Maximum 50 files supported.
+    /// Document URL; this variant does not accept base64 data.
     FileUrl {
         /// File URL descriptor.
         file_url: FileUrlInfo,
@@ -625,10 +508,13 @@ impl VisionMessage {
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```
+    /// use zai_rs::model::chat_message_types::{VisionMessage, VisionRichContent};
+    ///
     /// let image = VisionRichContent::image("https://example.com/image.jpg");
     /// let text = VisionRichContent::text("describe this image");
-    /// let msg = VisionMessage.add_content(image)
+    /// let msg = VisionMessage::new_user()
+    ///     .add_content(image)
     ///     .add_content(text);
     /// ```
     pub fn add_content(self, rich_content: VisionRichContent) -> Self {
@@ -637,9 +523,7 @@ impl VisionMessage {
                 content.push(rich_content);
                 VisionMessage::User { content }
             },
-            // Only a `User` message carries rich content; appending to any
-            // other variant is a no-op rather than silently replacing it with
-            // an empty `User` (which used to discard a System/Assistant msg).
+            // Only user messages carry rich content; preserve every other role.
             _ => self,
         }
     }
@@ -740,7 +624,7 @@ impl VisionMessage {
 /// ```text
 /// // User message with audio input
 /// let audio_content = VoiceRichContent::input_audio(b"audio_data", VoiceFormat::MP3);
-/// let user_msg = VoiceMessage::user(audio_content);
+/// let user_msg = VoiceMessage::new_user().add_content(audio_content);
 ///
 /// // Assistant message with audio response
 /// let audio_response = Audio::with_id("audio_123");
@@ -783,13 +667,9 @@ pub enum VoiceMessage {
 /// Content is serialized as JSON objects with a "type" field that indicates
 /// the content type ("text" or "input_audio").
 ///
-/// # Audio Processing
-///
-/// The `InputAudio` variant provides type-safe audio input handling:
-/// - Automatic base64 encoding of binary audio data
-/// - Support for WAV and MP3 formats
-/// - Validation of audio duration limits (10 minutes maximum)
-/// - Token calculation for audio content (1 second = 12.5 tokens)
+/// [`input_audio`](Self::input_audio) base64-encodes the supplied bytes. It does
+/// not inspect the media duration or verify that the bytes match the selected
+/// format.
 ///
 /// # Model Compatibility
 ///
@@ -873,7 +753,7 @@ impl VoiceRichContent {
     ///
     /// # Arguments
     ///
-    /// * `data` - The base64 encoded audio data as bytes that will be encoded
+    /// * `data` - Raw audio bytes; this method base64-encodes them
     /// * `format` - The audio format
     ///
     /// # Returns
@@ -1005,31 +885,7 @@ impl VoiceFormat {
     }
 }
 
-/// Represents audio response data generated by the assistant.
-///
-/// This structure contains information about audio responses produced by
-/// voice-capable AI models. It's used to identify and reference specific audio
-/// segments in conversations.
-///
-/// # Audio ID Management
-///
-/// The `id` field serves as a unique identifier for audio responses:
-/// - When present: Allows referencing specific audio segments
-/// - When absent: Indicates the audio is anonymous or doesn't need specific
-///   reference
-///
-/// # Use Cases
-///
-/// - **Audio playback**: Use the ID to retrieve and play specific audio
-///   responses
-/// - **Conversation history**: Reference audio segments in chat logs
-/// - **Audio caching**: Store and retrieve audio content using the ID
-/// - **Analytics**: Track which audio responses were played or requested
-///
-/// # Serialization
-///
-/// The struct uses conditional serialization to omit the `id` field when it's
-/// `None`, resulting in cleaner JSON output for anonymous audio responses.
+/// Reference to audio previously generated by a voice-capable model.
 ///
 /// # Examples
 ///
@@ -1047,10 +903,7 @@ impl VoiceFormat {
 /// ```
 #[derive(Debug, Clone, Serialize)]
 pub struct Audio {
-    /// Optional unique identifier for the audio response.
-    ///
-    /// When present, this ID can be used to reference specific audio segments
-    /// in playback, caching, or analytics systems.
+    /// Provider-issued audio identifier used in conversation history.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 }
@@ -1178,9 +1031,7 @@ impl VoiceMessage {
                 content.push(rich_content);
                 VoiceMessage::User { content }
             },
-            // Only a `User` message carries rich content; appending to any
-            // other variant is a no-op rather than silently replacing it with
-            // an empty `User` (which used to discard a System/Assistant msg).
+            // Only user messages carry rich content; preserve every other role.
             _ => self,
         }
     }
@@ -1372,36 +1223,8 @@ pub enum ToolCallType {
 
 /// Parameters for a function call.
 ///
-/// This structure contains the information needed to invoke a specific
-/// function, including the function name and its arguments serialized as a JSON
-/// string.
-///
-/// # Structure
-///
-/// The function parameters are designed to be flexible and work with various
-/// function calling scenarios:
-///
-/// - **name**: Identifies the function to be called
-/// - **arguments**: JSON-serialized parameters for the function
-///
-/// # JSON Serialization
-///
-/// The `arguments` field must contain valid JSON that can be parsed by the
-/// target function. Common patterns include:
-///
-/// ```json
-/// {"location": "Tokyo", "units": "celsius"}
-/// {"query": "weather forecast", "limit": 5}
-/// {"user_id": "12345", "action": "get_profile"}
-/// ```
-///
-/// # Validation
-///
-/// While this struct doesn't perform validation itself, the calling system
-/// should ensure that:
-/// - The function name exists and is callable
-/// - The arguments match the expected schema for the function
-/// - The JSON is valid and properly formatted
+/// The `arguments` value is serialized as a string exactly as supplied. The SDK
+/// does not parse or validate it against the function schema.
 ///
 /// # Examples
 ///
@@ -1428,9 +1251,8 @@ pub struct FunctionParams {
 
     /// JSON string containing the function arguments.
     ///
-    /// This must be valid JSON that can be parsed by the target function.
-    /// The structure should match the expected parameter schema for the
-    /// function.
+    /// The caller is responsible for supplying valid JSON that matches the
+    /// function's parameter schema.
     arguments: String,
 }
 

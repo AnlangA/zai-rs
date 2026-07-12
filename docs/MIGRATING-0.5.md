@@ -69,14 +69,34 @@ let req = AgentInvokeRequest::<NonStreaming>::builder("agent-id")
 
 | 0.4 | 0.5 |
 |---|---|
-| `tool-validation` enables `jsonschema` | `tool-validation` is an alias for `toolkits` |
-| (no `toolkits` feature) | `toolkits` enables the tool-execution framework |
+| `tool-validation` enables `jsonschema` | Removed; use `toolkits` |
+| (no `toolkits` feature) | `toolkits` enables execution and JSON-Schema validation |
 | `rmcp-kits = ["dep:rmcp"]` | `rmcp-kits = ["toolkits", "dep:rmcp"]` |
 
 ## 7. SSE streaming
 
 The `stream_for_each` SSE extension was temporarily removed in 0.5-alpha and will
 return in a later point release. For now, use the non-streaming `send_via` path.
+
+## 8. Public module paths are semantic
+
+Implementation file names are no longer public API. Import from the capability
+module itself:
+
+```rust,ignore
+// Before
+use zai_rs::model::ocr::request::OcrToolType;
+use zai_rs::knowledge::create::CreateKnowledgeRequest;
+
+// After
+use zai_rs::model::ocr::OcrToolType;
+use zai_rs::knowledge::CreateKnowledgeRequest;
+```
+
+The empty `client.services()` facade hierarchy was removed. It exposed names
+such as `ChatService` without implementing operations, while real requests used
+`send_via`. `ZaiClient` plus `Request::send_via` is now the only HTTP dispatch
+model.
 
 ## Summary
 
@@ -88,3 +108,5 @@ return in a later point release. For now, use the non-streaming `send_via` path.
 | Agent API rewritten | Breaking — use AgentInvokeRequest |
 | Async chat stream removed | Breaking — use regular ChatCompletion streaming |
 | `toolkits` feature added | Additive — opt-in |
+| `data`/`request`/`response` submodules hidden | Breaking — import from the capability module |
+| Empty `client.services()` facades removed | Breaking — use `request.send_via(&client)` |

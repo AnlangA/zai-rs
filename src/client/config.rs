@@ -1,14 +1,14 @@
-//! [`ZaiClient`], [`ZaiClientBuilder`] and [`HttpTransportConfig`] (plan P02).
+//! [`ZaiClient`], [`ZaiClientBuilder`], and [`HttpTransportConfig`].
 //!
 //! A `ZaiClient` is the single shared entry point: it owns an `Arc<ClientInner>`
 //! holding the secret, validated endpoints, the one `reqwest::Client`, transport
-//! policies and the [`Services`] facades. `Clone` is cheap (one `Arc` bump) and
-//! does NOT copy the config, secret or connection pool.
+//! policies. `Clone` is cheap (one `Arc` bump) and does not copy the config,
+//! secret, or connection pool.
 //!
 //! The builder only accepts an [`HttpTransportConfig`] and the API key — it
-//! never takes a pre-built `reqwest::Client` (plan P02.9). Insecure transport
+//! never takes a pre-built `reqwest::Client`. Insecure transport
 //! is opt-in via [`ZaiClientBuilder::allow_insecure_transport`]; HTTP/WS bases
-//! must still be loopback.
+//! must still pass the endpoint validator's local-host check.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,13 +16,12 @@ use std::time::Duration;
 use crate::ZaiResult;
 use crate::client::endpoint::EndpointConfig;
 use crate::client::secret::ApiSecret;
-use crate::client::services::Services;
 
-/// The shared 0.5 client.
+/// Shared HTTP client for Zhipu AI API requests.
 ///
 /// Construct via [`ZaiClient::builder`] or [`ZaiClient::from_env`]. Cloning a
 /// `ZaiClient` shares the underlying connection pool, secret and config — it
-/// does not duplicate them (plan P02.3).
+/// does not duplicate them.
 #[derive(Clone)]
 pub struct ZaiClient {
     inner: Arc<ClientInner>,
@@ -66,13 +65,6 @@ impl ZaiClient {
             });
         }
         Self::builder(key).build()
-    }
-
-    /// Obtain the service facades (`client.services().chat()`,
-    /// `client.services().files()`, …). `Services` is a zero-sized handle that
-    /// re-borrows this client, so obtaining it is free.
-    pub fn services(&self) -> Services {
-        Services::new(self.clone())
     }
 
     /// Borrow the validated endpoints.
@@ -206,13 +198,6 @@ impl std::fmt::Debug for ZaiClient {
     }
 }
 
-// `ClientInner` needs to hold `Services`, which borrows `&ClientInner` — break
-// the cycle by initializing `Services` after the inner is pinned. We store it
-// in an `OnceLock`-free slot by constructing it in `build()` after the Arc is
-// created. To keep the borrow valid for the lifetime of the Arc, `Services` is
-// a ZST handle that only re-borrows the `Arc<ClientInner>` it was made from; it
-// carries no data of its own. See `services.rs`.
-
 /// Builder for [`ZaiClient`].
 pub struct ZaiClientBuilder {
     api_key: String,
@@ -222,9 +207,11 @@ pub struct ZaiClientBuilder {
 }
 
 impl ZaiClientBuilder {
-    /// Override a family base URL. The value must be a `&'static str` (an
-    /// official/known base); arbitrary `String` overrides are intentionally not
-    /// accepted here to keep configuration auditable.
+    /// Override a family base URL.
+    ///
+    /// The API currently requires a `&'static str`; it does not restrict the
+    /// value to an official host. The URL is validated when [`Self::build`] is
+    /// called.
     pub fn endpoint(
         mut self,
         family: crate::client::endpoint::ApiFamily,
@@ -251,7 +238,10 @@ impl ZaiClientBuilder {
         self
     }
 
-    /// Permit HTTP/WS bases, but only for loopback/localhost hosts (plan P02.7).
+    /// Permit HTTP/WS bases that pass the endpoint validator's local-host check.
+    ///
+    /// This is a syntactic host check, not a DNS resolution check. Secure
+    /// HTTPS/WSS bases remain accepted regardless of this setting.
     pub fn allow_insecure_transport(mut self, allow: bool) -> Self {
         self.allow_insecure = allow;
         self
@@ -286,8 +276,8 @@ impl ZaiClientBuilder {
 
 /// Construct the single `reqwest::Client` for a transport policy.
 ///
-/// Plan P02.10: fixed connection-pool sizing, the SDK-controlled headers
-/// (Authorization/Accept/Content-Type/User-Agent) are set per-request, not here.
+/// SDK-controlled headers (Authorization, Accept, Content-Type, and User-Agent)
+/// are set per request rather than as client defaults.
 fn build_reqwest_client(transport: &HttpTransportConfig) -> ZaiResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -304,7 +294,7 @@ fn build_reqwest_client(transport: &HttpTransportConfig) -> ZaiResult<reqwest::C
 
 // --- HttpTransportConfig ---------------------------------------------------
 
-/// Allow-listed names for user-supplied additional headers (plan P02.9).
+/// Allow-listed names for user-supplied additional headers.
 const ALLOWED_HEADER_NAMES: &[&str] = &["Accept-Language", "X-Correlation-ID", "X-Test-Client"];
 
 /// A single allow-listed additional header.
@@ -337,8 +327,7 @@ impl AdditionalHeader {
                 message: "additional header value must be printable".to_string(),
             });
         }
-        // Leak-resolved at build time into a &'static str keyed off the
-        // allow-list (the set is tiny and fixed).
+        // Resolve to the matching static entry in the fixed allow-list.
         let static_name = ALLOWED_HEADER_NAMES
             .iter()
             .copied()
@@ -350,16 +339,19 @@ impl AdditionalHeader {
         })
     }
 
+    /// Return the validated header name.
     pub fn name(&self) -> &'static str {
         self.name
     }
+    /// Return the validated header value.
     pub fn value(&self) -> &str {
         &self.value
     }
 }
 
-/// Per-request retry-safety override (plan §4). The only safe escape hatch; does
-/// NOT enter the serialized request body.
+/// Per-request retry-safety override used by the transport only.
+///
+/// This setting never enters the serialized request body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryOverride {
     /// Treat this request as idempotent for retry purposes (e.g. a POST whose
@@ -369,8 +361,9 @@ pub enum RetryOverride {
 
 /// Transport policy for [`ZaiClient`].
 ///
-/// Limits are upper bounds: the builder only ever lets callers *lower* them
-/// (plan P02.9). Defaults match plan §4.
+/// The `with_*` helpers and [`HttpTransportConfigBuilder`] reject timeout values
+/// above their defaults and attempt counts above three. The fields remain public,
+/// so direct struct construction can bypass those helper checks.
 #[derive(Debug, Clone)]
 pub struct HttpTransportConfig {
     /// Connect timeout (default 10s).
@@ -379,8 +372,7 @@ pub struct HttpTransportConfig {
     pub request_timeout: Duration,
     /// Whether to advertise gzip (default true).
     pub enable_compression: bool,
-    /// Maximum retry attempts, inclusive of the first attempt (default 3; the
-    /// builder only allows lowering to 1 or 2).
+    /// Maximum retry attempts, inclusive of the first attempt (default 3).
     pub max_attempts: u8,
     /// Allow-listed additional headers attached to every request.
     pub additional_headers: Vec<AdditionalHeader>,
@@ -407,7 +399,7 @@ impl HttpTransportConfig {
     }
 
     /// Lower the per-attempt request timeout. Values above the default are
-    /// rejected (plan: builder only allows tightening).
+    /// rejected by this helper.
     pub fn with_request_timeout(mut self, d: Duration) -> ZaiResult<Self> {
         if d > Duration::from_secs(60) {
             return Err(crate::ZaiError::ApiError {
@@ -431,7 +423,7 @@ impl HttpTransportConfig {
         Ok(self)
     }
 
-    /// Lower the max attempts to 1 or 2 (the only values below the default 3).
+    /// Set max attempts to 1, 2, or 3.
     pub fn with_max_attempts(mut self, n: u8) -> ZaiResult<Self> {
         if n == 0 || n > 3 {
             return Err(crate::ZaiError::ApiError {
@@ -456,22 +448,27 @@ pub struct HttpTransportConfigBuilder {
 }
 
 impl HttpTransportConfigBuilder {
+    /// Set the per-attempt timeout, rejecting values above 60 seconds.
     pub fn request_timeout(mut self, d: Duration) -> ZaiResult<Self> {
         self.config = self.config.with_request_timeout(d)?;
         Ok(self)
     }
+    /// Set the connect timeout, rejecting values above 10 seconds.
     pub fn connect_timeout(mut self, d: Duration) -> ZaiResult<Self> {
         self.config = self.config.with_connect_timeout(d)?;
         Ok(self)
     }
+    /// Set the maximum attempt count to 1, 2, or 3.
     pub fn max_attempts(mut self, n: u8) -> ZaiResult<Self> {
         self.config = self.config.with_max_attempts(n)?;
         Ok(self)
     }
+    /// Add a validated header to every HTTP request.
     pub fn additional_header(mut self, header: AdditionalHeader) -> Self {
         self.config.additional_headers.push(header);
         self
     }
+    /// Finish building the transport configuration.
     pub fn build(self) -> HttpTransportConfig {
         self.config
     }

@@ -3,8 +3,7 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 use zai_rs::model::{
-    chat_base_response::ChatCompletionResponse, chat_models::GLM4_6, TextMessage, ThinkingMode,
-    ThinkingType,
+    chat_base_response::ChatCompletionResponse, chat_models::GLM4_6, TextMessage, ThinkingType,
 };
 
 use crate::server::error::AppResult;
@@ -203,8 +202,8 @@ pub struct ChatCompletionBuilder {
 impl ChatCompletionBuilder {
     /// Create a new chat completion builder
     ///
-    /// (P05 migration: the API key no longer lives on the request builder; the
-    /// shared `ZaiClient` owns it and is supplied at send time via `send_via`.)
+    /// Credentials are owned by the shared `ZaiClient` supplied to `send_via`,
+    /// not by this request builder.
     pub fn new() -> Self {
         Self {
             model: GLM4_6 {},
@@ -362,6 +361,7 @@ Guidelines:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zai_rs::model::ThinkingMode;
 
     #[test]
     fn test_chat_request_defaults() {

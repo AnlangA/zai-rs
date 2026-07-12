@@ -3,23 +3,17 @@ use validator::Validate;
 use super::request::VoiceDeleteBody;
 use crate::client::ZaiClient;
 
-/// Voice delete request using JSON body
+/// Voice-deletion request using a JSON body.
 ///
 /// Builder for the voice-delete endpoint. Construct with
 /// [`VoiceDeleteRequest::new`], tune with the `with_*` methods, then call
 /// [`VoiceDeleteRequest::send_via`].
-///
-/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
-/// [`send_via`](Self::send_via).
 pub struct VoiceDeleteRequest {
     body: VoiceDeleteBody,
 }
 
 impl VoiceDeleteRequest {
     /// Create a new voice-delete request for the given voice id.
-    ///
-    /// **P05**: no longer takes an API key — the key is provided by the
-    /// [`ZaiClient`] at send time.
     pub fn new(voice: impl Into<String>) -> Self {
         let body = VoiceDeleteBody::new(voice);
         Self { body }

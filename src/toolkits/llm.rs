@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-/// A parsed tool call request from an LLM response with zero-copy optimization.
+/// A parsed tool call request from an LLM response.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmToolCall<'a> {
     /// Tool-call id (used to correlate the tool's reply with the request).
@@ -44,7 +44,7 @@ pub fn normalize_arguments(args: &Value) -> Value {
     }
 }
 
-/// Parse tool calls with better error recovery and zero-copy optimization
+/// Parse tool calls from direct, choices-based, or legacy response shapes.
 pub fn parse_tool_calls_robust(response: &Value) -> Vec<LlmToolCall<'_>> {
     let mut results = Vec::new();
 
@@ -99,7 +99,7 @@ fn parse_legacy_function_call(function_call: &Value) -> Option<LlmToolCall<'stat
     })
 }
 
-/// Parse tool calls array with zero-copy optimization
+/// Parse a `tool_calls` array, skipping entries without an id or function name.
 fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
     let mut out = Vec::new();
 
@@ -141,8 +141,7 @@ fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
     out
 }
 
-/// Parse all tool calls from a single assistant message object with zero-copy
-/// optimization.
+/// Parse all well-formed tool calls from a single assistant message object.
 pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall<'_>> {
     let mut out = Vec::new();
     let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()) else {
@@ -187,8 +186,7 @@ pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall<'_>> {
     out
 }
 
-/// Parse tool calls from a full LLM response object with zero-copy
-/// optimization. This aggregates tool calls from all choices' messages.
+/// Parse tool calls from every choice in a full LLM response object.
 pub fn parse_tool_calls(response: &Value) -> Vec<LlmToolCall<'_>> {
     let mut all = Vec::new();
     if let Some(choices) = response.get("choices").and_then(|v| v.as_array()) {

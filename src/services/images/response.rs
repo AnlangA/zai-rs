@@ -1,4 +1,4 @@
-//! Images response types (plan P06).
+//! Response types for asynchronous image generation.
 //!
 //! All fields use `#[serde(default)]` for forward-compatibility.
 

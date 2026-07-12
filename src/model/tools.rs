@@ -20,7 +20,7 @@ use serde::Serialize;
 use validator::*;
 
 use super::model_validate::validate_json_schema_value;
-use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyFilter};
+use crate::tool::web_search::{ContentSize, SearchEngine, SearchRecencyFilter};
 
 /// Controls thinking/reasoning capabilities in AI models.
 ///
@@ -37,12 +37,19 @@ use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyF
 ///
 /// ## Usage
 ///
-/// ```text
-/// let client = ChatCompletion::new(model, messages, api_key)
+/// ```
+/// use zai_rs::model::{
+///     chat::ChatCompletion,
+///     chat_message_types::TextMessage,
+///     chat_models::GLM5_2,
+///     tools::ThinkingType,
+/// };
+///
+/// let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("Solve this"))
 ///     .with_thinking(ThinkingType::enabled());
 ///
 /// // Preserve reasoning content across turns (Coding / Agent)
-/// let client = ChatCompletion::new(model, messages, api_key)
+/// let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("Continue"))
 ///     .with_thinking(ThinkingType::enabled().with_clear_thinking(false));
 /// ```
 ///
@@ -70,9 +77,10 @@ pub struct ThinkingType {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThinkingMode {
-    /// Thinking/reasoning traces are emitted by the model.
+    /// Extended reasoning is enabled; exposure of reasoning text depends on the
+    /// selected model and endpoint.
     Enabled,
-    /// Thinking/reasoning traces are suppressed.
+    /// Extended reasoning is disabled.
     Disabled,
 }
 
@@ -125,10 +133,15 @@ impl ThinkingType {
 ///
 /// ## Usage
 ///
-/// ```text
-/// use zai_rs::model::tools::ReasoningEffort;
+/// ```
+/// use zai_rs::model::{
+///     chat::ChatCompletion,
+///     chat_message_types::TextMessage,
+///     chat_models::GLM5_2,
+///     tools::{ReasoningEffort, ThinkingType},
+/// };
 ///
-/// let client = ChatCompletion::new(GLM5_2 {}, messages, api_key)
+/// let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("Design an API"))
 ///     .with_thinking(ThinkingType::enabled())
 ///     .with_reasoning_effort(ReasoningEffort::Max);
 /// ```
@@ -185,10 +198,17 @@ pub enum ReasoningEffort {
 ///
 /// ## Usage
 ///
-/// ```text
+/// ```
+/// use zai_rs::model::tools::{Function, Tools, WebSearch};
+/// use zai_rs::tool::web_search::SearchEngine;
+///
 /// // Function tool
 /// let function_tool = Tools::Function {
-///     function: Function::new("get_weather", "Get weather data", parameters)
+///     function: Function::new(
+///         "get_weather",
+///         "Get weather data",
+///         serde_json::json!({"type": "object"}),
+///     ),
 /// };
 ///
 /// // Web search tool
@@ -230,10 +250,10 @@ pub enum Tools {
         web_search: WebSearch,
     },
 
-    /// Model Context Protocol (MCP) tools.
+    /// A provider-hosted MCP tool attached to a chat request.
     ///
-    /// Standardized tools that follow the Model Context Protocol specification,
-    /// providing a consistent interface for tool integration and communication.
+    /// This config asks the chat service to connect to an MCP server. It is
+    /// distinct from [`crate::mcp::McpClient`], which connects from this SDK.
     #[serde(rename = "mcp")]
     MCP {
         /// The MCP-tool descriptor.
@@ -283,7 +303,9 @@ impl Function {
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```
+    /// use zai_rs::model::tools::Function;
+    ///
     /// let func = Function::new(
     ///     "get_weather",
     ///     "Get current weather for a location",
@@ -372,8 +394,6 @@ impl Retrieval {
     }
 }
 
-/// Configuration for web search tool capabilities.
-///
 /// The order in which search results are returned.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -515,9 +535,11 @@ impl WebSearch {
         self
     }
 }
-/// Represents the MCP connection configuration. When connecting to Zhipu's MCP
-/// server using an MCP code, fill `server_label` with that code and leave
-/// `server_url` empty.
+/// Provider-side MCP connection configuration embedded in a chat request.
+///
+/// This does not create a local MCP connection. For Zhipu-hosted MCP servers,
+/// put the MCP code in `server_label` and leave `server_url` unset. To call MCP
+/// tools directly from this SDK, use [`crate::mcp::McpClient`].
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct MCP {
     /// MCP server identifier (required). If connecting to Zhipu MCP via code,

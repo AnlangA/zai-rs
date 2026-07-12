@@ -1,4 +1,4 @@
-//! P07 acceptance: download streaming and atomic-download tests (plan P07.5).
+//! Streaming and atomic-download tests.
 use tempfile::tempdir;
 use zai_rs::client::transport::download::atomic_download;
 

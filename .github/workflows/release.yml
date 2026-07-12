@@ -1,6 +1,5 @@
-# Release workflow (plan P14.8).
-# Only triggers on annotated tag v0.5.0. Does NOT push/publish — generates
-# the release candidate evidence and validates the package tarball.
+# Verify and publish the v0.5.0 annotated tag. Set SKIP_PUBLISH=true in the
+# release environment to run the quality and packaging checks without upload.
 name: Release
 
 on:

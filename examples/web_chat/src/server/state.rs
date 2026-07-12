@@ -5,10 +5,9 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use serde::Serialize;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 use zai_rs::client::ZaiClient;
-use zai_rs::model::{chat_models::GLM4_6, TextMessage};
+use zai_rs::model::TextMessage;
 
 use crate::server::{config::Config, error::AppResult};
 
@@ -18,8 +17,8 @@ pub struct AppState {
     /// Application configuration
     pub config: Config,
 
-    /// Shared ZAI client (P05 migration): owns the API key and connection pool,
-    /// and is passed to chat requests via `.send_via(&zai_client)`.
+    /// Shared Z.AI client that owns the API key and connection pool and is
+    /// passed to chat requests through `send_via`.
     pub zai_client: ZaiClient,
 
     /// Session store for managing chat sessions

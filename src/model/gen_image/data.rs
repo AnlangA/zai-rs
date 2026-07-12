@@ -7,10 +7,7 @@ use super::{
 };
 use crate::client::ZaiClient;
 
-/// Image generation request structure
-/// Provides a typed builder around the image generation API body
-///
-/// (plan P05: migrated to route through [`ZaiClient`].)
+/// Typed builder for an image-generation request sent through a [`ZaiClient`].
 pub struct ImageGenRequest<N>
 where
     N: ModelName + ImageGen + Serialize,

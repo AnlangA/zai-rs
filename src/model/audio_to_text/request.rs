@@ -8,12 +8,8 @@ use crate::{ZaiError, client::error::codes};
 /// Body parameters holder for audio transcription (used to build the multipart
 /// form).
 ///
-/// **P04.8**: aligns with the official ASR contract (plan §13.3):
-/// - `temperature` is REMOVED (it is not a valid ASR parameter);
-/// - `prompt` is optional (the documented 8000-char limit is advisory — the
-///   client does NOT hard-reject, the server enforces it);
-/// - `hotwords` ≤ 100 entries;
-/// - `request_id` length 6..=64; `user_id` length 6..=128.
+/// `prompt` is optional and its upstream 8,000-character limit is left to the
+/// server. The SDK validates the hot-word count and identifier lengths.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct AudioToTextBody<N>
 where
@@ -31,7 +27,11 @@ where
     #[validate(length(max = 100))]
     pub hotwords: Vec<String>,
 
-    /// Stream mode flag (sync call should keep `false` or omit).
+    /// Stream-mode flag.
+    ///
+    /// [`AudioToTextRequest::send_via`](super::data::AudioToTextRequest::send_via)
+    /// decodes a single JSON response, so leave this unset or `false` when using
+    /// that method.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
 

@@ -1,8 +1,8 @@
-//! Core traits and types with enhanced type safety
+//! Core traits and concrete types for defining executable tools.
 
 use std::{borrow::Cow, collections::HashMap};
 
-#[cfg(feature = "tool-validation")]
+#[cfg(feature = "toolkits")]
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -17,11 +17,11 @@ use crate::toolkits::error::{ToolResult, error_context};
 
 /// Compiled JSON-Schema validator used for tool-argument validation.
 ///
-/// When the `tool-validation` feature is disabled the type collapses to `()`
+/// When the `toolkits` feature is disabled the type collapses to `()`
 /// so [`FunctionTool`] keeps a uniform shape without pulling in `jsonschema`.
-#[cfg(feature = "tool-validation")]
+#[cfg(feature = "toolkits")]
 type CompiledSchema = Arc<jsonschema::Validator>;
-#[cfg(not(feature = "tool-validation"))]
+#[cfg(not(feature = "toolkits"))]
 type CompiledSchema = ();
 
 /// Type-erased tool trait for dynamic dispatch
@@ -45,16 +45,16 @@ pub trait DynTool: Send + Sync {
     fn clone_box(&self) -> Box<dyn DynTool>;
 }
 
-/// Global schema cache for compiled JSON schemas (only with `tool-validation`).
-#[cfg(feature = "tool-validation")]
+/// Global schema cache for compiled JSON schemas.
+#[cfg(feature = "toolkits")]
 static SCHEMA_CACHE: LazyLock<std::sync::RwLock<HashMap<u64, Arc<jsonschema::Validator>>>> =
     LazyLock::new(|| std::sync::RwLock::new(HashMap::new()));
 
-/// Maximum number of compiled schemas to cache (only with `tool-validation`).
-#[cfg(feature = "tool-validation")]
+/// Maximum number of compiled schemas to cache.
+#[cfg(feature = "toolkits")]
 const SCHEMA_CACHE_MAX_SIZE: usize = 256;
 
-/// Enhanced tool metadata with better type information and memory optimization
+/// Metadata used to identify, describe, and categorize a tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolMetadata {
     /// Tool name (must be unique)
@@ -105,7 +105,6 @@ impl ToolMetadata {
         })
     }
 
-    /// Builder pattern methods
     /// Set the tool version.
     pub fn version(mut self, version: impl Into<Cow<'static, str>>) -> Self {
         self.version = version.into();
@@ -213,7 +212,7 @@ pub struct FunctionTool {
 
 impl Clone for FunctionTool {
     fn clone(&self) -> Self {
-        // `CompiledSchema` is `Arc<Validator>` (with `tool-validation`) or `()`
+        // `CompiledSchema` is `Arc<Validator>` (with `toolkits`) or `()`
         // (without). `().clone()` trips clippy's `clone_on_copy`/`unit_arg`,
         // hence the scoped allow on this binding.
         #[allow(clippy::clone_on_copy, clippy::unit_arg, clippy::let_unit_value)]
@@ -284,7 +283,7 @@ impl FunctionTool {
     }
 }
 
-#[cfg(feature = "tool-validation")]
+#[cfg(feature = "toolkits")]
 /// Compile JSON schema with caching for better performance
 fn compile_schema_cached(schema: &serde_json::Value) -> ToolResult<Arc<jsonschema::Validator>> {
     // The serialized form is canonical: serde_json is built without
@@ -541,15 +540,15 @@ impl FunctionToolBuilder {
             }
         }
 
-        #[cfg(feature = "tool-validation")]
+        #[cfg(feature = "toolkits")]
         let compiled_schema: CompiledSchema = compile_schema_cached(&schema).map_err(|e| {
             error_context()
                 .with_tool(self.metadata.name.clone())
                 .schema_validation(format!("Failed to compile schema: {e}"))
         })?;
-        // Without `tool-validation` there is no compiled validator; the
+        // Without `toolkits` there is no compiled validator; the
         // argument-validation step in `execute_json` is skipped.
-        #[cfg(not(feature = "tool-validation"))]
+        #[cfg(not(feature = "toolkits"))]
         let compiled_schema: CompiledSchema = ();
 
         Ok(FunctionTool {
@@ -569,7 +568,7 @@ impl DynTool for FunctionTool {
 
     async fn execute_json(&self, input: serde_json::Value) -> ToolResult<serde_json::Value> {
         // Validate the input against the compiled schema (only when enabled).
-        #[cfg(feature = "tool-validation")]
+        #[cfg(feature = "toolkits")]
         if let Err(validation_error) = self.compiled_schema.validate(&input) {
             return Err(error_context()
                 .with_tool(self.name())

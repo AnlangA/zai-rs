@@ -1,4 +1,4 @@
-//! Model-ID snapshot tests (plan P01.2).
+//! Model-ID snapshot and normalization regression tests.
 //!
 //! Every built-in model id across chat / vision / voice / realtime / image /
 //! video / ASR / TTS / voice-clone is asserted to be:
@@ -91,7 +91,7 @@ fn asr_and_tts_match_manual_constraints() {
 
 #[test]
 fn asr_id_has_no_trailing_space_regression() {
-    // Direct guard for the P01.1 regression: "glm-asr-2512 " (trailing space).
+    // Guard against reintroducing the trailing space once present in this id.
     let id: String = GlmAsr {}.into();
     assert_eq!(id, "glm-asr-2512");
     assert!(

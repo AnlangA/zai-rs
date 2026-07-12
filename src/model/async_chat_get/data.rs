@@ -3,8 +3,7 @@ use std::marker::PhantomData;
 use super::super::traits::*;
 use crate::client::ZaiClient;
 
-/// Retrieve the result of an asynchronous chat task by its task id (P05: routes
-/// through [`ZaiClient`]).
+/// Request for retrieving an asynchronous chat task by its task id.
 pub struct AsyncChatGetRequest<N>
 where
     N: ModelName + AsyncChat,

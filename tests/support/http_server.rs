@@ -1,4 +1,4 @@
-//! Local HTTP test server (plan P02.13).
+//! Local scripted HTTP server used by integration tests.
 //!
 //! A `TestServer` binds `127.0.0.1:0` and serves a scripted queue of responses
 //! to support transport, retry and redaction tests without touching the real

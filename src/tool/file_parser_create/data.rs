@@ -13,7 +13,7 @@ use crate::{
     client::{ZaiClient, error::codes},
 };
 
-/// File parser creation client (P05: routes through [`ZaiClient`]).
+/// Builder for creating a file-parsing task through a [`ZaiClient`].
 ///
 /// This client provides functionality to create file parsing tasks,
 /// supporting multiple file formats and parsing tools.

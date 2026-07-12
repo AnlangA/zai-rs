@@ -11,7 +11,7 @@ use crate::{
     client::{ZaiClient, error::codes},
 };
 
-/// File parser result client (P05: routes through [`ZaiClient`]).
+/// Client-side handle for retrieving and polling a file-parsing task.
 ///
 /// This client provides functionality to retrieve file parsing results,
 /// supporting multiple result formats and asynchronous task monitoring.
@@ -144,7 +144,9 @@ impl FileParserResultRequest {
         }
     }
 
-    /// Gets both text and download link results in a single request.
+    /// Fetches both text and download-link representations.
+    ///
+    /// This performs two HTTP requests in sequence, one for each format.
     ///
     /// ## Arguments
     ///

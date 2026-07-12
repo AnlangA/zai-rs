@@ -1,4 +1,4 @@
-//! P11 acceptance: property-based tests (plan P11.5).
+//! Property-based tests for encoding, SSE parsing, retry bounds, and errors.
 //!
 //! Uses `proptest` to cover:
 //! - dynamic path/query percent-encoding
@@ -14,7 +14,7 @@ use zai_rs::client::transport::retry::{full_jitter_cap, is_retryable_outcome};
 use zai_rs::model::sse_parser::SseEventParser;
 
 // ---------------------------------------------------------------------------
-// Path segment encoding (P11.5: dynamic path/query encoding)
+// Path-segment encoding.
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -31,7 +31,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// SSE chunk-split resilience (P11.5: SSE chunk split)
+// SSE chunk-split resilience.
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -51,7 +51,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Full-jitter backoff bounding (P11.5: retry deadline)
+// Full-jitter backoff bounds.
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -70,7 +70,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Error-envelope probe (P11.5: error envelope probe)
+// Error-envelope probing.
 // ---------------------------------------------------------------------------
 
 proptest! {
@@ -88,7 +88,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Retryable status classification (P11.5: ApiCode roundtrip)
+// Retryable status classification.
 // ---------------------------------------------------------------------------
 
 proptest! {

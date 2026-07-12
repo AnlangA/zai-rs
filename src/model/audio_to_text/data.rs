@@ -7,19 +7,16 @@ use super::{super::traits::*, request::AudioToTextBody};
 use crate::client::ZaiClient;
 use crate::client::error::codes;
 
-/// Audio transcription request (multipart/form-data)
+/// Audio transcription request encoded as `multipart/form-data`.
 ///
 /// Builder for the audio-transcription (ASR) endpoint. Set the audio file via
 /// [`AudioToTextRequest::with_file_path`], then call
 /// [`AudioToTextRequest::send_via`].
-///
-/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
-/// [`send_via`](Self::send_via).
 pub struct AudioToTextRequest<N>
 where
     N: ModelName + AudioToText + Serialize,
 {
-    /// Multipart form fields (model, temperature, …).
+    /// Multipart form fields other than the audio file itself.
     pub body: AudioToTextBody<N>,
     file_path: Option<String>,
 }
@@ -29,9 +26,6 @@ where
     N: ModelName + AudioToText + Serialize + Clone,
 {
     /// Create a new transcription request for the given ASR model.
-    ///
-    /// **P05**: no longer takes an API key — the key is provided by the
-    /// [`ZaiClient`] at send time.
     pub fn new(model: N) -> Self {
         Self {
             body: AudioToTextBody::new(model),

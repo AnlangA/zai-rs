@@ -6,12 +6,10 @@ use super::request::{OcrBody, OcrLanguageType, OcrToolType};
 use crate::client::ZaiClient;
 use crate::client::error::codes;
 
-/// OCR recognition request (multipart/form-data)
+/// OCR recognition request encoded as `multipart/form-data`.
 ///
 /// Builder for the OCR endpoint. Set the image via
 /// [`OcrRequest::with_file_path`], then call [`OcrRequest::send_via`].
-///
-/// (plan P05: migrated to route through [`ZaiClient`].)
 pub struct OcrRequest {
     /// Multipart form fields (tool type, language, …).
     pub body: OcrBody,

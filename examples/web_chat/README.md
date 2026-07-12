@@ -31,19 +31,22 @@ A production-quality web chat interface with streaming capabilities, perfect mar
 ```
 src/
 ├── main.rs              # Application entry point
+├── server.rs            # Server module
 ├── server/
 │   ├── config.rs        # Configuration management
 │   ├── error.rs         # Error types and handling
 │   ├── state.rs         # Application state management
 │   ├── utils.rs         # Utility functions
+│   ├── models.rs        # Data model module
 │   ├── models/          # Data models
 │   │   ├── chat.rs      # Chat-related models
 │   │   └── session.rs   # Session management models
+│   ├── routes.rs        # Route module
 │   └── routes/          # API routes
 │       ├── chat.rs      # Chat endpoints
 │       ├── health.rs    # Health checks
 │       ├── index.rs     # Static file serving
-│       └── mod.rs       # Route definitions
+│       └── static_files.rs # Static file serving
 ```
 
 ### Frontend Structure

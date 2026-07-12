@@ -39,7 +39,10 @@ impl FileUploadRequest {
         self
     }
 
-    /// Send the upload request and parse typed response (`FileObject`)
+    /// Send the upload request and parse the returned [`FileObject`](super::response::FileObject).
+    ///
+    /// The local file is read fully into memory before dispatch. Filename and
+    /// per-file size validation occur while the multipart form is built.
     pub async fn send_via(
         &self,
         client: &ZaiClient,

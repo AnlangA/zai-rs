@@ -1,8 +1,9 @@
-//! Fixed payload limits (plan §4 / P03.8).
+//! Fixed payload and frame limits used by transport components.
 //!
-//! Every limit is both the default AND the hard upper bound — the builder only
-//! ever lets callers *lower* them. These constants are the single source of
-//! truth for the Transport's size enforcement.
+//! Some constants are enforced by the buffered HTTP transport and multipart
+//! factory; the SSE and WebSocket limits are consumed by their respective
+//! feature-specific transports. [`Limit`] is a standalone clamping helper and is
+//! not part of [`HttpTransportConfig`](crate::client::HttpTransportConfig).
 
 /// Maximum decoded JSON request body (32 MiB).
 pub const JSON_REQUEST_MAX: u64 = 32 * 1024 * 1024;
@@ -12,11 +13,13 @@ pub const JSON_RESPONSE_MAX: u64 = 32 * 1024 * 1024;
 pub const ERROR_BODY_MAX: u64 = 64 * 1024;
 /// Maximum a single SSE line / event / unparsed buffer may grow (1 MiB each).
 pub const SSE_LINE_MAX: u64 = 1024 * 1024;
+/// Maximum size of one assembled SSE event (1 MiB).
 pub const SSE_EVENT_MAX: u64 = 1024 * 1024;
+/// Maximum unparsed SSE receive-buffer size (1 MiB).
 pub const SSE_BUFFER_MAX: u64 = 1024 * 1024;
 /// Multipart: at most 16 file parts per request.
 pub const MULTIPART_MAX_FILE_PARTS: usize = 16;
-/// Multipart: file bytes total across parts (128 MiB).
+/// Multipart: maximum bytes in each individual file part (128 MiB).
 pub const MULTIPART_FILE_BYTES_MAX: u64 = 128 * 1024 * 1024;
 /// Multipart: non-file field bytes total (1 MiB).
 pub const MULTIPART_FIELD_BYTES_MAX: u64 = 1024 * 1024;
@@ -34,6 +37,7 @@ pub const API_CODE_TEXT_MAX: usize = 128;
 /// A clamped limit value: never above the hard cap, optionally lowered.
 #[derive(Debug, Clone, Copy)]
 pub struct Limit {
+    /// Effective byte limit after clamping.
     pub bytes: u64,
 }
 

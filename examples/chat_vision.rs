@@ -4,7 +4,7 @@ use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The media URL is read from the first CLI argument instead of a hardcoded
-    // (and, in the prior revision, expired/signed) URL. Missing the argument
+    // URL. Missing the argument
     // prints usage and exits 2 — never a panic.
     let media_url = match std::env::args().nth(1) {
         Some(url) => url,

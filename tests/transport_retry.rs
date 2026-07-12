@@ -1,10 +1,7 @@
-//! P03 acceptance: transport retry matrix (plan P03 验证).
+//! Transport retry-safety, status classification, and backoff tests.
 //!
 //! Exercises the retry-safety classification, the retryable-status set and the
-//! full-jitter backoff directly (these are pure functions), since the Transport
-//! struct is crate-private until P05 wires endpoints onto it. The behavior is
-//! pinned here so the P05 migration and P07 transport wiring inherit the
-//! guarantees.
+//! full-jitter backoff directly through their pure helper functions.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;

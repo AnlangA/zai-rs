@@ -3,12 +3,14 @@
 //! A production-quality web chat interface with streaming capabilities,
 //! perfect markdown rendering, and industry-leading user experience.
 
+// This example intentionally includes optional routes, export formats, and
+// error adapters that are not wired into the minimal demo binary.
+#![allow(dead_code, unused_mut, unused_variables)]
+#![allow(clippy::uninlined_format_args)]
+
 use std::net::SocketAddr;
 
-use axum::{
-    routing::{get, post},
-    Router,
-};
+use axum::{routing::get, Router};
 use tower::ServiceBuilder;
 use tower_http::{
     cors::CorsLayer,

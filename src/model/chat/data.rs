@@ -9,17 +9,13 @@ use super::super::{
 };
 use crate::client::ZaiClient;
 
-/// Chat-completion request builder (plan P05: migrated to route through
-/// [`ZaiClient`]).
+/// Typed chat-completion request builder sent through a [`ZaiClient`].
 ///
 /// Generic over the model `N`, the message type `M`, and a stream type-state
 /// `S` (`StreamOff` by default, `StreamOn` after
 /// [`enable_stream`](Self::enable_stream)).
-///
-/// **P05**: the `key`/`url`/`endpoint_config`/`api_base`/`http_config` fields
-/// and the `with_base_url`/`with_endpoint_config`/`with_http_config`/`with_url`
-/// methods are REMOVED. Credentials and transport live on the `ZaiClient`,
-/// passed to `send`/`send_via` on the client.
+/// Credentials, endpoint selection and transport policy are owned by the
+/// [`ZaiClient`] supplied to [`send_via`](Self::send_via).
 pub struct ChatCompletion<N, M, S = StreamOff>
 where
     N: ModelName + Chat,
@@ -38,9 +34,6 @@ where
     ChatBody<N, M>: Serialize,
 {
     /// Create a new chat request from a model and the first message batch.
-    ///
-    /// **P05**: no longer takes an API key — the key is provided by the
-    /// [`ZaiClient`] at send time.
     pub fn new(model: N, messages: M) -> ChatCompletion<N, M, StreamOff> {
         let body = ChatBody::new(model, messages);
         ChatCompletion {
@@ -161,9 +154,6 @@ where
 
     /// Submit the request via a [`ZaiClient`] and await the (non-streaming)
     /// response.
-    ///
-    /// **P05**: credentials and transport come from the client; the request
-    /// type carries no key/config of its own.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<ChatCompletionResponse>
     where
         N: serde::Serialize,
