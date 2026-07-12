@@ -1,16 +1,15 @@
-use serde::Serialize;
 use validator::Validate;
 
 use super::{
     super::traits::*,
     video_request::{Fps, ImageUrl, VideoBody, VideoDuration, VideoQuality, VideoSize},
 };
-use crate::client::ZaiClient;
+use crate::{client::ZaiClient, model::async_chat_get::AsyncResponse};
 
 /// Typed builder for submitting an asynchronous video-generation task.
 pub struct VideoGenRequest<N>
 where
-    N: ModelName + VideoGen + Serialize,
+    N: VideoGen,
 {
     /// Request Body
     body: VideoBody<N>,
@@ -18,7 +17,7 @@ where
 
 impl<N> VideoGenRequest<N>
 where
-    N: ModelName + VideoGen + Serialize,
+    N: VideoGen,
 {
     /// Create a new video generation request
     ///
@@ -78,13 +77,13 @@ where
     }
 
     /// Set custom request ID
-    pub fn with_request_id(mut self, request_id: String) -> Self {
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.body = self.body.with_request_id(request_id);
         self
     }
 
     /// Set user ID for policy enforcement
-    pub fn with_user_id(mut self, user_id: String) -> Self {
+    pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
         self
     }
@@ -92,7 +91,7 @@ where
 
 impl<N> VideoGenRequest<N>
 where
-    N: ModelName + VideoGen + Serialize,
+    N: VideoGen,
 {
     /// Validate request parameters for video generation
     pub fn validate(&self) -> crate::ZaiResult<()> {
@@ -105,25 +104,16 @@ where
     /// Submit the video-generation request via a [`ZaiClient`] and parse the
     /// typed response.
     ///
-    /// The async video endpoint returns a task-bearing body shaped like a
-    /// `ChatCompletionResponse` (with `id`/`task_status`/`video_result`);
-    /// poll it to completion via [`AsyncChatGetRequest`](crate::model::async_chat_get::AsyncChatGetRequest).
-    pub async fn send_via(
-        &self,
-        client: &ZaiClient,
-    ) -> crate::ZaiResult<crate::model::chat_base_response::ChatCompletionResponse>
-    where
-        N: serde::Serialize,
-    {
+    /// Poll the accepted task to completion with
+    /// [`AsyncTaskGetRequest`](crate::model::AsyncTaskGetRequest).
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<AsyncResponse> {
         self.validate()?;
         let route = crate::client::routes::VIDEOS_GENERATE;
         let url = client.endpoints().resolve_route(route, &[])?;
-        client
-            .send_json::<_, crate::model::chat_base_response::ChatCompletionResponse>(
-                route.method(),
-                url,
-                &self.body,
-            )
-            .await
+        let response = client
+            .send_json::<_, AsyncResponse>(route.method(), url, &self.body)
+            .await?;
+        response.validate()?;
+        Ok(response)
     }
 }

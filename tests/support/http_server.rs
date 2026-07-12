@@ -2,18 +2,14 @@
 //!
 //! A `TestServer` binds `127.0.0.1:0` and serves a scripted queue of responses
 //! to support transport, retry and redaction tests without touching the real
-//! Zhipu API. It can serve fixed bodies, chunked bodies, connection drops,
-//! virtual latency and request capture. All P02+ transport tests reuse this
-//! single helper — there is deliberately no second mock server.
+//! Zhipu API. It serves fixed bodies and captures requests for later
+//! assertions.
 //!
 //! This is a test-support module (only compiled for `cfg(test)` / integration
 //! tests); it lives under `tests/support/`.
 
-#![allow(dead_code)] // test helpers may go unused in a given test file.
-
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -30,9 +26,7 @@ use tokio::net::TcpListener;
 pub struct CapturedRequest {
     pub method: String,
     pub path: String,
-    pub query: Option<String>,
     pub authorization: Option<String>,
-    pub content_type: Option<String>,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
@@ -44,20 +38,12 @@ pub struct ScriptedResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Bytes,
-    pub chunk_delay: Option<Duration>,
-    pub drop_connection: bool,
 }
 
 impl ScriptedResponse {
     /// A simple JSON 200 response.
     pub fn json(status: u16, body: serde_json::Value) -> Self {
-        Self {
-            status,
-            headers: vec![("content-type".into(), "application/json".into())],
-            body: Bytes::from(body.to_string()),
-            chunk_delay: None,
-            drop_connection: false,
-        }
+        Self::raw(status, "application/json", Bytes::from(body.to_string()))
     }
 
     /// A response with the given status and a raw body + content type.
@@ -66,19 +52,6 @@ impl ScriptedResponse {
             status,
             headers: vec![("content-type".into(), content_type.into())],
             body: body.into(),
-            chunk_delay: None,
-            drop_connection: false,
-        }
-    }
-
-    /// Drop the connection without sending a response.
-    pub fn drop_connection() -> Self {
-        Self {
-            status: 0,
-            headers: vec![],
-            body: Bytes::new(),
-            chunk_delay: None,
-            drop_connection: true,
         }
     }
 }
@@ -121,7 +94,6 @@ impl TestServer {
                                     let method = req.method().as_str().to_string();
                                     let uri = req.uri().clone();
                                     let authorization = header_opt(&req, "authorization");
-                                    let content_type = header_opt(&req, "content-type");
                                     let all_headers = req
                                         .headers()
                                         .iter()
@@ -131,9 +103,7 @@ impl TestServer {
                                     captured.lock().unwrap().push(CapturedRequest {
                                         method,
                                         path: uri.path().to_string(),
-                                        query: uri.query().map(str::to_string),
                                         authorization,
-                                        content_type,
                                         headers: all_headers,
                                         body,
                                     });
@@ -146,13 +116,6 @@ impl TestServer {
                                                 b"no more scripted responses",
                                             )))
                                             .unwrap(),
-                                        Some(s) if s.drop_connection => {
-                                            // Best-effort: return a 599 to signal drop.
-                                            Response::builder()
-                                                .status(StatusCode::from_u16(599).unwrap())
-                                                .body(Full::new(Bytes::from_static(b"connection dropped")))
-                                                .unwrap()
-                                        }
                                         Some(s) => {
                                             let status =
                                                 StatusCode::from_u16(s.status).unwrap_or_else(|_| {
@@ -168,9 +131,10 @@ impl TestServer {
                                     Ok::<_, Infallible>(resp)
                                 }
                             });
-                            let _ = ConnBuilder::new(TokioExecutor::new())
+                            ConnBuilder::new(TokioExecutor::new())
                                 .serve_connection(io, service)
-                                .await;
+                                .await
+                                .unwrap();
                         });
                     }
                 }
@@ -189,14 +153,11 @@ impl TestServer {
         self.captured.lock().unwrap().clone()
     }
 
-    /// Number of requests received.
-    pub fn request_count(&self) -> usize {
-        self.captured.lock().unwrap().len()
-    }
-
     /// Shut the server down.
     pub async fn shutdown(&self) {
-        self.shutdown.notify_waiters();
+        // `notify_one` stores a permit when the accept loop is between polls;
+        // `notify_waiters` could lose the shutdown signal in that window.
+        self.shutdown.notify_one();
     }
 }
 

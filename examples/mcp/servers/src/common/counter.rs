@@ -1,18 +1,10 @@
-#![allow(dead_code)]
 use std::sync::Arc;
 
 use rmcp::{
-    ErrorData as McpError, RoleServer, ServerHandler,
-    handler::server::{
-        router::{prompt::PromptRouter, tool::ToolRouter},
-        wrapper::Parameters,
-    },
-    model::*,
-    prompt, prompt_handler, prompt_router, schemars,
-    service::RequestContext,
-    tool, tool_handler, tool_router,
+    ErrorData as McpError, RoleServer, ServerHandler, handler::server::wrapper::Parameters,
+    model::*, prompt, prompt_handler, prompt_router, schemars, service::RequestContext, tool,
+    tool_handler, tool_router,
 };
-use serde_json::json;
 use tokio::sync::Mutex;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -39,29 +31,22 @@ pub struct CounterAnalysisArgs {
 #[derive(Clone)]
 pub struct Counter {
     counter: Arc<Mutex<i32>>,
-    tool_router: ToolRouter<Counter>,
-    prompt_router: PromptRouter<Counter>,
 }
 
 #[tool_router]
 impl Counter {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         Self {
             counter: Arc::new(Mutex::new(0)),
-            tool_router: Self::tool_router(),
-            prompt_router: Self::prompt_router(),
         }
-    }
-
-    fn _create_resource_text(&self, uri: &str, name: &str) -> Resource {
-        Resource::new(uri, name.to_string())
     }
 
     #[tool(description = "Increment the counter by 1")]
     async fn increment(&self) -> Result<CallToolResult, McpError> {
         let mut counter = self.counter.lock().await;
-        *counter += 1;
+        *counter = counter
+            .checked_add(1)
+            .ok_or_else(|| McpError::invalid_params("counter overflow", None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(
             counter.to_string(),
         )]))
@@ -70,7 +55,9 @@ impl Counter {
     #[tool(description = "Decrement the counter by 1")]
     async fn decrement(&self) -> Result<CallToolResult, McpError> {
         let mut counter = self.counter.lock().await;
-        *counter -= 1;
+        *counter = counter
+            .checked_sub(1)
+            .ok_or_else(|| McpError::invalid_params("counter underflow", None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(
             counter.to_string(),
         )]))
@@ -101,8 +88,11 @@ impl Counter {
         &self,
         Parameters(StructRequest { a, b }): Parameters<StructRequest>,
     ) -> Result<CallToolResult, McpError> {
+        let sum = a
+            .checked_add(b)
+            .ok_or_else(|| McpError::invalid_params("sum exceeds i32 range", None))?;
         Ok(CallToolResult::success(vec![ContentBlock::text(
-            (a + b).to_string(),
+            sum.to_string(),
         )]))
     }
 }
@@ -162,7 +152,6 @@ impl ServerHandler for Counter {
         ServerInfo::new(
             ServerCapabilities::builder()
                 .enable_prompts()
-                .enable_resources()
                 .enable_tools()
                 .build(),
         )
@@ -171,69 +160,18 @@ impl ServerHandler for Counter {
         .with_instructions("This server provides counter tools and prompts. Tools: increment, decrement, get_value, say_hello, echo, sum. Prompts: example_prompt (takes a message), counter_analysis (analyzes counter state with a goal).".to_string())
     }
 
-    async fn list_resources(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, McpError> {
-        Ok(ListResourcesResult {
-            resources: vec![
-                self._create_resource_text("str:////Users/to/some/path/", "cwd"),
-                self._create_resource_text("memo://insights", "memo-name"),
-            ],
-            next_cursor: None,
-            ..Default::default()
-        })
-    }
-
-    async fn read_resource(
-        &self,
-        ReadResourceRequestParams { uri, .. }: ReadResourceRequestParams,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
-        match uri.as_str() {
-            "str:////Users/to/some/path/" => {
-                let cwd = "/Users/to/some/path/";
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                    cwd, uri,
-                )]))
-            },
-            "memo://insights" => {
-                let memo = "Business Intelligence Memo\n\nAnalysis has revealed 5 key insights ...";
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                    memo, uri,
-                )]))
-            },
-            _ => Err(McpError::resource_not_found(
-                "resource_not_found",
-                Some(json!({
-                    "uri": uri
-                })),
-            )),
-        }
-    }
-
-    async fn list_resource_templates(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ListResourceTemplatesResult, McpError> {
-        Ok(ListResourceTemplatesResult {
-            next_cursor: None,
-            resource_templates: Vec::new(),
-            ..Default::default()
-        })
-    }
-
     async fn initialize(
         &self,
         _request: InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
         if let Some(http_request_part) = context.extensions.get::<axum::http::request::Parts>() {
-            let initialize_headers = &http_request_part.headers;
-            let initialize_uri = &http_request_part.uri;
-            tracing::info!(?initialize_headers, %initialize_uri, "initialize from http server");
+            tracing::info!(
+                method = %http_request_part.method,
+                path = http_request_part.uri.path(),
+                header_count = http_request_part.headers.len(),
+                "initialize from HTTP client"
+            );
         }
         Ok(self.get_info())
     }

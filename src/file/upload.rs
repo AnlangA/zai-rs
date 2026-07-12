@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 
-use super::request::FilePurpose;
+use super::{request::FileUploadPurpose, response::FileUploadResponse};
 use crate::client::ZaiClient;
 
 /// File upload request (multipart/form-data)
 ///
 /// Sends a multipart request with fields:
-/// - purpose: `FilePurpose`
+/// - purpose: [`FileUploadPurpose`]
 /// - file: file content
 pub struct FileUploadRequest {
-    purpose: FilePurpose,
+    purpose: FileUploadPurpose,
     file_path: PathBuf,
     file_name: Option<String>,
     content_type: Option<String>,
@@ -17,7 +17,7 @@ pub struct FileUploadRequest {
 
 impl FileUploadRequest {
     /// Create a new upload request for the given purpose and local file path.
-    pub fn new(purpose: FilePurpose, file_path: impl Into<PathBuf>) -> Self {
+    pub fn new(purpose: FileUploadPurpose, file_path: impl Into<PathBuf>) -> Self {
         Self {
             purpose,
             file_path: file_path.into(),
@@ -41,38 +41,24 @@ impl FileUploadRequest {
 
     /// Send the upload request and parse the returned [`FileObject`](super::response::FileObject).
     ///
-    /// The local file is read fully into memory before dispatch. Filename and
-    /// per-file size validation occur while the multipart form is built.
-    pub async fn send_via(
-        &self,
-        client: &ZaiClient,
-    ) -> crate::ZaiResult<super::response::FileObject> {
+    /// The local file is reopened, revalidated, and streamed for each transport
+    /// attempt. It is never buffered in full by this request builder.
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<FileUploadResponse> {
         let route = crate::client::routes::FILES_UPLOAD;
         let url = client.endpoints().resolve_route(route, &[])?;
-        let purpose = self.purpose.clone();
-        let path = self.file_path.clone();
-        let file_name = self.file_name.clone();
-        let content_type = self.content_type.clone();
-
-        let fname = file_name
-            .or_else(|| {
-                path.file_name()
-                    .and_then(|s| s.to_str())
-                    .map(std::string::ToString::to_string)
-            })
-            .unwrap_or_else(|| "upload.bin".to_string());
-
-        let bytes = tokio::fs::read(&path).await?;
+        let mut file_part =
+            crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
+        if let Some(file_name) = &self.file_name {
+            file_part = file_part.with_filename(file_name)?;
+        }
+        if let Some(content_type) = &self.content_type {
+            file_part = file_part.with_content_type(content_type)?;
+        }
         let factory = crate::client::transport::multipart::MultipartBodyFactory::new()
-            .field("purpose", purpose.as_str())?
-            .bytes_named(
-                "file",
-                fname,
-                content_type.unwrap_or_else(|| "application/octet-stream".to_string()),
-                bytes,
-            )?;
+            .field("purpose", self.purpose.as_str())?
+            .file_named("file", file_part)?;
         client
-            .send_multipart::<super::response::FileObject>(route.method(), url, &factory)
+            .send_multipart::<FileUploadResponse>(route.method(), url, &factory)
             .await
     }
 }

@@ -1,7 +1,15 @@
 //! Shared SSE (Server-Sent Events) line parsing utilities.
 //!
 //! Extracts the common logic of buffering raw byte chunks, splitting on `\n`,
-//! trimming `\r\n`, and yielding `data: ` prefixed payload lines.
+//! trimming `\r\n`, and yielding `data:` field payloads.
+
+use std::{collections::VecDeque, pin::Pin};
+
+use futures_util::{Stream, StreamExt};
+
+use crate::{ZaiError, ZaiResult, client::error::codes};
+
+pub(crate) type DecodedSseStream<T> = Pin<Box<dyn Stream<Item = ZaiResult<T>> + Send + 'static>>;
 
 /// Incremental SSE event parser.
 ///
@@ -17,6 +25,18 @@ impl SseEventParser {
     /// Create a new empty SSE event parser.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Bytes retained for the current incomplete line/event.
+    pub(crate) fn buffered_len(&self) -> usize {
+        let payload_bytes = self
+            .event_data
+            .iter()
+            .fold(0usize, |total, line| total.saturating_add(line.len()));
+        self.buf
+            .len()
+            .saturating_add(payload_bytes)
+            .saturating_add(self.event_data.len().saturating_sub(1))
     }
 
     /// Push a transport byte chunk and return completed SSE event payloads.
@@ -98,12 +118,139 @@ impl SseEventParser {
     }
 }
 
+struct RequiredDoneState {
+    raw: crate::client::transport::SseByteStream,
+    parser: SseEventParser,
+    pending: VecDeque<Vec<u8>>,
+    input_finished: bool,
+    terminated: bool,
+}
+
+/// Decode a typed SSE stream whose successful completion requires `[DONE]`.
+///
+/// Transport failures, oversized events, malformed items, and in-band business
+/// errors are each yielded once and then terminate the stream. EOF without the
+/// terminal marker is an error rather than normal completion.
+pub(crate) fn decode_required_done_stream<T, F>(
+    raw: crate::client::transport::SseByteStream,
+    decode: F,
+) -> DecodedSseStream<T>
+where
+    T: Send + 'static,
+    F: Fn(&[u8]) -> ZaiResult<T> + Send + 'static,
+{
+    let payloads = required_done_payloads(raw);
+    let stream = futures_util::stream::unfold(
+        (payloads, decode, false),
+        |(mut payloads, decode, terminated)| async move {
+            if terminated {
+                return None;
+            }
+            let item = payloads.next().await?;
+            let item = item.and_then(|payload| decode(&payload));
+            let terminated = item.is_err();
+            Some((item, (payloads, decode, terminated)))
+        },
+    );
+    Box::pin(stream)
+}
+
+fn required_done_payloads(
+    raw: crate::client::transport::SseByteStream,
+) -> Pin<Box<dyn Stream<Item = ZaiResult<Vec<u8>>> + Send + 'static>> {
+    let state = RequiredDoneState {
+        raw,
+        parser: SseEventParser::new(),
+        pending: VecDeque::new(),
+        input_finished: false,
+        terminated: false,
+    };
+    let stream = futures_util::stream::unfold(state, |mut state| async move {
+        loop {
+            if state.terminated {
+                return None;
+            }
+
+            if let Some(payload) = state.pending.pop_front() {
+                if payload == b"[DONE]" {
+                    return None;
+                }
+                if (payload.len() as u64) > crate::client::transport::limits::JSON_RESPONSE_MAX {
+                    state.terminated = true;
+                    return Some((Err(event_too_large()), state));
+                }
+                if let Some(error) = std::str::from_utf8(&payload)
+                    .ok()
+                    .and_then(crate::client::transport::decode::extract_error_envelope)
+                {
+                    state.terminated = true;
+                    return Some((Err(business_error(error)), state));
+                }
+                return Some((Ok(payload), state));
+            }
+
+            if state.input_finished {
+                state.pending.extend(state.parser.finish());
+                if state.pending.is_empty() {
+                    state.terminated = true;
+                    return Some((Err(ended_without_done()), state));
+                }
+                continue;
+            }
+
+            match state.raw.next().await {
+                Some(Ok(chunk)) => {
+                    state.pending.extend(state.parser.push(&chunk));
+                    if state.parser.buffered_len()
+                        > crate::client::transport::limits::JSON_RESPONSE_MAX as usize
+                    {
+                        state.terminated = true;
+                        return Some((Err(event_too_large()), state));
+                    }
+                },
+                Some(Err(error)) => {
+                    state.terminated = true;
+                    return Some((Err(error), state));
+                },
+                None => state.input_finished = true,
+            }
+        }
+    });
+    Box::pin(stream)
+}
+
+fn event_too_large() -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_VALIDATION,
+        message: format!(
+            "SSE event exceeded limit ({} bytes)",
+            crate::client::transport::limits::JSON_RESPONSE_MAX
+        ),
+    }
+}
+
+fn ended_without_done() -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_IO,
+        message: "SSE stream ended before the required [DONE] event".to_string(),
+    }
+}
+
+fn business_error(error: crate::client::transport::decode::BusinessError) -> ZaiError {
+    let code = error
+        .code
+        .as_ref()
+        .and_then(crate::client::transport::parse_business_code)
+        .unwrap_or_default();
+    ZaiError::from_api_response(200, code, error.message)
+}
+
 fn trim_one_leading_space(bytes: &[u8]) -> &[u8] {
     bytes.strip_prefix(b" ").unwrap_or(bytes)
 }
 
 fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
-    let total: usize = lines.iter().map(std::vec::Vec::len).sum::<usize>() + lines.len();
+    let total = lines.iter().map(std::vec::Vec::len).sum::<usize>() + lines.len().saturating_sub(1);
     let mut event = Vec::with_capacity(total);
     for (idx, line) in lines.iter().enumerate() {
         if idx > 0 {
@@ -120,10 +267,10 @@ fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
 /// by `\n`). For each line, it:
 /// - Strips trailing `\r` and `\n`
 /// - Skips empty lines
-/// - Strips the `"data: "` prefix and yields the remaining bytes
+/// - Strips the `data:` prefix and its optional single leading space
 ///
-/// Returns owned byte vectors containing each data payload.
-/// Lines that are not prefixed with `"data: "` are silently skipped.
+/// Return owned byte vectors containing each `data:` payload.
+/// Lines that are not `data:` fields are silently skipped.
 ///
 /// If a `data: [DONE]` line is encountered, it is yielded as a
 /// `[b"[DONE]"]` entry so the caller can detect stream termination.
@@ -147,9 +294,8 @@ pub fn extract_sse_data_lines(buf: &mut Vec<u8>, new_bytes: &[u8]) -> Vec<Vec<u8
         if line.is_empty() {
             continue;
         }
-        const PREFIX: &[u8] = b"data: ";
-        if let Some(rest) = line.strip_prefix(PREFIX) {
-            results.push(rest.to_vec());
+        if let Some(rest) = line.strip_prefix(b"data:") {
+            results.push(trim_one_leading_space(rest).to_vec());
         }
     }
 
@@ -161,6 +307,7 @@ pub fn extract_sse_data_lines(buf: &mut Vec<u8>, new_bytes: &[u8]) -> Vec<Vec<u8
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
 
     #[test]
     fn test_single_complete_line() {
@@ -168,6 +315,13 @@ mod tests {
         let lines = extract_sse_data_lines(&mut buf, b"data: hello\n");
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0], b"hello");
+    }
+
+    #[test]
+    fn test_data_field_without_optional_space() {
+        let mut buf = Vec::new();
+        let lines = extract_sse_data_lines(&mut buf, b"data:hello\n");
+        assert_eq!(lines, vec![b"hello".to_vec()]);
     }
 
     #[test]
@@ -304,5 +458,53 @@ mod tests {
         let mut parser = SseEventParser::new();
         assert!(parser.push(b"data: [DONE]\n").is_empty());
         assert_eq!(parser.finish(), vec![b"[DONE]".to_vec()]);
+    }
+
+    #[tokio::test]
+    async fn required_done_stream_handles_transport_fragmentation() {
+        let raw: crate::client::transport::SseByteStream = Box::pin(futures_util::stream::iter([
+            Ok(Bytes::from_static(b"data: {\"value\":")),
+            Ok(Bytes::from_static(b"1}\n\ndata: [DO")),
+            Ok(Bytes::from_static(b"NE]\n\n")),
+        ]));
+        let mut stream = decode_required_done_stream(raw, |payload| {
+            serde_json::from_slice::<serde_json::Value>(payload).map_err(ZaiError::from)
+        });
+        assert_eq!(stream.next().await.unwrap().unwrap()["value"], 1);
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn required_done_stream_reports_missing_marker_once() {
+        let raw: crate::client::transport::SseByteStream =
+            Box::pin(futures_util::stream::iter([Ok(Bytes::from_static(
+                b"data: {\"value\":1}\n\n",
+            ))]));
+        let mut stream = decode_required_done_stream(raw, |payload| {
+            serde_json::from_slice::<serde_json::Value>(payload).map_err(ZaiError::from)
+        });
+        assert!(stream.next().await.unwrap().is_ok());
+        let error = stream.next().await.unwrap().unwrap_err();
+        assert_eq!(error.code(), Some(codes::SDK_IO));
+        assert!(error.message().contains("[DONE]"));
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn required_done_stream_terminates_after_decode_or_business_error() {
+        for body in [
+            b"data: not-json\n\ndata: {\"value\":1}\n\ndata: [DONE]\n\n".as_slice(),
+            b"data: {\"error\":{\"code\":1302,\"message\":\"limited\"}}\n\ndata: [DONE]\n\n"
+                .as_slice(),
+        ] {
+            let raw: crate::client::transport::SseByteStream = Box::pin(
+                futures_util::stream::iter([Ok(Bytes::copy_from_slice(body))]),
+            );
+            let mut stream = decode_required_done_stream(raw, |payload| {
+                serde_json::from_slice::<serde_json::Value>(payload).map_err(ZaiError::from)
+            });
+            assert!(stream.next().await.unwrap().is_err());
+            assert!(stream.next().await.is_none());
+        }
     }
 }

@@ -1,4 +1,4 @@
-use super::request::FileListQuery;
+use super::request::{FileListPurpose, FileListQuery};
 use crate::{ZaiResult, client::ZaiClient};
 
 /// Files list request (GET /paas/v4/files)
@@ -10,10 +10,10 @@ pub struct FileListRequest {
 }
 
 impl FileListRequest {
-    /// Create a new file-list request (empty query).
-    pub fn new() -> Self {
+    /// Create a new file-list request with its required purpose filter.
+    pub fn new(purpose: FileListPurpose) -> Self {
         Self {
-            query: FileListQuery::new(),
+            query: FileListQuery::new(purpose),
         }
     }
 
@@ -23,21 +23,29 @@ impl FileListRequest {
         self
     }
 
-    /// Send the configured query and parse the typed response.
-    ///
-    /// This method does not run [`validator::Validate`]; use
-    /// [`Self::send_with_query_via`] when the query needs local range validation.
+    /// Validate the configured query, send it, and parse the typed response.
     pub async fn send_via(
         &self,
         client: &ZaiClient,
     ) -> ZaiResult<super::response::FileListResponse> {
+        use validator::Validate;
+
+        self.query.validate()?;
+        if self
+            .query
+            .after
+            .as_deref()
+            .is_some_and(|after| after.trim().is_empty())
+        {
+            return Err(crate::client::validation::invalid(
+                "after cannot be blank when provided",
+            ));
+        }
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(after) = self.query.after.as_ref() {
             params.push(("after", after.clone()));
         }
-        if let Some(purpose) = self.query.purpose.as_ref() {
-            params.push(("purpose", purpose.as_str().to_string()));
-        }
+        params.push(("purpose", self.query.purpose.as_str().to_string()));
         if let Some(order) = self.query.order.as_ref() {
             params.push(("order", order.as_str().to_string()));
         }
@@ -52,23 +60,5 @@ impl FileListRequest {
         client
             .send_empty::<super::response::FileListResponse>(route.method(), url)
             .await
-    }
-
-    /// Validate query and send in one call.
-    pub async fn send_with_query_via(
-        mut self,
-        client: &ZaiClient,
-        q: &FileListQuery,
-    ) -> ZaiResult<super::response::FileListResponse> {
-        use validator::Validate;
-        q.validate()?;
-        self.query = q.clone();
-        self.send_via(client).await
-    }
-}
-
-impl Default for FileListRequest {
-    fn default() -> Self {
-        Self::new()
     }
 }

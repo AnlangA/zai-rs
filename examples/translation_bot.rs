@@ -1,11 +1,14 @@
-//! # Translation Bot Example (non-streaming)
-//!
-//! This interactive example deliberately uses the non-streaming response path.
+//! Translate interactive input while keeping each request independent.
 
 use std::io::{self, Write};
 
-use zai_rs::client::ZaiClient;
-use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
+use zai_rs::{
+    client::ZaiClient,
+    model::{
+        GLM4_5_flash, TextMessage, ThinkingType, chat::ChatCompletion,
+        chat_base_response::ChatCompletionResponse,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("原文> ");
         io::stdout().flush()?;
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        if io::stdin().read_line(&mut input)? == 0 {
+            break;
+        }
         let prompt = input.trim();
         if prompt.eq_ignore_ascii_case("exit") || prompt.is_empty() {
             break;
@@ -26,8 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let system = TextMessage::system(
             "你是一个专业的翻译助手。请将用户提供的文本翻译成英文。只返回翻译结果。",
         );
-        let request = ChatCompletion::new(model.clone(), system)
-            .add_messages(TextMessage::user(prompt))
+        let request = ChatCompletion::new(model, system)
+            .add_message(TextMessage::user(prompt))
             .with_temperature(0.3)
             .with_thinking(ThinkingType::disabled());
 
@@ -35,9 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let text = body
             .choices()
             .and_then(|cs| cs.first())
-            .and_then(|c| c.message().content())
-            .map(|v| v.as_str().unwrap_or("").to_string())
-            .unwrap_or_default();
+            .and_then(|choice| choice.message())
+            .and_then(|message| message.content_str())
+            .ok_or("translation response did not contain text")?;
         println!("译文> {text}\n");
     }
     Ok(())

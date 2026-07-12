@@ -47,14 +47,9 @@ impl RerankRequest {
         self
     }
 
-    /// Optional: validate constraints before sending
+    /// Validate query, document, and result-count constraints before sending.
     pub fn validate(&self) -> ZaiResult<()> {
-        self.body
-            .validate_constraints()
-            .map_err(|e| crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: format!("Validation error: {e:?}"),
-            })
+        self.body.validate_constraints()
     }
 
     /// Send via a [`ZaiClient`] and parse the typed response.

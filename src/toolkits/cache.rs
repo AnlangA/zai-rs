@@ -2,81 +2,81 @@
 
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime},
 };
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Cache key for tool calls
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct CacheKey {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct CacheKey {
     /// Name of the tool.
-    pub tool_name: String,
-    /// Canonically serialized arguments with surrounding whitespace removed
-    /// from object keys.
-    pub arguments: String,
+    tool_name: String,
+    /// Canonically serialized arguments. Object keys and string values are
+    /// preserved exactly.
+    arguments: String,
 }
 
 impl CacheKey {
     /// Create a cache key from a tool name and its (arbitrary JSON) arguments.
-    pub fn new(tool_name: String, arguments: Value) -> Self {
-        let normalized = normalize_json(&arguments);
+    #[cfg(test)]
+    fn new(tool_name: String, arguments: Value) -> Self {
         Self {
             tool_name,
-            arguments: normalized,
+            arguments: canonical_json(&arguments),
+        }
+    }
+
+    /// Build an executor cache key tied to one registration generation.
+    pub(crate) fn for_generation(tool_name: String, arguments: Value, generation: u64) -> Self {
+        Self {
+            tool_name,
+            arguments: format!("{generation}:{}", canonical_json(&arguments)),
         }
     }
 }
 
 /// Cache entry with TTL
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CacheEntry {
+#[derive(Debug, Clone)]
+struct CacheEntry {
     /// Cached tool result.
-    pub result: Value,
+    result: Value,
     /// When the entry was inserted.
-    pub timestamp: SystemTime,
+    timestamp: SystemTime,
     /// Time-to-live for this entry.
-    pub ttl: Duration,
-    /// Number of cache hits on this entry.
-    pub hit_count: u64,
+    ttl: Duration,
 }
 
 impl CacheEntry {
     /// Create a new cache entry with the given result and TTL.
-    pub fn new(result: Value, ttl: Duration) -> Self {
+    fn new(result: Value, ttl: Duration) -> Self {
         Self {
             result,
             timestamp: SystemTime::now(),
             ttl,
-            hit_count: 0,
         }
     }
 
     /// Whether this entry has exceeded its TTL.
-    pub fn is_expired(&self) -> bool {
+    fn is_expired(&self) -> bool {
         match self.timestamp.elapsed() {
-            Ok(elapsed) => elapsed > self.ttl,
+            Ok(elapsed) => elapsed >= self.ttl,
             Err(_) => true,
         }
     }
-
-    /// Record one cache hit on this entry.
-    pub fn hit(&mut self) {
-        self.hit_count += 1;
-    }
 }
 
-/// Concurrent in-memory cache for tool-call results.
-///
-/// Concurrent (`DashMap`-backed) cache of tool-call results with per-entry TTL,
-/// O(1) FIFO eviction at capacity, and per-entry hit counts. Cloning is cheap
+/// Concurrent (`DashMap`-backed) cache of tool-call results with per-entry TTL
+/// and bounded FIFO eviction. Cloning is cheap
 /// (an `Arc` bump) — all clones share the same cached entries, so a
 /// [`ToolExecutor`](crate::toolkits::executor::ToolExecutor) cloned per tool
 /// call does not deep-copy the cache.
 #[derive(Clone)]
-pub struct ToolCallCache {
+pub(crate) struct ToolCallCache {
     /// Shared mutable cache contents (entries + eviction ordering).
     state: Arc<CacheState>,
     default_ttl: Duration,
@@ -86,20 +86,30 @@ pub struct ToolCallCache {
 
 /// The shared, concurrent interior of [`ToolCallCache`].
 struct CacheState {
-    entries: dashmap::DashMap<CacheKey, CacheEntry>,
-    /// Insertion-order queue driving O(1) FIFO eviction (see
-    /// [`ToolCallCache::evict_oldest`]). Reads do not refresh position, and stale
-    /// keys removed through expiry or invalidation are skipped lazily.
-    insertion_order: Mutex<VecDeque<CacheKey>>,
+    entries: dashmap::DashMap<CacheKey, StoredEntry>,
+    /// Reads do not refresh insertion order. Generation tags make stale queue
+    /// records harmless after expiry, replacement, or invalidation.
+    insertion_order: Mutex<VecDeque<(CacheKey, u64)>>,
+    next_generation: AtomicU64,
+    total_hits: AtomicU64,
+    total_misses: AtomicU64,
+}
+
+struct StoredEntry {
+    value: CacheEntry,
+    generation: u64,
 }
 
 impl ToolCallCache {
     /// Create a new cache (default TTL 300s, max 1000 entries, enabled).
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: Arc::new(CacheState {
                 entries: dashmap::DashMap::new(),
                 insertion_order: Mutex::new(VecDeque::new()),
+                next_generation: AtomicU64::new(0),
+                total_hits: AtomicU64::new(0),
+                total_misses: AtomicU64::new(0),
             }),
             default_ttl: Duration::from_secs(300),
             max_size: 1000,
@@ -108,19 +118,19 @@ impl ToolCallCache {
     }
 
     /// Set the default TTL for entries without an explicit TTL.
-    pub fn with_ttl(mut self, ttl: Duration) -> Self {
+    pub(crate) fn with_ttl(mut self, ttl: Duration) -> Self {
         self.default_ttl = ttl;
         self
     }
 
     /// Set the maximum number of cached entries.
-    pub fn with_max_size(mut self, size: usize) -> Self {
+    pub(crate) fn with_max_size(mut self, size: usize) -> Self {
         self.max_size = size;
         self
     }
 
     /// Enable or disable the cache entirely.
-    pub fn with_enabled(mut self, enabled: bool) -> Self {
+    pub(crate) fn with_enabled(mut self, enabled: bool) -> Self {
         self.enable_cache = enabled;
         self
     }
@@ -128,130 +138,141 @@ impl ToolCallCache {
     /// Whether the cache is currently enabled (a `get`/`insert` no-op when
     /// false). Lets callers avoid building a [`CacheKey`] — which deep-clones
     /// and re-serializes the arguments — when the cache is disabled.
-    pub fn enabled(&self) -> bool {
+    pub(crate) fn enabled(&self) -> bool {
         self.enable_cache
     }
 
     /// Look up a cached result, returning `None` if disabled, missing, or
     /// expired (expired entries are atomically removed).
-    pub fn get(&self, key: &CacheKey) -> Option<Value> {
+    pub(crate) fn get(&self, key: &CacheKey) -> Option<Value> {
         if !self.enable_cache {
             return None;
         }
 
-        // Use DashMap's remove_if for atomic check-and-remove of expired entries.
-        // If the entry exists and is expired, atomically remove it and return None.
-        // If not expired, we need to get it again for hit counting.
-        // This avoids TOCTOU issues between check and remove.
-        let expired = self.state.entries.remove_if(key, |_k, v| v.is_expired());
+        // Check-and-remove must be atomic: a separate expiry check followed by
+        // `remove` could delete a concurrent replacement.
+        let expired = self
+            .state
+            .entries
+            .remove_if(key, |_key, stored| stored.value.is_expired());
 
-        if expired.is_some() {
-            // Entry was expired and removed atomically
+        if let Some((_, expired)) = expired {
+            self.state
+                .insertion_order
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .retain(|(queued_key, generation)| {
+                    queued_key != key || *generation != expired.generation
+                });
+            saturating_increment(&self.state.total_misses);
             return None;
         }
 
-        // Entry was not expired (or didn't exist) - get it for hit counting
-        let mut entry = self.state.entries.get_mut(key)?;
-        entry.hit();
-        Some(entry.result.clone())
+        let Some(stored) = self.state.entries.get(key) else {
+            saturating_increment(&self.state.total_misses);
+            return None;
+        };
+        saturating_increment(&self.state.total_hits);
+        Some(stored.value.result.clone())
     }
 
     /// Insert a result, evicting the oldest entries at capacity. No-op if
     /// disabled.
-    pub fn insert(&self, key: CacheKey, result: Value, ttl: Option<Duration>) {
+    pub(crate) fn insert(&self, key: CacheKey, result: Value, ttl: Option<Duration>) {
         if !self.enable_cache || self.max_size == 0 {
             return;
         }
 
-        if self.state.entries.len() >= self.max_size {
-            self.evict_oldest();
-        }
-
-        // Track insertion order only for genuinely new keys. This best-effort
-        // dedup is NOT airtight under concurrency: two threads inserting the
-        // same brand-new key can each observe `was_present == false` and both
-        // push, so the queue may transiently carry duplicates. That is harmless
-        // because `evict_oldest` removes by key (idempotent) and consumes a
-        // budget slot per pop, so duplicates only mean we may pop the same key
-        // twice — never incorrect eviction or a missing entry. The lock-ordering
-        // note below still holds: `contains_key` releases its read lock before
-        // the write lock is taken, and the queue mutex is taken only after the
-        // entry write lock is released — so there is no lock-ordering cycle with
-        // `evict_oldest` (which holds the queue mutex then takes entry locks).
-        let was_present = self.state.entries.contains_key(&key);
+        // Serialize insertion-order updates and capacity enforcement. Each
+        // queue record carries a generation, so a stale record from an expired,
+        // invalidated, or replaced key can never remove a newer value.
+        let mut order = self
+            .state
+            .insertion_order
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A replacement becomes the newest FIFO entry. Removing prior records
+        // also bounds the queue under repeated writes to one key.
+        order.retain(|(queued_key, _)| queued_key != &key);
+        let generation = self.state.next_generation.fetch_add(1, Ordering::Relaxed);
         let entry = CacheEntry::new(result, ttl.unwrap_or(self.default_ttl));
-        self.state.entries.insert(key.clone(), entry);
-        if !was_present && let Ok(mut order) = self.state.insertion_order.lock() {
-            order.push_back(key);
+        self.state.entries.insert(
+            key.clone(),
+            StoredEntry {
+                value: entry,
+                generation,
+            },
+        );
+        order.push_back((key, generation));
+
+        while self.state.entries.len() > self.max_size {
+            let Some((oldest, oldest_generation)) = order.pop_front() else {
+                break;
+            };
+            self.state.entries.remove_if(&oldest, |_key, stored| {
+                stored.generation == oldest_generation
+            });
         }
     }
 
     /// Convenience: build a [`CacheKey`] from name+arguments and insert.
-    pub fn insert_with_key(&self, tool_name: String, arguments: Value, result: Value) {
+    #[cfg(test)]
+    fn insert_with_key(&self, tool_name: String, arguments: Value, result: Value) {
         let key = CacheKey::new(tool_name, arguments);
         self.insert(key, result, None);
     }
 
     /// Remove all cached entries.
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
+        let mut order = self
+            .state
+            .insertion_order
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.state.entries.clear();
-        if let Ok(mut order) = self.state.insertion_order.lock() {
-            order.clear();
-        }
+        order.clear();
+        self.state.total_hits.store(0, Ordering::Relaxed);
+        self.state.total_misses.store(0, Ordering::Relaxed);
     }
 
     /// Invalidate every entry for the given tool.
-    pub fn invalidate_tool(&self, tool_name: &str) {
+    pub(crate) fn invalidate_tool(&self, tool_name: &str) {
+        let mut order = self
+            .state
+            .insertion_order
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.state
             .entries
             .retain(|key, _| key.tool_name != tool_name);
+        order.retain(|(key, _)| key.tool_name != tool_name);
     }
 
     /// Compute aggregate cache statistics (entry count, hits, expiry, hit
     /// rate).
-    pub fn stats(&self) -> CacheStats {
-        let mut total_hits = 0u64;
+    pub(crate) fn stats(&self) -> CacheStats {
         let mut expired_count = 0u64;
 
         for entry in self.state.entries.iter() {
-            total_hits += entry.hit_count;
-            if entry.is_expired() {
+            if entry.value.is_expired() {
                 expired_count += 1;
             }
         }
 
         let total_entries = self.state.entries.len();
+        let total_hits = self.state.total_hits.load(Ordering::Relaxed);
+        let total_misses = self.state.total_misses.load(Ordering::Relaxed);
+        let total_lookups = total_hits.saturating_add(total_misses);
         CacheStats {
             total_entries,
             total_hits,
+            total_misses,
             expired_count,
-            hit_rate: if total_entries == 0 {
+            hit_rate: if total_lookups == 0 {
                 0.0
             } else {
-                total_hits as f64 / total_entries as f64
+                total_hits as f64 / total_lookups as f64
             },
-        }
-    }
-
-    /// Evict the oldest ~10% of entries in O(1) amortized time.
-    ///
-    /// Pops from the front of the insertion-order queue (oldest first) and
-    /// removes the corresponding entries. Keys already removed (expired during
-    /// a `get`, or invalidated) are skipped without counting toward the
-    /// eviction budget, so the queue self-cleans.
-    fn evict_oldest(&self) {
-        let mut budget = (self.max_size / 10).max(1);
-        let mut order = match self.state.insertion_order.lock() {
-            Ok(guard) => guard,
-            Err(_) => return,
-        };
-        while budget > 0 {
-            let Some(key) = order.pop_front() else { break };
-            // Only consume budget for entries still present — stale queue
-            // entries (removed via expiry/invalidate) drop silently.
-            if self.state.entries.remove(&key).is_some() {
-                budget -= 1;
-            }
         }
     }
 }
@@ -263,82 +284,31 @@ impl Default for ToolCallCache {
 }
 
 /// Cache statistics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CacheStats {
     /// Number of entries currently in the cache.
     pub total_entries: usize,
     /// Total cache hits across all entries.
     pub total_hits: u64,
+    /// Total enabled-cache lookups that did not find a live entry.
+    pub total_misses: u64,
     /// Number of entries that have expired (not yet evicted).
     pub expired_count: u64,
-    /// Hit rate (`total_hits / total_entries`).
+    /// Fraction of enabled-cache lookups that found a live entry.
     pub hit_rate: f64,
 }
 
-fn normalize_json(value: &Value) -> String {
-    // Fast path for the common structured case: when no object key anywhere in
-    // the tree carries surrounding whitespace (the overwhelmingly common case —
-    // LLMs emit clean JSON), skip the full deep-clone + rebuild below and
-    // serialize the original directly. serde_json's default `BTreeMap`-backed
-    // Map sorts object keys, so this canonicalizes key order for free, making
-    // `{"a":1,"b":2}` and `{"b":2,"a":1}` collide as they should.
-    //
-    // NOTE: this relies on serde_json being compiled WITHOUT its `preserve_order`
-    // feature (the default for this crate — see Cargo.toml). If `preserve_order`
-    // is ever enabled, keys would serialize in insertion order and reordered
-    // args would stop colliding; `test_cache_collides_on_reordered_keys` pins
-    // the user-facing behavior so that regression would be caught.
-    if matches!(value, Value::Object(_) | Value::Array(_)) && !needs_normalization(value) {
-        return serde_json::to_string(value).unwrap_or_default();
-    }
-
-    match value {
-        Value::Object(obj) => {
-            let mut normalized = serde_json::Map::new();
-            for (k, v) in obj {
-                let normalized_key = k.trim().to_string();
-                let normalized_value = normalize_json_value(v);
-                normalized.insert(normalized_key, normalized_value);
-            }
-            serde_json::to_string(&normalized).unwrap_or_default()
-        },
-        Value::Array(arr) => {
-            let normalized: Vec<_> = arr.iter().map(normalize_json_value).collect();
-            serde_json::to_string(&normalized).unwrap_or_default()
-        },
-        Value::String(s) => s.clone(),
-        _ => serde_json::to_string(value).unwrap_or_default(),
-    }
+fn saturating_increment(counter: &AtomicU64) {
+    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        value.checked_add(1)
+    });
 }
 
-/// Whether any object key in the tree has surrounding whitespace (and thus
-/// needs the full normalize-and-rebuild path). Allocation-free.
-fn needs_normalization(value: &Value) -> bool {
-    match value {
-        Value::Object(obj) => obj
-            .iter()
-            .any(|(k, v)| k.trim().len() != k.len() || needs_normalization(v)),
-        Value::Array(arr) => arr.iter().any(needs_normalization),
-        _ => false,
-    }
-}
-
-fn normalize_json_value(value: &Value) -> Value {
-    match value {
-        Value::Object(obj) => {
-            let mut normalized = serde_json::Map::new();
-            for (k, v) in obj {
-                let normalized_key = k.trim().to_string();
-                normalized.insert(normalized_key, normalize_json_value(v));
-            }
-            Value::Object(normalized)
-        },
-        Value::Array(arr) => {
-            let normalized: Vec<_> = arr.iter().map(normalize_json_value).collect();
-            Value::Array(normalized)
-        },
-        _ => value.clone(),
-    }
+fn canonical_json(value: &Value) -> String {
+    // `serde_json::Value`'s Display implementation emits valid compact JSON.
+    // With serde_json's default map backend, object keys are sorted, so
+    // equivalent objects with different insertion order share a key.
+    value.to_string()
 }
 
 #[cfg(test)]
@@ -354,6 +324,21 @@ mod tests {
     }
 
     #[test]
+    fn cache_key_distinguishes_name_input_and_registration_generation() {
+        let first = CacheKey::for_generation("one".to_string(), serde_json::json!({"n": 1}), 7);
+        let other_name =
+            CacheKey::for_generation("two".to_string(), serde_json::json!({"n": 1}), 7);
+        let other_input =
+            CacheKey::for_generation("one".to_string(), serde_json::json!({"n": 2}), 7);
+        let other_generation =
+            CacheKey::for_generation("one".to_string(), serde_json::json!({"n": 1}), 8);
+
+        assert_ne!(first, other_name);
+        assert_ne!(first, other_input);
+        assert_ne!(first, other_generation);
+    }
+
+    #[test]
     fn test_cache_entry_expired() {
         let entry = CacheEntry::new(
             serde_json::json!({"result": "success"}),
@@ -364,17 +349,6 @@ mod tests {
         let mut entry_mut = entry;
         entry_mut.timestamp = SystemTime::now() - Duration::from_secs(2);
         assert!(entry_mut.is_expired());
-    }
-
-    #[test]
-    fn test_cache_hit() {
-        let mut entry = CacheEntry::new(
-            serde_json::json!({"result": "success"}),
-            Duration::from_secs(60),
-        );
-        entry.hit();
-        entry.hit();
-        assert_eq!(entry.hit_count, 2);
     }
 
     #[test]
@@ -423,24 +397,27 @@ mod tests {
         let key = CacheKey::new("tool_a".to_string(), args);
         let _ = cache.get(&key);
         let _ = cache.get(&key);
+        let _ = cache.get(&CacheKey::new("missing".to_string(), serde_json::json!({})));
 
         let stats = cache.stats();
         assert_eq!(stats.total_entries, 2);
         assert_eq!(stats.total_hits, 2);
+        assert_eq!(stats.total_misses, 1);
+        assert!((stats.hit_rate - (2.0 / 3.0)).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn test_normalize_json() {
+    fn test_canonical_json() {
         let obj = serde_json::json!({
             "CITY": "Shenzhen",
             "count": 5,
             "Data": {"NAME": "test"}
         });
 
-        let normalized = normalize_json(&obj);
+        let normalized = canonical_json(&obj);
         let parsed: Value = serde_json::from_str(&normalized).unwrap();
 
-        // Keys should preserve original case (only trim whitespace)
+        // Keys preserve their exact spelling.
         if let Some(parsed_obj) = parsed.as_object() {
             assert!(parsed_obj.contains_key("CITY"));
             assert!(parsed_obj.contains_key("count"));
@@ -451,14 +428,12 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_json_consistency_with_llm() {
-        // Verify that normalize_json preserves case consistently with
-        // llm::normalize_arguments (both only trim, no case change)
+    fn test_canonical_json_preserves_key_whitespace() {
         let obj = serde_json::json!({"CityName": "Shenzhen", " UserID ": 42});
-        let normalized = normalize_json(&obj);
+        let normalized = canonical_json(&obj);
         let parsed: Value = serde_json::from_str(&normalized).unwrap();
         assert!(parsed.as_object().unwrap().contains_key("CityName"));
-        assert!(parsed.as_object().unwrap().contains_key("UserID"));
+        assert!(parsed.as_object().unwrap().contains_key(" UserID "));
     }
 
     #[test]
@@ -491,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_evict_lru() {
+    fn test_cache_evicts_at_capacity() {
         // Create a cache with small max_size
         let cache = ToolCallCache::new()
             .with_max_size(5)
@@ -608,12 +583,7 @@ mod tests {
 
     #[test]
     fn test_cache_collides_on_reordered_keys() {
-        // End-to-end pin of the user-facing behavior: the cache must treat
-        // reordered object keys as the same entry. (The canonicalization rides
-        // on serde_json's default BTreeMap key ordering — see the NOTE on
-        // `normalize_json`. This asserts the *observable* cache hit, so a
-        // future change that broke ordering — e.g. enabling serde_json's
-        // `preserve_order` feature — would fail here.)
+        // End-to-end pin: equivalent objects with reordered keys share a key.
         let cache = ToolCallCache::new();
         cache.insert_with_key(
             "t".to_string(),
@@ -628,11 +598,45 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_key_trims_whitespace_bearing_keys() {
-        // The slow path must still trim whitespace-bearing keys, and the
-        // trimmed form must match a clean key built via the fast path.
+    fn test_cache_key_preserves_whitespace_bearing_keys() {
         let messy = CacheKey::new("t".to_string(), serde_json::json!({" a ": 1}));
         let clean = CacheKey::new("t".to_string(), serde_json::json!({"a": 1}));
-        assert_eq!(messy, clean);
+        assert_ne!(messy, clean);
+    }
+
+    #[test]
+    fn string_and_json_null_do_not_collide() {
+        let string = CacheKey::new("t".to_string(), Value::String("null".to_string()));
+        let null = CacheKey::new("t".to_string(), Value::Null);
+        assert_ne!(string, null);
+    }
+
+    #[test]
+    fn invalidation_removes_fifo_record_before_reinsert() {
+        let cache = ToolCallCache::new().with_max_size(2);
+        let key = CacheKey::new("same".to_string(), serde_json::json!({}));
+        cache.insert(key.clone(), serde_json::json!(1), None);
+        cache.insert(
+            CacheKey::new("older".to_string(), serde_json::json!({})),
+            serde_json::json!(0),
+            None,
+        );
+        cache.invalidate_tool("same");
+        cache.insert(key.clone(), serde_json::json!(2), None);
+        cache.insert(
+            CacheKey::new("newest".to_string(), serde_json::json!({})),
+            serde_json::json!(3),
+            None,
+        );
+        assert_eq!(cache.get(&key), Some(serde_json::json!(2)));
+        assert_eq!(
+            cache
+                .state
+                .insertion_order
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .len(),
+            2
+        );
     }
 }

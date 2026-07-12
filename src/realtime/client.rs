@@ -3,10 +3,13 @@
 use std::sync::Arc;
 
 use super::session::SessionBuilder;
-use crate::client::endpoint::EndpointConfig;
+use crate::{
+    ZaiResult,
+    client::{ApiFamily, endpoint::EndpointConfig, secret::ApiSecret},
+};
 
 /// Authentication mode for the realtime WebSocket handshake.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthMode {
     /// Server-side Bearer auth: `Authorization: Bearer {API_KEY}` (default).
     Bearer,
@@ -26,12 +29,12 @@ pub enum AuthMode {
 /// [`RealtimeClient::with_jwt`], then start a session with
 /// [`RealtimeClient::session`].
 ///
-/// ```no_run
-/// use zai_rs::{model::GLM4_voice, realtime::RealtimeClient};
+/// ```rust,no_run
+/// use zai_rs::{model::GLM_realtime_flash, realtime::RealtimeClient};
 ///
 /// # async fn go(key: String) -> zai_rs::ZaiResult<()> {
 /// let session = RealtimeClient::new(key)
-///     .session(GLM4_voice {})
+///     .session(GLM_realtime_flash {})
 ///     .build()
 ///     .await?;
 /// # Ok(())
@@ -39,7 +42,7 @@ pub enum AuthMode {
 /// ```
 #[derive(Clone)]
 pub struct RealtimeClient {
-    api_key: Arc<String>,
+    api_key: Arc<ApiSecret>,
     auth: AuthMode,
     endpoint_config: EndpointConfig,
 }
@@ -48,10 +51,10 @@ impl RealtimeClient {
     /// Create a realtime client using Bearer auth and the default endpoints.
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            api_key: Arc::new(api_key.into()),
+            api_key: Arc::new(ApiSecret::new(api_key)),
             auth: AuthMode::Bearer,
             endpoint_config: EndpointConfig::defaults()
-                .unwrap_or_else(|_| EndpointConfig::builder().build(false).unwrap()),
+                .expect("built-in realtime endpoint must be valid"),
         }
     }
 
@@ -77,13 +80,14 @@ impl RealtimeClient {
     }
 
     /// Override only the realtime base URL (`wss://...`).
-    pub fn with_realtime_base(mut self, base: impl Into<String>) -> Self {
-        let leaked: &'static str = Box::leak(base.into().into_boxed_str());
-        self.endpoint_config = EndpointConfig::builder()
-            .realtime(leaked)
-            .build(false)
-            .unwrap();
-        self
+    ///
+    /// Only the realtime family is replaced; all other endpoint overrides are
+    /// preserved. Invalid or insecure public URLs return an error.
+    pub fn try_with_realtime_base(mut self, base: impl AsRef<str>) -> ZaiResult<Self> {
+        self.endpoint_config =
+            self.endpoint_config
+                .with_base(ApiFamily::Realtime, base.as_ref(), false)?;
+        Ok(self)
     }
 
     /// Begin building a realtime session for `model`.
@@ -94,7 +98,7 @@ impl RealtimeClient {
         let model_name: String = model.into();
         SessionBuilder::new(
             Arc::clone(&self.api_key),
-            self.auth.clone(),
+            self.auth,
             realtime_url,
             model_name,
         )
@@ -102,20 +106,49 @@ impl RealtimeClient {
 
     /// The resolved realtime WebSocket URL.
     pub fn realtime_url(&self) -> String {
-        self.endpoint_config
-            .resolve_route(crate::client::routes::REALTIME_CONNECT, &[])
-            .unwrap_or_default()
+        self.endpoint_config.base(ApiFamily::Realtime).to_string()
     }
 
     /// Current auth mode.
     pub fn auth(&self) -> &AuthMode {
         &self.auth
     }
+}
 
-    /// A reference to the configured API key.
-    ///
-    /// Treat this value as sensitive and never include it in logs or errors.
-    pub fn api_key(&self) -> &str {
-        &self.api_key
+impl std::fmt::Debug for RealtimeClient {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RealtimeClient")
+            .field("api_key", &self.api_key)
+            .field("auth", &self.auth)
+            .field("endpoint_config", &self.endpoint_config)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_redacts_api_key() {
+        let client = RealtimeClient::new("abcdefghij.0123456789abcdef");
+        let debug = format!("{client:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("abcdefghij"));
+    }
+
+    #[test]
+    fn realtime_override_accepts_an_owned_non_static_base() {
+        let base = format!("wss://{}/realtime", "example.com");
+        let client = RealtimeClient::new("abcdefghij.0123456789abcdef")
+            .try_with_realtime_base(&base)
+            .unwrap();
+        assert_eq!(client.realtime_url(), "wss://example.com/realtime");
+        assert!(
+            client
+                .try_with_realtime_base("ws://public.example/realtime")
+                .is_err()
+        );
     }
 }

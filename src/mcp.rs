@@ -125,6 +125,7 @@ impl McpConnection {
         region: McpRegion,
         api_key: &str,
     ) -> ZaiResult<Self> {
+        crate::client::error::validate_api_key(api_key)?;
         if backend == McpBackend::Vision {
             return Self::connect_vision(region, api_key).await;
         }
@@ -174,13 +175,11 @@ impl McpConnection {
             .map_err(external_error("list MCP tools"))
     }
 
-    async fn call(&self, name: &str, arguments: Value) -> ZaiResult<CallToolResult> {
-        let Value::Object(arguments) = arguments else {
-            return Err(ZaiError::Unknown {
-                code: codes::SDK_VALIDATION,
-                message: "MCP tool arguments must be a JSON object".to_owned(),
-            });
-        };
+    async fn call(
+        &self,
+        name: &str,
+        arguments: serde_json::Map<String, Value>,
+    ) -> ZaiResult<CallToolResult> {
         self.service
             .peer()
             .call_tool(CallToolRequestParams::new(name.to_owned()).with_arguments(arguments))
@@ -221,18 +220,22 @@ impl McpClient {
     /// service is used. No network connection is made until a capability is
     /// called.
     pub fn from_env() -> ZaiResult<Self> {
-        Ok(Self::new(api_key_from_env()?))
+        let api_key = api_key_from_env()?;
+        Self::new(api_key)
     }
 
     /// Build a lazily connected client. The service region is inferred from
-    /// `Z_AI_MODE`, defaulting to the China service.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    /// `Z_AI_MODE`, defaulting to the China service. Invalid credentials are
+    /// rejected before any connection or child process can be started.
+    pub fn new(api_key: impl Into<String>) -> ZaiResult<Self> {
         Self::with_region(api_key, region_from_env())
     }
 
     /// Build a client with an explicit service region.
-    pub fn with_region(api_key: impl Into<String>, region: McpRegion) -> Self {
-        Self {
+    pub fn with_region(api_key: impl Into<String>, region: McpRegion) -> ZaiResult<Self> {
+        let api_key = api_key.into();
+        crate::client::error::validate_api_key(&api_key)?;
+        Ok(Self {
             region,
             api_key: ApiSecret::new(api_key),
             web_search: tokio::sync::OnceCell::new(),
@@ -240,7 +243,7 @@ impl McpClient {
             zread: tokio::sync::OnceCell::new(),
             vision: tokio::sync::OnceCell::new(),
             tool_timeout: DEFAULT_TOOL_TIMEOUT,
-        }
+        })
     }
 
     /// Set the maximum duration of connection setup plus one MCP tool call.
@@ -301,7 +304,13 @@ impl McpClient {
     }
 
     async fn call_result(&self, name: &str, arguments: Value) -> ZaiResult<CallToolResult> {
-        let backend = McpBackend::for_tool(name).ok_or_else(|| ZaiError::Unknown {
+        let Value::Object(arguments) = arguments else {
+            return Err(ZaiError::ApiError {
+                code: codes::SDK_VALIDATION,
+                message: "MCP tool arguments must be a JSON object".to_owned(),
+            });
+        };
+        let backend = McpBackend::for_tool(name).ok_or_else(|| ZaiError::ApiError {
             code: codes::SDK_VALIDATION,
             message: format!("unknown MCP tool: {name}"),
         })?;
@@ -311,23 +320,21 @@ impl McpClient {
         .await
         .map_err(|_| ZaiError::ApiError {
             code: codes::SDK_TIMEOUT,
-            message: format!(
-                "MCP tool {name} timed out after {} seconds",
-                self.tool_timeout.as_secs()
-            ),
+            message: format!("MCP tool {name} timed out after {:?}", self.tool_timeout),
         })?
     }
 
     async fn call_request<R>(&self, name: &str, request: &R) -> ZaiResult<CallToolResult>
     where
-        R: Serialize + ?Sized,
+        R: Serialize + requests::McpRequest + ?Sized,
     {
+        request.validate()?;
         self.call_result(name, serde_json::to_value(request)?).await
     }
 
     async fn call_text_request<R>(&self, name: &str, request: &R) -> ZaiResult<McpTextResponse>
     where
-        R: Serialize + ?Sized,
+        R: Serialize + requests::McpRequest + ?Sized,
     {
         responses::text_response(self.call_request(name, request).await?)
     }
@@ -578,28 +585,29 @@ impl McpClient {
 }
 
 fn api_key_from_env() -> ZaiResult<String> {
-    std::env::var("Z_AI_API_KEY")
-        .or_else(|_| std::env::var("ZHIPU_API_KEY"))
-        .map_err(|_| ZaiError::Unknown {
+    ["Z_AI_API_KEY", "ZHIPU_API_KEY"]
+        .into_iter()
+        .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
+        .ok_or_else(|| ZaiError::ApiError {
             code: codes::SDK_VALIDATION,
-            message: "set Z_AI_API_KEY or ZHIPU_API_KEY".to_owned(),
+            message: "set a non-empty Z_AI_API_KEY or ZHIPU_API_KEY".to_owned(),
         })
 }
 
 fn region_from_env() -> McpRegion {
     match std::env::var("Z_AI_MODE") {
-        Ok(mode) if mode.eq_ignore_ascii_case("ZAI") => McpRegion::Zai,
+        Ok(mode) if mode.trim().eq_ignore_ascii_case("ZAI") => McpRegion::Zai,
         _ => McpRegion::Zhipu,
     }
 }
 
-fn external_error<E>(operation: &'static str) -> impl FnOnce(E) -> ZaiError
-where
-    E: std::fmt::Display,
-{
-    move |error| ZaiError::Unknown {
+fn external_error<E>(operation: &'static str) -> impl FnOnce(E) -> ZaiError {
+    move |_error| ZaiError::Unknown {
         code: codes::SDK_EXTERNAL_TOOL,
-        message: format!("failed to {operation}: {error}"),
+        // External transports may include authorization headers, URLs, tool
+        // arguments, or provider text in Display. Preserve a stable operation
+        // label without copying that untrusted detail into the public error.
+        message: format!("failed to {operation}"),
     }
 }
 
@@ -649,10 +657,44 @@ mod tests {
 
     #[test]
     fn client_does_not_connect_until_a_capability_is_used() {
-        let client = McpClient::with_region("secret", McpRegion::Zhipu);
+        let client = McpClient::with_region("test.12345678901234567890", McpRegion::Zhipu).unwrap();
         assert!(client.web_search.get().is_none());
         assert!(client.web_reader.get().is_none());
         assert!(client.zread.get().is_none());
         assert!(client.vision.get().is_none());
+        assert!(McpClient::with_region("secret", McpRegion::Zhipu).is_err());
+    }
+
+    #[tokio::test]
+    async fn raw_calls_reject_non_object_arguments_before_connecting() {
+        let client = McpClient::with_region("test.12345678901234567890", McpRegion::Zhipu).unwrap();
+        assert!(
+            client
+                .call_raw(TOOL_WEB_SEARCH, serde_json::json!([]))
+                .await
+                .is_err()
+        );
+        assert!(client.web_search.get().is_none());
+    }
+
+    #[tokio::test]
+    async fn malformed_credentials_are_rejected_before_mcp_startup() {
+        let error = McpConnection::connect_with_key(
+            McpBackend::WebSearch,
+            McpRegion::Zhipu,
+            "bad\ncredential",
+        )
+        .await
+        .err()
+        .expect("invalid header data must fail before a connection is attempted");
+        assert_eq!(error.code(), Some(codes::SDK_VALIDATION));
+    }
+
+    #[test]
+    fn external_errors_do_not_copy_provider_details() {
+        let secret = "customer prompt and test.12345678901234567890";
+        let error = external_error("call MCP tool")(secret);
+        assert_eq!(error.message(), "failed to call MCP tool");
+        assert!(!error.to_string().contains(secret));
     }
 }

@@ -3,8 +3,7 @@ use crate::ZaiResult;
 use crate::client::ZaiClient;
 
 /// Query parameters for knowledge list API
-#[derive(Debug, Clone, Default, serde::Serialize, validator::Validate)]
-#[allow(clippy::new_without_default)]
+#[derive(Debug, Clone, serde::Serialize, validator::Validate)]
 pub struct KnowledgeListQuery {
     /// Page index starting from 1 (default 1)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -18,7 +17,6 @@ pub struct KnowledgeListQuery {
 
 impl KnowledgeListQuery {
     /// Create a new query (page 1, size 10).
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             page: Some(1),
@@ -50,18 +48,22 @@ impl KnowledgeListQuery {
     }
 }
 
+impl Default for KnowledgeListQuery {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Knowledge list request (GET /llm-application/open/knowledge)
 ///
 /// Credentials and transport live on the [`ZaiClient`], passed to
 /// [`send_via`](Self::send_via).
-#[allow(clippy::new_without_default)]
 pub struct KnowledgeListRequest {
     query: KnowledgeListQuery,
 }
 
 impl KnowledgeListRequest {
     /// Create a new knowledge-list request (default query: page 1, size 10).
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             query: KnowledgeListQuery::new(),
@@ -76,6 +78,9 @@ impl KnowledgeListRequest {
 
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeListResponse> {
+        use validator::Validate;
+
+        self.query.validate()?;
         let params = self.query.pairs();
         let route = crate::client::routes::KNOWLEDGE_LIST;
         let url = client.endpoints().resolve_route_with_query(
@@ -90,17 +95,10 @@ impl KnowledgeListRequest {
             .send_empty::<KnowledgeListResponse>(route.method(), url)
             .await
     }
+}
 
-    /// Validate the query then send via a [`ZaiClient`] and parse the typed
-    /// response.
-    pub async fn send_via_with_query(
-        mut self,
-        client: &ZaiClient,
-        q: &KnowledgeListQuery,
-    ) -> ZaiResult<KnowledgeListResponse> {
-        use validator::Validate;
-        q.validate()?;
-        self.query = q.clone();
-        self.send_via(client).await
+impl Default for KnowledgeListRequest {
+    fn default() -> Self {
+        Self::new()
     }
 }

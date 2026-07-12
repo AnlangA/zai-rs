@@ -1,358 +1,140 @@
 # 错误处理指南
 
-本指南详细说明 `zai-rs` SDK 中的错误处理机制和最佳实践。
+`zai-rs` 的所有请求都返回 `ZaiResult<T>`。错误统一为 `ZaiError`，既保留
+HTTP 或业务错误码，也提供适合恢复策略的分类方法。
+
+## 基本用法
+
+优先用 `?` 把错误交给调用方，只在应用边界决定日志、重试或用户提示：
+
+```rust,ignore
+use zai_rs::{
+    ZaiClient,
+    client::error::{ZaiError, ZaiResult},
+    model::{ChatCompletion, GLM4_5_flash, TextMessage},
+};
+
+async fn request(client: &ZaiClient) -> ZaiResult<()> {
+    let response = ChatCompletion::new(
+        GLM4_5_flash {},
+        TextMessage::user("Hello"),
+    )
+    .send_via(client)
+    .await?;
+
+    if let Some(text) = response
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.content_str())
+    {
+        println!("{text}");
+    }
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    let result: ZaiResult<()> = async {
+        let client = ZaiClient::from_env()?;
+        request(&client).await
+    }
+    .await;
+
+    match result {
+        Ok(()) => {},
+        Err(ZaiError::AuthError { code, message }) => {
+            tracing::error!(code, %message, "认证失败");
+        },
+        Err(error) if error.is_rate_limit() => {
+            tracing::warn!(error = %error.compact(), "请求受到限流");
+        },
+        Err(error) => tracing::error!(error = %error, "请求失败"),
+    }
+}
+```
+
+应用代码通常不需要匹配所有变体。`category()`、`is_auth_error()`、
+`is_rate_limit()`、`is_client_error()`、`is_server_error()` 和
+`is_retryable()` 更适合稳定的恢复逻辑。`ZaiError` 是 `#[non_exhaustive]`，
+直接匹配时应保留兜底分支。
 
 ## 错误类型
 
-SDK 定义了全面的错误类型，覆盖所有可能的错误场景：
+| 变体 | 含义 |
+|------|------|
+| `HttpError` | 未映射为专用类型的 HTTP 状态错误 |
+| `AuthError` | HTTP 401/403 或认证类业务错误 |
+| `AccountError` | 账户、套餐或余额错误 |
+| `ApiError` | 参数/API 错误；也承载部分 SDK 端校验错误 |
+| `RateLimitError` | HTTP 429 或限流、配额类业务错误 |
+| `ContentPolicyError` | 内容安全或策略拦截 |
+| `FileError` | 文件 API 或本地文件校验错误 |
+| `NetworkError` | HTTP 网络或超时错误 |
+| `JsonError` | JSON 序列化或反序列化错误 |
+| `RealtimeError` | WebSocket 连接、协议、超时或关闭错误 |
+| `RealtimeAuthError` | Realtime API key/JWT 错误 |
+| `Unknown` | 未知业务码或未分类状态 |
 
-### ZaiError 枚举
+`error.code()` 返回可用的 HTTP/业务/SDK 错误码，`error.message()` 返回描述。
+SDK 自身使用保留的 `9000..=9999` 错误码；可通过 `is_sdk_error()` 区分它们
+与服务端的 `1000..=1499` 业务码。
 
-| 错误类型 | 说明 | 示例场景 |
-|----------|------|----------|
-| `HttpError` | HTTP 状态错误 | 400 Bad Request, 404 Not Found |
-| `AuthError` | 认证和授权错误 | 无效的 API 密钥 |
-| `AccountError` | 账户相关错误 | 账户已过期、余额不足 |
-| `ApiError` | API 调用错误 | 无效的参数 |
-| `RateLimitError` | 速率限制错误 | 请求过于频繁 |
-| `ContentPolicyError` | 内容策略违规 | 违规内容 |
-| `FileError` | 文件处理错误 | 文件上传失败 |
-| `NetworkError` | 网络/IO 错误 | 连接超时 |
-| `JsonError` | JSON 解析错误 | 响应格式无效 |
-| `Unknown` | 未知错误 | 未分类的错误 |
+## 自动重试
 
-## 基础错误处理
+统一传输层默认最多尝试 3 次，但只自动重试可安全重放的幂等请求。普通 POST
+不会因为启用了重试策略而被重复提交。可恢复结果包括部分网络错误、HTTP 429、
+部分 5xx 以及对应的限流业务码；认证、参数、账户、内容策略和文件错误不会重试。
 
-### 简单匹配
-
-```rust,ignore
-use zai_rs::client::error::ZaiError;
-use zai_rs::model::*;
-
-#[tokio::main]
-async fn main() {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user("Hello");
-    let key = std::env::var("ZHIPU_API_KEY").unwrap();
-    
-    let client = ChatCompletion::new(model, messages, key);
-    
-    match client.post().await {
-        Ok(resp) => println!("Success: {}", resp.choices().first().unwrap().message.content()),
-        Err(ZaiError::AuthError { code, message }) => {
-            tracing::error!("认证失败 [{}]: {}", code, message);
-        }
-        Err(ZaiError::RateLimitError { code, message }) => {
-            tracing::error!("速率限制 [{}]: {}", code, message);
-        }
-        Err(e) => tracing::error!("错误: {}", e),
-    }
-}
-```
-
-### 使用辅助方法
-
-SDK 提供了有用的辅助方法来检查错误类型：
+重试采用带 full jitter 的指数退避，并尊重正整数秒格式的 `Retry-After`。
+每次尝试和整个请求都有截止时间。可显式收紧策略：
 
 ```rust,ignore
-use zai_rs::client::error::ZaiError;
+use std::time::Duration;
+use zai_rs::client::{HttpTransportConfig, ZaiClient};
 
-fn handle_error(error: &ZaiError) {
-    if error.is_rate_limit() {
-        tracing::error!("触发速率限制，请稍后重试");
-    } else if error.is_auth_error() {
-        tracing::error!("认证失败，请检查 API 密钥");
-    } else if error.is_client_error() {
-        tracing::error!("客户端错误: {}", error.compact());
-    } else if error.is_server_error() {
-        tracing::error!("服务器错误，请稍后重试");
-    }
-}
+let transport = HttpTransportConfig::builder()
+    .connect_timeout(Duration::from_secs(5))?
+    .request_timeout(Duration::from_secs(30))?
+    .max_attempts(2)?
+    .build();
+
+let client = ZaiClient::builder(api_key)
+    .transport(transport)
+    .build()?;
+# Ok::<(), zai_rs::ZaiError>(())
 ```
 
-## 重试机制
+若要在应用层重试非幂等操作，必须先确认服务端提供幂等键或任务去重语义；不要仅凭
+`is_retryable()` 就重复提交创建类请求。
 
-SDK 内置了智能重试机制，自动处理临时性错误：
+## 日志与敏感信息
 
-### 自动重试的失败场景
-
-- 服务器错误（5xx）：内部服务器错误、网关超时等
-- 速率限制 / 配额错误：API 代码 1302-1305、1308-1313
-- 网络错误：连接超时、连接拒绝
-
-### 不会重试的失败场景
-
-- 客户端错误（4xx）：无效请求、未授权等
-- 认证错误：API 密钥无效
-- 账户错误：账户不存在、权限不足
-- 内容策略错误：API 代码 1300-1301，调整输入内容后再请求
-
-### 默认重试配置
-
-```rust
-// 默认配置
-max_retries: 3
-retry_delay: Exponential {
-    base: 500ms,
-    max: 5s
-}
-```
-
-### 自定义重试行为
-
-虽然当前版本不支持自定义重试配置，但您可以在应用层实现自己的重试逻辑：
+`ZaiClient` 和内部 secret 的 `Debug`/`Display` 实现不会输出 API key。应用自己
+拼接的字符串仍需主动清理：
 
 ```rust,ignore
-use zai_rs::client::error::{ZaiError, ZaiResult};
-use tokio::time::{sleep, Duration};
-use std::time::Instant;
+use zai_rs::client::error::{contains_sensitive_info, mask_sensitive_info};
 
-async fn call_with_retry<F, Fut, T>(
-    mut f: F,
-    max_retries: u32,
-    base_delay: Duration,
-) -> ZaiResult<T>
-where
-    F: FnMut() -> Fut,
-    Fut: std::future::Future<Output = ZaiResult<T>>,
-{
-    let mut last_error = None;
-    
-    for attempt in 0..=max_retries {
-        match f().await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                last_error = Some(e.clone());
-                if attempt < max_retries {
-                    let delay = base_delay * 2_u32.pow(attempt);
-                    tracing::error!("尝试 {}/{} 失败，等待 {:?}", attempt + 1, max_retries + 1, delay);
-                    sleep(delay).await;
-                }
-            }
-        }
-    }
-    
-    Err(last_error.unwrap())
-}
-
-// 使用示例
-#[tokio::main]
-async fn main() -> ZaiResult<()> {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user("Hello");
-    let key = std::env::var("ZHIPU_API_KEY")?;
-    
-    let result = call_with_retry(
-        || {
-            let client = ChatCompletion::new(model.clone(), messages.clone(), key.clone());
-            client.post()
-        },
-        5,
-        Duration::from_millis(1000),
-    ).await?;
-    
-    Ok(())
-}
+let line = "Authorization: Bearer abc.defghijklmnop";
+assert!(contains_sensitive_info(line));
+let safe = mask_sensitive_info(line);
+assert!(!safe.contains("abcdefghijklmnop"));
 ```
 
-## 日志安全
+推荐记录 endpoint 模板、HTTP 状态、错误分类和请求 ID；不要记录 Authorization
+header、完整请求体、用户文件内容或 Realtime token。
 
-### 敏感信息过滤
+## 业务码映射
 
-SDK 提供了 `mask_sensitive_info` 函数，用于在日志中过滤敏感信息：
+| 代码范围 | 错误类型 |
+|----------|----------|
+| `1000`, `1001`, `1003`, `1005`, `1220` | `AuthError` |
+| `1110..=1121`（`1113` 除外） | `AccountError` |
+| `1200..=1234`, `1261` | `ApiError`（其中 `1200/1230/1234` 按服务端故障分类） |
+| `1301` | `ContentPolicyError` |
+| `1113`, `1302`, `1305`, `1308..=1311`, `1313..=1321` | `RateLimitError` |
+| `1400..=1499` | `FileError` |
 
-```rust,ignore
-use zai_rs::client::error::mask_sensitive_info;
-
-fn log_request(api_key: &str, content: &str) {
-    let log_text = format!("API key: {}, Content: {}", api_key, content);
-    let filtered = mask_sensitive_info(&log_text);
-    
-    // 输出: API key: [FILTERED], Content: ...
-    println!("{}", filtered);
-}
-```
-
-### 过滤的内容
-
-- API 密钥（格式：id.secret）
-- 密码字段
-- Token 值
-- Bearer 认证头
-- Authorization 头
-
-## 错误代码映射
-
-SDK 将智谱AI API 错误代码映射到特定的错误类型：
-
-### HTTP 状态码
-
-| 状态码 | 错误类型 | 说明 |
-|--------|----------|------|
-| 400 | `HttpError` | 错误的请求 |
-| 401 | `HttpError` | 未授权 - 检查 API 密钥 |
-| 404 | `HttpError` | 资源未找到 |
-| 429 | `HttpError` | 请求过多 - 速率限制 |
-| 434 | `HttpError` | 无 API 权限 |
-| 435 | `HttpError` | 文件大小超过 100MB 限制 |
-| 500-599 | `HttpError` | 服务器错误 |
-
-### API 业务错误代码
-
-| 代码范围 | 错误类型 | 说明 |
-|----------|----------|------|
-| 1000-1004, 1100 | `AuthError` | 认证相关错误 |
-| 1110-1121 | `AccountError` | 账户相关错误 |
-| 1200-1234 | `ApiError` | API 调用错误 |
-| 1300-1301 | `ContentPolicyError` | 策略阻断 / 内容安全错误 |
-| 1302-1305, 1308-1313 | `RateLimitError` | 并发、频率、配额、套餐或公平使用限制 |
-| 1400-1499 | `FileError` | 文件处理错误 |
-
-更多错误代码详情请参考 [智谱AI API文档](https://docs.bigmodel.cn/cn/api/api-code)。
-
-## 最佳实践
-
-### 1. 始终使用 Result 类型
-
-```rust,ignore
-// ✅ 好的做法
-async fn get_response() -> ZaiResult<String> {
-    let client = ChatCompletion::new(model, messages, key)?;
-    let resp = client.post().await?;
-    Ok(resp.choices().first()?.message.content())
-}
-
-// ❌ 不好的做法
-async fn get_response() -> String {
-    let resp = client.post().await.unwrap();
-    resp.choices().first().unwrap().message.content()
-}
-```
-
-### 2. 使用 ? 运算符简化错误传播
-
-```rust,ignore
-// ✅ 好的做法
-async fn process() -> ZaiResult<()> {
-    let resp = make_request().await?;
-    let content = extract_content(&resp)?;
-    Ok(())
-}
-
-// ❌ 不好的做法
-async fn process() -> ZaiResult<()> {
-    let resp = match make_request().await {
-        Ok(r) => r,
-        Err(e) => return Err(e),
-    };
-    // ...
-}
-```
-
-### 3. 提供有意义的错误信息
-
-```rust,ignore
-use zai_rs::client::error::{ZaiError, ZaiResult};
-
-async fn get_weather(city: &str) -> ZaiResult<String> {
-    let model = GLM4_5_flash {};
-    let messages = TextMessage::user(format!("{}的天气如何？", city));
-    let key = std::env::var("ZHIPU_API_KEY")
-        .map_err(|_| ZaiError::ApiError {
-            code: 1200,
-            message: "ZHIPU_API_KEY 环境变量未设置".to_string(),
-        })?;
-    
-    let client = ChatCompletion::new(model, messages, key);
-    let resp = client.post().await?;
-    
-    Ok(resp.choices().first().unwrap().message.content())
-}
-
-#[tokio::main]
-async fn main() {
-    match get_weather("北京").await {
-        Ok(weather) => println!("天气: {}", weather),
-        Err(e) => tracing::error!("获取天气失败: {}", e),
-    }
-}
-```
-
-### 4. 使用结构化日志
-
-```rust,ignore
-use tracing::{error, info, warn};
-
-async fn process_request() -> ZaiResult<String> {
-    info!("开始处理请求");
-    
-    let result = make_request().await?;
-    
-    info!("请求成功");
-    Ok(result)
-}
-
-#[tokio::main]
-async fn main() {
-    let _ = tracing_subscriber::fmt::try_init();
-    
-    match process_request().await {
-        Ok(content) => println!("{}", content),
-        Err(e) => error!("处理失败: {}", e.compact()),
-    }
-}
-```
-
-### 5. 验证 API 密钥
-
-```rust,ignore
-use zai_rs::client::error::validate_api_key;
-
-fn main() {
-    let key = std::env::var("ZHIPU_API_KEY").unwrap();
-    
-    if let Err(e) = validate_api_key(&key) {
-        tracing::error!("API 密钥格式错误: {}", e);
-        std::process::exit(1);
-    }
-    
-    // 继续正常流程
-}
-```
-
-## 调试技巧
-
-### 启用详细日志
-
-```rust,ignore
-fn main() {
-    // 设置日志级别为 DEBUG
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("debug"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
-    
-    // 运行应用...
-}
-```
-
-### 检查错误详细信息
-
-```rust,ignore
-use zai_rs::client::error::ZaiError;
-
-fn debug_error(error: &ZaiError) {
-    println!("错误代码: {:?}", error.code());
-    println!("错误信息: {}", error.message());
-    println!("紧凑表示: {}", error.compact());
-    
-    if error.is_rate_limit() {
-        println!("这是一个速率限制错误");
-    }
-}
-```
-
-## 相关资源
-
-- [API 错误代码参考](https://docs.bigmodel.cn/cn/api/api-code)
-- [快速入门指南](GETTING_STARTED.md)
-- [高级主题](ADVANCED_TOPICS.md)
+未知业务码保留为 `Unknown`，不会被假定为可重试。完整定义以
+[`src/client/error.rs`](../src/client/error.rs) 和上游 API 文档为准。

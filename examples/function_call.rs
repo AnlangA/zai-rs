@@ -1,140 +1,88 @@
-use tracing::warn;
-use zai_rs::client::ZaiClient;
-use zai_rs::model::{ChatCompletion, chat_base_response::ChatCompletionResponse, *};
+//! Complete one typed function-call round trip with a deterministic local tool.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::{
+        Function, FunctionParams, GLM4_5_flash, TextMessage, ThinkingType, ToolCall, ToolChoice,
+        Tools, chat::ChatCompletion, chat_base_response::ChatCompletionResponse,
+    },
+};
+
+#[derive(serde::Deserialize)]
+struct WeatherArgs {
+    city: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
-
-    let model = GLM4_5_flash {};
-
-    // 模拟添加一个 function call 工具：get_weather(city: string)
-    let weather_func = Function::new(
+    let weather = Function::new(
         "get_weather",
-        "Get current weather for a city",
+        "Return the example weather observation for a city",
         serde_json::json!({
             "type": "object",
-            "properties": {
-                "city": {"type": "string"}
-            },
+            "properties": { "city": { "type": "string" } },
             "required": ["city"],
             "additionalProperties": false
         }),
     );
-    let tools = Tools::Function {
-        function: weather_func,
+
+    let client = ZaiClient::from_env()?;
+    let mut request =
+        ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("深圳现在的天气怎么样？"))
+            .with_thinking(ThinkingType::disabled())
+            .add_tool(Tools::Function { function: weather })
+            .with_tool_choice(ToolChoice::auto());
+
+    let first: ChatCompletionResponse = request.send_via(&client).await?;
+    let (id, name, arguments, assistant_content) = {
+        let message = first
+            .choices()
+            .and_then(|choices| choices.first())
+            .ok_or("chat response did not contain a choice")?
+            .message()
+            .ok_or("chat choice omitted its message")?;
+        let call = message
+            .tool_calls()
+            .and_then(|calls| calls.first())
+            .ok_or("model did not return a function call")?;
+        let function = call.function().ok_or("tool call omitted its function")?;
+
+        (
+            call.id().ok_or("tool call omitted its id")?.to_owned(),
+            function.name().to_owned(),
+            function.arguments().to_owned(),
+            message.content_str().map(str::to_owned),
+        )
     };
 
-    // 读取 API Key，并保留以便后续继续对话
-    let zai_client = ZaiClient::from_env()?;
-
-    // 会话的第一条用户消息
-    let user_text = "你是谁，帮为查找深圳今天的天气";
-
-    let mut request = ChatCompletion::new(model, TextMessage::user(user_text))
-        .with_thinking(ThinkingType::disabled())
-        .with_temperature(0.7)
-        .with_top_p(0.9)
-        .with_max_tokens(512)
-        .add_tool(tools);
-    let body: ChatCompletionResponse = request.send_via(&zai_client).await?;
-    let v = serde_json::to_value(&body).expect("Failed to serialize response to JSON");
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&v).expect("Failed to format JSON")
-    );
-
-    // 1) 解析第一条 tool_call（更简洁）
-    if let Some((id, name, arguments)) = parse_first_tool_call(&v) {
-        println!("提取到的 tool_call -> name: {name}, arguments: {arguments}");
-
-        // 2) 执行本地工具并返回模拟结果
-        let result = handle_tool_call(&name, &arguments)
-            .unwrap_or_else(|| serde_json::json!({"ok": false, "error": "no_result"}));
-        println!(
-            "模拟函数返回结果: {}",
-            serde_json::to_string_pretty(&result).expect("Failed to format JSON")
-        );
-
-        // 3) 回传工具结果并继续一轮对话（复用同一个 client）
-        let tool_msg = TextMessage::tool_with_id(
-            serde_json::to_string(&result).expect("Failed to serialize tool result"),
-            id,
-        );
-        request = request.add_messages(tool_msg).with_max_tokens(512);
-
-        let body2: ChatCompletionResponse = request.send_via(&zai_client).await?;
-        let v2 = serde_json::to_value(&body2).expect("Failed to serialize response to JSON");
-        println!(
-            "继续对话返回: {}",
-            serde_json::to_string_pretty(&v2).expect("Failed to format JSON")
-        );
-    } else {
-        println!("未发现 tool_calls");
+    if name != "get_weather" {
+        return Err(format!("unexpected function call: {name}").into());
     }
+    let args: WeatherArgs = serde_json::from_str(&arguments)?;
+    let result = serde_json::json!({
+        "city": args.city,
+        "condition": "晴",
+        "temperature_c": 28,
+        "source": "example fixture"
+    });
+
+    let assistant_call = ToolCall::new_function(&id, FunctionParams::new(name, arguments));
+    request = request
+        .add_message(TextMessage::assistant_with_tools(
+            assistant_content,
+            vec![assistant_call],
+        ))
+        .add_message(TextMessage::tool_with_id(result.to_string(), id))
+        .clear_tools();
+
+    let final_response: ChatCompletionResponse = request.send_via(&client).await?;
+    let answer = final_response
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.content_str())
+        .ok_or("final response did not contain text")?;
+    println!("{answer}");
 
     Ok(())
-}
-
-/// 从响应中解析第一条 tool_call: 返回 (id, name, arguments)
-fn parse_first_tool_call(v: &serde_json::Value) -> Option<(String, String, String)> {
-    let tool_calls = v.pointer("/choices/0/message/tool_calls")?.as_array()?;
-    let tc0 = tool_calls.first()?;
-    let id = tc0.get("id")?.as_str()?.to_string();
-    let func = tc0.get("function")?;
-    let name = func.get("name")?.as_str()?.to_string();
-    let arguments = func.get("arguments")?.as_str()?.to_string();
-    Some((id, name, arguments))
-}
-
-/// 处理工具调用：解析参数并返回模拟结果
-fn handle_tool_call(name: &str, arguments: &str) -> Option<serde_json::Value> {
-    match name {
-        "get_weather" => {
-            // arguments 通常是一个 JSON 字符串，如："{\"city\": \"深圳\"}"
-            let parsed: serde_json::Value = match serde_json::from_str(arguments) {
-                Ok(v) => v,
-                Err(err) => {
-                    warn!(error = %err, arguments, "解析 arguments 失败");
-                    return Some(serde_json::json!({
-                        "ok": false,
-                        "error": "invalid_arguments",
-                        "raw": arguments,
-                    }));
-                },
-            };
-            let city = parsed
-                .get("city")
-                .and_then(|v| v.as_str())
-                .unwrap_or("未知城市");
-
-            // 返回一个模拟的天气结果
-            Some(serde_json::json!({
-                "ok": true,
-                "name": name,
-                "request": { "city": city },
-                "result": {
-                    "city": city,
-                    "condition": "晴",
-                    "temperature_c": 28,
-                    "humidity": 0.65,
-                    "tips": format!("{} 现在户外紫外线较强，注意防晒。", city),
-                },
-                "source": "mock",
-            }))
-        },
-        _ => {
-            // 未知的工具名
-            Some(serde_json::json!({
-                "ok": false,
-                "error": "unknown_tool",
-                "name": name,
-                "raw_arguments": arguments,
-            }))
-        },
-    }
 }

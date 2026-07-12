@@ -31,15 +31,9 @@ impl TokenizerRequest {
         self
     }
 
-    /// Optional: validate constraints before sending
+    /// Validate request constraints before sending.
     pub fn validate(&self) -> crate::ZaiResult<()> {
-        if self.body.messages.is_empty() {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "messages must not be empty".to_string(),
-            });
-        }
-        Ok(())
+        self.body.validate()
     }
 
     /// Send via a [`ZaiClient`] and parse the typed response.

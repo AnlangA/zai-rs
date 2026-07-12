@@ -1,5 +1,104 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use validator::Validate;
+
+/// Standard knowledge API success envelope.
+///
+/// The frozen schemas make every top-level field optional. Deserialization
+/// nevertheless rejects `{}` and all-null payloads so an unrelated success
+/// body cannot be mistaken for a valid knowledge response.
+#[derive(Debug, Clone, Serialize, Validate)]
+pub struct KnowledgeResponse<T> {
+    /// Endpoint-specific response payload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<T>,
+    /// Business status code, when returned. The shared transport rejects an
+    /// explicitly non-success code before this type is returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<i64>,
+    /// Human-readable status message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Server timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct KnowledgeResponseWire<T> {
+    data: Option<T>,
+    code: Option<i64>,
+    message: Option<String>,
+    timestamp: Option<u64>,
+}
+
+impl<'de, T> Deserialize<'de> for KnowledgeResponse<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = KnowledgeResponseWire::deserialize(deserializer)?;
+        if wire.data.is_none()
+            && wire.code.is_none()
+            && wire.message.is_none()
+            && wire.timestamp.is_none()
+        {
+            return Err(D::Error::custom(
+                "knowledge response contained no documented non-null fields",
+            ));
+        }
+        Ok(Self {
+            data: wire.data,
+            code: wire.code,
+            message: wire.message,
+            timestamp: wire.timestamp,
+        })
+    }
+}
+
+/// Standard knowledge API response envelope for operations without a payload.
+#[derive(Debug, Clone, Serialize, Validate)]
+pub struct KnowledgeOperationResponse {
+    /// Business status code, when the endpoint includes it. The shared
+    /// transport rejects an explicitly non-success value before this type is
+    /// returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<i64>,
+    /// Human-readable status message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Server timestamp.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct KnowledgeOperationResponseWire {
+    code: Option<i64>,
+    message: Option<String>,
+    timestamp: Option<u64>,
+}
+
+impl<'de> Deserialize<'de> for KnowledgeOperationResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = KnowledgeOperationResponseWire::deserialize(deserializer)?;
+        if wire.code.is_none() && wire.message.is_none() && wire.timestamp.is_none() {
+            return Err(D::Error::custom(
+                "knowledge operation response contained no documented non-null fields",
+            ));
+        }
+        Ok(Self {
+            code: wire.code,
+            message: wire.message,
+            timestamp: wire.timestamp,
+        })
+    }
+}
 
 /// Knowledge base item
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -10,6 +109,9 @@ pub struct KnowledgeItem {
     /// Embedding model id
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_id: Option<u64>,
+    /// Whether contextual retrieval is enabled (`0` or `1`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contextual: Option<u8>,
     /// Knowledge base name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -44,39 +146,11 @@ pub struct KnowledgeListData {
     pub total: Option<u64>,
 }
 
-/// Knowledge list response envelope
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct KnowledgeListResponse {
-    /// Data payload
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<KnowledgeListData>,
-    /// Response code (200 means success)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Knowledge list response envelope.
+pub type KnowledgeListResponse = KnowledgeResponse<KnowledgeListData>;
 
-/// Knowledge detail response envelope (data is a single item)
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct KnowledgeDetailResponse {
-    /// Data payload (single knowledge item)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<KnowledgeItem>,
-    /// Response code (200 means success)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Knowledge detail response envelope (data is a single item).
+pub type KnowledgeGetResponse = KnowledgeResponse<KnowledgeItem>;
 
 /// Capacity usage counters
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -100,22 +174,8 @@ pub struct KnowledgeCapacityData {
     pub total: Option<KnowledgeUsageCounts>,
 }
 
-/// Capacity response envelope
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct KnowledgeCapacityResponse {
-    /// Data payload (used and total)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<KnowledgeCapacityData>,
-    /// Response code (200 means success)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Capacity response envelope.
+pub type KnowledgeCapacityResponse = KnowledgeResponse<KnowledgeCapacityData>;
 
 /// Document vectorization failure info
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -159,27 +219,12 @@ pub struct DocumentItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_stat: Option<i64>,
     /// Failure info (camelCase in API)
-    #[serde(rename = "failInfo")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "failInfo", skip_serializing_if = "Option::is_none")]
     pub fail_info: Option<DocumentFailInfo>,
 }
 
-/// Document detail response envelope (data is a single document item)
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct DocumentDetailResponse {
-    /// Data payload (single document item)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<DocumentItem>,
-    /// Response code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Document detail response envelope (data is a single document item).
+pub type DocumentGetResponse = KnowledgeResponse<DocumentItem>;
 
 /// Inner data of [`DocumentListResponse`] — the document list and total count.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -192,29 +237,14 @@ pub struct DocumentListData {
     pub total: Option<u64>,
 }
 
-/// Document list response envelope
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct DocumentListResponse {
-    /// Data payload
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<DocumentListData>,
-    /// Response code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Document list response envelope.
+pub type DocumentListResponse = KnowledgeResponse<DocumentListData>;
 
 /// Success info for URL upload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadUrlSuccessInfo {
+pub struct DocumentUrlUploadSuccessInfo {
     /// Created document id
-    #[serde(rename = "documentId")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "documentId", skip_serializing_if = "Option::is_none")]
     pub document_id: Option<String>,
     /// Source URL
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,83 +253,60 @@ pub struct UploadUrlSuccessInfo {
 
 /// Failed info for URL upload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadUrlFailedInfo {
+pub struct DocumentUrlUploadFailedInfo {
     /// Source URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     /// Failure reason
-    #[serde(rename = "failReason")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "failReason", skip_serializing_if = "Option::is_none")]
     pub fail_reason: Option<String>,
 }
 
 /// Upload URL response data payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadUrlData {
+pub struct DocumentUrlUploadData {
     /// Success items
-    #[serde(rename = "successInfos")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub success_infos: Option<Vec<UploadUrlSuccessInfo>>,
+    #[serde(rename = "successInfos", skip_serializing_if = "Option::is_none")]
+    pub success_infos: Option<Vec<DocumentUrlUploadSuccessInfo>>,
     /// Failed items
-    #[serde(rename = "failedInfos")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failed_infos: Option<Vec<UploadUrlFailedInfo>>,
+    #[serde(rename = "failedInfos", skip_serializing_if = "Option::is_none")]
+    pub failed_infos: Option<Vec<DocumentUrlUploadFailedInfo>>,
 }
 
-/// Upload URL response envelope
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadUrlResponse {
-    /// Data payload
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<UploadUrlData>,
-    /// Response code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Upload-by-URL response envelope.
+pub type DocumentUrlUploadResponse = KnowledgeResponse<DocumentUrlUploadData>;
 
 /// Success info for file upload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadFileSuccessInfo {
+pub struct DocumentUploadSuccessInfo {
     /// Created document id
-    #[serde(rename = "documentId")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "documentId", skip_serializing_if = "Option::is_none")]
     pub document_id: Option<String>,
     /// Original file name
-    #[serde(rename = "fileName")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "fileName", skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
 }
 
 /// Failed info for file upload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadFileFailedInfo {
+pub struct DocumentUploadFailedInfo {
     /// Original file name
-    #[serde(rename = "fileName")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "fileName", skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
     /// Failure reason
-    #[serde(rename = "failReason")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "failReason", skip_serializing_if = "Option::is_none")]
     pub fail_reason: Option<String>,
 }
 
 /// Upload file response data payload
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadFileData {
+pub struct DocumentUploadData {
     /// Success items
-    #[serde(rename = "successInfos")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub success_infos: Option<Vec<UploadFileSuccessInfo>>,
+    #[serde(rename = "successInfos", skip_serializing_if = "Option::is_none")]
+    pub success_infos: Option<Vec<DocumentUploadSuccessInfo>>,
     /// Failed items
-    #[serde(rename = "failedInfos")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub failed_infos: Option<Vec<UploadFileFailedInfo>>,
+    #[serde(rename = "failedInfos", skip_serializing_if = "Option::is_none")]
+    pub failed_infos: Option<Vec<DocumentUploadFailedInfo>>,
 }
 
 /// One parsed image mapping item
@@ -321,36 +328,51 @@ pub struct DocumentImageListData {
     pub images: Option<Vec<DocumentImageItem>>,
 }
 
-/// Image list response envelope
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct DocumentImageListResponse {
-    /// Data payload
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<DocumentImageListData>,
-    /// Response code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Parsed-image list response envelope.
+pub type DocumentImageListResponse = KnowledgeResponse<DocumentImageListData>;
 
-/// Upload file response envelope
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct UploadFileResponse {
-    /// Data payload
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<UploadFileData>,
-    /// Response code
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Response message
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Response timestamp
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
+/// File-upload response envelope.
+pub type DocumentUploadResponse = KnowledgeResponse<DocumentUploadData>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn success_envelopes_follow_optional_schema_and_reject_empty_success() {
+        assert!(
+            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
+                serde_json::json!({"code": 200})
+            )
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
+                serde_json::json!({"data": {}})
+            )
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(serde_json::json!({}))
+                .is_err()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
+                serde_json::json!({"data": null, "code": null})
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeOperationResponse>(serde_json::json!({
+                "unknown": "value"
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeOperationResponse>(serde_json::json!({
+                "message": "ok"
+            }))
+            .is_ok()
+        );
+    }
 }

@@ -1,10 +1,4 @@
-//! Prepared HTTP requests and a reserved sealed endpoint contract.
-//!
-//! Current endpoints construct [`PreparedRequest`] values directly. The sealed
-//! [`RequestSpec`] trait describes a possible endpoint contract but currently
-//! has no implementations and is not consumed by the transport.
-
-use std::any::type_name;
+//! Prepared HTTP requests consumed by the buffered transport.
 
 use crate::client::RetryOverride;
 use crate::client::transport::retry::RetrySafety;
@@ -14,8 +8,6 @@ use crate::client::transport::retry::RetrySafety;
 pub enum BodyKind<'a> {
     /// No body (GET/DELETE).
     None,
-    /// A JSON value serialized whenever an attempt's request is built.
-    Json(&'a serde_json::Value),
     /// Raw bytes, typically containing JSON serialized before dispatch.
     Bytes(&'a bytes::Bytes),
     /// Multipart — built per attempt by a factory (files re-opened each try).
@@ -25,10 +17,42 @@ pub enum BodyKind<'a> {
 /// How the final response body is consumed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResponseMode {
-    /// Buffer the response under the JSON response-size limit.
+    /// Buffer JSON and require an `application/json` or `+json` success MIME.
     Json,
-    /// Buffer the response under the binary/file response-size limit.
-    Binary,
+    /// Buffer a file download and require `application/octet-stream`.
+    File,
+    /// Buffer synthesized audio and accept only the documented audio MIME set.
+    Audio,
+}
+
+impl ResponseMode {
+    /// Value sent in the HTTP `Accept` header.
+    pub const fn accept(self) -> &'static str {
+        match self {
+            Self::Json => "application/json",
+            Self::File => "application/octet-stream",
+            Self::Audio => "audio/wav, audio/x-wav, audio/pcm, application/octet-stream",
+        }
+    }
+
+    /// Validate the media type of a successful buffered response.
+    pub fn validate_content_type(self, raw: &str) -> crate::ZaiResult<()> {
+        match self {
+            Self::Json => super::decode::validate_json_content_type(raw),
+            Self::File => {
+                super::decode::validate_binary_content_type(raw, &["application/octet-stream"])
+            },
+            Self::Audio => super::decode::validate_binary_content_type(
+                raw,
+                &[
+                    "audio/wav",
+                    "audio/x-wav",
+                    "audio/pcm",
+                    "application/octet-stream",
+                ],
+            ),
+        }
+    }
 }
 
 /// A fully-prepared, validated request ready to be sent by the Transport.
@@ -59,34 +83,4 @@ impl<'a> std::fmt::Debug for PreparedRequest<'a> {
             .field("retry_override", &self.retry_override.is_some())
             .finish_non_exhaustive()
     }
-}
-
-/// Sealed module — only crate-internal types can implement `RequestSpec`.
-mod private {
-    pub trait Sealed {}
-}
-
-/// Reserved sealed specification for a fixed endpoint.
-///
-/// The current transport does not consume this trait; endpoints build
-/// [`PreparedRequest`] directly. It remains sealed for potential crate-internal
-/// adoption.
-#[allow(unused)] // Reserved endpoint contract; current callers use PreparedRequest directly.
-pub trait RequestSpec: private::Sealed {
-    /// The Rust type name, for diagnostics.
-    fn spec_name(&self) -> &'static str {
-        type_name::<Self>()
-    }
-    /// HTTP method.
-    const METHOD: &'static str;
-    /// Route template (e.g. `"/paas/v4/files/{file_id}"`) for tracing.
-    const PATH_TEMPLATE: &'static str;
-    /// Retry safety (GET/HEAD/PUT/DELETE = Idempotent; POST/PATCH = NonIdempotent).
-    const RETRY_SAFETY: RetrySafety;
-    /// Request content type.
-    const REQUEST_CONTENT_TYPE: &'static str;
-    /// Expected success content type for typed decode validation.
-    const ACCEPT: &'static str;
-    /// Whether the success path requires `data: [DONE]` (SSE) or a binary stream.
-    const REQUIRES_DONE: bool;
 }

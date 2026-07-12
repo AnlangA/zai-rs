@@ -1,59 +1,28 @@
 [package]
 name = "web_chat"
 version = "2.0.0"
-edition = "2021"
-authors = ["AI Assistant <ai@example.com>"]
-description = "Modern AI Chat Web Application with perfect markdown rendering and industry-leading UX"
+edition = "2024"
+rust-version = "1.88"
+description = "Minimal browser chat example for zai-rs"
 license = "MIT"
+publish = false
 
 [[bin]]
 name = "web_chat"
 path = "src/main.rs"
 
 [dependencies]
-# Core async runtime
-tokio = { version = "1.52.3", features = ["full"] }
-
-# Web framework
+tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 axum = "0.8.9"
-tower = "0.5.3"
-tower-http = { version = "0.7.0", features = ["fs", "cors", "trace"] }
-
-# Serialization
+tower-http = { version = "0.6.11", features = ["fs", "cors", "set-header", "trace"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
-
-# Validation
 validator = { version = "0.20.0", features = ["derive"] }
-
-# Error handling
 thiserror = "2.0.18"
-anyhow = "1.0.102"
-
-# Logging and tracing
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-
-# UUID generation
-uuid = { version = "1.23.3", features = ["v4", "serde"] }
-
-# Date/time handling
-chrono = { version = "0.4.45", features = ["serde"] }
-
-# Concurrent data structures
+uuid = { version = "1.23.3", features = ["v4"] }
+chrono = "0.4.45"
 dashmap = "6.2.1"
-
-# HTTP client (only reqwest::Response / reqwest::Error types are referenced)
-reqwest = { version = "0.13", features = ["json"] }
-
-# Main zai-rs dependency
 zai-rs = { path = "../.." }
-
-# Futures for streaming
-futures = "0.3.32"
-
-# Static file MIME type detection
-mime_guess = "2.0.5"
-
-[dev-dependencies]
-tokio-test = "0.4"
+futures-util = "0.3.32"

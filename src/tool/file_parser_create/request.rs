@@ -1,26 +1,34 @@
-//! File parser creation request models and types.
-//!
-//! This module provides data structures for file parser creation requests,
-//! supporting multiple file formats and parsing tools.
+//! File-parser request wire types.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-/// Parsing tool types with different capabilities.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Parser implementation selected for a task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ToolType {
-    /// Lite parser with basic file format support
+    /// Lite parser with basic file-format support.
     Lite,
-    /// Expert parser optimized for PDF files
+    /// Expert parser optimized for PDF files.
     Expert,
-    /// Prime parser with extensive file format support
+    /// Prime parser with the complete supported format set.
     Prime,
 }
 
+impl ToolType {
+    /// Canonical value sent to the parser API.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolType::Lite => "lite",
+            ToolType::Expert => "expert",
+            ToolType::Prime => "prime",
+        }
+    }
+}
+
 /// Supported file types for parsing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum FileType {
     /// PDF documents
@@ -51,8 +59,6 @@ pub enum FileType {
     MD,
     /// HTML files
     HTML,
-    /// EPUB files
-    EPUB,
     /// BMP images
     BMP,
     /// GIF images
@@ -82,7 +88,7 @@ pub enum FileType {
 }
 
 impl FileType {
-    /// Check if this file type is supported by the given tool type.
+    /// Return whether `tool_type` accepts this file type.
     pub fn is_supported_by(&self, tool_type: &ToolType) -> bool {
         match tool_type {
             ToolType::Lite => {
@@ -104,11 +110,11 @@ impl FileType {
                 )
             },
             ToolType::Expert => matches!(self, FileType::PDF),
-            ToolType::Prime => true, // Prime supports all file types
+            ToolType::Prime => true,
         }
     }
 
-    /// Get the file extension for this file type.
+    /// Return the canonical lowercase file extension.
     pub fn extension(&self) -> &'static str {
         match self {
             FileType::PDF => "pdf",
@@ -125,7 +131,6 @@ impl FileType {
             FileType::TXT => "txt",
             FileType::MD => "md",
             FileType::HTML => "html",
-            FileType::EPUB => "epub",
             FileType::BMP => "bmp",
             FileType::GIF => "gif",
             FileType::WEBP => "webp",
@@ -142,7 +147,7 @@ impl FileType {
         }
     }
 
-    /// Try to infer file type from file path.
+    /// Infer a file type from the final path extension.
     pub fn from_path(path: &Path) -> Option<Self> {
         path.extension()
             .and_then(|ext| ext.to_str())
@@ -162,7 +167,6 @@ impl FileType {
                 "md" => Some(FileType::MD),
                 "html" => Some(FileType::HTML),
                 "htm" => Some(FileType::HTML),
-                "epub" => Some(FileType::EPUB),
                 "bmp" => Some(FileType::BMP),
                 "gif" => Some(FileType::GIF),
                 "webp" => Some(FileType::WEBP),
@@ -179,5 +183,60 @@ impl FileType {
                 "jp2" => Some(FileType::JP2),
                 _ => None,
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser_file_types_match_the_frozen_enum_exactly() {
+        let values = [
+            FileType::PDF,
+            FileType::DOCX,
+            FileType::DOC,
+            FileType::XLS,
+            FileType::XLSX,
+            FileType::PPT,
+            FileType::PPTX,
+            FileType::PNG,
+            FileType::JPG,
+            FileType::JPEG,
+            FileType::CSV,
+            FileType::TXT,
+            FileType::MD,
+            FileType::HTML,
+            FileType::BMP,
+            FileType::GIF,
+            FileType::WEBP,
+            FileType::HEIC,
+            FileType::EPS,
+            FileType::ICNS,
+            FileType::IM,
+            FileType::PCX,
+            FileType::PPM,
+            FileType::TIFF,
+            FileType::XBM,
+            FileType::HEIF,
+            FileType::JP2,
+        ];
+        let actual = values.map(|value| serde_json::to_value(value).unwrap());
+        let expected = [
+            "PDF", "DOCX", "DOC", "XLS", "XLSX", "PPT", "PPTX", "PNG", "JPG", "JPEG", "CSV", "TXT",
+            "MD", "HTML", "BMP", "GIF", "WEBP", "HEIC", "EPS", "ICNS", "IM", "PCX", "PPM", "TIFF",
+            "XBM", "HEIF", "JP2",
+        ]
+        .map(|value| serde_json::Value::String(value.to_owned()));
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn parser_tool_capabilities_reject_unsupported_combinations() {
+        assert!(FileType::TXT.is_supported_by(&ToolType::Lite));
+        assert!(!FileType::HTML.is_supported_by(&ToolType::Lite));
+        assert!(FileType::PDF.is_supported_by(&ToolType::Expert));
+        assert!(!FileType::DOCX.is_supported_by(&ToolType::Expert));
+        assert!(FileType::JP2.is_supported_by(&ToolType::Prime));
     }
 }

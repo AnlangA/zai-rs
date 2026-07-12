@@ -1,5 +1,7 @@
 use crate::client::ZaiClient;
 
+use super::types::KnowledgeOperationResponse;
+
 /// Document delete request (DELETE /llm-application/open/document/{id})
 ///
 /// Credentials and transport live on the [`ZaiClient`], passed to
@@ -16,6 +18,7 @@ impl DocumentDeleteRequest {
 
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDeleteResponse> {
+        crate::client::validation::require_non_blank(&self.id, "document_id")?;
         let route = crate::client::routes::DOCUMENTS_DELETE;
         let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
@@ -24,16 +27,5 @@ impl DocumentDeleteRequest {
     }
 }
 
-/// Delete response envelope without data
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, validator::Validate)]
-pub struct DocumentDeleteResponse {
-    /// Business status code.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Human-readable message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Server timestamp.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
-}
+/// Delete response envelope without data.
+pub type DocumentDeleteResponse = KnowledgeOperationResponse;

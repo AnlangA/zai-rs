@@ -12,10 +12,9 @@ use zai_rs::client::{ApiFamily, ZaiClient};
 const KEY: &str = "test.12345678901234567890";
 
 fn mock_client(base: &str) -> ZaiClient {
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::PaasV4, leaked)
+        .endpoint(ApiFamily::PaasV4, base)
         .build()
         .unwrap()
 }
@@ -24,6 +23,100 @@ async fn ok_server(body: serde_json::Value) -> (TestServer, ZaiClient) {
     let server = TestServer::start(vec![ScriptedResponse::json(200, body)]).await;
     let base = format!("{}/api/paas/v4", server.base_url);
     (server, mock_client(&base))
+}
+
+/// Assert the transport emitted exactly one authenticated request to the
+/// endpoint under test. Content length is checked when Hyper exposes it so a
+/// malformed or truncated request body cannot pass unnoticed.
+fn assert_request(server: &TestServer, method: &str, path: &str) {
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "expected exactly one HTTP request");
+
+    let request = &requests[0];
+    assert_eq!(request.method, method);
+    assert_eq!(request.path, path);
+
+    let authorization = request
+        .authorization
+        .as_deref()
+        .expect("the client must attach an authorization header");
+    assert!(authorization.starts_with("Bearer "));
+    assert!(
+        request
+            .headers
+            .iter()
+            .any(|(name, value)| { name == "authorization" && value == authorization })
+    );
+
+    if let Some((_, value)) = request
+        .headers
+        .iter()
+        .find(|(name, _)| name == "content-length")
+    {
+        assert_eq!(value.parse::<usize>().unwrap(), request.body.len());
+    }
+}
+
+/// Assert that the captured request body is exactly the expected JSON value.
+fn assert_json_body(server: &TestServer, expected: serde_json::Value) {
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "expected exactly one HTTP request");
+    let actual: serde_json::Value = serde_json::from_slice(&requests[0].body)
+        .expect("captured request body must contain valid JSON");
+    assert_eq!(actual, expected);
+}
+
+/// Assert that a bodyless operation did not accidentally emit JSON or form data.
+fn assert_empty_body(server: &TestServer) {
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "expected exactly one HTTP request");
+    assert!(
+        requests[0].body.is_empty(),
+        "bodyless operation emitted an unexpected request body"
+    );
+}
+
+/// Assert one text field in a captured multipart body.
+fn assert_multipart_text_field(server: &TestServer, field_name: &str, value: &str) {
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "expected exactly one HTTP request");
+    let body = String::from_utf8_lossy(&requests[0].body);
+    assert!(
+        body.contains(&format!("name=\"{field_name}\"")),
+        "multipart field `{field_name}` is missing"
+    );
+    assert!(
+        body.lines().any(|line| line == value),
+        "multipart field `{field_name}` did not contain `{value}`"
+    );
+}
+
+/// Assert that the captured multipart request contains one named file part and
+/// the complete payload. This exercises the path-backed streaming body rather
+/// than merely checking that the endpoint returned a fixture.
+fn assert_multipart_file(
+    server: &TestServer,
+    field_name: &str,
+    file_name: &str,
+    content_type: &str,
+    payload: &[u8],
+) {
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "expected exactly one HTTP request");
+    let body = &requests[0].body;
+    let text = String::from_utf8_lossy(body);
+    assert!(
+        text.contains(&format!("name=\"{field_name}\"; filename=\"{file_name}\"")),
+        "multipart file disposition is missing"
+    );
+    assert!(
+        text.contains(&format!("Content-Type: {content_type}")),
+        "multipart file content type is missing"
+    );
+    assert!(
+        body.windows(payload.len()).any(|window| window == payload),
+        "multipart file payload is missing"
+    );
 }
 
 // --- Chat ---
@@ -39,7 +132,8 @@ async fn chat_send_via() {
         .send_via(&c)
         .await
         .unwrap();
-    assert!(resp.id.is_some());
+    assert_eq!(resp.id.as_deref(), Some("x"));
+    assert_request(&s, "POST", "/api/paas/v4/chat/completions");
     s.shutdown().await;
 }
 
@@ -50,70 +144,105 @@ async fn embeddings_send_via() {
         "object": "list",
         "data": [{"index": 0, "object": "embedding", "embedding": [0.1, 0.2]}],
         "model": "embedding-2",
-        "usage": {"prompt_tokens": 1, "total_tokens": 1}
+        "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1}
     }))
     .await;
     use zai_rs::model::text_embedded::*;
-    let resp = EmbeddingRequest::new(
+    let response = EmbeddingRequest::new(
         EmbeddingModel::Embedding2,
         EmbeddingInput::Single("hi".into()),
     )
     .send_via(&c)
-    .await;
-    // May fail on response parse, but exercises the full send path
-    let _ = resp;
+    .await
+    .unwrap();
+    assert_eq!(response.data.as_deref().map(<[_]>::len), Some(1));
+    assert_request(&s, "POST", "/api/paas/v4/embeddings");
     s.shutdown().await;
 }
 
 // --- Rerank ---
 #[tokio::test]
 async fn rerank_send_via() {
-    let (s, c) = ok_server(
-        json!({"id": "x", "results": [{"index": 0, "relevance_score": 0.9}], "model": "rerank"}),
-    )
+    let (s, c) = ok_server(json!({
+        "created": 1,
+        "id": "rerank-1",
+        "results": [{"document": "d", "index": 0, "relevance_score": 0.9}],
+        "usage": {"prompt_tokens": 2, "total_tokens": 2}
+    }))
     .await;
     use zai_rs::model::text_rerank::*;
-    let _ = RerankRequest::new("q", vec!["d".into()]).send_via(&c).await;
+    let response = RerankRequest::new("q", vec!["d".into()])
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.id, "rerank-1");
+    assert_eq!(response.results.len(), 1);
+    assert_request(&s, "POST", "/api/paas/v4/rerank");
     s.shutdown().await;
 }
 
 // --- Tokenizer ---
 #[tokio::test]
 async fn tokenizer_send_via() {
-    let (s, c) = ok_server(json!({"id": "x", "tokens": [1, 2, 3], "model": "glm-4"})).await;
+    let (s, c) = ok_server(json!({
+        "created": 1,
+        "id": "tokenizer-1",
+        "usage": {"prompt_tokens": 3}
+    }))
+    .await;
     use zai_rs::model::text_tokenizer::*;
-    let _ = TokenizerRequest::new(
+    let response = TokenizerRequest::new(
         TokenizerModel::default(),
         vec![TokenizerMessage::User {
             content: "hi".into(),
         }],
     )
     .send_via(&c)
-    .await;
+    .await
+    .unwrap();
+    assert_eq!(response.id, "tokenizer-1");
+    assert_eq!(response.usage.prompt_tokens, Some(3.0));
+    assert_request(&s, "POST", "/api/paas/v4/tokenizer");
     s.shutdown().await;
 }
 
 // --- Moderation ---
 #[tokio::test]
 async fn moderation_send_via() {
-    let (s, c) = ok_server(json!({"id": "x", "results": [{"flagged": false, "categories": {}, "category_scores": {}}], "model": "glm-4"})).await;
+    let (s, c) = ok_server(json!({
+        "id": "moderation-1",
+        "created": 1,
+        "result_list": [{"content_type": "text", "risk_level": "PASS", "risk_type": []}],
+        "usage": {"moderation_text": {"call_count": 1}}
+    }))
+    .await;
     use zai_rs::model::moderation::*;
-    let _ = Moderation::new_text("hi").send_via(&c).await;
+    let response = Moderation::new_text("hi").send_via(&c).await.unwrap();
+    assert_eq!(response.id.as_deref(), Some("moderation-1"));
+    assert_eq!(response.result_list.unwrap().len(), 1);
+    assert_request(&s, "POST", "/api/paas/v4/moderations");
     s.shutdown().await;
 }
 
 // --- Image generation ---
 #[tokio::test]
 async fn image_gen_send_via() {
-    let (s, c) = ok_server(
-        json!({"id": "x", "data": [{"url": "https://example.com/a.png"}], "model": "cogview-4"}),
-    )
+    let (s, c) = ok_server(json!({
+        "created": 1,
+        "data": [{"url": "https://example.com/a.png"}]
+    }))
     .await;
     use zai_rs::model::gen_image::*;
-    let _ = ImageGenRequest::new(zai_rs::model::gen_image::CogView4 {})
+    let response = ImageGenRequest::new(zai_rs::model::gen_image::CogView4 {})
         .with_prompt("cat")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(
+        response.data().unwrap()[0].url(),
+        "https://example.com/a.png"
+    );
+    assert_request(&s, "POST", "/api/paas/v4/images/generations");
     s.shutdown().await;
 }
 
@@ -124,55 +253,103 @@ async fn video_gen_send_via() {
         ok_server(json!({"id": "task-1", "model": "cogvideox-3", "task_status": "PROCESSING"}))
             .await;
     use zai_rs::model::gen_video_async::*;
-    let _ = VideoGenRequest::new(zai_rs::model::gen_video_async::CogVideoX3 {})
+    let response = VideoGenRequest::new(zai_rs::model::gen_video_async::CogVideoX3 {})
         .with_prompt("dog")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("task-1"));
+    assert!(response.task_status.is_some());
+    assert_request(&s, "POST", "/api/paas/v4/videos/generations");
+    assert_json_body(
+        &s,
+        json!({
+            "model": "cogvideox-3",
+            "prompt": "dog"
+        }),
+    );
     s.shutdown().await;
 }
 
 // --- Voice clone ---
 #[tokio::test]
 async fn voice_clone_send_via() {
-    let (s, c) = ok_server(json!({"voice_id": "v1"})).await;
+    let (s, c) = ok_server(json!({
+        "voice": "voice1",
+        "file_id": "preview-1",
+        "file_purpose": "voice-clone-output"
+    }))
+    .await;
     use zai_rs::model::voice_clone::*;
-    let _ = VoiceCloneRequest::new(
+    let response = VoiceCloneRequest::new(
         zai_rs::model::voice_clone::GlmTtsClone {},
         "voice1",
         "hello",
         "file-1",
     )
     .send_via(&c)
-    .await;
+    .await
+    .unwrap();
+    assert_eq!(response.voice.as_deref(), Some("voice1"));
+    assert_eq!(response.file_id.as_deref(), Some("preview-1"));
+    assert_request(&s, "POST", "/api/paas/v4/voice/clone");
     s.shutdown().await;
 }
 
 // --- Voice delete ---
 #[tokio::test]
 async fn voice_delete_send_via() {
-    let (s, c) = ok_server(json!({"success": true})).await;
+    let (s, c) = ok_server(json!({
+        "voice": "voice1",
+        "update_time": "2026-01-01T00:00:00Z"
+    }))
+    .await;
     use zai_rs::model::voice_delete::*;
-    let _ = VoiceDeleteRequest::new("voice1").send_via(&c).await;
+    let response = VoiceDeleteRequest::new("voice1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.voice.as_deref(), Some("voice1"));
+    assert_request(&s, "POST", "/api/paas/v4/voice/delete");
     s.shutdown().await;
 }
 
 // --- Voice list ---
 #[tokio::test]
 async fn voice_list_send_via() {
-    let (s, c) = ok_server(json!({"data": []})).await;
+    let (s, c) = ok_server(json!({
+        "voice_list": [{"voice": "voice1", "voice_name": "Test voice", "voice_type": "PRIVATE"}]
+    }))
+    .await;
     use zai_rs::model::voice_list::*;
-    let _ = VoiceListRequest::new().send_via(&c).await;
+    let response = VoiceListRequest::new().send_via(&c).await.unwrap();
+    assert_eq!(
+        response.voice_list.unwrap()[0].voice.as_deref(),
+        Some("voice1")
+    );
+    assert_request(&s, "GET", "/api/paas/v4/voice/list");
     s.shutdown().await;
 }
 
 // --- Web search ---
 #[tokio::test]
 async fn web_search_send_via() {
-    let (s, c) = ok_server(json!({"data": []})).await;
+    let (s, c) = ok_server(json!({
+        "id": "search-1",
+        "created": 1,
+        "request_id": "request-1",
+        "search_intent": [],
+        "search_result": []
+    }))
+    .await;
     use zai_rs::tool::web_search::*;
-    let _ = WebSearchRequest::new("rust".into(), SearchEngine::SearchStd)
+    let response = WebSearchRequest::new("rust", SearchEngine::SearchStd)
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.task_id(), Some("search-1"));
+    assert_eq!(response.result_count(), 0);
+    assert_request(&s, "POST", "/api/paas/v4/web_search");
     s.shutdown().await;
 }
 
@@ -181,9 +358,19 @@ async fn web_search_send_via() {
 async fn async_chat_send_via() {
     let (s, c) = ok_server(json!({"id": "task-1", "model": "glm-4.5"})).await;
     use zai_rs::model::*;
-    let _ = AsyncChatCompletion::new(GLM4_5 {}, TextMessage::user("hi"))
+    let response = AsyncChatCompletion::new(GLM4_5_air {}, TextMessage::user("hi"))
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("task-1"));
+    assert_request(&s, "POST", "/api/paas/v4/async/chat/completions");
+    assert_json_body(
+        &s,
+        json!({
+            "model": "glm-4.5-air",
+            "messages": [{"role": "user", "content": "hi"}]
+        }),
+    );
     s.shutdown().await;
 }
 
@@ -200,10 +387,12 @@ async fn send_via_error_envelope() {
     let base = format!("{}/api/paas/v4", server.base_url);
     let c = mock_client(&base);
     use zai_rs::model::*;
-    let result = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
+    let error = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
         .send_via(&c)
-        .await;
-    assert!(result.is_err(), "error envelope should return Err");
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), Some(1302));
+    assert_request(&server, "POST", "/api/paas/v4/chat/completions");
     server.shutdown().await;
 }
 
@@ -218,19 +407,20 @@ async fn send_via_http_500() {
     let base = format!("{}/api/paas/v4", server.base_url);
     let c = mock_client(&base);
     use zai_rs::model::*;
-    let result = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
+    let error = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
         .send_via(&c)
-        .await;
-    assert!(result.is_err());
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), Some(500));
+    assert_request(&server, "POST", "/api/paas/v4/chat/completions");
     server.shutdown().await;
 }
 
 // --- Knowledge endpoints (LlmApplication family) ---
 fn llm_mock_client(base: &str) -> ZaiClient {
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::LlmApplication, leaked)
+        .endpoint(ApiFamily::LlmApplication, base)
         .build()
         .unwrap()
 }
@@ -245,7 +435,10 @@ async fn llm_ok_server(body: serde_json::Value) -> (TestServer, ZaiClient) {
 async fn knowledge_list_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": [], "total": 0}})).await;
     use zai_rs::knowledge::*;
-    let _ = KnowledgeListRequest::new().send_via(&c).await;
+    let response = KnowledgeListRequest::new().send_via(&c).await.unwrap();
+    assert_eq!(response.code, Some(200));
+    assert_eq!(response.data.as_ref().unwrap().total, Some(0));
+    assert_request(&s, "GET", "/api/llm-application/open/knowledge");
     s.shutdown().await;
 }
 
@@ -253,17 +446,46 @@ async fn knowledge_list_send_via() {
 async fn knowledge_create_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "kb1", "name": "test"}})).await;
     use zai_rs::knowledge::*;
-    let _ = CreateKnowledgeRequest::new(EmbeddingId::Embedding2, "test")
+    let response = KnowledgeCreateRequest::new(EmbeddingId::Embedding2, "test")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.data.as_ref().unwrap().id.as_deref(), Some("kb1"));
+    assert_request(&s, "POST", "/api/llm-application/open/knowledge");
+    assert_json_body(
+        &s,
+        json!({
+            "embedding_id": 3,
+            "name": "test"
+        }),
+    );
     s.shutdown().await;
 }
 
 #[tokio::test]
 async fn knowledge_capacity_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"capacity": 100}})).await;
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": {
+            "used": {"word_num": 10, "length": 100},
+            "total": {"word_num": 100, "length": 1000}
+        }
+    }))
+    .await;
     use zai_rs::knowledge::*;
-    let _ = KnowledgeCapacityRequest::new().send_via(&c).await;
+    let response = KnowledgeCapacityRequest::new().send_via(&c).await.unwrap();
+    assert_eq!(
+        response
+            .data
+            .as_ref()
+            .unwrap()
+            .used
+            .as_ref()
+            .unwrap()
+            .word_num,
+        Some(10)
+    );
+    assert_request(&s, "GET", "/api/llm-application/open/knowledge/capacity");
     s.shutdown().await;
 }
 
@@ -271,50 +493,95 @@ async fn knowledge_capacity_send_via() {
 async fn knowledge_retrieve_send_via() {
     let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "x"}})).await;
     use zai_rs::knowledge::*;
-    let _ = KnowledgeRetrieveRequest::new("kb1").send_via(&c).await;
+    let response = KnowledgeGetRequest::new("kb1").send_via(&c).await.unwrap();
+    assert_eq!(response.data.as_ref().unwrap().id.as_deref(), Some("x"));
+    assert_request(&s, "GET", "/api/llm-application/open/knowledge/kb1");
     s.shutdown().await;
 }
 
 #[tokio::test]
 async fn knowledge_delete_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": null})).await;
+    let (s, c) = llm_ok_server(json!({"code": 200, "message": "deleted"})).await;
     use zai_rs::knowledge::*;
-    let _ = KnowledgeDeleteRequest::new("kb1").send_via(&c).await;
+    let response = KnowledgeDeleteRequest::new("kb1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.code, Some(200));
+    assert_request(&s, "DELETE", "/api/llm-application/open/knowledge/kb1");
     s.shutdown().await;
 }
 
 #[tokio::test]
 async fn knowledge_update_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"id": "kb1"}})).await;
+    let (s, c) = llm_ok_server(json!({"code": 200, "message": "ok"})).await;
     use zai_rs::knowledge::*;
-    let _ = KnowledgeUpdateRequest::new("kb1").send_via(&c).await;
+    let response = KnowledgeUpdateRequest::new("kb1")
+        .with_name("updated name")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.code, Some(200));
+    assert_request(&s, "PUT", "/api/llm-application/open/knowledge/kb1");
     s.shutdown().await;
 }
 
 #[tokio::test]
 async fn knowledge_search_send_via() {
-    let (s, c) = llm_ok_server(json!({"data": []})).await;
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": [{
+            "text": "match",
+            "score": 0.8,
+            "metadata": {"doc_id": "doc1"}
+        }]
+    }))
+    .await;
     use zai_rs::knowledge::*;
-    let _ = KnowledgeSearchRequest::new("kb1", "query")
+    let response = KnowledgeSearchRequest::new("kb1", "query")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(
+        response.data.as_ref().unwrap()[0].text.as_deref(),
+        Some("match")
+    );
+    assert_eq!(
+        response.data.as_ref().unwrap()[0]
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.doc_id.as_deref()),
+        Some("doc1")
+    );
+    assert_request(&s, "POST", "/api/llm-application/open/knowledge/retrieve");
     s.shutdown().await;
 }
 
 #[tokio::test]
 async fn knowledge_document_list_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": []}})).await;
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": {"list": [], "total": 0}
+    }))
+    .await;
     use zai_rs::knowledge::*;
-    let _ = DocumentListRequest::new().send_via(&c).await;
+    let response = DocumentListRequest::new("kb1").send_via(&c).await.unwrap();
+    assert_eq!(response.data.as_ref().unwrap().total, Some(0));
+    assert_request(&s, "GET", "/api/llm-application/open/document");
     s.shutdown().await;
 }
 
 // --- File endpoints ---
 #[tokio::test]
 async fn file_list_send_via() {
-    let (s, c) = ok_server(json!({"data": [], "has_more": false})).await;
+    let (s, c) = ok_server(json!({"object": "list", "data": [], "has_more": false})).await;
     use zai_rs::file::*;
-    let _ = FileListRequest::new().send_via(&c).await;
+    let response = FileListRequest::new(FileListPurpose::Batch)
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.has_more, Some(false));
+    assert_request(&s, "GET", "/api/paas/v4/files");
     s.shutdown().await;
 }
 
@@ -322,16 +589,21 @@ async fn file_list_send_via() {
 async fn file_delete_send_via() {
     let (s, c) = ok_server(json!({"id": "f1", "deleted": true})).await;
     use zai_rs::file::*;
-    let _ = FileDeleteRequest::new("f1").send_via(&c).await;
+    let response = FileDeleteRequest::new("f1").send_via(&c).await.unwrap();
+    assert_eq!(response.id.as_deref(), Some("f1"));
+    assert_eq!(response.deleted, Some(true));
+    assert_request(&s, "DELETE", "/api/paas/v4/files/f1");
     s.shutdown().await;
 }
 
 // --- Batch endpoints ---
 #[tokio::test]
 async fn batch_list_send_via() {
-    let (s, c) = ok_server(json!({"data": [], "object": "list"})).await;
+    let (s, c) = ok_server(json!({"data": [], "object": "list", "has_more": false})).await;
     use zai_rs::batches::*;
-    let _ = BatchesListRequest::new().send_via(&c).await;
+    let response = BatchListRequest::new().send_via(&c).await.unwrap();
+    assert_eq!(response.has_more, Some(false));
+    assert_request(&s, "GET", "/api/paas/v4/batches");
     s.shutdown().await;
 }
 
@@ -339,9 +611,13 @@ async fn batch_list_send_via() {
 #[tokio::test]
 async fn ocr_send_via() {
     let (s, c) = ok_server(json!({
-        "task_id": "t1", "status": "SUCCESS",
+        "task_id": "t1", "message": "ok", "status": "succeeded",
         "words_result_num": 1,
-        "words_result": [{"words": "hello", "probability": {"average": 0.99}}]
+        "words_result": [{
+            "location": {"left": 0, "top": 0, "width": 10, "height": 5},
+            "words": "hello",
+            "probability": {"average": 0.99, "variance": 0.01, "min": 0.95}
+        }]
     }))
     .await;
     // OCR needs a real file — create a temp one
@@ -349,99 +625,248 @@ async fn ocr_send_via() {
     let img = dir.path().join("test.png");
     std::fs::write(&img, b"fake-png").unwrap();
     use zai_rs::model::ocr::*;
-    let _ = OcrRequest::new()
+    let response = OcrRequest::new()
         .with_file_path(img.to_str().unwrap())
         .with_tool_type(OcrToolType::HandWrite)
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.task_id, "t1");
+    assert_eq!(response.words_result.unwrap()[0].words, "hello");
+    assert_request(&s, "POST", "/api/paas/v4/files/ocr");
     s.shutdown().await;
 }
 
 // --- Knowledge document upload URL ---
 #[tokio::test]
 async fn knowledge_doc_upload_url_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"document_id": "d1"}})).await;
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": {
+            "successInfos": [{"documentId": "d1", "url": "https://example.com/doc.pdf"}],
+            "failedInfos": []
+        }
+    }))
+    .await;
     use zai_rs::knowledge::*;
-    let detail = UploadUrlDetail::new("https://example.com/doc.pdf");
-    let body = UploadUrlBody {
-        upload_detail: vec![detail],
-        knowledge_id: "kb1".into(),
-    };
-    let _ = DocumentUploadUrlRequest::new(body).send_via(&c).await;
+    let body = DocumentUrlUploadBody::new("kb1").add_url("https://example.com/doc.pdf");
+    let response = DocumentUrlUploadRequest::new(body)
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(
+        response.data.unwrap().success_infos.unwrap()[0]
+            .document_id
+            .as_deref(),
+        Some("d1")
+    );
+    assert_request(&s, "POST", "/api/llm-application/open/document/upload_url");
+    assert_json_body(
+        &s,
+        json!({
+            "upload_detail": [{
+                "url": "https://example.com/doc.pdf",
+                "knowledge_type": 1
+            }],
+            "knowledge_id": "kb1"
+        }),
+    );
     s.shutdown().await;
 }
 
 // --- Knowledge document list with query ---
 #[tokio::test]
 async fn knowledge_doc_list_with_query_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": []}})).await;
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": {"list": [], "total": 0}
+    }))
+    .await;
     use zai_rs::knowledge::*;
-    let _ = DocumentListRequest::new().send_via(&c).await;
+    let query = DocumentListQuery::new("kb1").with_page(2).with_size(5);
+    let response = DocumentListRequest::new("kb1")
+        .with_query(query)
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert!(response.data.unwrap().list.unwrap().is_empty());
+    assert_request(&s, "GET", "/api/llm-application/open/document");
     s.shutdown().await;
 }
 
 // --- Knowledge document image list ---
 #[tokio::test]
 async fn knowledge_doc_image_list_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": []})).await;
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": {"images": [{"text": "figure 1", "cos_url": "https://example.com/1.png"}]}
+    }))
+    .await;
     use zai_rs::knowledge::*;
-    let _ = DocumentImageListRequest::new("doc1").send_via(&c).await;
+    let response = DocumentImageListRequest::new("doc1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.data.unwrap().images.unwrap().len(), 1);
+    assert_request(
+        &s,
+        "POST",
+        "/api/llm-application/open/document/slice/image_list/doc1",
+    );
+    assert_empty_body(&s);
     s.shutdown().await;
 }
 
 // --- Knowledge document reembedding ---
 #[tokio::test]
 async fn knowledge_doc_reembedding_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"document_id": "d1"}})).await;
+    let (s, c) = llm_ok_server(json!({"code": 200, "message": "queued"})).await;
     use zai_rs::knowledge::*;
-    let _ = DocumentReembeddingRequest::new("doc1").send_via(&c).await;
+    let response = DocumentReembedRequest::new("doc1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.code, Some(200));
+    assert_request(
+        &s,
+        "POST",
+        "/api/llm-application/open/document/embedding/doc1",
+    );
+    assert_empty_body(&s);
     s.shutdown().await;
 }
 
 // --- Knowledge document retrieve ---
 #[tokio::test]
 async fn knowledge_doc_retrieve_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"document_id": "d1"}})).await;
+    let (s, c) =
+        llm_ok_server(json!({"code": 200, "data": {"id": "doc1", "name": "test.pdf"}})).await;
     use zai_rs::knowledge::*;
-    let _ = DocumentRetrieveRequest::new("doc1").send_via(&c).await;
+    let response = DocumentGetRequest::new("doc1").send_via(&c).await.unwrap();
+    assert_eq!(response.data.as_ref().unwrap().id.as_deref(), Some("doc1"));
+    assert_request(&s, "GET", "/api/llm-application/open/document/doc1");
     s.shutdown().await;
 }
 
 // --- Knowledge document delete ---
 #[tokio::test]
 async fn knowledge_doc_delete_send_via() {
-    let (s, c) = llm_ok_server(json!({"code": 200, "data": null})).await;
+    let (s, c) = llm_ok_server(json!({"code": 200, "message": "deleted"})).await;
     use zai_rs::knowledge::*;
-    let _ = DocumentDeleteRequest::new("doc1").send_via(&c).await;
+    let response = DocumentDeleteRequest::new("doc1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.code, Some(200));
+    assert_request(&s, "DELETE", "/api/llm-application/open/document/doc1");
     s.shutdown().await;
 }
 
 // --- Services: assistant invoke ---
 #[tokio::test]
 async fn assistant_invoke_send_via() {
-    let (s, c) = ok_server(json!({"id": "a1", "choices": []})).await;
+    let (s, c) = ok_server(json!({
+        "id": "response-1",
+        "request_id": "request-1",
+        "created": 1,
+        "model": "glm-4-assistant",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "hello"},
+            "finish_reason": "stop"
+        }],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+    }))
+    .await;
     use zai_rs::services::assistants::*;
-    let _ = AssistantInvokeRequest::new(json!({"content": "hi"}))
-        .send_via(&c)
-        .await;
+    let response =
+        AssistantInvokeRequest::new(AssistantId::ChatGlm, vec![AssistantMessage::user("hi")])
+            .send_via(&c)
+            .await
+            .unwrap();
+    assert_eq!(response.id.as_deref(), Some("response-1"));
+    assert_eq!(
+        response.choices.as_ref().unwrap()[0]
+            .message
+            .as_ref()
+            .unwrap()
+            .content,
+        Some(AssistantResponseContent::Text("hello".to_owned()))
+    );
+    assert_request(&s, "POST", "/api/paas/v4/assistant");
+    assert_json_body(
+        &s,
+        json!({
+            "assistant_id": "65940acff94777010aa6b796",
+            "model": "glm-4-assistant",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": false
+        }),
+    );
     s.shutdown().await;
 }
 
 // --- Services: assistant list ---
 #[tokio::test]
 async fn assistant_list_send_via() {
-    let (s, c) = ok_server(json!({"data": []})).await;
+    let (s, c) = ok_server(json!({
+        "success": true,
+        "code": 200,
+        "msg": "ok",
+        "data": [{
+            "assistant_id": "65940acff94777010aa6b796",
+            "name": "ChatGLM"
+        }]
+    }))
+    .await;
     use zai_rs::services::assistants::*;
-    let _ = AssistantListRequest::new().send_via(&c).await;
+    let response = AssistantListRequest::new().send_via(&c).await.unwrap();
+    assert_eq!(
+        response.data.as_ref().unwrap()[0].assistant_id,
+        "65940acff94777010aa6b796"
+    );
+    assert_request(&s, "POST", "/api/paas/v4/assistant/list");
+    assert_json_body(&s, json!({"assistant_id_list": []}));
     s.shutdown().await;
 }
 
 // --- Services: assistant conversation list ---
 #[tokio::test]
 async fn assistant_conversation_list_send_via() {
-    let (s, c) = ok_server(json!({"data": []})).await;
+    let (s, c) = ok_server(json!({
+        "success": true,
+        "code": 200,
+        "msg": "ok",
+        "data": {
+            "assistant_id": "65940acff94777010aa6b796",
+            "conversation_list": [{
+                "id": "conversation-1",
+                "assistant_id": "65940acff94777010aa6b796"
+            }],
+            "has_more": false
+        }
+    }))
+    .await;
     use zai_rs::services::assistants::*;
-    let _ = AssistantConversationListRequest::new().send_via(&c).await;
+    let response = AssistantConversationListRequest::new(AssistantId::ChatGlm)
+        .with_page(2)
+        .with_page_size(10)
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(
+        response.data.as_ref().unwrap().conversation_list[0].id,
+        "conversation-1"
+    );
+    assert_request(&s, "POST", "/api/paas/v4/assistant/conversation/list");
+    assert_json_body(
+        &s,
+        json!({
+            "assistant_id": "65940acff94777010aa6b796",
+            "page": 2,
+            "page_size": 10
+        }),
+    );
     s.shutdown().await;
 }
 
@@ -450,119 +875,651 @@ async fn assistant_conversation_list_send_via() {
 async fn application_invoke_send_via() {
     let server = TestServer::start(vec![ScriptedResponse::json(
         200,
-        json!({"id": "a1", "choices": []}),
+        json!({
+            "request_id": "invocation-1",
+            "conversation_id": "conversation-1",
+            "app_id": "app-1",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "messages": {"content": {"type": "text", "msg": "hello"}}
+            }],
+            "usage": [{"model": "glm-4", "nodeName": "chat", "totalTokenCount": 2}]
+        }),
     )])
     .await;
     let base = format!("{}/api/llm-application/open", server.base_url);
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     let c = ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::ApplicationV3, leaked)
+        .endpoint(ApiFamily::ApplicationV3, base)
         .build()
         .unwrap();
     use zai_rs::services::applications::*;
-    let _ = ApplicationInvokeRequest::new(json!({"app_id": "a1"}))
-        .send_via(&c)
-        .await;
+    let response = ApplicationInvokeRequest::new(
+        "app-1",
+        vec![
+            ApplicationInvokeMessage::new(vec![
+                ApplicationInvokeContent::new("input", "hello").with_key("question"),
+            ])
+            .with_role("user"),
+        ],
+    )
+    .send_via(&c)
+    .await
+    .unwrap();
+    assert_eq!(response.request_id.as_deref(), Some("invocation-1"));
+    assert_eq!(
+        response.usage.as_ref().unwrap()[0].total_token_count,
+        Some(2)
+    );
+    assert_request(
+        &server,
+        "POST",
+        "/api/llm-application/open/v3/application/invoke",
+    );
+    assert_json_body(
+        &server,
+        json!({
+            "app_id": "app-1",
+            "stream": false,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "input", "value": "hello", "key": "question"}]
+            }]
+        }),
+    );
     server.shutdown().await;
 }
 
 // --- Services: application variables (V2 GET) ---
 #[tokio::test]
 async fn application_variables_send_via() {
-    let server = TestServer::start(vec![ScriptedResponse::json(200, json!({"data": []}))]).await;
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "data": [{
+                "id": "variable-1",
+                "name": "temperature",
+                "type": "selection_list",
+                "tips": "Select a temperature",
+                "allowed_values": ["low", "high"],
+                "input_template": {"options": [0.5, 1.0]}
+            }],
+            "code": 200,
+            "message": "ok",
+            "timestamp": 1
+        }),
+    )])
+    .await;
     let base = format!("{}/api/llm-application/open", server.base_url);
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     let c = ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::ApplicationV2, leaked)
+        .endpoint(ApiFamily::ApplicationV2, base)
         .build()
         .unwrap();
     use zai_rs::services::applications::*;
-    let _ = ApplicationVariablesRequest::new("app1").send_via(&c).await;
+    let response = ApplicationVariablesRequest::new("app1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.data[0].name, "temperature");
+    assert_request(
+        &server,
+        "GET",
+        "/api/llm-application/open/v2/application/app1/variables",
+    );
+    server.shutdown().await;
+}
+
+// --- Services: application file upload (V2 multipart) ---
+#[tokio::test]
+async fn application_file_upload_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "data": {
+                "success_info": [{"file_id": "file-1", "file_name": "notes.txt"}],
+                "fail_info": []
+            },
+            "code": 200,
+            "message": "ok",
+            "timestamp": 1
+        }),
+    )])
+    .await;
+    let base = format!("{}/api/llm-application/open", server.base_url);
+    let client = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::ApplicationV2, base)
+        .build()
+        .unwrap();
+    use zai_rs::services::applications::*;
+    let response = ApplicationFileUploadRequest::new(
+        "app-1",
+        vec![("notes.txt".to_owned(), b"hello".to_vec())],
+    )
+    .with_upload_unit_id("upload-1")
+    .with_file_type(2)
+    .send_via(&client)
+    .await
+    .unwrap();
+
+    assert_eq!(response.data.success_info[0].file_id, "file-1");
+    assert_request(
+        &server,
+        "POST",
+        "/api/llm-application/open/v2/application/file_upload",
+    );
+    assert_multipart_text_field(&server, "app_id", "app-1");
+    assert_multipart_text_field(&server, "upload_unit_id", "upload-1");
+    assert_multipart_text_field(&server, "file_type", "2");
+    assert_multipart_file(
+        &server,
+        "files",
+        "notes.txt",
+        "application/octet-stream",
+        b"hello",
+    );
+    server.shutdown().await;
+}
+
+// --- Services: application slice information (V2) ---
+#[tokio::test]
+async fn application_slice_info_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "data": {"document_slices": [], "has_old_document": false},
+            "code": 200,
+            "message": "ok",
+            "timestamp": 1
+        }),
+    )])
+    .await;
+    let base = format!("{}/api/llm-application/open", server.base_url);
+    let client = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::ApplicationV2, base)
+        .build()
+        .unwrap();
+    use zai_rs::services::applications::*;
+    let response = ApplicationSliceInfoRequest::new("request-1", "node-1")
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    assert!(!response.data.has_old_document);
+    assert_request(
+        &server,
+        "POST",
+        "/api/llm-application/open/v2/application/slice_info",
+    );
+    assert_json_body(
+        &server,
+        json!({"request_id": "request-1", "node_id": "node-1"}),
+    );
+    server.shutdown().await;
+}
+
+// --- Services: application conversation creation (V2, no body) ---
+#[tokio::test]
+async fn application_conversation_create_send_via() {
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "data": {"conversation_id": "conversation-1"},
+            "code": 200,
+            "message": "ok",
+            "timestamp": 1
+        }),
+    )])
+    .await;
+    let base = format!("{}/api/llm-application/open", server.base_url);
+    let client = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::ApplicationV2, base)
+        .build()
+        .unwrap();
+    use zai_rs::services::applications::*;
+    let response = ApplicationConversationCreateRequest::new("app-1")
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    assert_eq!(response.data.conversation_id, "conversation-1");
+    assert_request(
+        &server,
+        "POST",
+        "/api/llm-application/open/v2/application/app-1/conversation",
+    );
+    assert_empty_body(&server);
+    server.shutdown().await;
+}
+
+// --- Services: application recommended questions (unversioned family) ---
+#[tokio::test]
+async fn application_history_send_via() {
+    let (server, client) = llm_ok_server(json!({
+        "data": {"problems": ["What can you do?"]},
+        "code": 200,
+        "message": "ok",
+        "timestamp": 1
+    }))
+    .await;
+    use zai_rs::services::applications::*;
+    let response = ApplicationHistoryRequest::new("app-1", "conversation-1")
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    assert_eq!(response.data.problems, ["What can you do?"]);
+    assert_request(
+        &server,
+        "GET",
+        "/api/llm-application/open/history_session_record/app-1/conversation-1",
+    );
+    assert_empty_body(&server);
     server.shutdown().await;
 }
 
 #[tokio::test]
 async fn tools_parse_layout_send_via() {
-    let (s, c) = ok_server(json!({"content": "parsed text"})).await;
+    let (s, c) = ok_server(json!({
+        "id": "layout-1",
+        "created": 1,
+        "model": "GLM-OCR",
+        "md_results": "# Parsed text",
+        "layout_details": [[{
+            "index": 1,
+            "label": "text",
+            "bbox_2d": [0.1, 0.2, 0.8, 0.9],
+            "content": "Parsed text",
+            "height": 800,
+            "width": 600
+        }]],
+        "layout_visualization": ["https://example.test/layout.png"],
+        "data_info": {
+            "num_pages": 1,
+            "pages": [{"width": 600, "height": 800}]
+        },
+        "usage": {
+            "prompt_tokens": 1.0,
+            "completion_tokens": 2.0,
+            "prompt_tokens_details": {"cached_tokens": 0.0},
+            "total_tokens": 3
+        },
+        "request_id": "request-1"
+    }))
+    .await;
     use zai_rs::services::tools::*;
-    let _ = LayoutParsingRequest::new(json!({"content": "text"}))
+    let response = LayoutParsingRequest::new("https://example.test/document.pdf")
+        .with_crop_images(true)
+        .with_layout_visualization(true)
+        .with_page_range(1, 2)
+        .with_request_id("request-1")
+        .with_user_id("user-1")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id, "layout-1");
+    assert_eq!(response.md_results.as_deref(), Some("# Parsed text"));
+    assert_eq!(
+        response.layout_details.as_ref().unwrap()[0][0].label,
+        LayoutLabel::Text
+    );
+    assert_eq!(response.data_info.as_ref().unwrap().num_pages, 1);
+    assert_request(&s, "POST", "/api/paas/v4/layout_parsing");
+    assert_json_body(
+        &s,
+        json!({
+            "model": "glm-ocr",
+            "file": "https://example.test/document.pdf",
+            "return_crop_images": true,
+            "need_layout_visualization": true,
+            "start_page_id": 1,
+            "end_page_id": 2,
+            "request_id": "request-1",
+            "user_id": "user-1"
+        }),
+    );
     s.shutdown().await;
 }
 
 // --- Services: tools read_document ---
 #[tokio::test]
 async fn tools_read_document_send_via() {
-    let (s, c) = ok_server(json!({"content": "read text"})).await;
+    let (s, c) = ok_server(json!({
+        "id": "reader-1",
+        "created": 1,
+        "request_id": "request-1",
+        "model": "reader",
+        "reader_result": {
+            "content": "read text",
+            "description": "description",
+            "title": "Title",
+            "url": "https://example.test/page",
+            "external": {
+                "stylesheet": {"main": {"type": "text/css"}}
+            },
+            "metadata": {
+                "keywords": "rust",
+                "viewport": "width=device-width",
+                "description": "metadata description",
+                "format-detection": "telephone=no"
+            }
+        }
+    }))
+    .await;
     use zai_rs::services::tools::*;
-    let _ = ReaderRequest::new(json!({"url": "https://example.com/doc.pdf"}))
+    let response = ReaderRequest::new("https://example.test/page")
+        .with_timeout_seconds(30)
+        .with_cache_disabled(true)
+        .with_return_format("markdown")
+        .with_retained_images(true)
+        .with_gfm_disabled(false)
+        .with_image_data_urls(false)
+        .with_image_summaries(true)
+        .with_link_summaries(true)
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(
+        response.reader_result.as_ref().unwrap().content.as_deref(),
+        Some("read text")
+    );
+    assert_eq!(
+        response
+            .reader_result
+            .as_ref()
+            .unwrap()
+            .metadata
+            .as_ref()
+            .unwrap()
+            .format_detection
+            .as_deref(),
+        Some("telephone=no")
+    );
+    assert_request(&s, "POST", "/api/paas/v4/reader");
+    assert_json_body(
+        &s,
+        json!({
+            "url": "https://example.test/page",
+            "timeout": 30,
+            "no_cache": true,
+            "return_format": "markdown",
+            "retain_images": true,
+            "no_gfm": false,
+            "keep_img_data_url": false,
+            "with_images_summary": true,
+            "with_links_summary": true
+        }),
+    );
     s.shutdown().await;
 }
 
 // --- Services: images async generation ---
 #[tokio::test]
 async fn images_async_gen_send_via() {
-    let (s, c) = ok_server(json!({"id": "task-1", "model": "cogview-4"})).await;
+    let (s, c) = ok_server(json!({
+        "id": "task-1",
+        "model": "glm-image",
+        "request_id": "request-1",
+        "task_status": "PROCESSING"
+    }))
+    .await;
     use zai_rs::services::images::*;
-    let _ = AsyncImageGenerationRequest::new(json!({"prompt": "a cat"}))
+    let response = AsyncImageGenerationRequest::new("a cat")
+        .with_quality(AsyncImageQuality::Hd)
+        .with_size("1280x1280")
+        .with_watermark(true)
+        .with_user_id("user-1")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("task-1"));
+    assert_eq!(response.model.as_deref(), Some("glm-image"));
+    assert_eq!(response.request_id.as_deref(), Some("request-1"));
+    assert!(matches!(
+        response.status(),
+        Some(zai_rs::model::TaskStatus::Processing)
+    ));
+    assert_request(&s, "POST", "/api/paas/v4/async/images/generations");
+    assert_json_body(
+        &s,
+        json!({
+            "model": "glm-image",
+            "prompt": "a cat",
+            "quality": "hd",
+            "size": "1280x1280",
+            "watermark_enabled": true,
+            "user_id": "user-1"
+        }),
+    );
     s.shutdown().await;
 }
 
 // --- File parser create ---
 #[tokio::test]
 async fn file_parser_create_send_via() {
-    let (s, c) = ok_server(json!({"task_id": "t1", "status": "PROCESSING"})).await;
+    let (s, c) = ok_server(json!({"message": "accepted", "task_id": "t1"})).await;
     let dir = tempfile::tempdir().unwrap();
     let doc = dir.path().join("test.txt");
     std::fs::write(&doc, b"hello").unwrap();
     use zai_rs::tool::file_parser_create::*;
-    let _ = FileParserCreateRequest::new(&doc, ToolType::Lite, FileType::TXT)
+    let response = FileParseRequest::new(&doc, ToolType::Lite)
+        .unwrap()
+        .with_file_type(FileType::TXT)
         .unwrap()
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.task_id(), Some("t1"));
+    assert!(response.is_success());
+    assert_request(&s, "POST", "/api/paas/v4/files/parser/create");
+    assert_multipart_text_field(&s, "tool_type", "lite");
+    assert_multipart_text_field(&s, "file_type", "TXT");
+    assert_multipart_file(&s, "file", "test.txt", "application/octet-stream", b"hello");
     s.shutdown().await;
 }
 
 // --- File parser result ---
 #[tokio::test]
 async fn file_parser_result_send_via() {
-    let (s, c) = ok_server(json!({"content": "parsed content"})).await;
+    let (s, c) = ok_server(json!({
+        "status": "succeeded",
+        "message": "done",
+        "task_id": "task-1",
+        "content": "parsed content",
+        "parsing_result_url": null
+    }))
+    .await;
     use zai_rs::tool::file_parser_result::*;
-    let _ = FileParserResultRequest::new("task-1")
+    let response = FileParseResultRequest::new("task-1")
         .get_result_via(&c, FormatType::Text)
-        .await;
+        .await
+        .unwrap();
+    assert!(response.is_success());
+    assert_eq!(response.content(), Some("parsed content"));
+    assert_request(&s, "GET", "/api/paas/v4/files/parser/result/task-1/text");
     s.shutdown().await;
 }
 
 // --- File parse sync ---
 #[tokio::test]
 async fn file_parse_sync_send_via() {
-    let (s, c) = ok_server(json!({"content": "sync parsed"})).await;
-    let dir = tempfile::tempdir().unwrap();
-    let doc = dir.path().join("test.txt");
-    std::fs::write(&doc, b"hello").unwrap();
+    let (s, c) = ok_server(json!({
+        "status": "succeeded",
+        "message": "done",
+        "task_id": "sync-task-1",
+        "content": "sync parsed",
+        "parsing_result_url": null
+    }))
+    .await;
+    let directory = tempfile::tempdir().unwrap();
+    let file_path = directory.path().join("document.txt");
+    std::fs::write(&file_path, b"document body").unwrap();
     use zai_rs::file::*;
-    let _ = FileParseSyncRequest::new(json!({"file_id": "f1"}))
+    let response = FileParseSyncRequest::new(&file_path)
+        .with_file_type(FileParseSyncFileType::TXT)
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert!(response.is_success());
+    assert_eq!(response.task_id(), "sync-task-1");
+    assert_eq!(response.content(), Some("sync parsed"));
+    assert_request(&s, "POST", "/api/paas/v4/files/parser/sync");
+    assert_multipart_text_field(&s, "tool_type", "prime-sync");
+    assert_multipart_text_field(&s, "file_type", "TXT");
+    assert_multipart_file(
+        &s,
+        "file",
+        "document.txt",
+        "application/octet-stream",
+        b"document body",
+    );
     s.shutdown().await;
 }
 
-// --- Async chat get result ---
 #[tokio::test]
-async fn async_chat_get_send_via() {
-    let (s, c) = ok_server(json!({"id": "task-1", "task_status": "SUCCESS"})).await;
+async fn file_parse_sync_rejects_a_missing_file_before_network_io() {
+    let (server, client) = ok_server(json!({
+        "status": "succeeded",
+        "message": "unused",
+        "task_id": "unused"
+    }))
+    .await;
+    use zai_rs::file::*;
+    let error = FileParseSyncRequest::new("definitely-missing-document.pdf")
+        .send_via(&client)
+        .await
+        .unwrap_err();
+
+    assert!(error.is_client_error());
+    assert!(
+        server.requests().is_empty(),
+        "invalid local files must fail before any HTTP request"
+    );
+    server.shutdown().await;
+}
+
+// --- Unified asynchronous task results ---
+#[tokio::test]
+async fn async_task_get_state_send_via() {
+    let (s, c) = ok_server(json!({
+        "model": "glm-5.2",
+        "request_id": "request-1",
+        "task_status": "PROCESSING"
+    }))
+    .await;
     use zai_rs::model::*;
-    let _ = AsyncChatGetRequest::new(GLM4_5 {}, "task-1".into())
+    let response = AsyncTaskGetRequest::new("task-1")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert!(
+        response
+            .as_state()
+            .is_some_and(AsyncTaskState::is_processing)
+    );
+    assert_request(&s, "GET", "/api/paas/v4/async-result/task-1");
+    assert_empty_body(&s);
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn async_task_get_chat_result_send_via() {
+    let (s, c) = ok_server(json!({
+        "id": "chat-1",
+        "model": "glm-5.2",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": "done"},
+            "finish_reason": "stop"
+        }]
+    }))
+    .await;
+    use zai_rs::model::*;
+    let response = AsyncTaskGetRequest::new("chat-1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(
+        response
+            .as_chat()
+            .and_then(AsyncChatTaskResult::choices)
+            .map(<[_]>::len),
+        Some(1)
+    );
+    assert_request(&s, "GET", "/api/paas/v4/async-result/chat-1");
+    assert_empty_body(&s);
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn async_task_get_video_result_send_via() {
+    let (s, c) = ok_server(json!({
+        "model": "cogvideox-3",
+        "request_id": "request-1",
+        "task_status": "SUCCESS",
+        "video_result": [{
+            "url": "https://example.com/video.mp4",
+            "cover_image_url": "https://example.com/cover.png"
+        }]
+    }))
+    .await;
+    use zai_rs::model::*;
+    let response = AsyncTaskGetRequest::new("video-1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(
+        response
+            .as_video()
+            .and_then(AsyncVideoTaskResult::videos)
+            .map(<[_]>::len),
+        Some(1)
+    );
+    assert_request(&s, "GET", "/api/paas/v4/async-result/video-1");
+    assert_empty_body(&s);
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn async_task_get_image_result_send_via() {
+    let (s, c) = ok_server(json!({
+        "model": "glm-image",
+        "request_id": "request-1",
+        "task_status": "SUCCESS",
+        "image_result": [{"url": "https://example.com/image.png"}]
+    }))
+    .await;
+    use zai_rs::model::*;
+    let response = AsyncTaskGetRequest::new("image-1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(
+        response
+            .as_image()
+            .and_then(AsyncImageTaskResult::images)
+            .map(<[_]>::len),
+        Some(1)
+    );
+    assert_request(&s, "GET", "/api/paas/v4/async-result/image-1");
+    assert_empty_body(&s);
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn async_task_get_rejects_an_empty_result() {
+    let (s, c) = ok_server(json!({})).await;
+    let error = zai_rs::model::AsyncTaskGetRequest::new("task-1")
+        .send_via(&c)
+        .await
+        .unwrap_err();
+    assert!(matches!(error, zai_rs::ZaiError::JsonError(_)));
+    assert_request(&s, "GET", "/api/paas/v4/async-result/task-1");
+    assert_empty_body(&s);
     s.shutdown().await;
 }
 
@@ -575,16 +1532,18 @@ async fn chat_coding_plan_send_via() {
         "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
     }))]).await;
     let base = format!("{}/api/coding/paas/v4", server.base_url);
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     let c = ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::CodingPaasV4, leaked)
+        .endpoint(ApiFamily::CodingPaasV4, base)
         .build()
         .unwrap();
     use zai_rs::model::*;
-    let _ = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
+    let response = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
         .send_via_coding_plan(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("x"));
+    assert_request(&server, "POST", "/api/coding/paas/v4/chat/completions");
     server.shutdown().await;
 }
 
@@ -599,11 +1558,15 @@ async fn file_content_send_to_via() {
     .await;
     let base = format!("{}/api/paas/v4", server.base_url);
     let c = mock_client(&base);
-    let dest = std::env::temp_dir().join("zai_cov_file.bin");
-    let _ = zai_rs::file::FileContentRequest::new("f1")
+    let temp = tempfile::tempdir().unwrap();
+    let dest = temp.path().join("download.bin");
+    let bytes_written = zai_rs::file::FileContentRequest::new("f1")
         .send_to_via(&c, dest.to_str().unwrap())
-        .await;
-    let _ = std::fs::remove_file(&dest);
+        .await
+        .unwrap();
+    assert_eq!(bytes_written, 12);
+    assert_eq!(std::fs::read(&dest).unwrap(), b"file content");
+    assert_request(&server, "GET", "/api/paas/v4/files/f1/content");
     server.shutdown().await;
 }
 
@@ -615,9 +1578,21 @@ async fn batch_create_send_via() {
     }))
     .await;
     use zai_rs::batches::*;
-    let _ = CreateBatchRequest::new("file-1", BatchEndpoint::ChatCompletions)
+    let response = BatchCreateRequest::new("file-1", BatchEndpoint::ChatCompletions)
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("batch-1"));
+    assert_eq!(response.status.as_deref(), Some("validating"));
+    assert_request(&s, "POST", "/api/paas/v4/batches");
+    assert_json_body(
+        &s,
+        json!({
+            "input_file_id": "file-1",
+            "endpoint": "/v4/chat/completions",
+            "auto_delete_input_file": true
+        }),
+    );
     s.shutdown().await;
 }
 
@@ -629,7 +1604,10 @@ async fn batch_retrieve_send_via() {
     }))
     .await;
     use zai_rs::batches::*;
-    let _ = BatchesRetrieveRequest::new("batch-1").send_via(&c).await;
+    let response = BatchGetRequest::new("batch-1").send_via(&c).await.unwrap();
+    assert_eq!(response.id.as_deref(), Some("batch-1"));
+    assert_eq!(response.status.as_deref(), Some("completed"));
+    assert_request(&s, "GET", "/api/paas/v4/batches/batch-1");
     s.shutdown().await;
 }
 
@@ -641,838 +1619,66 @@ async fn batch_cancel_send_via() {
     }))
     .await;
     use zai_rs::batches::*;
-    let _ = CancelBatchRequest::new("batch-1").send_via(&c).await;
+    let response = BatchCancelRequest::new("batch-1")
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("batch-1"));
+    assert_eq!(response.status.as_deref(), Some("cancelled"));
+    assert_request(&s, "POST", "/api/paas/v4/batches/batch-1/cancel");
+    assert_empty_body(&s);
     s.shutdown().await;
+}
+
+#[tokio::test]
+async fn batch_cancel_rejects_blank_id_before_network_io() {
+    let (server, client) = ok_server(json!({})).await;
+
+    let error = zai_rs::batches::BatchCancelRequest::new("   ")
+        .send_via(&client)
+        .await
+        .expect_err("a blank path identifier must be rejected locally");
+
+    assert_eq!(
+        error.code(),
+        Some(zai_rs::client::error::codes::SDK_VALIDATION)
+    );
+    assert!(server.requests().is_empty());
+    server.shutdown().await;
 }
 
 // --- Services: application file_stats (POST, ApplicationV2 family) ---
 #[tokio::test]
 async fn application_file_stats_send_via() {
-    let server = TestServer::start(vec![ScriptedResponse::json(200, json!({"data": {}}))]).await;
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "data": [{"file_id": "file-1", "code": 0, "msg": "parsed"}],
+            "code": 200,
+            "message": "ok",
+            "timestamp": 1
+        }),
+    )])
+    .await;
     let base = format!("{}/api/llm-application/open", server.base_url);
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     let c = ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::ApplicationV2, leaked)
+        .endpoint(ApiFamily::ApplicationV2, base)
         .build()
         .unwrap();
     use zai_rs::services::applications::*;
-    let _ = ApplicationFileStatsRequest::new(json!({}))
+    let response = ApplicationFileStatsRequest::new("app-1", vec!["file-1".to_owned()])
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.data[0].file_id, "file-1");
+    assert_request(
+        &server,
+        "POST",
+        "/api/llm-application/open/v2/application/file_stat",
+    );
+    assert_json_body(&server, json!({"app_id": "app-1", "file_ids": ["file-1"]}));
     server.shutdown().await;
-}
-
-// --- Chat base response deeper coverage ---
-#[test]
-fn chat_response_usage_accessors() {
-    let json = r#"{"id":"x","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop","tool_calls":null}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15},"model":"glm-5.2","created":1234567890}"#;
-    let resp: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(json).unwrap();
-    let usage = resp.usage.unwrap();
-    assert_eq!(usage.prompt_tokens(), Some(10));
-    assert_eq!(usage.completion_tokens(), Some(5));
-    assert_eq!(usage.total_tokens(), Some(15));
-}
-
-#[test]
-fn chat_response_message_tool_calls() {
-    let json = r#"{"id":"x","choices":[{"index":0,"message":{"role":"assistant","content":"hi","tool_calls":[{"id":"tc1","type":"function","function":{"name":"calc","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#;
-    let resp: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(json).unwrap();
-    let choices = resp.choices().unwrap();
-    let tc = choices[0].message().tool_calls();
-    assert!(tc.is_some());
-    let tc = tc.unwrap();
-    assert_eq!(tc.len(), 1);
-    assert_eq!(
-        tc[0].function.as_ref().unwrap().name.as_deref(),
-        Some("calc")
-    );
-}
-
-// --- Error compact/message/code for all variants ---
-#[test]
-fn error_all_variants_compact() {
-    use zai_rs::client::error::*;
-    for err in [
-        ZaiError::AuthError {
-            code: 1001,
-            message: "auth".into(),
-        },
-        ZaiError::RateLimitError {
-            code: 1302,
-            message: "rl".into(),
-        },
-        ZaiError::AccountError {
-            code: 1110,
-            message: "acct".into(),
-        },
-        ZaiError::ApiError {
-            code: 1200,
-            message: "api".into(),
-        },
-        ZaiError::ContentPolicyError {
-            code: 1300,
-            message: "cp".into(),
-        },
-        ZaiError::FileError {
-            code: 1400,
-            message: "file".into(),
-        },
-        ZaiError::HttpError {
-            status: 404,
-            message: "http".into(),
-        },
-        ZaiError::Unknown {
-            code: 999,
-            message: "unk".into(),
-        },
-    ] {
-        let c = err.compact();
-        assert!(!c.is_empty(), "compact should be non-empty for {err:?}");
-        let m = err.message();
-        assert!(!m.is_empty(), "message should be non-empty");
-    }
-}
-
-#[test]
-fn error_is_retryable_all_variants() {
-    use zai_rs::client::error::*;
-    assert!(
-        !ZaiError::AuthError {
-            code: 1001,
-            message: "x".into()
-        }
-        .is_retryable()
-    );
-    assert!(
-        ZaiError::RateLimitError {
-            code: 1302,
-            message: "x".into()
-        }
-        .is_retryable()
-    );
-    assert!(
-        ZaiError::HttpError {
-            status: 503,
-            message: "x".into()
-        }
-        .is_retryable()
-    );
-    assert!(
-        !ZaiError::HttpError {
-            status: 400,
-            message: "x".into()
-        }
-        .is_retryable()
-    );
-    assert!(
-        !ZaiError::ApiError {
-            code: 1200,
-            message: "x".into()
-        }
-        .is_retryable()
-    );
-}
-
-// --- Transport config builder ---
-#[test]
-fn transport_config_builder() {
-    use zai_rs::client::HttpTransportConfig;
-    let cfg = HttpTransportConfig::builder()
-        .max_attempts(2)
-        .unwrap()
-        .request_timeout(std::time::Duration::from_secs(30))
-        .unwrap()
-        .build();
-    assert_eq!(cfg.max_attempts, 2);
-    assert_eq!(cfg.request_timeout, std::time::Duration::from_secs(30));
-}
-
-// --- Endpoint config builder ---
-#[test]
-fn endpoint_config_builder_custom() {
-    use zai_rs::client::EndpointConfig;
-    let ec = EndpointConfig::builder()
-        .paas_v4("https://custom.example.com/api/paas/v4")
-        .build(false)
-        .unwrap();
-    assert!(
-        ec.base(zai_rs::client::ApiFamily::PaasV4)
-            .as_str()
-            .contains("custom.example.com")
-    );
-}
-
-#[test]
-fn endpoint_config_resolve_with_query() {
-    use zai_rs::client::{ApiFamily, EndpointConfig};
-    let ec = EndpointConfig::defaults().unwrap();
-    let url = ec
-        .resolve_with_query(
-            ApiFamily::PaasV4,
-            &["files"],
-            &[("limit", "10"), ("order", "desc")],
-        )
-        .unwrap();
-    assert!(url.contains("limit=10"));
-    assert!(url.contains("order=desc"));
-}
-
-// --- Retry-After parsing edge cases ---
-#[test]
-fn retry_after_edge_cases() {
-    use zai_rs::client::transport::retry::parse_retry_after;
-    assert_eq!(parse_retry_after(""), None);
-    assert_eq!(parse_retry_after("  "), None);
-    assert_eq!(parse_retry_after("abc"), None);
-    assert_eq!(
-        parse_retry_after("99999999999"),
-        Some(std::time::Duration::from_secs(99999999999))
-    );
-}
-
-// --- SSE parser with finish() ---
-#[test]
-fn sse_parser_finish_incomplete() {
-    use zai_rs::model::sse_parser::SseEventParser;
-    let mut p = SseEventParser::new();
-    let events = p.push(b"data: incomplete");
-    assert!(events.is_empty()); // no terminating blank line
-    // finish should flush remaining buffered data
-    let final_events = p.finish();
-    // May or may not produce an event depending on impl
-    let _ = final_events;
-}
-
-// --- Knowledge document upload file builder ---
-#[test]
-fn knowledge_doc_upload_file_builder() {
-    use zai_rs::knowledge::*;
-    let mut req = DocumentUploadFileRequest::new("kb-1")
-        .add_file_path(std::path::PathBuf::from("/tmp/test.pdf"))
-        .with_options(UploadFileOptions::default());
-    let _ = req.options_mut();
-}
-
-// --- Text to audio builder ---
-#[test]
-fn text_to_audio_builder() {
-    use zai_rs::model::text_to_audio::*;
-    let _body = TextToAudioRequest::new(zai_rs::model::text_to_audio::GlmTts {})
-        .with_input("hello world")
-        .with_speed(1.5)
-        .with_volume(5.0)
-        .with_voice(Voice::Tongtong);
-}
-
-// --- Async chat builder ---
-#[test]
-fn async_chat_builder() {
-    use zai_rs::model::*;
-    let req = AsyncChatCompletion::new(GLM4_5 {}, TextMessage::user("hi"))
-        .with_temperature(0.7)
-        .with_top_p(0.9)
-        .with_max_tokens(100)
-        .with_request_id("r1")
-        .with_user_id("u1")
-        .with_stop("stop".to_string());
-    let _ = req.validate();
-}
-
-#[test]
-fn all_chat_model_ids() {
-    use zai_rs::model::*;
-    let ids: Vec<String> = vec![
-        GLM5_2 {}.into(),
-        GLM5_1 {}.into(),
-        GLM5_turbo {}.into(),
-        GLM5 {}.into(),
-        GLM4_7 {}.into(),
-        GLM4_7_flash {}.into(),
-        GLM4_7_flashx {}.into(),
-        GLM4_6 {}.into(),
-        GLM4_5 {}.into(),
-        GLM4_5_x {}.into(),
-        GLM4_5_flash {}.into(),
-        GLM4_5_air {}.into(),
-        GLM4_5_airx {}.into(),
-    ];
-    for id in &ids {
-        assert!(!id.is_empty());
-        assert_eq!(id, id.trim());
-    }
-}
-
-#[test]
-fn vision_model_ids() {
-    use zai_rs::model::*;
-    let ids: Vec<String> = vec![
-        GLM5V_turbo {}.into(),
-        autoglm_phone {}.into(),
-        GLM4_6v {}.into(),
-        GLM4_6v_flash {}.into(),
-        GLM4_6v_flashx {}.into(),
-        GLM4_5v {}.into(),
-    ];
-    for id in &ids {
-        assert!(!id.is_empty());
-    }
-}
-
-#[test]
-fn voice_realtime_model_ids() {
-    use zai_rs::model::*;
-    let ids: Vec<String> = vec![
-        GLM4_voice {}.into(),
-        GLM_realtime {}.into(),
-        GLM4_5_voice {}.into(),
-    ];
-    for id in &ids {
-        assert!(!id.is_empty());
-    }
-}
-
-// --- Deep chat_base_response coverage ---
-#[test]
-fn response_accessors_with_minimal_json() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(r#"{"id":"i","model":"m"}"#).unwrap();
-    assert_eq!(r.id(), Some("i"));
-    assert_eq!(r.model(), Some("m"));
-    assert!(r.choices().is_none());
-    assert!(r.usage().is_none());
-    assert!(r.video_result().is_none());
-    assert!(r.web_search().is_none());
-    assert!(r.content_filter().is_none());
-    assert!(r.task_status().is_none());
-}
-
-#[test]
-fn response_with_task_status() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(r#"{"id":"i","model":"m","task_status":"SUCCESS"}"#).unwrap();
-    assert!(r.task_status().is_some());
-}
-
-#[test]
-fn response_with_video_result() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","video_result":[{"url":"https://example.com/v.mp4"}]}"#,
-    )
-    .unwrap();
-    assert!(r.video_result().is_some());
-    let vr = r.video_result().unwrap();
-    assert_eq!(vr.len(), 1);
-    assert!(vr[0].url.is_some());
-    assert!(vr[0].cover_image_url.is_none());
-}
-
-#[test]
-fn response_with_web_search() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","web_search":[{"title":"t","link":"l","icon":"i","media":"m"}]}"#,
-    )
-    .unwrap();
-    assert!(r.web_search().is_some());
-}
-
-#[test]
-fn response_with_content_filter() {
-    let _r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
-        serde_json::from_str(
-            r#"{"id":"i","model":"m","content_filter":[{"role":"assistant","content":"ok","level":"INFO"}]}"#,
-        );
-    let _ = _r;
-}
-
-#[test]
-fn response_with_full_choice() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}]}"#,
-    ).unwrap();
-    let ch = &r.choices().unwrap()[0];
-    assert_eq!(ch.index(), 0);
-    assert_eq!(ch.finish_reason(), Some("stop"));
-}
-
-#[test]
-fn response_content_str() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"text here"},"finish_reason":"stop"}]}"#,
-    ).unwrap();
-    let msg = r.choices().unwrap()[0].message();
-    assert_eq!(msg.content_str(), Some("text here"));
-}
-
-#[test]
-fn response_audio_content() {
-    let r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
-        serde_json::from_str(
-            r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant","audio":{"id":"a1","data":"base64","transcript":"hi"}},"finish_reason":"stop"}]}"#,
-        );
-    let _ = r;
-}
-
-#[test]
-fn task_status_as_str() {
-    use zai_rs::model::chat_base_response::TaskStatus;
-    assert_eq!(TaskStatus::Success.as_str(), "SUCCESS");
-    assert_eq!(TaskStatus::Fail.as_str(), "FAIL");
-    assert_eq!(TaskStatus::Processing.as_str(), "PROCESSING");
-}
-#[test]
-fn task_status_display() {
-    use zai_rs::model::chat_base_response::TaskStatus;
-    let s = format!("{}", TaskStatus::Success);
-    assert!(s.contains("SUCCESS"));
-}
-
-#[test]
-fn response_usage_all_fields() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#,
-    ).unwrap();
-    let u = r.usage().unwrap();
-    assert_eq!(u.prompt_tokens(), Some(1));
-    assert_eq!(u.completion_tokens(), Some(2));
-    assert_eq!(u.total_tokens(), Some(3));
-}
-
-// --- More knowledge builder coverage ---
-#[test]
-fn knowledge_update_full_builder() {
-    use zai_rs::knowledge::*;
-    let req = KnowledgeUpdateRequest::new("kb-1").with_name("new-name");
-    let _ = req;
-}
-
-#[test]
-fn knowledge_retrieve_simple() {
-    use zai_rs::knowledge::*;
-    let req = KnowledgeRetrieveRequest::new("kb-1");
-    let _ = req;
-}
-
-#[test]
-fn knowledge_delete_simple() {
-    use zai_rs::knowledge::*;
-    let req = KnowledgeDeleteRequest::new("kb-1");
-    let _ = req;
-}
-
-#[test]
-fn knowledge_capacity_simple() {
-    use zai_rs::knowledge::*;
-    let req = KnowledgeCapacityRequest::new();
-    let _ = req;
-}
-
-// --- More model builder coverage ---
-#[test]
-fn all_model_types_are_defined() {
-    // Exercise Into<String> for all types to ensure all define_model_type! expansions work
-    let _: Vec<String> = vec![
-        zai_rs::model::gen_image::CogView4 {}.into(),
-        zai_rs::model::gen_video_async::CogVideoX3 {}.into(),
-        zai_rs::model::audio_to_text::GlmAsr {}.into(),
-        zai_rs::model::text_to_audio::GlmTts {}.into(),
-        zai_rs::model::voice_clone::GlmTtsClone {}.into(),
-    ];
-}
-
-// --- More error coverage ---
-#[test]
-fn error_context_addition() {
-    use zai_rs::client::error::*;
-    let e = ZaiError::ApiError {
-        code: 1200,
-        message: "x".into(),
-    };
-    let e2 = e.context("during test");
-    // context wraps the error
-    assert!(e2.message().contains("x") || e2.message().contains("test"));
-}
-
-#[test]
-fn error_source_chain() {
-    use zai_rs::client::error::*;
-    let e = ZaiError::AuthError {
-        code: 1001,
-        message: "bad".into(),
-    };
-    // std::error::Error source should be None for leaf errors
-    use std::error::Error;
-    assert!(e.source().is_none() || e.source().is_some());
-}
-
-// --- Client builder edge cases ---
-#[test]
-fn zai_client_builder_with_transport_config() {
-    use zai_rs::client::*;
-    let transport = HttpTransportConfig::builder()
-        .max_attempts(2)
-        .unwrap()
-        .build();
-    let client = ZaiClient::builder("test.12345678901234567890")
-        .transport(transport)
-        .build();
-    assert!(client.is_ok());
-    let client = client.unwrap();
-    assert_eq!(client.transport().max_attempts, 2);
-}
-
-#[test]
-fn zai_client_from_env_missing_key() {
-    // In edition 2024 env::set_var/remove_var are unsafe.
-    // Just test that builder rejects empty key.
-    assert!(zai_rs::client::ZaiClient::builder("").build().is_err());
-}
-
-#[test]
-fn additional_header_value_too_long() {
-    use zai_rs::client::AdditionalHeader;
-    let long = "x".repeat(1025);
-    assert!(AdditionalHeader::new("X-Test-Client", &long).is_err());
-}
-
-#[test]
-fn additional_header_control_char_rejected() {
-    use zai_rs::client::AdditionalHeader;
-    assert!(AdditionalHeader::new("X-Test-Client", "ok\x00bad").is_err());
-    assert!(AdditionalHeader::new("X-Test-Client", "ok\nbad").is_err());
-}
-
-// --- ToolMetadata builder coverage ---
-#[cfg(feature = "toolkits")]
-#[test]
-fn tool_metadata_full_builder() {
-    use zai_rs::toolkits::core::*;
-    let meta = ToolMetadata::new("calc", "calculator")
-        .unwrap()
-        .version("1.0")
-        .author("test")
-        .tags(["math", "tool"])
-        .enabled(true);
-    assert_eq!(meta.name, "calc");
-}
-
-#[cfg(feature = "toolkits")]
-#[test]
-fn tool_metadata_empty_name_rejected() {
-    use zai_rs::toolkits::core::*;
-    assert!(ToolMetadata::new("", "desc").is_err());
-}
-
-#[cfg(feature = "toolkits")]
-#[test]
-fn function_tool_builder_chain() {
-    use zai_rs::toolkits::core::*;
-    let _ = FunctionTool::builder("name", "desc");
-}
-
-// --- Knowledge document upload file builder deeper ---
-#[test]
-fn knowledge_doc_upload_with_options() {
-    use zai_rs::knowledge::*;
-    let opts = UploadFileOptions::default();
-    let req = DocumentUploadFileRequest::new("kb-1")
-        .add_file_path(std::path::PathBuf::from("/tmp/a.pdf"))
-        .add_file_path(std::path::PathBuf::from("/tmp/b.pdf"))
-        .with_options(opts);
-    let _ = req;
-}
-
-// --- Audio to text request deeper ---
-#[test]
-fn audio_to_text_with_hotwords() {
-    use zai_rs::model::audio_to_text::*;
-    let req = AudioToTextRequest::new(GlmAsr {})
-        .with_hotwords(vec!["word1".into(), "word2".into()])
-        .unwrap();
-    let _ = req;
-}
-
-#[test]
-fn audio_to_text_hotwords_over_limit() {
-    use zai_rs::model::audio_to_text::*;
-    let too_many: Vec<String> = (0..101).map(|i| format!("w{i}")).collect();
-    let result = AudioToTextRequest::new(GlmAsr {}).with_hotwords(too_many);
-    assert!(result.is_err());
-}
-
-// --- TTS builder deeper ---
-#[test]
-fn tts_request_full_builder() {
-    use zai_rs::model::text_to_audio::*;
-    let _body = TextToAudioRequest::new(GlmTts {})
-        .with_input("hello world")
-        .with_voice(Voice::Tongtong)
-        .with_speed(1.0)
-        .with_volume(5.0);
-}
-
-// --- Embedding dimensions ---
-#[test]
-fn embedding_with_dimensions() {
-    use zai_rs::model::text_embedded::*;
-    let req = EmbeddingRequest::new(
-        EmbeddingModel::Embedding2,
-        EmbeddingInput::Batch(vec!["a".into(), "b".into()]),
-    )
-    .with_dimensions(EmbeddingDimensions::D1024);
-    let _ = req;
-}
-
-// --- More chat_base_response coverage ---
-#[test]
-fn response_minimal_no_id() {
-    let r: Result<zai_rs::model::chat_base_response::ChatCompletionResponse, _> =
-        serde_json::from_str(r#"{}"#);
-    let _ = r.is_ok();
-}
-
-#[test]
-fn response_created_only() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(r#"{"id":"i","model":"m","created":1234567890}"#).unwrap();
-    assert_eq!(r.created(), Some(1234567890));
-}
-
-// --- Transport config builder edge cases ---
-#[test]
-fn transport_config_reject_high_attempts() {
-    use zai_rs::client::HttpTransportConfig;
-    assert!(HttpTransportConfig::default().with_max_attempts(5).is_err());
-    assert!(HttpTransportConfig::default().with_max_attempts(0).is_err());
-}
-
-#[test]
-fn transport_config_reject_high_timeout() {
-    use zai_rs::client::HttpTransportConfig;
-    let high = std::time::Duration::from_secs(120);
-    assert!(
-        HttpTransportConfig::default()
-            .with_request_timeout(high)
-            .is_err()
-    );
-}
-
-// --- Endpoint config edge cases ---
-#[test]
-fn endpoint_reject_empty_segment() {
-    use zai_rs::client::EndpointConfig;
-    let ec = EndpointConfig::defaults().unwrap();
-    assert!(
-        ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[""])
-            .is_err()
-    );
-    assert!(
-        ec.resolve(zai_rs::client::ApiFamily::PaasV4, &["."])
-            .is_err()
-    );
-    assert!(
-        ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[".."])
-            .is_err()
-    );
-}
-
-// --- RetryOverride constructible ---
-#[test]
-fn retry_override_serializable() {
-    use zai_rs::client::RetryOverride;
-    let o = RetryOverride::AssumeIdempotent;
-    // Just ensure it's constructible and Copy
-    let o2 = o;
-    let _ = o2;
-}
-
-// --- Coverage push: final 61 lines ---
-#[test]
-fn usage_all_zeros() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}"#,
-    ).unwrap();
-    let u = r.usage().unwrap();
-    assert_eq!(u.prompt_tokens(), Some(0));
-}
-
-#[test]
-fn choice_message_no_role() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"content":"hi"},"finish_reason":null}]}"#,
-    ).unwrap();
-    let msg = r.choices().unwrap()[0].message();
-    assert!(msg.role().is_none());
-    assert!(msg.content().is_some());
-}
-
-#[test]
-fn choice_with_delta_null() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse = serde_json::from_str(
-        r#"{"id":"i","model":"m","choices":[{"index":0,"message":{"role":"assistant"},"finish_reason":"stop"}]}"#,
-    ).unwrap();
-    let msg = r.choices().unwrap()[0].message();
-    assert!(msg.content().is_none());
-    assert!(msg.content_str().is_none());
-    assert!(msg.reasoning_content().is_none());
-}
-
-#[test]
-fn zai_client_secret_redacted() {
-    use zai_rs::client::ZaiClient;
-    let c = ZaiClient::builder("test.key0123456789abcdef")
-        .build()
-        .unwrap();
-    let dbg = format!("{c:?}");
-    assert!(dbg.contains("[REDACTED]"));
-}
-
-#[test]
-fn endpoint_resolve_empty_segments() {
-    use zai_rs::client::EndpointConfig;
-    let ec = EndpointConfig::defaults().unwrap();
-    let url = ec.resolve(zai_rs::client::ApiFamily::PaasV4, &[]).unwrap();
-    assert!(url.ends_with("/paas/v4"));
-}
-
-#[test]
-fn endpoint_all_families_resolvable() {
-    use zai_rs::client::{ApiFamily, EndpointConfig};
-    let ec = EndpointConfig::defaults().unwrap();
-    for family in [
-        ApiFamily::PaasV4,
-        ApiFamily::CodingPaasV4,
-        ApiFamily::AgentV1,
-        ApiFamily::LlmApplication,
-        ApiFamily::ApplicationV2,
-        ApiFamily::ApplicationV3,
-        ApiFamily::Zrag,
-        ApiFamily::Monitor,
-    ] {
-        let url = ec.resolve(family, &[]).unwrap();
-        assert!(!url.is_empty(), "family {family:?} should resolve");
-    }
-}
-
-#[test]
-fn endpoint_realtime_is_wss() {
-    use zai_rs::client::{ApiFamily, EndpointConfig};
-    let ec = EndpointConfig::defaults().unwrap();
-    let url = ec.resolve(ApiFamily::Realtime, &[]).unwrap();
-    assert!(url.starts_with("wss://"));
-}
-
-#[test]
-fn model_id_non_empty_trimmed() {
-    use zai_rs::model::*;
-    let id: String = GLM5_2 {}.into();
-    assert!(!id.is_empty());
-    assert_eq!(id, id.trim());
-    assert_eq!(id, "glm-5.2");
-}
-
-#[test]
-fn transport_config_builder_connect_timeout() {
-    use zai_rs::client::HttpTransportConfig;
-    let cfg = HttpTransportConfig::default()
-        .with_connect_timeout(std::time::Duration::from_secs(5))
-        .unwrap();
-    assert_eq!(cfg.connect_timeout, std::time::Duration::from_secs(5));
-}
-
-#[test]
-fn transport_config_builder_reject_high_connect() {
-    use zai_rs::client::HttpTransportConfig;
-    assert!(
-        HttpTransportConfig::default()
-            .with_connect_timeout(std::time::Duration::from_secs(30))
-            .is_err()
-    );
-}
-
-#[test]
-fn additional_header_with_name_and_value() {
-    use zai_rs::client::AdditionalHeader;
-    let h = AdditionalHeader::new("X-Correlation-ID", "abc123").unwrap();
-    assert_eq!(h.name(), "X-Correlation-ID");
-    assert_eq!(h.value(), "abc123");
-}
-
-#[test]
-fn additional_header_disallowed_names() {
-    use zai_rs::client::AdditionalHeader;
-    assert!(AdditionalHeader::new("Content-Type", "x").is_err());
-    assert!(AdditionalHeader::new("Accept", "x").is_err());
-    assert!(AdditionalHeader::new("Authorization", "x").is_err());
-}
-
-// --- Final 37-line push ---
-#[test]
-fn mask_sensitive_info_password() {
-    use zai_rs::client::error::mask_sensitive_info;
-    let m = mask_sensitive_info("password: mypass123");
-    assert!(m.contains("[FILTERED]"));
-}
-
-#[test]
-fn mask_sensitive_info_token() {
-    use zai_rs::client::error::mask_sensitive_info;
-    let m = mask_sensitive_info("token: abc123.xyz4567890");
-    assert!(m.contains("[FILTERED]"));
-}
-
-#[test]
-fn mask_sensitive_info_secret() {
-    use zai_rs::client::error::mask_sensitive_info;
-    let m = mask_sensitive_info("secret: s3cr3tvalue");
-    assert!(m.contains("[FILTERED]"));
-}
-
-#[test]
-fn mask_sensitive_info_normal_text() {
-    use zai_rs::client::error::mask_sensitive_info;
-    let m = mask_sensitive_info("just some text");
-    assert_eq!(m, "just some text");
-}
-
-#[test]
-fn contains_sensitive_info_detects_key() {
-    use zai_rs::client::error::contains_sensitive_info;
-    assert!(contains_sensitive_info("api_key: abc123.xyz4567890"));
-    assert!(contains_sensitive_info("password: pass"));
-    assert!(contains_sensitive_info("token: tok"));
-    assert!(!contains_sensitive_info("normal text"));
-}
-
-#[test]
-fn response_null_choices() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(r#"{"id":"i","model":"m","choices":null}"#).unwrap();
-    assert!(r.choices().is_none());
-}
-
-#[test]
-fn response_null_usage() {
-    let r: zai_rs::model::chat_base_response::ChatCompletionResponse =
-        serde_json::from_str(r#"{"id":"i","model":"m","usage":null}"#).unwrap();
-    assert!(r.usage().is_none());
-}
-
-#[test]
-fn api_error_envelope_nested() {
-    let json = r#"{"error":{"code":1234,"message":"nested error"}}"#;
-    let val: serde_json::Value = serde_json::from_str(json).unwrap();
-    assert_eq!(val["error"]["code"], 1234);
-}
-
-#[test]
-fn full_jitter_caps_sequence() {
-    use zai_rs::client::transport::retry::full_jitter_cap;
-    let caps: Vec<_> = (0..10).map(full_jitter_cap).collect();
-    assert!(caps[0] < caps[3]);
-    assert!(caps.iter().all(|c| *c <= std::time::Duration::from_secs(8)));
 }
 
 // --- TTS send_via ---
@@ -1487,10 +1693,13 @@ async fn tts_send_via() {
     let base = format!("{}/api/paas/v4", server.base_url);
     let c = mock_client(&base);
     use zai_rs::model::text_to_audio::*;
-    let _ = TextToAudioRequest::new(GlmTts {})
+    let audio = TextToAudioRequest::new(GlmTts {})
         .with_input("hello")
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(audio.as_ref(), b"fake-audio-data");
+    assert_request(&server, "POST", "/api/paas/v4/audio/speech");
     server.shutdown().await;
 }
 
@@ -1510,28 +1719,106 @@ async fn asr_send_via() {
     let wav = dir.path().join("test.wav");
     std::fs::write(&wav, b"fake-wav").unwrap();
     use zai_rs::model::audio_to_text::*;
-    let _ = AudioToTextRequest::new(GlmAsr {})
+    let response = AudioToTextRequest::new(GlmAsr {})
         .with_file_path(wav.to_str().unwrap())
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id, "asr-1");
+    assert_eq!(response.text, "transcribed text");
+    assert_request(&server, "POST", "/api/paas/v4/audio/transcriptions");
     server.shutdown().await;
 }
 
 // --- File upload multipart send_via ---
 #[tokio::test]
 async fn file_upload_send_via() {
-    let server = TestServer::start(vec![ScriptedResponse::json(200, json!({
-        "id": "file-1", "object": "file", "bytes": 5, "filename": "test.txt", "purpose": "file-extract"
-    }))]).await;
+    let server = TestServer::start(vec![ScriptedResponse::json(
+        200,
+        json!({
+            "id": "file-1", "object": "file", "bytes": 5, "filename": "test.txt", "purpose": "agent"
+        }),
+    )])
+    .await;
     let base = format!("{}/api/paas/v4", server.base_url);
     let c = mock_client(&base);
     let dir = tempfile::tempdir().unwrap();
     let f = dir.path().join("test.txt");
     std::fs::write(&f, b"hello").unwrap();
     use zai_rs::file::*;
-    let _ = FileUploadRequest::new(FilePurpose::FileExtract, f.to_str().unwrap())
+    let response = FileUploadRequest::new(FileUploadPurpose::Agent, f.to_str().unwrap())
         .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(response.id.as_deref(), Some("file-1"));
+    assert_eq!(response.filename.as_deref(), Some("test.txt"));
+    assert_request(&server, "POST", "/api/paas/v4/files");
+    assert_multipart_text_field(&server, "purpose", "agent");
+    assert_multipart_file(
+        &server,
+        "file",
+        "test.txt",
+        "application/octet-stream",
+        b"hello",
+    );
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn file_upload_rejects_unsafe_file_parts_before_network_io() {
+    use zai_rs::file::{FileUploadPurpose, FileUploadRequest};
+
+    // Exceed the SDK's bounded multipart part limit without importing private
+    // transport implementation constants.
+    const OVERSIZED_MULTIPART_BYTES: u64 = 128 * 1024 * 1024 + 1;
+
+    let server = TestServer::start(Vec::new()).await;
+    let base = format!("{}/api/paas/v4", server.base_url);
+    let client = mock_client(&base);
+    let dir = tempfile::tempdir().unwrap();
+
+    FileUploadRequest::new(FileUploadPurpose::Agent, dir.path())
+        .send_via(&client)
+        .await
+        .unwrap_err();
+
+    let oversized = dir.path().join("oversized.bin");
+    std::fs::File::create(&oversized)
+        .unwrap()
+        .set_len(OVERSIZED_MULTIPART_BYTES)
+        .unwrap();
+    FileUploadRequest::new(FileUploadPurpose::Agent, &oversized)
+        .send_via(&client)
+        .await
+        .unwrap_err();
+
+    let valid = dir.path().join("valid.txt");
+    std::fs::write(&valid, b"safe").unwrap();
+    FileUploadRequest::new(FileUploadPurpose::Agent, &valid)
+        .with_file_name("../escape.txt")
+        .send_via(&client)
+        .await
+        .unwrap_err();
+    FileUploadRequest::new(FileUploadPurpose::Agent, &valid)
+        .with_content_type("not a mime")
+        .send_via(&client)
+        .await
+        .unwrap_err();
+
+    #[cfg(unix)]
+    {
+        let symlink = dir.path().join("link.txt");
+        std::os::unix::fs::symlink(&valid, &symlink).unwrap();
+        FileUploadRequest::new(FileUploadPurpose::Agent, symlink)
+            .send_via(&client)
+            .await
+            .unwrap_err();
+    }
+
+    assert!(
+        server.requests().is_empty(),
+        "invalid multipart metadata must be rejected before network I/O"
+    );
     server.shutdown().await;
 }
 
@@ -1541,49 +1828,40 @@ async fn knowledge_doc_upload_file_send_via() {
     let server = TestServer::start(vec![ScriptedResponse::json(
         200,
         json!({
-            "code": 200, "data": {"document_id": "d1"}
+            "code": 200,
+            "data": {
+                "successInfos": [{"documentId": "d1", "fileName": "test.pdf"}],
+                "failedInfos": []
+            }
         }),
     )])
     .await;
     let base = format!("{}/api/llm-application/open", server.base_url);
-    let leaked: &'static str = Box::leak(base.to_string().into_boxed_str());
     let c = ZaiClient::builder(KEY)
         .allow_insecure_transport(true)
-        .endpoint(ApiFamily::LlmApplication, leaked)
+        .endpoint(ApiFamily::LlmApplication, base)
         .build()
         .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let f = dir.path().join("test.pdf");
     std::fs::write(&f, b"fake-pdf").unwrap();
     use zai_rs::knowledge::*;
-    let _ = DocumentUploadFileRequest::new("kb-1")
+    let response = DocumentUploadRequest::new("kb-1")
         .add_file_path(f)
         .send_via(&c)
-        .await;
-    server.shutdown().await;
-}
-
-// --- OCR send_via with actual file ---
-#[tokio::test]
-async fn ocr_send_via_with_file() {
-    let server = TestServer::start(vec![ScriptedResponse::json(
-        200,
-        json!({
-            "task_id": "t1", "status": "SUCCESS", "words_result_num": 1,
-            "words_result": [{"words": "hello"}]
-        }),
-    )])
-    .await;
-    let base = format!("{}/api/paas/v4", server.base_url);
-    let c = mock_client(&base);
-    let dir = tempfile::tempdir().unwrap();
-    let img = dir.path().join("test.png");
-    std::fs::write(&img, b"fake-png").unwrap();
-    use zai_rs::model::ocr::*;
-    let _ = OcrRequest::new()
-        .with_file_path(img.to_str().unwrap())
-        .with_tool_type(OcrToolType::HandWrite)
-        .send_via(&c)
-        .await;
+        .await
+        .unwrap();
+    assert_eq!(
+        response.data.unwrap().success_infos.unwrap()[0]
+            .document_id
+            .as_deref(),
+        Some("d1")
+    );
+    assert_request(
+        &server,
+        "POST",
+        "/api/llm-application/open/document/upload_document/kb-1",
+    );
+    assert_multipart_file(&server, "files", "test.pdf", "application/pdf", b"fake-pdf");
     server.shutdown().await;
 }

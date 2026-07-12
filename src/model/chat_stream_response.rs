@@ -32,35 +32,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use serde::{Deserialize, Deserializer, Serialize};
-
-/// Custom deserializer that accepts strings or numbers, converting to
-/// Option<String>.
-///
-/// This helper function handles the wire format flexibility where IDs may be
-/// transmitted as either strings or numbers, normalizing them to
-/// Option<String>.
-///
-/// ## Supported Formats
-///
-/// - `null` → `None`
-/// - `"string_id"` → `Some("string_id")`
-/// - `123` → `Some("123")`
-/// - Other types → deserialization error
-fn de_opt_string_from_number_or_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let v = serde_json::Value::deserialize(deserializer)?;
-    match v {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::String(s) => Ok(Some(s)),
-        serde_json::Value::Number(n) => Ok(Some(n.to_string())),
-        other => Err(serde::de::Error::custom(format!(
-            "expected string or number, got {other}"
-        ))),
-    }
-}
+use serde::{Deserialize, Serialize};
 
 /// Represents a single streaming chunk from the chat API.
 ///
@@ -82,8 +54,9 @@ pub struct ChatStreamResponse {
     /// May be a string or number in the wire format, converted to
     /// `Option<String>`.
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "de_opt_string_from_number_or_string"
+        deserialize_with = "super::serde_helpers::optional_string_from_number_or_string"
     )]
     pub id: Option<String>,
 
@@ -174,10 +147,83 @@ pub struct Delta {
 
     /// Streaming tool call payload for tool invocation.
     ///
-    /// When `tool_stream` is enabled, the provider emits an array of partially
-    /// populated [`ToolCallMessage`](crate::model::chat_base_response::ToolCallMessage)
-    /// objects. Their `arguments` field accepts either a JSON string or a JSON
-    /// value and normalizes the latter to a compact string.
+    /// When `tool_stream` is enabled, the provider emits partially populated
+    /// tool calls whose names and JSON-string arguments can arrive in separate
+    /// chunks.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<crate::model::chat_base_response::ToolCallMessage>>,
+    pub tool_calls: Option<Vec<StreamToolCall>>,
+}
+
+/// One incremental function call in a streaming delta.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamToolCall {
+    /// Position of this call in the assistant's tool-call list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<i32>,
+    /// Tool-call identifier, usually present in the first delta for a call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Tool kind; the frozen streaming schema currently defines only function.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_: Option<StreamToolCallType>,
+    /// Incremental function payload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function: Option<StreamToolFunction>,
+}
+
+/// Tool kind accepted by the frozen chat-stream schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StreamToolCallType {
+    /// A function invocation.
+    Function,
+}
+
+/// Incremental function fields carried by a streaming tool call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamToolFunction {
+    /// Function name; omitted after the initial delta.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// JSON argument fragment; omitted when this delta carries other metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunk_accepts_an_omitted_id() {
+        let chunk: ChatStreamResponse = serde_json::from_str(r#"{"choices":[]}"#).unwrap();
+        assert!(chunk.id.is_none());
+    }
+
+    #[test]
+    fn incremental_tool_function_fields_may_arrive_separately() {
+        let chunk: ChatStreamResponse = serde_json::from_value(serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [
+                        {"index": 0, "type": "function", "function": {"name": "lookup"}},
+                        {"index": 0, "function": {"arguments": "{\"city\":"}}
+                    ]
+                }
+            }]
+        }))
+        .unwrap();
+        let calls = chunk.choices[0]
+            .delta
+            .as_ref()
+            .unwrap()
+            .tool_calls
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            calls[0].function.as_ref().unwrap().name.as_deref(),
+            Some("lookup")
+        );
+        assert!(calls[1].function.as_ref().unwrap().name.is_none());
+    }
 }

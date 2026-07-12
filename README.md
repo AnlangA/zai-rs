@@ -2,7 +2,8 @@
 
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
-> **0.5 release candidate** — `main` 分支包含 0.5 的 breaking release candidate。crates.io 当前公开版本为 0.2.0。安装 main 分支版本：`zai-rs = { git = "https://github.com/AnlangA/zai-rs", branch = "main" }`。迁移指南见 [docs/MIGRATING-0.5.md](docs/MIGRATING-0.5.md)。
+当前仓库版本为 `0.6.0`。从旧版升级时，请先阅读
+[0.6 迁移指南](docs/MIGRATING-0.6.md)。
 
 ## 快速开始
 
@@ -27,14 +28,14 @@
 | glm-5 | `GLM5` | ✓ | ✗ | ✓ | ✓ |
 | glm-5-turbo | `GLM5_turbo` | ✓ | ✗ | ✓ | ✓ |
 | glm-4.7 | `GLM4_7` | ✓ | ✗ | ✓ | ✓ |
-| glm-4.7-flash | `GLM4_7_flash` | ✓ | ✗ | ✓ | ✗ |
-| glm-4.7-flashx | `GLM4_7_flashx` | ✓ | ✗ | ✓ | ✗ |
+| glm-4.7-flash | `GLM4_7_flash` | ✓ | ✗ | ✗ | ✗ |
+| glm-4.7-flashx | `GLM4_7_flashx` | ✓ | ✗ | ✗ | ✗ |
 | glm-4.6 | `GLM4_6` | ✓ | ✗ | ✓ | ✓ |
-| glm-4.5 | `GLM4_5` | ✓ | ✗ | ✓ | ✗ |
-| glm-4.5-X | `GLM4_5_x` | ✓ | ✗ | ✓ | ✗ |
 | glm-4.5-air | `GLM4_5_air` | ✓ | ✗ | ✓ | ✗ |
 | glm-4.5-airx | `GLM4_5_airx` | ✓ | ✗ | ✓ | ✗ |
 | glm-4.5-flash | `GLM4_5_flash` | ✓ | ✗ | ✓ | ✗ |
+| glm-4-flash-250414 | `GLM4_flash_250414` | ✗ | ✗ | ✓ | ✗ |
+| glm-4-flashx-250414 | `GLM4_flashx_250414` | ✗ | ✗ | ✓ | ✗ |
 
 ### 文本视觉模型
 
@@ -45,22 +46,46 @@
 | glm-4.6v | `GLM4_6v` |
 | glm-4.6v-flash | `GLM4_6v_flash` |
 | glm-4.6v-flashx | `GLM4_6v_flashx` |
-| glm-4.5v | `GLM4_5v` |
+| glm-4v-flash | `GLM4v_flash` |
+| glm-4.1v-thinking-flash | `GLM4_1v_thinking_flash` |
+| glm-4.1v-thinking-flashx | `GLM4_1v_thinking_flashx` |
 
-### 语音模型
+### 语音处理模型
+
+| 模型 | 结构体 | 能力 |
+|------|--------|------|
+| glm-4-voice | `GLM4_voice` | HTTP 语音聊天 |
+| glm-asr-2512 | `GlmAsr` | 语音转文字（完整响应 / SSE） |
+| glm-tts | `GlmTts` | 文本转语音（完整响应 / SSE） |
+
+### 图像模型
 
 | 模型 | 结构体 |
 |------|--------|
-| glm-4-voice | `GLM4_voice` |
+| glm-image | `GlmImage` |
+| cogview-4-250304 | `CogView4_250304` |
+| cogview-4 | `CogView4` |
+| cogview-3-flash | `CogView3Flash` |
+
+### 实时模型（`realtime` feature）
+
+| 模型 | 结构体 |
+|------|--------|
+| glm-realtime-flash | `GLM_realtime_flash` |
+| glm-realtime-air | `GLM_realtime_air` |
+
+`RealtimeClient::session` 通过密封的模型 trait 只接受上述两个 Realtime
+模型，因此错误模型会在编译期被拒绝。`GLM4_voice` 是 HTTP 语音聊天模型，
+不能用于 Realtime WebSocket；无可用操作能力的旧 Realtime marker 已在 0.6
+删除。
 
 ## 示例（examples/）
 
-### 可用示例
+### 常用示例
 
 | 示例 | 描述 |
 |------|------|
 | `chat_text` | 基础文本对话 |
-| `chat_stream` | 流式响应 |
 | `chat_loop` | 多轮对话循环 |
 | `chat_coding_plan` | 编程辅助对话（coding 专属端点） |
 | `coding_plan_usage` | Coding Plan 余量 / 额度查询 |
@@ -69,7 +94,6 @@
 | `async_chat_text` | 异步对话任务提交与轮询 |
 | `glm45_thinking_mode` | 深度思考模式 |
 | `glm52_reasoning_effort` | GLM-5.2 推理深度控制（reasoning_effort） |
-| `tool_stream_min` | 流式工具调用 |
 | `function_call` | 函数调用 |
 | `function_call_with_toolkits` | 工具集调用 |
 | `mcp` | 统一 MCP 搜索、阅读、仓库与视觉能力 |
@@ -86,6 +110,7 @@
 | `voice_clone` | 音色复刻 |
 | `embedding` | 文本嵌入 |
 | `files_upload` | 文件上传 |
+| `file_parser_demo` | 提交文件解析任务并轮询结果 |
 | `knowledge_create` | 知识库创建 |
 | `web_search` | 网络搜索 |
 | `batches_create` | 批处理任务创建 |
@@ -106,15 +131,15 @@ cargo run --example chat_loop
 ## API 覆盖度
 
 ### 模型 API
-- [x] POST 对话补全（同步/异步/流式）
+- [x] POST 对话补全（同步/异步）
 - [x] GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
 - [x] 思考模式（Thinking Mode），支持 clear_thinking 保留式思考
 - [x] 推理深度控制（Reasoning Effort，GLM-5.2+：max/xhigh/high/medium/low/minimal/none）
-- [x] 流式工具调用（Tool Stream）
+- [x] 类型安全的 SSE 聊天流（`enable_stream().stream_via(&client)`）
 - [x] 图像生成
 - [x] 视频生成（异步）
-- [x] 语音转文本
-- [x] 文本转语音
+- [x] 语音转文本（完整响应 / 类型安全 SSE）
+- [x] 文本转语音（完整音频 / 类型安全 PCM SSE）
 - [x] 音色复刻/列表/删除
 - [x] 文本嵌入/重排序/分词
 - [x] OCR 手写识别
@@ -229,7 +254,7 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 - `zai_rs::file`、`batches`、`knowledge`、`agent`、`usage`：扁平导出各能力类型
 - `zai_rs::tool::<capability>`：Web 搜索与文件解析工具
 - `zai_rs::mcp`：统一 MCP 客户端（`mcp` feature）
-- `zai_rs::toolkits`：自定义工具执行框架（`toolkits` feature）
+- `zai_rs::toolkits`：始终可用的自定义工具执行框架；`toolkits` feature 额外启用完整 JSON Schema 校验
 
 不再通过 `data`、`request`、`response`、`model` 等实现模块导入类型。所有 HTTP
 请求统一使用 `request.send_via(&client)`；原先没有业务方法的
@@ -237,7 +262,6 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 
 ### 实时 API
 - [x] WebSocket 类型定义
-- [x] 会话管理框架（`RealtimeClient` / `SessionBuilder`）
+- [x] 会话管理与强类型事件/音频流（`RealtimeClient` / `SessionBuilder`）
 - [x] Bearer / JWT 双鉴权
 - [x] 完整 client/server 事件（`ClientEvent` / `ServerEvent`）
-- [ ] 音视频通话高级封装（待完善）

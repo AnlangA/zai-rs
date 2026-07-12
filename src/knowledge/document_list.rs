@@ -3,8 +3,7 @@ use crate::ZaiResult;
 use crate::client::ZaiClient;
 
 /// Query parameters for listing documents under a knowledge base
-#[derive(Debug, Clone, serde::Serialize, validator::Validate, Default)]
-#[allow(clippy::new_without_default)]
+#[derive(Clone, serde::Serialize, validator::Validate)]
 pub struct DocumentListQuery {
     /// Knowledge base id (required)
     #[validate(length(min = 1))]
@@ -21,6 +20,18 @@ pub struct DocumentListQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 1))]
     pub word: Option<String>,
+}
+
+impl std::fmt::Debug for DocumentListQuery {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DocumentListQuery")
+            .field("knowledge_id", &"[REDACTED]")
+            .field("page", &self.page)
+            .field("size", &self.size)
+            .field("word", &self.word.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl DocumentListQuery {
@@ -71,35 +82,58 @@ impl DocumentListQuery {
 ///
 /// Credentials and transport live on the [`ZaiClient`], passed to
 /// [`send_via`](Self::send_via).
-#[allow(clippy::new_without_default)]
 pub struct DocumentListRequest {
-    query: Option<DocumentListQuery>,
+    query: DocumentListQuery,
 }
 
 impl DocumentListRequest {
-    /// Create a new document-list request (no query set yet).
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self { query: None }
+    /// Create a document-list request for the required knowledge-base id.
+    pub fn new(knowledge_id: impl Into<String>) -> Self {
+        Self {
+            query: DocumentListQuery::new(knowledge_id),
+        }
     }
 
     /// Apply a query (replaces the current one).
     pub fn with_query(mut self, q: DocumentListQuery) -> Self {
-        self.query = Some(q);
+        self.query = q;
         self
     }
 
-    /// Send via a [`ZaiClient`] and parse the typed response. Requires a query
-    /// to have been set via [`with_query`](Self::with_query).
+    /// Set the one-based page index.
+    pub fn with_page(mut self, page: u32) -> Self {
+        self.query.page = Some(page);
+        self
+    }
+
+    /// Set the requested page size.
+    pub fn with_size(mut self, size: u32) -> Self {
+        self.query.size = Some(size);
+        self
+    }
+
+    /// Filter documents by name.
+    pub fn with_word(mut self, word: impl Into<String>) -> Self {
+        self.query.word = Some(word.into());
+        self
+    }
+
+    /// Validate the configured query, send it, and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<DocumentListResponse> {
-        let q = self
+        use validator::Validate;
+        self.query.validate()?;
+        crate::client::validation::require_non_blank(&self.query.knowledge_id, "knowledge_id")?;
+        if self
             .query
-            .as_ref()
-            .ok_or_else(|| crate::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "document list requires a knowledge_id; call with_query first".to_string(),
-            })?;
-        let params = q.pairs();
+            .word
+            .as_deref()
+            .is_some_and(|word| word.trim().is_empty())
+        {
+            return Err(crate::client::validation::invalid(
+                "word must not be blank when provided",
+            ));
+        }
+        let params = self.query.pairs();
         let route = crate::client::routes::DOCUMENTS_LIST;
         let url = client.endpoints().resolve_route_with_query(
             route,
@@ -113,17 +147,17 @@ impl DocumentListRequest {
             .send_empty::<DocumentListResponse>(route.method(), url)
             .await
     }
+}
 
-    /// Validate the query then send via a [`ZaiClient`] and parse the typed
-    /// response.
-    pub async fn send_via_with_query(
-        mut self,
-        client: &ZaiClient,
-        q: &DocumentListQuery,
-    ) -> ZaiResult<DocumentListResponse> {
-        use validator::Validate;
-        q.validate()?;
-        self.query = Some(q.clone());
-        self.send_via(client).await
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_debug_redacts_knowledge_id_and_word() {
+        let query = DocumentListQuery::new("private-knowledge").with_word("private-document");
+        let debug = format!("{query:?}");
+        assert!(!debug.contains("private-knowledge"));
+        assert!(!debug.contains("private-document"));
     }
 }

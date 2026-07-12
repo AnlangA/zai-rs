@@ -5,16 +5,13 @@ use crate::client::ZaiClient;
 ///
 /// Credentials and transport live on the [`ZaiClient`], passed to
 /// [`send_via`](Self::send_via).
-#[allow(clippy::new_without_default)]
 #[derive(Default)]
-pub struct KnowledgeCapacityRequest {
-    _body: (),
-}
+pub struct KnowledgeCapacityRequest;
 
 impl KnowledgeCapacityRequest {
     /// Build a capacity request.
     pub fn new() -> Self {
-        Self { _body: () }
+        Self
     }
 
     /// Send via a [`ZaiClient`] and parse the typed response.

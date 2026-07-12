@@ -1,31 +1,25 @@
-use std::collections::BTreeMap;
+//! Re-embed a document, optionally notifying a callback URL on completion.
 
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::*;
+use zai_rs::{
+    client::ZaiClient,
+    knowledge::{DocumentReembedRequest, DocumentReembedResponse},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    let doc_id = args
+        .next()
+        .ok_or("usage: knowledge_document_reembedding <document-id> [callback-url]")?;
+
+    let request = match args.next() {
+        Some(url) => DocumentReembedRequest::new(doc_id).with_callback_url(url),
+        None => DocumentReembedRequest::new(doc_id),
+    };
+
     let client = ZaiClient::from_env()?;
-
-    // Args: <document_id> [callback_url]
-    let doc_id = std::env::args()
-        .nth(1)
-        .expect("Usage: knowledge_document_reembedding <document_id> [callback_url]");
-    let cb = std::env::args().nth(2);
-
-    let mut req = DocumentReembeddingRequest::new(doc_id);
-    if let Some(url) = cb {
-        req = req.with_callback_url(url);
-        let mut hdr = BTreeMap::new();
-        hdr.insert("X-Trace".to_string(), "zai-rs-example".to_string());
-        req = req.with_callback_header(hdr);
-    }
-
-    let resp: DocumentReembeddingResponse = req.send_via(&client).await?;
-    println!(
-        "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
-    );
+    let response: DocumentReembedResponse = request.send_via(&client).await?;
+    println!("{response:#?}");
 
     Ok(())
 }

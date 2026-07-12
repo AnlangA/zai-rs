@@ -1,100 +1,119 @@
-//! Modern AI Chat Web Application
-//!
-//! A production-quality web chat interface with streaming capabilities,
-//! perfect markdown rendering, and industry-leading user experience.
-
-// This example intentionally includes optional routes, export formats, and
-// error adapters that are not wired into the minimal demo binary.
-#![allow(dead_code, unused_mut, unused_variables)]
-#![allow(clippy::uninlined_format_args)]
+//! Minimal browser chat example backed by `zai-rs`.
 
 use std::net::SocketAddr;
 
-use axum::{routing::get, Router};
-use tower::ServiceBuilder;
+use axum::{
+    Router,
+    extract::MatchedPath,
+    http::{HeaderName, HeaderValue, Method, header},
+    routing::get,
+};
 use tower_http::{
     cors::CorsLayer,
-    trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
-    LatencyUnit,
+    set_header::SetResponseHeaderLayer,
+    trace::{DefaultOnResponse, TraceLayer},
 };
-use tracing::{info, Level};
+use tracing::{Level, info};
 
-mod client;
 mod server;
+
 use server::{config::Config, routes, state::AppState};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .with_target(false)
-            .with_level(true)
-            .with_thread_ids(true)
-            .with_file(true)
-            .with_line_number(true)
-            .init();
-    }
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .compact()
+        .init();
 
-    info!("🚀 Starting Modern AI Chat Application");
-
-    // Load configuration
     let config = Config::from_env()?;
-    info!("📋 Configuration loaded: {:?}", config);
+    let address = SocketAddr::new(config.bind_address, config.port);
+    let state = AppState::new(&config)?;
+    spawn_maintenance(state.sessions.clone(), state.rate_limiter.clone());
+    let app = create_app(state, &config);
 
-    // Initialize application state
-    let state = AppState::new(config.clone())?;
-
-    // Build the application router
-    let app = create_app(state, config.clone());
-
-    // Create socket address
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
-    info!("🌐 Server listening on http://{}", addr);
-
-    // Start the server
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
-
+    let listener = tokio::net::TcpListener::bind(address).await?;
+    info!(%address, "web chat listening");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
-/// Creates the main application router with all routes and middleware
-fn create_app(state: AppState, config: Config) -> Router {
-    // Configure CORS
-    let cors_layer = CorsLayer::new()
-        .allow_origin(
-            config
-                .cors_origins
-                .iter()
-                .map(|s| s.parse().unwrap())
-                .collect::<Vec<_>>(),
-        )
-        .allow_methods(tower_http::cors::Any)
-        .allow_headers(tower_http::cors::Any)
-        .allow_credentials(true);
+fn spawn_maintenance(
+    sessions: std::sync::Arc<server::state::SessionStore>,
+    rate_limiter: std::sync::Arc<server::state::RateLimiter>,
+) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // `interval` ticks immediately once; skip that tick because the store
+        // has just been created.
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            let removed = sessions.remove_expired();
+            if removed > 0 {
+                tracing::debug!(removed, "expired chat sessions removed");
+            }
+            rate_limiter.remove_inactive(std::time::Duration::from_secs(120));
+        }
+    });
+}
 
-    // Configure request tracing
-    let trace_layer = TraceLayer::new_for_http()
-        .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
-        .on_request(DefaultOnRequest::new().level(Level::INFO))
-        .on_response(
-            DefaultOnResponse::new()
-                .level(Level::INFO)
-                .latency_unit(LatencyUnit::Millis),
-        );
+fn create_app(state: AppState, config: &Config) -> Router {
+    // Only the headers and methods used by this example are accepted. The
+    // peer address comes from the TCP connection, not an untrusted proxy
+    // header, and is used for rate limiting in the chat handlers.
+    let cors = CorsLayer::new()
+        .allow_origin(config.cors_origins.clone())
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::CONTENT_TYPE]);
+    let trace = TraceLayer::new_for_http()
+        .make_span_with(|request: &axum::http::Request<_>| {
+            let route = request
+                .extensions()
+                .get::<MatchedPath>()
+                .map_or("<unmatched>", MatchedPath::as_str);
+            tracing::info_span!("http_request", method = %request.method(), route)
+        })
+        .on_response(DefaultOnResponse::new().level(Level::INFO));
 
-    // Build the router
     Router::new()
-        // API routes
         .nest("/api", routes::api_routes())
-        // Static file serving
         .nest_service("/static", routes::static_routes())
-        // Health check
         .route("/health", get(routes::health::health_check))
-        // Main page
+        .route("/ready", get(routes::health::readiness_check))
+        .route("/live", get(routes::health::liveness_check))
         .route("/", get(routes::index::index_handler))
-        // Add state and middleware
         .with_state(state)
-        .layer(ServiceBuilder::new().layer(trace_layer).layer(cors_layer))
+        .layer(trace)
+        .layer(cors)
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            HeaderName::from_static("referrer-policy"),
+            HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
+            ),
+        ))
 }

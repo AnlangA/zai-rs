@@ -34,9 +34,9 @@ async fn main() -> anyhow::Result<()> {
 
     axum::serve(listener, router)
         .with_graceful_shutdown(async {
-            tokio::signal::ctrl_c()
-                .await
-                .expect("ctrl_c signal handler installed");
+            if let Err(error) = tokio::signal::ctrl_c().await {
+                tracing::error!(%error, "failed to listen for the shutdown signal");
+            }
             tracing::info!("streamable-http server cancelled");
         })
         .await?;

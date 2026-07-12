@@ -1,5 +1,6 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::text_rerank::*;
+//! Rerank candidate passages for a query.
+
+use zai_rs::{client::ZaiClient, model::text_rerank::RerankRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

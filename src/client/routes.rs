@@ -68,7 +68,7 @@ macro_rules! route {
 use Segment::{Parameter as P, Static as S};
 
 route!(
-    #[allow(dead_code)]
+    #[cfg(test)]
     AGENTS_INVOKE,
     "agents.invoke",
     "POST",
@@ -76,7 +76,7 @@ route!(
     [S("agents")]
 );
 route!(
-    #[allow(dead_code)]
+    #[cfg(test)]
     AGENTS_ASYNC_RESULT,
     "agents.async_result",
     "POST",
@@ -84,7 +84,7 @@ route!(
     [S("agents"), S("async-result")]
 );
 route!(
-    #[allow(dead_code)]
+    #[cfg(test)]
     AGENTS_CONVERSATION,
     "agents.conversation",
     "POST",
@@ -459,7 +459,7 @@ route!(
     [S("web_search")]
 );
 route!(
-    #[allow(dead_code)]
+    #[cfg(test)]
     ZRAG_CHAT,
     "zrag.chat",
     "POST",
@@ -467,7 +467,7 @@ route!(
     [S("agent"), S("chat")]
 );
 route!(
-    #[allow(dead_code)]
+    #[cfg(test)]
     ZRAG_RETRIEVE,
     "zrag.retrieve",
     "POST",
@@ -481,14 +481,5 @@ route!(
     Monitor,
     [S("usage"), S("quota"), S("limit")]
 );
-route!(
-    #[cfg_attr(not(feature = "realtime"), allow(dead_code))]
-    REALTIME_CONNECT,
-    "realtime.connect",
-    "GET",
-    Realtime,
-    []
-);
-
 #[cfg(test)]
 mod tests;

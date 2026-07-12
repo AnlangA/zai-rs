@@ -1,5 +1,4 @@
-# gitleaks configuration (plan P14.5).
-# Inherits default rules; only overrides the global allowlist.
+# Inherit the default rules and exclude generated dependency/build trees.
 
 title = "zai-rs gitleaks config"
 

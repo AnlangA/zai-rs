@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
+use super::types::KnowledgeResponse;
 use crate::ZaiResult;
 use crate::client::ZaiClient;
 
@@ -22,6 +23,15 @@ impl EmbeddingId {
             EmbeddingId::Embedding2 => 3,
             EmbeddingId::Embedding3New => 11,
             EmbeddingId::Embedding3Pro => 12,
+        }
+    }
+
+    /// Return the canonical model name paired with this identifier.
+    pub fn as_model_name(&self) -> &'static str {
+        match self {
+            EmbeddingId::Embedding2 => "Embedding-2",
+            EmbeddingId::Embedding3New => "Embedding-3",
+            EmbeddingId::Embedding3Pro => "Embedding-3-pro",
         }
     }
 }
@@ -87,8 +97,8 @@ pub enum KnowledgeIcon {
 }
 
 /// Request body for creating a knowledge base
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct CreateKnowledgeBody {
+#[derive(Clone, Serialize, Deserialize, Validate)]
+pub struct KnowledgeCreateBody {
     /// Embedding model ID (3, 11, or 12).
     pub embedding_id: EmbeddingId,
     /// Knowledge base name
@@ -109,21 +119,58 @@ pub struct CreateKnowledgeBody {
     pub embedding_model: Option<String>,
     /// Contextual retrieval flag (`0` or `1`).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(range(max = 1))]
     pub contextual: Option<u8>,
+}
+
+impl std::fmt::Debug for KnowledgeCreateBody {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("KnowledgeCreateBody")
+            .field("embedding_id", &self.embedding_id)
+            .field("name", &"[REDACTED]")
+            .field("description_configured", &self.description.is_some())
+            .field("background", &self.background)
+            .field("icon", &self.icon)
+            .field(
+                "embedding_model_configured",
+                &self.embedding_model.is_some(),
+            )
+            .field("contextual", &self.contextual)
+            .finish()
+    }
+}
+
+impl KnowledgeCreateBody {
+    fn validate_embedding_pair(&self) -> ZaiResult<()> {
+        if let Some(model) = self.embedding_model.as_deref()
+            && model != self.embedding_id.as_model_name()
+        {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_VALIDATION,
+                message: format!(
+                    "embedding_id {} requires embedding_model '{}'",
+                    self.embedding_id.as_i64(),
+                    self.embedding_id.as_model_name()
+                ),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Create knowledge request (POST /llm-application/open/knowledge)
 ///
 /// Credentials and transport live on the [`ZaiClient`], passed to
 /// [`send_via`](Self::send_via).
-pub struct CreateKnowledgeRequest {
-    body: CreateKnowledgeBody,
+pub struct KnowledgeCreateRequest {
+    body: KnowledgeCreateBody,
 }
 
-impl CreateKnowledgeRequest {
+impl KnowledgeCreateRequest {
     /// Build a create request with required fields
     pub fn new(embedding_id: EmbeddingId, name: impl Into<String>) -> Self {
-        let body = CreateKnowledgeBody {
+        let body = KnowledgeCreateBody {
             embedding_id,
             name: name.into(),
             description: None,
@@ -150,53 +197,96 @@ impl CreateKnowledgeRequest {
         self.body.icon = Some(icon);
         self
     }
-    /// Set the embedding model name (optional). When given alongside
-    /// `embedding_id`, the service requires the two to be consistent. The SDK
-    /// does not check that relationship locally.
+    /// Set the embedding model name. It must match the configured
+    /// [`EmbeddingId`]; [`Self::send_via`] validates the pair locally.
     pub fn with_embedding_model(mut self, model: impl Into<String>) -> Self {
         self.body.embedding_model = Some(model.into());
         self
     }
     /// Set the contextual-retrieval flag (`0` or `1`).
     ///
-    /// This setter does not validate the numeric value locally.
+    /// [`Self::send_via`] rejects values other than `0` and `1`.
     pub fn with_contextual(mut self, contextual: u8) -> Self {
         self.body.contextual = Some(contextual);
         self
     }
 
-    /// Validate and send via a [`ZaiClient`], returning the typed response.
-    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CreateKnowledgeResponse> {
+    /// Validate all documented request constraints without performing I/O.
+    pub fn validate(&self) -> ZaiResult<()> {
         self.body.validate()?;
+        if self.body.name.trim().is_empty() {
+            return Err(crate::client::validation::invalid(
+                "knowledge name must not be blank",
+            ));
+        }
+        self.body.validate_embedding_pair()
+    }
+
+    /// Validate and send via a [`ZaiClient`], returning the typed response.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeCreateResponse> {
+        self.validate()?;
         let route = crate::client::routes::KNOWLEDGE_CREATE;
         let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, CreateKnowledgeResponse>(route.method(), url, &self.body)
+            .send_json::<_, KnowledgeCreateResponse>(route.method(), url, &self.body)
             .await
     }
 }
 
-/// Inner data of [`CreateKnowledgeResponse`] — the newly created id.
+/// Inner data of [`KnowledgeCreateResponse`] — the newly created id.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct CreateKnowledgeResponseData {
+pub struct KnowledgeCreateData {
     /// Newly created id
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 }
 
-/// Response of knowledge creation
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
-pub struct CreateKnowledgeResponse {
-    /// Created knowledge-base data.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<CreateKnowledgeResponseData>,
-    /// Business status code.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub code: Option<i64>,
-    /// Human-readable message.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    /// Server timestamp.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timestamp: Option<u64>,
+/// Response of knowledge creation.
+pub type KnowledgeCreateResponse = KnowledgeResponse<KnowledgeCreateData>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_blank_names_and_mismatched_embedding_models() {
+        assert!(
+            KnowledgeCreateRequest::new(EmbeddingId::Embedding3New, " \t")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            KnowledgeCreateRequest::new(EmbeddingId::Embedding3New, "docs")
+                .with_embedding_model("Embedding-2")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            KnowledgeCreateRequest::new(EmbeddingId::Embedding3New, "docs")
+                .with_embedding_model("Embedding-3")
+                .validate()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn request_body_debug_redacts_names_and_descriptions() {
+        let body = KnowledgeCreateBody {
+            embedding_id: EmbeddingId::Embedding3New,
+            name: "private-name".to_owned(),
+            description: Some("private-description".to_owned()),
+            background: Some(BackgroundColor::Blue),
+            icon: Some(KnowledgeIcon::Book),
+            embedding_model: Some("private-model-string".to_owned()),
+            contextual: Some(1),
+        };
+        let debug = format!("{body:?}");
+        for secret in [
+            "private-name",
+            "private-description",
+            "private-model-string",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+    }
 }

@@ -1,6 +1,7 @@
 use super::request::VoiceListQuery;
 use crate::ZaiResult;
 use crate::client::ZaiClient;
+use validator::Validate;
 
 /// Builder for a `GET` request to list available voices.
 ///
@@ -19,9 +20,11 @@ impl VoiceListRequest {
         }
     }
 
-    /// Validate the request (no required params; always succeeds).
+    /// Validate optional query fields before sending.
     pub fn validate(&self) -> ZaiResult<()> {
-        // No required params. Optionally, validate query formats here.
+        self.query
+            .validate()
+            .map_err(crate::client::error::ZaiError::from)?;
         Ok(())
     }
 
@@ -32,26 +35,17 @@ impl VoiceListRequest {
         client: &ZaiClient,
     ) -> ZaiResult<super::response::VoiceListResponse> {
         self.validate()?;
-        // Resolve base + path + any optional query parameters.
-        let mut params: Vec<(&str, String)> = Vec::new();
-        if let Some(ref n) = self.query.voice_name {
-            params.push(("voiceName", n.clone()));
+        let mut query = Vec::with_capacity(2);
+        if let Some(name) = self.query.voice_name.as_deref() {
+            query.push(("voiceName", name));
         }
-        if let Some(ref t) = self.query.voice_type {
-            params.push(("voiceType", t.as_str().to_string()));
+        if let Some(voice_type) = self.query.voice_type.as_ref() {
+            query.push(("voiceType", voice_type.as_str()));
         }
-        let owned: Vec<(String, String)> = params
-            .iter()
-            .map(|(k, v)| ((*k).to_string(), v.clone()))
-            .collect();
-        let query_refs: Vec<(&str, &str)> = owned
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
         let route = crate::client::routes::AUDIO_LIST_VOICES;
         let url = client
             .endpoints()
-            .resolve_route_with_query(route, &[], &query_refs)?;
+            .resolve_route_with_query(route, &[], &query)?;
         client
             .send_empty::<super::response::VoiceListResponse>(route.method(), url)
             .await

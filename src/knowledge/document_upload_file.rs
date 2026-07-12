@@ -1,12 +1,14 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use validator::Validate;
 
-use super::types::UploadFileResponse;
+use super::types::DocumentUploadResponse;
 use crate::client::ZaiClient;
 
 /// Slice type (knowledge_type)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i64)]
 pub enum DocumentSliceType {
     /// 1: Title-paragraph slicing (txt, doc, pdf, url, docx, ppt, pptx, md)
     TitleParagraph = 1,
@@ -22,14 +24,43 @@ pub enum DocumentSliceType {
     Single = 7,
 }
 impl DocumentSliceType {
-    fn as_i64(self) -> i64 {
+    /// Return the exact integer value used by the API.
+    pub const fn as_i64(self) -> i64 {
         self as i64
     }
 }
 
+impl Serialize for DocumentSliceType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i64(self.as_i64())
+    }
+}
+
+impl<'de> Deserialize<'de> for DocumentSliceType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match i64::deserialize(deserializer)? {
+            1 => Ok(Self::TitleParagraph),
+            2 => Ok(Self::QaPair),
+            3 => Ok(Self::Line),
+            5 => Ok(Self::Custom),
+            6 => Ok(Self::Page),
+            7 => Ok(Self::Single),
+            value => Err(serde::de::Error::custom(format!(
+                "unsupported document slice type: {value}"
+            ))),
+        }
+    }
+}
+
 /// Optional parameters for file upload
-#[derive(Debug, Clone, Default, Validate)]
-pub struct UploadFileOptions {
+#[derive(Clone, Default, Validate)]
+pub struct DocumentUploadOptions {
     /// Document type; if omitted, the server parses dynamically
     pub knowledge_type: Option<DocumentSliceType>,
     /// Custom slicing rules; used when knowledge_type = 5
@@ -51,23 +82,45 @@ pub struct UploadFileOptions {
     pub req_id: Option<String>,
 }
 
+impl std::fmt::Debug for DocumentUploadOptions {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DocumentUploadOptions")
+            .field("knowledge_type", &self.knowledge_type)
+            .field(
+                "custom_separator_count",
+                &self.custom_separator.as_ref().map(Vec::len),
+            )
+            .field("sentence_size", &self.sentence_size)
+            .field("parse_image", &self.parse_image)
+            .field("callback_url_configured", &self.callback_url.is_some())
+            .field(
+                "callback_header_entries",
+                &self.callback_header.as_ref().map(BTreeMap::len),
+            )
+            .field("word_num_limit_configured", &self.word_num_limit.is_some())
+            .field("req_id", &self.req_id.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
+}
+
 /// File upload request (multipart/form-data)
 ///
 /// Credentials and transport live on the [`ZaiClient`], passed to
 /// [`send_via`](Self::send_via).
-pub struct DocumentUploadFileRequest {
+pub struct DocumentUploadRequest {
     knowledge_id: String,
     files: Vec<PathBuf>,
-    options: UploadFileOptions,
+    options: DocumentUploadOptions,
 }
 
-impl DocumentUploadFileRequest {
+impl DocumentUploadRequest {
     /// Create a new request for a specific knowledge base id
     pub fn new(knowledge_id: impl Into<String>) -> Self {
         Self {
             knowledge_id: knowledge_id.into(),
             files: Vec::new(),
-            options: UploadFileOptions::default(),
+            options: DocumentUploadOptions::default(),
         }
     }
 
@@ -78,50 +131,60 @@ impl DocumentUploadFileRequest {
     }
 
     /// Set optional parameters
-    pub fn with_options(mut self, opts: UploadFileOptions) -> Self {
+    pub fn with_options(mut self, opts: DocumentUploadOptions) -> Self {
         self.options = opts;
         self
     }
 
-    /// Mutable access to options for incremental configuration
-    pub fn options_mut(&mut self) -> &mut UploadFileOptions {
-        &mut self.options
-    }
-
     /// Validate cross-field constraints not expressible via `validator`
     fn validate_cross(&self) -> crate::ZaiResult<()> {
-        // When knowledge_type is Custom (5), sentence_size should be within 20..=2000
-        if let Some(DocumentSliceType::Custom) = self.options.knowledge_type {
-            // sentence_size recommended; API shows default 300; we ensure range if provided
-            if let Some(sz) = self.options.sentence_size
-                && !(20..=2000).contains(&sz)
-            {
-                return Err(crate::client::error::ZaiError::ApiError {
-                    code: crate::client::error::codes::SDK_VALIDATION,
-                    message: "sentence_size must be 20..=2000 when knowledge_type=Custom (5)"
-                        .to_string(),
-                });
-            }
-        }
+        crate::client::validation::require_non_blank(&self.knowledge_id, "knowledge_id")?;
         if let Some(ref w) = self.options.word_num_limit
-            && !w.chars().all(|c| c.is_ascii_digit())
+            && (w.is_empty() || !w.chars().all(|c| c.is_ascii_digit()))
         {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "word_num_limit must be numeric string".to_string(),
-            });
+            return Err(crate::client::validation::invalid(
+                "word_num_limit must be numeric string",
+            ));
         }
         if self.files.is_empty() {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "at least one file path must be provided".to_string(),
-            });
+            return Err(crate::client::validation::invalid(
+                "at least one file path must be provided",
+            ));
+        }
+        if self
+            .options
+            .custom_separator
+            .as_ref()
+            .is_some_and(|separators| {
+                separators.is_empty() || separators.iter().any(|value| value.trim().is_empty())
+            })
+        {
+            return Err(crate::client::validation::invalid(
+                "custom_separator must contain at least one non-blank separator",
+            ));
+        }
+        if (self.options.custom_separator.is_some() || self.options.sentence_size.is_some())
+            && self.options.knowledge_type != Some(DocumentSliceType::Custom)
+        {
+            return Err(crate::client::validation::invalid(
+                "custom_separator and sentence_size require knowledge_type=Custom",
+            ));
+        }
+        if self
+            .options
+            .req_id
+            .as_deref()
+            .is_some_and(|request_id| request_id.trim().is_empty())
+        {
+            return Err(crate::client::validation::invalid(
+                "req_id must not be blank",
+            ));
         }
         Ok(())
     }
 
     /// Send the multipart request via a [`ZaiClient`] and parse the typed response.
-    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<UploadFileResponse> {
+    pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentUploadResponse> {
         self.options.validate()?;
         self.validate_cross()?;
 
@@ -143,23 +206,68 @@ impl DocumentUploadFileRequest {
             factory = factory.field("parse_image", pi.to_string())?;
         }
         if let Some(url) = self.options.callback_url.as_ref() {
-            factory = factory.field("callback_url", url.clone())?;
+            factory = factory.field("callback_url", url.as_str())?;
         }
         if let Some(header) = self.options.callback_header.as_ref() {
             factory = factory.field("callback_header", serde_json::to_string(header)?)?;
         }
         if let Some(limit) = self.options.word_num_limit.as_ref() {
-            factory = factory.field("word_num_limit", limit.clone())?;
+            factory = factory.field("word_num_limit", limit.as_str())?;
         }
         if let Some(req_id) = self.options.req_id.as_ref() {
-            factory = factory.field("req_id", req_id.clone())?;
+            factory = factory.field("req_id", req_id.as_str())?;
         }
         for path in &self.files {
             let part = crate::client::transport::multipart::FilePart::from_path(path)?;
             factory = factory.file_named("files", part)?;
         }
         client
-            .send_multipart::<UploadFileResponse>(route.method(), url, &factory)
+            .send_multipart::<DocumentUploadResponse>(route.method(), url, &factory)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn options_debug_redacts_callbacks_separators_and_request_id() {
+        let options = DocumentUploadOptions {
+            knowledge_type: Some(DocumentSliceType::Custom),
+            custom_separator: Some(vec!["private-separator".to_owned()]),
+            callback_url: Some("https://private.example/callback".to_owned()),
+            callback_header: Some(BTreeMap::from([(
+                "Authorization".to_owned(),
+                "private-token".to_owned(),
+            )])),
+            word_num_limit: Some("private-limit".to_owned()),
+            req_id: Some("private-request".to_owned()),
+            ..DocumentUploadOptions::default()
+        };
+        let debug = format!("{options:?}");
+        for secret in [
+            "private-separator",
+            "private.example",
+            "Authorization",
+            "private-token",
+            "private-limit",
+            "private-request",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+        assert!(debug.contains("callback_header_entries: Some(1)"));
+    }
+
+    #[test]
+    fn whitespace_only_custom_separator_is_rejected() {
+        let request = DocumentUploadRequest::new("knowledge-1")
+            .add_file_path("document.txt")
+            .with_options(DocumentUploadOptions {
+                knowledge_type: Some(DocumentSliceType::Custom),
+                custom_separator: Some(vec!["  ".to_owned()]),
+                ..DocumentUploadOptions::default()
+            });
+        assert!(request.validate_cross().is_err());
     }
 }

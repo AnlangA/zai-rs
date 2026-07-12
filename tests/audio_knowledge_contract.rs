@@ -2,14 +2,14 @@
 
 use validator::Validate;
 
-use zai_rs::knowledge::{CreateKnowledgeBody, EmbeddingId};
+use zai_rs::knowledge::{EmbeddingId, KnowledgeCreateBody};
 use zai_rs::model::audio_to_text::AudioToTextBody;
 use zai_rs::model::audio_to_text::GlmAsr;
 use zai_rs::model::text_to_audio::GlmTts;
 use zai_rs::model::text_to_audio::TextToAudioBody;
 
 // ---------------------------------------------------------------------------
-// ASR (§13.3)
+// ASR
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -46,7 +46,7 @@ fn asr_hotwords_rejects_over_100() {
 }
 
 // ---------------------------------------------------------------------------
-// TTS (§13.4)
+// TTS
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -63,12 +63,12 @@ fn tts_input_max_is_1024_not_4096() {
 }
 
 // ---------------------------------------------------------------------------
-// Knowledge (§13.5)
+// Knowledge
 // ---------------------------------------------------------------------------
 
 #[test]
 fn knowledge_embedding_id_12_serializes_for_embedding_3_pro() {
-    let body = CreateKnowledgeBody {
+    let body = KnowledgeCreateBody {
         embedding_id: EmbeddingId::Embedding3Pro,
         name: "kb".into(),
         description: None,
@@ -89,7 +89,7 @@ fn knowledge_embedding_id_roundtrips_3_11_12() {
         (EmbeddingId::Embedding3Pro, 12),
     ] {
         assert_eq!(id.as_i64(), n);
-        let json = serde_json::to_value(&CreateKnowledgeBody {
+        let json = serde_json::to_value(&KnowledgeCreateBody {
             embedding_id: id,
             name: "kb".into(),
             description: None,
@@ -99,14 +99,14 @@ fn knowledge_embedding_id_roundtrips_3_11_12() {
             contextual: None,
         })
         .unwrap();
-        let back: CreateKnowledgeBody = serde_json::from_value(json).unwrap();
+        let back: KnowledgeCreateBody = serde_json::from_value(json).unwrap();
         assert_eq!(back.embedding_id, id);
     }
 }
 
 #[test]
 fn knowledge_body_supports_embedding_model_and_contextual() {
-    let body = CreateKnowledgeBody {
+    let body = KnowledgeCreateBody {
         embedding_id: EmbeddingId::Embedding3Pro,
         name: "kb".into(),
         description: None,

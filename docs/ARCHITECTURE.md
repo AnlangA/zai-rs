@@ -5,7 +5,7 @@
 ## 设计目标
 
 - 类型安全：通过模型 marker trait、`Bounded` 约束和 streaming type-state，尽量在编译期阻止不兼容的模型/消息组合。
-- 统一传输：所有 REST 请求都走 `client::transport::Transport`，共享鉴权、retry、连接池、重定向、请求/响应大小限制和 typed response 解析。
+- 统一传输：所有 REST 请求都走 `ZaiClient` 内部传输层，共享鉴权、retry、连接池、重定向、请求/响应大小限制和 typed response 解析；内部传输类型不属于公共 API。
 - 可配置端点：`EndpointConfig` 集中管理 PAAS v4、Coding PAAS v4、知识库、Realtime、Monitor 五类 API base，`ZaiConfig` 作为面向用户的中心配置入口。
 - 小模块边界：chat、file、knowledge、batches、tool、realtime、usage 等模块独立维护请求/响应类型，再通过 crate root 和模块 root 做选择性 re-export。
 - 离线可测：集成测试使用本地 mock server 捕获真实 SDK HTTP 请求，不依赖外部 API key 或网络。
@@ -14,11 +14,13 @@
 
 官方文档把通用 HTTP API 端点定义为 `https://open.bigmodel.cn/api/paas/v4`，Coding Plan 需要使用专属 `https://open.bigmodel.cn/api/coding/paas/v4`，请求使用 `Authorization: Bearer YOUR_API_KEY`。SDK 中对应为：
 
-| API 家族 | `ApiBase` | 默认 base | 代表模块 |
+| API 家族 | `ApiFamily` | 默认 base | 代表模块 |
 |----------|-----------|-----------|----------|
 | 通用 PAAS v4 | `PaasV4` | `https://open.bigmodel.cn/api/paas/v4` | `model`, `file`, `batches`, `tool` |
-| Coding PAAS v4 | `CodingPaasV4` | `https://open.bigmodel.cn/api/coding/paas/v4` | `model::chat::ChatCompletion::with_coding_plan` |
-| 知识库 / LLM application | `LlmApplication` | `https://open.bigmodel.cn/api/llm-application/open` | `knowledge`, `agent` |
+| Coding PAAS v4 | `CodingPaasV4` | `https://open.bigmodel.cn/api/coding/paas/v4` | `ChatCompletion::send_via_coding_plan` |
+| Agent v1 | `AgentV1` | `https://open.bigmodel.cn/api/v1` | `agent` |
+| 知识库 / LLM application | `LlmApplication`、`ApplicationV2`、`ApplicationV3` | `https://open.bigmodel.cn/api/llm-application/open` | `knowledge`, `services` |
+| ZRAG | `Zrag` | `https://open.bigmodel.cn/api/zrag` | 知识库文档接口 |
 | Realtime WebSocket | `Realtime` | `wss://open.bigmodel.cn/api/paas/v4/realtime` | `realtime` |
 | Monitor / usage | `Monitor` | `https://open.bigmodel.cn/api/monitor` | `usage` |
 
@@ -30,7 +32,7 @@
 src/lib.rs
   client/        config, endpoint registry, transport, errors
   model/         chat / async chat / multimodal / embeddings / moderation / SSE
-  file/          upload, list, content, delete
+  file/          upload, list, content, delete, synchronous parsing
   knowledge/     knowledge-base CRUD, document upload/list/retrieve/re-embed
   batches/       batch job create/list/retrieve/cancel
   tool/          web search and file parser API wrappers
@@ -44,20 +46,21 @@ src/lib.rs
 1. `new(...)` 构造默认 endpoint、body、HTTP config。
 2. `with_*` builder 方法覆盖参数、base URL、endpoint config 或 HTTP config。
 3. 请求通过 `send_via(&ZaiClient)` 进入统一 `Transport::send` 管线。
-4. `send()` 只负责校验、调用传输层、解析 typed response。
+4. 非流式 API 解析为 typed response；chat、ASR 和 TTS SSE 由各请求的
+   `stream_via` 返回 typed stream。
 
 ## 错误与重试
 
 官方错误码由 HTTP 状态码和响应体内业务错误码两层组成，错误 envelope 形如 `{"error":{"code":"1002","message":"..."}}`。SDK 在 `ZaiError::from_api_response` 中做业务分类：
 
-- `1000-1004, 1100` -> `AuthError`
-- `1110-1121` -> `AccountError`
-- `1200-1234` -> `ApiError`
-- `1300-1301` -> `ContentPolicyError`
-- `1302-1305, 1308-1313` -> `RateLimitError`
+- `1000, 1001, 1003, 1005, 1220` -> `AuthError`
+- `1110-1121`（`1113` 除外）-> `AccountError`
+- `1200-1234`、`1261` -> `ApiError`（`1200/1230/1234` 归类为服务端故障）
+- `1301` -> `ContentPolicyError`
+- `1113, 1302, 1305, 1308-1311, 1313-1321` -> `RateLimitError`
 - `1400-1499` -> `FileError`
 
-自动 retry 只处理可恢复错误：HTTP 429/5xx、`RateLimitError` 和网络错误。认证、账户、参数、内容策略错误不会自动重试。
+自动 retry 只用于可安全重放的幂等请求，并处理部分 HTTP 429/5xx、限流业务码和网络错误。普通 POST 不会被自动重放；认证、账户、参数、内容策略错误不会自动重试。SSE POST 同样不重试、不跟随重定向，鉴权始终由 `ZaiClient` 内部完成。
 
 ## 测试策略
 

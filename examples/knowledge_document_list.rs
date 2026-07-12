@@ -1,48 +1,24 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::*;
+//! List documents in a knowledge base, optionally filtering by a word.
+
+use zai_rs::{
+    client::ZaiClient,
+    knowledge::{DocumentListRequest, DocumentListResponse},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args().skip(1);
+    let knowledge_id = args
+        .next()
+        .ok_or("usage: knowledge_document_list <knowledge-id> [word]")?;
+    let request = match args.next() {
+        Some(word) => DocumentListRequest::new(knowledge_id).with_word(word),
+        None => DocumentListRequest::new(knowledge_id),
+    };
+
     let client = ZaiClient::from_env()?;
-
-    // Args: <knowledge_id> [word]
-    let knowledge_id = std::env::args()
-        .nth(1)
-        .expect("Usage: knowledge_document_list <knowledge_id> [word]");
-    let word_opt = std::env::args().nth(2);
-
-    let mut q = DocumentListQuery::new(knowledge_id);
-    if let Some(w) = word_opt {
-        q = q.with_word(w);
-    }
-
-    let req = DocumentListRequest::new().with_query(q);
-    let resp: DocumentListResponse = req.send_via(&client).await?;
-
-    println!(
-        "code={:?} message={:?} timestamp={:?}",
-        resp.code, resp.message, resp.timestamp
-    );
-    if let Some(data) = &resp.data {
-        println!(
-            "total={:?} list_len={}",
-            data.total,
-            data.list.as_ref().map(std::vec::Vec::len).unwrap_or(0)
-        );
-        if let Some(list) = &data.list {
-            for (i, d) in list.iter().enumerate().take(5) {
-                println!(
-                    "#{} id={:?} name={:?} words={:?} bytes={:?} stat={:?}",
-                    i + 1,
-                    d.id,
-                    d.name,
-                    d.word_num,
-                    d.length,
-                    d.embedding_stat
-                );
-            }
-        }
-    }
+    let response: DocumentListResponse = request.send_via(&client).await?;
+    println!("{response:#?}");
 
     Ok(())
 }

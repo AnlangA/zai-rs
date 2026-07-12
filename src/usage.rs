@@ -14,7 +14,7 @@
 //!
 //! ## Quick start
 //!
-//! ```text
+//! ```rust,no_run
 //! use zai_rs::client::ZaiClient;
 //! use zai_rs::usage::CodingPlanUsageRequest;
 //!
@@ -51,7 +51,7 @@
 //!
 //! Override the monitor family base on the [`ZaiClient`] builder:
 //!
-//! ```text
+//! ```rust,no_run
 //! use zai_rs::client::{ApiFamily, ZaiClient};
 //! use zai_rs::usage::CodingPlanUsageRequest;
 //!

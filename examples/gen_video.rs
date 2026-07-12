@@ -1,59 +1,77 @@
+//! Submit a video-generation task and poll it with an overall timeout.
+
+use std::time::Duration;
+
 use zai_rs::{
     client::ZaiClient,
     model::{
-        async_chat_get::AsyncChatGetRequest, chat_base_response::TaskStatus, gen_video_async::*,
+        AsyncTaskGetRequest, AsyncTaskResult, TaskStatus,
+        gen_video_async::{CogVideoX3, VideoGenRequest},
     },
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = CogVideoX3 {};
+    let prompt = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "几只小猫依偎在窗边".to_owned());
+
     let client = ZaiClient::from_env()?;
-    let user_text = "可爱小猫叠在一起";
+    let submitted = VideoGenRequest::new(CogVideoX3 {})
+        .with_prompt(prompt)
+        .send_via(&client)
+        .await?;
+    let task_id = submitted.id().ok_or("response did not contain a task id")?;
+    println!("submitted task {task_id}");
 
-    // 提交视频生成请求；凭证和传输配置由 ZaiClient 管理。
-    let request = VideoGenRequest::new(model).with_prompt(user_text);
-    let body = request.send_via(&client).await?;
+    let get = AsyncTaskGetRequest::new(task_id);
+    let completed = tokio::time::timeout(Duration::from_secs(600), async {
+        loop {
+            let response = get.send_via(&client).await?;
+            match response {
+                AsyncTaskResult::Video(result)
+                    if result.videos().is_some_and(|videos| !videos.is_empty()) =>
+                {
+                    return Ok::<_, Box<dyn std::error::Error>>(result);
+                },
+                AsyncTaskResult::Video(result)
+                    if matches!(result.status(), Some(TaskStatus::Fail)) =>
+                {
+                    return Err("video-generation task failed".into());
+                },
+                AsyncTaskResult::Video(result)
+                    if matches!(result.status(), Some(TaskStatus::Success)) =>
+                {
+                    return Err("video task succeeded without a video result".into());
+                },
+                AsyncTaskResult::Video(_) => {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                },
+                AsyncTaskResult::State(state) if state.is_failed() => {
+                    return Err("video-generation task failed".into());
+                },
+                AsyncTaskResult::State(state) if state.is_success() => {
+                    return Err("video task succeeded without a video result".into());
+                },
+                AsyncTaskResult::State(_) => tokio::time::sleep(Duration::from_secs(5)).await,
+                AsyncTaskResult::Chat(_) | AsyncTaskResult::Image(_) => {
+                    return Err("video task returned an unexpected result type".into());
+                },
+            }
+        }
+    })
+    .await??;
 
-    let task_id = body.id().ok_or("Task ID not found in response")?;
-    println!("Task ID: {task_id}");
-
-    // 使用 async_chat_get 轮询结果
-    let get_request = AsyncChatGetRequest::new(CogVideoX3 {}, task_id.to_string());
-
-    loop {
-        let get_body = get_request.send_via(&client).await?;
-
-        match get_body.task_status() {
-            Some(TaskStatus::Success) => {
-                println!("Video generation completed!");
-                if let Some(video_result) = get_body.video_result() {
-                    for video in video_result {
-                        println!("Video URL: {:?}", video.url());
-                        println!("Cover Image: {:?}", video.cover_image_url());
-                    }
-                }
-                break;
-            },
-            Some(TaskStatus::Fail) => {
-                eprintln!("Video generation failed!");
-                break;
-            },
-            Some(TaskStatus::Processing) => {
-                println!("Processing...");
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            },
-            // `TaskStatus` is `#[non_exhaustive]`; `Some(_)` covers `Unknown`
-            // (an unrecognized value from a newer API) and any future variant —
-            // keep polling.
-            Some(_) => {
-                println!("Unrecognized task status; continuing to poll...");
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            },
-            None => {
-                eprintln!("No task status found");
-                break;
-            },
+    let videos = completed
+        .videos()
+        .filter(|videos| !videos.is_empty())
+        .ok_or("completed task did not contain a video result")?;
+    for video in videos {
+        if let Some(url) = video.url() {
+            println!("video: {url}");
+        }
+        if let Some(url) = video.cover_image_url() {
+            println!("cover: {url}");
         }
     }
 

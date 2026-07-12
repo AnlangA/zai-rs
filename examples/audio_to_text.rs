@@ -1,28 +1,28 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::audio_to_text::{AudioToTextResponse, GlmAsr, *};
+//! Transcribe a local WAV or MP3 file, optionally through typed SSE events.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::audio_to_text::{AudioToTextRequest, AudioToTextResponse, GlmAsr},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ZaiClient loads credentials and transport configuration from the environment.
+    let file_path = std::env::args()
+        .nth(1)
+        .ok_or("usage: audio_to_text <audio-file.wav|mp3> [--stream]")?;
+    let streaming = std::env::args().any(|argument| argument == "--stream");
+
     let client = ZaiClient::from_env()?;
-
-    // Read the input WAV/MP3 path from the first CLI argument.
-    let file_path = match std::env::args().nth(1) {
-        Some(p) => p,
-        None => {
-            eprintln!("usage: audio_to_text <audio-file.wav|mp3>");
-            std::process::exit(2);
-        },
-    };
-
-    // Build and send request
-    let model = GlmAsr {};
-    let request = AudioToTextRequest::new(model)
-        .with_file_path(&file_path)
-        .with_stream(false);
-
-    let body: AudioToTextResponse = request.send_via(&client).await?;
-    println!("{body:#?}");
+    let request = AudioToTextRequest::new(GlmAsr {}).with_file_path(&file_path);
+    if streaming {
+        let mut stream = request.enable_stream().stream_via(&client).await?;
+        while let Some(event) = stream.next().await {
+            println!("{:#?}", event?);
+        }
+    } else {
+        let body: AudioToTextResponse = request.send_via(&client).await?;
+        println!("{body:#?}");
+    }
 
     Ok(())
 }

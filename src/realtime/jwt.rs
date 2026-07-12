@@ -18,11 +18,11 @@ use chrono::Utc;
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::json;
 use sha2::Sha256;
-use tracing::warn;
 
 use crate::{ZaiResult, client::error::ZaiError};
 
 type HmacSha256 = Hmac<Sha256>;
+const MAX_TTL_SECONDS: i64 = 7 * 24 * 60 * 60;
 
 /// Build the `Authorization` header value for the realtime handshake.
 ///
@@ -30,6 +30,9 @@ type HmacSha256 = Hmac<Sha256>;
 /// token is a freshly-signed JWT derived from the API key; with `None` it is
 /// the raw API key (server-side Bearer auth).
 pub fn authorization_header(api_key: &str, jwt_seconds: Option<i64>) -> ZaiResult<String> {
+    crate::client::error::validate_api_key(api_key).map_err(|error| {
+        ZaiError::RealtimeAuthError(format!("invalid API key: {}", error.message()))
+    })?;
     match jwt_seconds {
         Some(ttl) => Ok(format!("Bearer {}", generate(api_key, ttl)?)),
         None => Ok(format!("Bearer {api_key}")),
@@ -40,33 +43,18 @@ pub fn authorization_header(api_key: &str, jwt_seconds: Option<i64>) -> ZaiResul
 ///
 /// `ttl_seconds` must be in `1..=604_800` (seven days).
 pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
-    let (id, secret) = match api_key.split_once('.') {
-        Some(parts) => parts,
-        None => {
-            warn!("Realtime JWT auth error: API key must be '<id>.<secret>'");
-            return Err(ZaiError::RealtimeAuthError(
-                "API key must be '<id>.<secret>'".into(),
-            ));
-        },
-    };
-
-    if id.is_empty() || secret.is_empty() {
-        warn!("Realtime JWT auth error: API key id and secret must be non-empty");
-        return Err(ZaiError::RealtimeAuthError(
-            "API key id and secret must be non-empty".into(),
-        ));
-    }
+    crate::client::error::validate_api_key(api_key).map_err(|error| {
+        ZaiError::RealtimeAuthError(format!("invalid API key: {}", error.message()))
+    })?;
+    let (id, secret) = api_key.split_once('.').ok_or_else(|| {
+        ZaiError::RealtimeAuthError("API key must be '<id>.<secret>'".to_string())
+    })?;
 
     // Validate ttl: a non-positive or absurdly large value would otherwise wrap
     // `exp` silently (unguarded `i64` add, inconsistent with the crate's
     // saturating-math pass) and surface as an opaque auth rejection. Seven days
     // is a generous ceiling for any realistic JWT lifetime.
-    const MAX_TTL_SECONDS: i64 = 7 * 24 * 3600;
     if ttl_seconds <= 0 || ttl_seconds > MAX_TTL_SECONDS {
-        warn!(
-            ttl_seconds,
-            "Realtime JWT auth error: ttl_seconds out of range"
-        );
         return Err(ZaiError::RealtimeAuthError(format!(
             "jwt ttl_seconds must be in 1..={MAX_TTL_SECONDS}, got {ttl_seconds}"
         )));
@@ -89,14 +77,12 @@ pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
         "timestamp": timestamp_ms,
     });
 
-    let header_b64 = base64url(serde_json::to_string(&header)?.as_bytes());
-    let payload_b64 = base64url(serde_json::to_string(&payload)?.as_bytes());
+    let header_b64 = base64url(&serde_json::to_vec(&header)?);
+    let payload_b64 = base64url(&serde_json::to_vec(&payload)?);
     let signing_input = format!("{header_b64}.{payload_b64}");
 
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).map_err(|e| {
-        warn!("Realtime JWT auth error: HMAC key error");
-        ZaiError::RealtimeAuthError(format!("HMAC key error: {e}"))
-    })?;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| ZaiError::RealtimeAuthError(format!("HMAC key error: {e}")))?;
     mac.update(signing_input.as_bytes());
     let sig = mac.finalize().into_bytes();
     let sig_b64 = base64url(sig.as_slice());
@@ -153,6 +139,7 @@ mod tests {
         assert!(generate("no-dot-here", 600).is_err());
         assert!(generate(".secret", 600).is_err());
         assert!(generate("id.", 600).is_err());
+        assert!(generate("id.secret.extra", 600).is_err());
     }
 
     #[test]
@@ -175,5 +162,7 @@ mod tests {
 
         let h2 = authorization_header("abcdefghij.0123456789abcdef", None).unwrap();
         assert_eq!(h2, "Bearer abcdefghij.0123456789abcdef");
+        assert!(authorization_header("  ", None).is_err());
+        assert!(authorization_header("abc\ndef", None).is_err());
     }
 }

@@ -949,7 +949,7 @@
     "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
     "service_method": "client.tasks().get",
     "request_type": "AsyncTaskGetRequest",
-    "response_type": "AsyncTaskResponse",
+    "response_type": "AsyncTaskResult",
     "stream_item": null,
     "open_map_fields": []
   },
@@ -1428,7 +1428,7 @@
     "success_invariant": "all OpenAPI-required fields present and at least one documented response field non-null",
     "service_method": "client.files().parse",
     "request_type": "FileParseRequest",
-    "response_type": "AsyncTaskResponse",
+    "response_type": "FileParserCreateResponse",
     "stream_item": null,
     "open_map_fields": []
   },

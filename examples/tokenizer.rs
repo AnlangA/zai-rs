@@ -1,5 +1,9 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::text_tokenizer::*;
+//! Count tokens for one chat message.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::text_tokenizer::{TokenizerMessage, TokenizerModel, TokenizerRequest},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

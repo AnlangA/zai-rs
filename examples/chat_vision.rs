@@ -1,30 +1,24 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
+//! Ask a vision model about an image available at an HTTPS URL.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::{
+        GLM4_6v, VisionMessage, VisionRichContent, chat::ChatCompletion,
+        chat_base_response::ChatCompletionResponse,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // The media URL is read from the first CLI argument instead of a hardcoded
-    // URL. Missing the argument
-    // prints usage and exits 2 — never a panic.
-    let media_url = match std::env::args().nth(1) {
-        Some(url) => url,
-        None => {
-            eprintln!("usage: chat_vision <media-url>");
-            eprintln!("       pass an https URL to an image or video for the vision model");
-            std::process::exit(2);
-        },
-    };
+    let image_url = std::env::args()
+        .nth(1)
+        .ok_or("usage: chat_vision <https-image-url>")?;
 
-    let model = GLM4_5v {};
     let client = ZaiClient::from_env()?;
-
-    // Create video content from the user-provided media URL.
-    let video_content = VisionRichContent::video(&media_url);
-    let text_content = VisionRichContent::text("这个视频描述了什么?，用中文回复我");
     let vision_message = VisionMessage::new_user()
-        .add_content(video_content)
-        .add_content(text_content);
-    let request = ChatCompletion::new(model, vision_message);
+        .add_content(VisionRichContent::image(image_url))
+        .add_content(VisionRichContent::text("请用中文描述这张图像。"));
+    let request = ChatCompletion::new(GLM4_6v {}, vision_message);
 
     let body: ChatCompletionResponse = request.send_via(&client).await?;
     println!("{body:#?}");

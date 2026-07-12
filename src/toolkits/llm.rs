@@ -4,56 +4,32 @@
 //! follow OpenAI/Zhipu-style schemas where tool calls are returned under
 //! `choices[*].message.tool_calls`.
 
-use std::borrow::Cow;
-
 use serde_json::Value;
 
 /// A parsed tool call request from an LLM response.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LlmToolCall<'a> {
     /// Tool-call id (used to correlate the tool's reply with the request).
-    pub id: Cow<'a, str>,
+    pub id: &'a str,
     /// Name of the function/tool to invoke.
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// Raw string form of arguments if the provider returned it as a JSON
     /// string. Useful for diagnostics; may be None if provider already
     /// returned an object.
-    pub arguments_raw: Option<Cow<'a, str>>,
+    pub arguments_raw: Option<&'a str>,
     /// Parsed JSON arguments. For providers that return a string, we attempt to
     /// parse it. If parsing fails, we return the raw string in this field.
     pub arguments: Value,
 }
 
-/// Normalize JSON arguments for better consistency
-pub fn normalize_arguments(args: &Value) -> Value {
-    match args {
-        Value::String(s) => {
-            // Try to parse string as JSON
-            serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone()))
-        },
-        Value::Object(obj) => {
-            // Normalize object keys: trim whitespace only, preserve case
-            let mut normalized = serde_json::Map::new();
-            for (k, v) in obj {
-                let normalized_key = k.trim().to_string();
-                normalized.insert(normalized_key, normalize_arguments(v));
-            }
-            Value::Object(normalized)
-        },
-        _ => args.clone(),
-    }
-}
-
-/// Parse tool calls from direct, choices-based, or legacy response shapes.
-pub fn parse_tool_calls_robust(response: &Value) -> Vec<LlmToolCall<'_>> {
+/// Parse tool calls from either a direct `tool_calls` object or every choice
+/// in a full response.
+pub fn parse_tool_calls(response: &Value) -> Vec<LlmToolCall<'_>> {
     let mut results = Vec::new();
 
-    // Try multiple parsing strategies
     if let Some(calls) = response.get("tool_calls").and_then(|v| v.as_array()) {
-        // Direct tool_calls
         results.extend(parse_tool_calls_array(calls));
     } else if let Some(choices) = response.get("choices").and_then(|v| v.as_array()) {
-        // Choices format
         for choice in choices {
             if let Some(msg) = choice.get("message")
                 && let Some(calls) = msg.get("tool_calls").and_then(|v| v.as_array())
@@ -61,142 +37,42 @@ pub fn parse_tool_calls_robust(response: &Value) -> Vec<LlmToolCall<'_>> {
                 results.extend(parse_tool_calls_array(calls));
             }
         }
-    } else if let Some(function_call) = response.get("function_call") {
-        // Legacy function_call format
-        if let Some(call) = parse_legacy_function_call(function_call) {
-            results.push(call);
-        }
     }
 
     results
 }
 
-/// Parse legacy function_call format
-fn parse_legacy_function_call(function_call: &Value) -> Option<LlmToolCall<'static>> {
-    let name = function_call.get("name")?.as_str()?;
-
-    let arguments = function_call
-        .get("arguments")
-        .cloned()
-        .unwrap_or(Value::Null);
-
-    let (arguments_raw, parsed_args) = match arguments {
-        Value::String(s) => {
-            let parsed = match serde_json::from_str::<Value>(&s) {
-                Ok(v) => v,
-                Err(_) => Value::String(s.clone()),
-            };
-            (Some(Cow::Owned(s)), parsed)
-        },
-        other => (None, other),
-    };
-
-    Some(LlmToolCall {
-        id: Cow::Borrowed("legacy"),
-        name: Cow::Owned(name.to_string()),
-        arguments_raw,
-        arguments: parsed_args,
-    })
-}
-
 /// Parse a `tool_calls` array, skipping entries without an id or function name.
 fn parse_tool_calls_array(calls: &[Value]) -> Vec<LlmToolCall<'_>> {
-    let mut out = Vec::new();
-
-    for tc in calls {
-        let Some(id) = tc.get("id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(func) = tc.get("function").and_then(|v| v.as_object()) else {
-            continue;
-        };
-        let Some(name) = func.get("name").and_then(|v| v.as_str()) else {
-            continue;
-        };
-
-        let (arguments_raw, arguments) = match func.get("arguments") {
-            Some(Value::String(s)) => {
-                // Provider returned stringified JSON; try to parse.
-                match serde_json::from_str::<Value>(s) {
-                    Ok(v) => (Some(Cow::Borrowed(s.as_str())), v),
-                    Err(_) => (Some(Cow::Borrowed(s.as_str())), Value::String(s.clone())),
-                }
-            },
-            Some(v @ (Value::Object(_) | Value::Array(_))) => (None, v.clone()),
-            Some(v) => {
-                // Unexpected primitive; keep as-is for robustness.
-                (None, v.clone())
-            },
-            None => (None, Value::Null),
-        };
-
-        out.push(LlmToolCall {
-            id: Cow::Borrowed(id),
-            name: Cow::Owned(name.to_string()),
-            arguments_raw,
-            arguments,
-        });
-    }
-
-    out
+    calls.iter().filter_map(parse_tool_call).collect()
 }
 
 /// Parse all well-formed tool calls from a single assistant message object.
 pub fn parse_tool_calls_from_message(message: &Value) -> Vec<LlmToolCall<'_>> {
-    let mut out = Vec::new();
     let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()) else {
-        return out;
+        return Vec::new();
     };
-
-    for tc in calls {
-        let Some(id) = tc.get("id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(func) = tc.get("function").and_then(|v| v.as_object()) else {
-            continue;
-        };
-        let Some(name) = func.get("name").and_then(|v| v.as_str()) else {
-            continue;
-        };
-
-        let (arguments_raw, arguments) = match func.get("arguments") {
-            Some(Value::String(s)) => {
-                // Provider returned stringified JSON; try to parse.
-                match serde_json::from_str::<Value>(s) {
-                    Ok(v) => (Some(Cow::Borrowed(s.as_str())), v),
-                    Err(_) => (Some(Cow::Borrowed(s.as_str())), Value::String(s.clone())),
-                }
-            },
-            Some(v @ (Value::Object(_) | Value::Array(_))) => (None, v.clone()),
-            Some(v) => {
-                // Unexpected primitive; keep as-is for robustness.
-                (None, v.clone())
-            },
-            None => (None, Value::Null),
-        };
-
-        out.push(LlmToolCall {
-            id: Cow::Borrowed(id),
-            name: Cow::Owned(name.to_string()),
-            arguments_raw,
-            arguments,
-        });
-    }
-
-    out
+    parse_tool_calls_array(calls)
 }
 
-/// Parse tool calls from every choice in a full LLM response object.
-pub fn parse_tool_calls(response: &Value) -> Vec<LlmToolCall<'_>> {
-    let mut all = Vec::new();
-    if let Some(choices) = response.get("choices").and_then(|v| v.as_array()) {
-        for ch in choices {
-            if let Some(msg) = ch.get("message") {
-                all.extend(parse_tool_calls_from_message(msg));
-            }
-        }
-    }
-    all
+fn parse_tool_call(tool_call: &Value) -> Option<LlmToolCall<'_>> {
+    let id = tool_call.get("id")?.as_str()?;
+    let function = tool_call.get("function")?.as_object()?;
+    let name = function.get("name")?.as_str()?;
+    let (arguments_raw, arguments) = match function.get("arguments") {
+        Some(Value::String(raw)) => (
+            Some(raw.as_str()),
+            serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.clone())),
+        ),
+        Some(value) => (None, value.clone()),
+        None => (None, Value::Null),
+    };
+    Some(LlmToolCall {
+        id,
+        name,
+        arguments_raw,
+        arguments,
+    })
 }
 
 /// Convenience: parse the first tool call found in the response.
@@ -209,54 +85,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-
-    #[test]
-    fn test_normalize_arguments_string() {
-        let args = json!(r#"{"city": "Shenzhen"}"#);
-        let normalized = normalize_arguments(&args);
-        assert_eq!(normalized, json!({"city": "Shenzhen"}));
-    }
-
-    #[test]
-    fn test_normalize_arguments_invalid_string() {
-        let args = json!("invalid json");
-        let normalized = normalize_arguments(&args);
-        assert_eq!(normalized, json!("invalid json"));
-    }
-
-    #[test]
-    fn test_normalize_arguments_object() {
-        let args = json!({"CITY": "Shenzhen", "count": 5});
-        let normalized = normalize_arguments(&args);
-        assert_eq!(normalized, json!({"CITY": "Shenzhen", "count": 5}));
-    }
-
-    #[test]
-    fn test_normalize_arguments_nested() {
-        let args = json!({
-            "data": {
-                "CITY": "Shenzhen",
-                "Count": 5
-            }
-        });
-        let normalized = normalize_arguments(&args);
-        assert_eq!(
-            normalized,
-            json!({
-                "data": {
-                    "CITY": "Shenzhen",
-                    "Count": 5
-                }
-            })
-        );
-    }
-
-    #[test]
-    fn test_normalize_arguments_preserves_case() {
-        let args = json!({"cityName": "Shenzhen", "UserID": 42});
-        let normalized = normalize_arguments(&args);
-        assert_eq!(normalized, json!({"cityName": "Shenzhen", "UserID": 42}));
-    }
 
     #[test]
     fn test_parse_tool_calls_from_message() {
@@ -358,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_tool_calls_robust_direct() {
+    fn test_parse_tool_calls_direct() {
         let response = json!({
             "tool_calls": [
                 {
@@ -371,24 +199,9 @@ mod tests {
             ]
         });
 
-        let calls = parse_tool_calls_robust(&response);
+        let calls = parse_tool_calls(&response);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "direct_tool");
-    }
-
-    #[test]
-    fn test_parse_legacy_function_call() {
-        let response = json!({
-            "function_call": {
-                "name": "legacy_tool",
-                "arguments": "{\"param\": \"value\"}"
-            }
-        });
-
-        let calls = parse_tool_calls_robust(&response);
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "legacy_tool");
-        assert_eq!(calls[0].id, "legacy");
     }
 
     #[test]

@@ -1,35 +1,44 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::text_to_audio::{GlmTts, *};
+//! Synthesize speech as a complete WAV response or a typed PCM stream.
+
+use std::path::PathBuf;
+
+use zai_rs::{
+    client::ZaiClient,
+    model::text_to_audio::{GlmTts, TextToAudioRequest, TtsAudioFormat, Voice},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
-    }
+    let output_arg = std::env::args().nth(1).map(PathBuf::from);
+    let streaming = std::env::args().any(|argument| argument == "--stream");
+    let output = output_arg.unwrap_or_else(|| {
+        PathBuf::from(if streaming {
+            "tts_output.pcm"
+        } else {
+            "tts_output.wav"
+        })
+    });
 
-    // ZaiClient loads credentials and transport configuration from the environment.
     let client = ZaiClient::from_env()?;
-
-    // Build TTS request
-    let model = GlmTts {};
-    let input =
-        "你好，我是你的朋友，我会rap:\"床前明月光，嘿嘿！疑是地上霜。举头望明月，低头思故乡。\"";
-    let request = TextToAudioRequest::new(model)
-        .with_input(input)
-        .with_voice(Voice::Tongtong)
-        .with_speed(1.0)
-        .with_volume(1.0)
-        .with_response_format(TtsAudioFormat::Wav)
-        .with_watermark_enabled(false);
-
-    // Send and write audio to file
-    let resp = request.send_via(&client).await?;
-    let bytes = resp;
-    std::fs::create_dir_all("out").ok();
-    std::fs::write("out/tts_output.wav", &bytes)?;
-    println!("Saved to out/tts_output.wav ({} bytes)", bytes.len());
+    let request = TextToAudioRequest::new(GlmTts {})
+        .with_input("你好，这是由 zai-rs 生成的一段语音。")
+        .with_voice(Voice::Tongtong);
+    let bytes = if streaming {
+        let mut stream = request.enable_stream().stream_via(&client).await?;
+        let mut audio = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            audio.extend_from_slice(&chunk?);
+        }
+        audio
+    } else {
+        request
+            .with_response_format(TtsAudioFormat::Wav)
+            .send_via(&client)
+            .await?
+            .to_vec()
+    };
+    tokio::fs::write(&output, &bytes).await?;
+    println!("saved {} bytes to {}", bytes.len(), output.display());
 
     Ok(())
 }

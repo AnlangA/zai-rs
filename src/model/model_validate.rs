@@ -1,28 +1,23 @@
-//! # JSON Schema Validation Module
+//! JSON Schema validation for tool parameter definitions.
 //!
-//! Provides custom validation functions for JSON Schema validation in the
-//! ZAI-RS model API. This module ensures that JSON schemas used in function
-//! definitions and tool configurations are valid and conform to the JSON Schema
-//! specification.
+//! The core build
+//! always parses string input and requires a schema-shaped object or boolean.
+//! Enabling the `toolkits` feature additionally performs full JSON Schema
+//! meta-validation through the `jsonschema` crate.
 //!
-//! ## Validation Functions
-//!
-//! - `validate_json_schema` - Validates JSON Schema from string input
-//! - `validate_json_schema_value` - Validates JSON Schema from parsed JSON
-//!   value
-//!
-//! ## Error Handling
+//! ## Errors
 //!
 //! Both validation functions return `ValidationError` with specific error
 //! codes:
 //! - `"invalid_json"` - Input string is not valid JSON
 //! - `"invalid_json_schema"` - JSON is valid but not a valid JSON Schema
 //!
-//! ## Usage Examples
+//! ## Examples
 //!
-//! ```text
-//! use zai_rs::model::model_validate::*;
-//! use validator::Validate;
+//! ```rust
+//! use zai_rs::model::model_validate::{
+//!     validate_json_schema, validate_json_schema_value,
+//! };
 //!
 //! // Validate from string
 //! let schema_str = r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#;
@@ -45,39 +40,24 @@
 //! - Conform to JSON Schema meta-schema validation
 //! - Have appropriate schema structure for function parameters
 //!
-//! ## Integration with Validation
-//!
-//! These functions are designed to work with the `validator` crate's custom
-//! validation system, allowing them to be used as field validators in struct
-//! definitions.
 
 use validator::ValidationError;
 
-/// Validates a JSON Schema from a string input.
+/// Validate a JSON Schema encoded as a string.
 ///
-/// This function parses the input string as JSON and then validates that it
-/// conforms to the JSON Schema specification using the `jsonschema` crate's
-/// meta-validation.
+/// With the `toolkits` feature enabled this performs meta-schema validation;
+/// otherwise it validates the top-level JSON shape.
 ///
-/// # Arguments
-///
-/// * `parameters` - A string containing JSON that should represent a valid JSON
-///   Schema
-///
-/// # Returns
-///
-/// * `Ok(())` - If the input is valid JSON and a valid JSON Schema
-/// * `Err(ValidationError)` - If the input is invalid JSON or not a valid JSON
-///   Schema
-///
-/// # Error Codes
+/// # Errors
 ///
 /// * `"invalid_json"` - The input string is not valid JSON
 /// * `"invalid_json_schema"` - The JSON is valid but not a valid JSON Schema
 ///
 /// # Examples
 ///
-/// ```text
+/// ```rust
+/// use zai_rs::model::model_validate::validate_json_schema;
+///
 /// // Valid JSON Schema
 /// let valid_schema = r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#;
 /// assert!(validate_json_schema(valid_schema).is_ok());
@@ -105,34 +85,27 @@ pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-/// No-op when `toolkits` is disabled (the `jsonschema` crate is absent).
+/// Perform lightweight structural validation when `toolkits` is disabled.
 #[cfg(not(feature = "toolkits"))]
-pub fn validate_json_schema(_parameters: &str) -> Result<(), ValidationError> {
-    Ok(())
+pub fn validate_json_schema(parameters: &str) -> Result<(), ValidationError> {
+    let value: serde_json::Value =
+        serde_json::from_str(parameters).map_err(|_| ValidationError::new("invalid_json"))?;
+    validate_json_schema_value(&value)
 }
 
-/// Validates a JSON Schema from a parsed JSON value.
+/// Validate a parsed JSON Schema value.
 ///
-/// This function validates that the provided JSON value conforms to the JSON
-/// Schema specification using the `jsonschema` crate's meta-validation.
+/// With the `toolkits` feature enabled this performs meta-schema validation;
+/// otherwise it requires an object or boolean schema.
 ///
-/// # Arguments
-///
-/// * `parameters` - A reference to a `serde_json::Value` that should represent
-///   a valid JSON Schema
-///
-/// # Returns
-///
-/// * `Ok(())` - If the value is a valid JSON Schema
-/// * `Err(ValidationError)` - If the value is not a valid JSON Schema
-///
-/// # Error Codes
+/// # Errors
 ///
 /// * `"invalid_json_schema"` - The JSON value is not a valid JSON Schema
 ///
 /// # Examples
 ///
-/// ```text
+/// ```rust
+/// use zai_rs::model::model_validate::validate_json_schema_value;
 /// use serde_json::json;
 ///
 /// // Valid JSON Schema
@@ -156,10 +129,17 @@ pub fn validate_json_schema_value(parameters: &serde_json::Value) -> Result<(), 
     Ok(())
 }
 
-/// No-op when `toolkits` is disabled (the `jsonschema` crate is absent).
+/// Require a valid top-level JSON Schema shape when `toolkits` is disabled.
+///
+/// JSON Schema permits an object schema or the boolean schemas `true` and
+/// `false`. Keyword-level meta-validation requires the `toolkits` feature.
 #[cfg(not(feature = "toolkits"))]
-pub fn validate_json_schema_value(_parameters: &serde_json::Value) -> Result<(), ValidationError> {
-    Ok(())
+pub fn validate_json_schema_value(parameters: &serde_json::Value) -> Result<(), ValidationError> {
+    if parameters.is_object() || parameters.is_boolean() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("invalid_json_schema"))
+    }
 }
 
 #[cfg(all(test, feature = "toolkits"))]
@@ -196,5 +176,19 @@ mod tests {
         let invalid_schema = r#"{"type": "invalid_type"}"#;
         let result = validate_json_schema(invalid_schema);
         assert!(result.is_err());
+    }
+}
+
+#[cfg(all(test, not(feature = "toolkits")))]
+mod lightweight_tests {
+    use super::*;
+
+    #[test]
+    fn validates_json_and_top_level_schema_shape_without_optional_dependency() {
+        assert!(validate_json_schema(r#"{"type":"object"}"#).is_ok());
+        assert!(validate_json_schema("true").is_ok());
+        assert!(validate_json_schema("not json").is_err());
+        assert!(validate_json_schema("[]").is_err());
+        assert!(validate_json_schema("42").is_err());
     }
 }

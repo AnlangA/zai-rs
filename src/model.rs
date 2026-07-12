@@ -41,11 +41,10 @@
 //!
 //! - [`chat_models`] — Model type definitions and capability markers
 //! - [`tools`] — Tool/function definitions, `ThinkingType`, web-search tools
-//! - [`traits`] — Core traits (`Chat`, `AsyncChat`, `Bounded`, `ModelName`,
-//!   etc.)
+//! - [`traits`] — Core traits (`Chat`, `AsyncChat`, `ChatRequestModel`,
+//!   `ChatToolSupport`, `Bounded`, `ModelName`, etc.)
 //! - [`model_validate`] — Request validation helpers
 //! - [`sse_parser`] — SSE protocol parser
-//! - [`stream_ext`] — Stream extension traits
 //!
 //! # Key Design Patterns
 //!
@@ -61,12 +60,12 @@
 //!
 //! # Usage
 //!
-//! ```text
+//! ```
 //! use zai_rs::model::*;
 //!
 //! let model = GLM4_5_flash {};
 //! let messages = TextMessage::user("Hello, how can you help me?");
-//! let client = ChatCompletion::new(model, messages, api_key);
+//! let request = ChatCompletion::new(model, messages);
 //! ```
 
 /// Asynchronous (queued) chat completion — submit a chat task and poll later.
@@ -99,8 +98,6 @@ pub mod moderation;
 pub mod ocr;
 /// Server-Sent Events (SSE) protocol parser.
 pub mod sse_parser;
-/// Stream extension traits for chat streaming.
-pub mod stream_ext;
 /// Text embeddings.
 pub mod text_embedded;
 /// Text re-ranking.
@@ -120,11 +117,14 @@ pub mod voice_delete;
 /// Voice listing.
 pub mod voice_list;
 
-// Avoid wildcard re-exports to prevent name collisions (e.g., `data`)
+use crate::serde_helpers;
 
-// Selective type re-exports for convenience
+// Selective re-exports avoid collisions among the many private `data` modules.
 pub use async_chat::AsyncChatCompletion;
-pub use async_chat_get::AsyncChatGetRequest;
+pub use async_chat_get::{
+    AsyncChatTaskResult, AsyncImageResultItem, AsyncImageTaskResult, AsyncResponse,
+    AsyncTaskGetRequest, AsyncTaskResponse, AsyncTaskResult, AsyncTaskState, AsyncVideoTaskResult,
+};
 pub use chat::ChatCompletion;
 pub use chat_base_response::TaskStatus;
 pub use chat_message_types::*;
@@ -132,6 +132,4 @@ pub use chat_models::*;
 pub use chat_stream_response::ChatStreamResponse;
 pub use gen_video_async::*;
 pub use moderation::Moderation;
-pub use stream_ext::StreamChatLikeExt;
 pub use tools::*;
-pub use traits::SseStreamable;

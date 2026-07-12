@@ -1,19 +1,23 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::file::*;
+//! Upload a local file for document extraction.
+
+use std::path::PathBuf;
+
+use zai_rs::{
+    client::ZaiClient,
+    file::{FileUploadPurpose, FileUploadRequest, FileUploadResponse},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .ok_or("usage: files_upload <local-file>")?;
+
     let client = ZaiClient::from_env()?;
-    let path = match std::env::args().nth(1) {
-        Some(p) => p,
-        None => {
-            eprintln!("usage: files_upload <local-file>");
-            std::process::exit(2);
-        },
-    };
-    let body: FileObject = FileUploadRequest::new(FilePurpose::FileExtract, &path)
+    let body: FileUploadResponse = FileUploadRequest::new(FileUploadPurpose::Agent, path)
         .send_via(&client)
         .await?;
-    println!("Uploaded: id={:?} filename={:?}", body.id, body.filename);
+    println!("{body:#?}");
     Ok(())
 }

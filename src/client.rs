@@ -5,8 +5,9 @@ pub mod config;
 pub mod endpoint;
 pub mod error;
 pub(crate) mod routes;
-pub mod secret;
-pub mod transport;
+pub(crate) mod secret;
+pub(crate) mod transport;
+pub(crate) mod validation;
 
 // Re-export the main public types.
 pub use config::{

@@ -1,5 +1,6 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::KnowledgeCapacityRequest;
+//! Query the account's knowledge-base capacity.
+
+use zai_rs::{client::ZaiClient, knowledge::KnowledgeCapacityRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

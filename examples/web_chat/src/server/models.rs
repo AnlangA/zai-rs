@@ -1,6 +1,5 @@
-//! Data models for the web chat application
+//! Request and response models used by the chat routes.
 
-pub mod chat;
-pub mod session;
+mod chat;
 
 pub use chat::*;

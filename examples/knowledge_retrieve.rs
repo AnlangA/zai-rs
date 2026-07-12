@@ -1,13 +1,15 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::*;
+//! Retrieve a knowledge base by ID.
+
+use zai_rs::{client::ZaiClient, knowledge::KnowledgeGetRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ZaiClient::from_env()?;
     let id = std::env::args()
         .nth(1)
-        .expect("usage: knowledge_retrieve <id>");
-    let resp = KnowledgeRetrieveRequest::new(id).send_via(&client).await?;
+        .ok_or("usage: knowledge_retrieve <knowledge-id>")?;
+
+    let client = ZaiClient::from_env()?;
+    let resp = KnowledgeGetRequest::new(id).send_via(&client).await?;
     println!("{resp:#?}");
     Ok(())
 }

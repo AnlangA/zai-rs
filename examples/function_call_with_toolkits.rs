@@ -1,157 +1,108 @@
-//! Function calling with LLM using zai-tools
-//!
-//! This example shows how to integrate zai-tools with LLM function calling.
+//! Register a toolkit function, execute the model's call, and continue the chat.
 
 use serde_json::json;
 use zai_rs::{
-    model::{chat_base_response::ChatCompletionResponse, *},
-    toolkits::prelude::*,
+    client::ZaiClient,
+    model::{
+        FunctionParams, GLM4_5_flash, TextMessage, ThinkingType, ToolCall, ToolChoice,
+        chat::ChatCompletion,
+        chat_base_response::{ChatCompletionResponse, ToolCallMessage},
+    },
+    toolkits::prelude::{FunctionTool, ToolExecutor, ToolResult, error_context},
 };
 
-fn make_weather_tool() -> FunctionTool {
-    FunctionTool::builder("get_weather", "Get weather for a city")
+fn weather_tool() -> ToolResult<FunctionTool> {
+    FunctionTool::builder("get_weather", "Return the example weather for a city")
         .schema(json!({
             "type": "object",
-            "properties": { "city": { "type": "string", "description": "City name" } },
+            "properties": { "city": { "type": "string" } },
             "required": ["city"],
             "additionalProperties": false
         }))
-        .handler(|args| async move {
-            // 获取参数
-            let city = args.get("city").and_then(|v| v.as_str()).unwrap_or("");
+        .handler(|arguments| async move {
+            let city = arguments
+                .get("city")
+                .and_then(serde_json::Value::as_str)
+                .filter(|city| !city.trim().is_empty())
+                .ok_or_else(|| {
+                    error_context()
+                        .with_tool("get_weather")
+                        .invalid_parameters("city must be a non-empty string")
+                })?;
 
-            // 参数验证
-            if city.trim().is_empty() {
-                return Err(error_context()
-                    .with_tool("get_weather")
-                    .with_operation("参数验证")
-                    .invalid_parameters("City name cannot be empty"));
-            }
-
-            // 模拟天气数据
-            let weather = match city.to_lowercase().as_str() {
-                "深圳" => json!({
-                    "city": "Shenzhen",
-                    "temperature": 28,
-                    "condition": "Sunny"
-                }),
-                "beijing" => json!({
-                    "city": "Beijing",
-                    "temperature": 15,
-                    "condition": "Cloudy"
-                }),
-                "shanghai" => json!({
-                    "city": "Shanghai",
-                    "temperature": 22,
-                    "condition": "Rainy"
-                }),
-                _ => json!({
-                    "city": city,
-                    "temperature": 20,
-                    "condition": "Unknown"
-                }),
-            };
-
-            Ok(weather)
+            Ok(json!({
+                "city": city,
+                "condition": "晴",
+                "temperature_c": 28,
+                "source": "example fixture"
+            }))
         })
         .build()
-        .expect("weather tool")
 }
 
-fn make_calc_tool() -> FunctionTool {
-    FunctionTool::builder("calc", "Simple arithmetic calculation: add/sub/mul/div")
-        .property("op", json!({ "type": "string", "enum": ["add", "sub", "mul", "div"], "description": "Operation" }))
-        .property("a", json!({ "type": "number", "description": "Left operand" }))
-        .property("b", json!({ "type": "number", "description": "Right operand" }))
-        .required("op").required("a").required("b")
-        .handler(|args| async move {
-            let op = args.get("op").and_then(|v| v.as_str()).unwrap_or("");
-
-            // 使用 ErrorContext 的 with_operation 来添加上下文信息
-            let a = args.get("a").and_then(serde_json::Value::as_f64)
-                .ok_or_else(|| error_context()
-                    .with_tool("calc")
-                    .with_operation("解析左操作数")
-                    .invalid_parameters("Missing number 'a'"))?;
-
-            let b = args.get("b").and_then(serde_json::Value::as_f64)
-                .ok_or_else(|| error_context()
-                    .with_tool("calc")
-                    .with_operation("解析右操作数")
-                    .invalid_parameters("Missing number 'b'"))?;
-
-            let result = match op {
-                "add" => a + b,
-                "sub" => a - b,
-                "mul" => a * b,
-                "div" => {
-                    // 演示 with_operation 的用法 - 除零检查
-                    if b == 0.0 {
-                        return Err(error_context()
-                            .with_tool("calc")
-                            .with_operation("除法运算")
-                            .invalid_parameters("Division by zero"));
-                    }
-                    a / b
-                },
-                _ => return Err(error_context()
-                    .with_tool("calc")
-                    .with_operation("操作符验证")
-                    .invalid_parameters("Unsupported op, expected one of add/sub/mul/div")),
-            };
-            Ok(json!({ "op": op, "a": a, "b": b, "result": result }))
-        })
-        .build()
-        .expect("calc tool")
+fn request_tool_call(call: &ToolCallMessage) -> Result<ToolCall, &'static str> {
+    let function = call.function().ok_or("tool call omitted its function")?;
+    Ok(ToolCall::new_function(
+        call.id().ok_or("tool call omitted its id")?,
+        FunctionParams::new(function.name(), function.arguments()),
+    ))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup tools (executor owns its registry)
     let executor = ToolExecutor::new();
-    executor
-        .add_dyn_tool(Box::new(make_weather_tool()))
-        .unwrap()
-        .add_dyn_tool(Box::new(make_calc_tool()))
-        .unwrap();
+    executor.add_dyn_tool(Box::new(weather_tool()?))?;
 
-    // Create LLM function definitions (both tools)
-    let tool_defs = executor.export_all_tools_as_functions();
+    let client = ZaiClient::from_env()?;
+    let mut request = ChatCompletion::new(
+        GLM4_5_flash {},
+        TextMessage::user("请告诉我深圳现在的天气。"),
+    )
+    .with_thinking(ThinkingType::disabled())
+    .add_tools(executor.export_all_tools_as_functions())
+    .with_tool_choice(ToolChoice::auto());
 
-    // Set up the LLM client that provides credentials and transport.
-    let zai_client = zai_rs::client::ZaiClient::from_env()?;
-    let user_text = "帮我查找深圳今天的天气，然后计算 7 和 5 的加法";
+    let first: ChatCompletionResponse = request.send_via(&client).await?;
+    let (assistant_message, calls) = {
+        let message = first
+            .choices()
+            .and_then(|choices| choices.first())
+            .ok_or("chat response did not contain a choice")?
+            .message()
+            .ok_or("chat choice omitted its message")?;
+        let calls = message
+            .tool_calls()
+            .filter(|calls| !calls.is_empty())
+            .ok_or("model did not return a function call")?
+            .to_vec();
+        let request_calls = calls
+            .iter()
+            .map(request_tool_call)
+            .collect::<Result<Vec<_>, _>>()?;
 
-    let mut request = ChatCompletion::new(model(), TextMessage::user(user_text))
-        .with_thinking(ThinkingType::disabled())
-        .add_tools(tool_defs)
-        .with_max_tokens(512);
+        (
+            TextMessage::assistant_with_tools(
+                message.content_str().map(str::to_owned),
+                request_calls,
+            ),
+            calls,
+        )
+    };
 
-    // First round
-    let last_resp: ChatCompletionResponse = request.send_via(&zai_client).await?;
-    println!("📨 LLM Response: {last_resp:#?}");
-
-    if let Some(calls) = last_resp
-        .choices()
-        .and_then(|v| v.first())
-        .and_then(|c| c.message().tool_calls())
-    {
-        let tool_msgs = executor.execute_tool_calls_parallel(calls).await;
-        for msg in tool_msgs {
-            request = request.add_messages(msg);
-        }
-        request.body_mut().tools = None;
-        let sys =
-            TextMessage::system("请基于上述工具结果，用中文直接回答用户问题，不要再次调用工具。");
-        request = request.add_messages(sys);
-
-        let next_body: ChatCompletionResponse = request.send_via(&zai_client).await?;
-        println!("Model after tool: {next_body:#?}");
+    request = request.add_message(assistant_message);
+    for tool_message in executor.execute_tool_calls_ordered(&calls).await {
+        request = request.add_message(tool_message);
     }
+    request = request.clear_tools();
+
+    let final_response: ChatCompletionResponse = request.send_via(&client).await?;
+    let answer = final_response
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.content_str())
+        .ok_or("final response did not contain text")?;
+    println!("{answer}");
 
     Ok(())
-}
-
-fn model() -> GLM4_5_flash {
-    GLM4_5_flash {}
 }

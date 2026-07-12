@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Embedding model enum
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EmbeddingModel {
     /// embedding-3 (supports configurable dimensions).
@@ -13,13 +13,28 @@ pub enum EmbeddingModel {
 }
 
 /// Input can be a single string or an array of strings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum EmbeddingInput {
     /// A single input string.
     Single(String),
     /// A batch of input strings.
     Batch(Vec<String>),
+}
+
+impl std::fmt::Debug for EmbeddingInput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single(_) => formatter
+                .debug_tuple("Single")
+                .field(&"[REDACTED]")
+                .finish(),
+            Self::Batch(values) => formatter
+                .debug_struct("Batch")
+                .field("len", &values.len())
+                .finish(),
+        }
+    }
 }
 
 /// Output vector dimensions for embeddings
@@ -51,7 +66,7 @@ impl Serialize for EmbeddingDimensions {
 }
 
 /// Request body for embeddings
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct EmbeddingBody {
     /// Embedding model (`embedding-3` or `embedding-2`).
     pub model: EmbeddingModel,
@@ -63,6 +78,17 @@ pub struct EmbeddingBody {
     /// `embedding-2` accepts only 1,024 dimensions or omission.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<EmbeddingDimensions>,
+}
+
+impl std::fmt::Debug for EmbeddingBody {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("EmbeddingBody")
+            .field("model", &self.model)
+            .field("input", &self.input)
+            .field("dimensions", &self.dimensions)
+            .finish()
+    }
 }
 
 impl EmbeddingBody {
@@ -81,18 +107,24 @@ impl EmbeddingBody {
         self
     }
 
-    /// Optional helper to enforce cross-field constraints at runtime.
-    /// Call this before sending if you want strict validation.
+    /// Enforce input and model/dimension constraints before sending.
     pub fn validate_model_constraints(&self) -> Result<(), validator::ValidationError> {
         use validator::ValidationError;
-        // If input is Batch for embedding-3, enforce max 64 items (per API doc)
+        let has_empty_input = match &self.input {
+            EmbeddingInput::Single(value) => value.trim().is_empty(),
+            EmbeddingInput::Batch(values) => {
+                values.is_empty() || values.iter().any(|value| value.trim().is_empty())
+            },
+        };
+        if has_empty_input {
+            return Err(ValidationError::new("input_must_not_be_empty"));
+        }
         if let EmbeddingModel::Embedding3 = self.model
             && let EmbeddingInput::Batch(ref v) = self.input
             && v.len() > 64
         {
             return Err(ValidationError::new("batch_too_long"));
         }
-        // If model = embedding-2 and dimensions is Some, it must be 1024
         if let EmbeddingModel::Embedding2 = self.model
             && let Some(d) = self.dimensions
             && d != EmbeddingDimensions::D1024
@@ -100,5 +132,37 @@ impl EmbeddingBody {
             return Err(ValidationError::new("embedding2_dims_must_be_1024"));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_rejects_empty_inputs() {
+        for input in [
+            EmbeddingInput::Single(" ".to_owned()),
+            EmbeddingInput::Batch(Vec::new()),
+            EmbeddingInput::Batch(vec!["valid".to_owned(), String::new()]),
+        ] {
+            assert!(
+                EmbeddingBody::new(EmbeddingModel::Embedding3, input)
+                    .validate_model_constraints()
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn debug_redacts_embedding_inputs() {
+        let body = EmbeddingBody::new(
+            EmbeddingModel::Embedding3,
+            EmbeddingInput::Batch(vec!["private one".to_owned(), "private two".to_owned()]),
+        );
+        let debug = format!("{body:?}");
+        assert!(!debug.contains("private one"));
+        assert!(!debug.contains("private two"));
+        assert!(debug.contains("len: 2"));
     }
 }

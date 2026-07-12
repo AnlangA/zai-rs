@@ -1,12 +1,14 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::*;
+//! Delete a document from its knowledge base.
+
+use zai_rs::{client::ZaiClient, knowledge::DocumentDeleteRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = ZaiClient::from_env()?;
     let doc_id = std::env::args()
         .nth(1)
-        .expect("usage: knowledge_document_delete <doc_id>");
+        .ok_or("usage: knowledge_document_delete <document-id>")?;
+
+    let client = ZaiClient::from_env()?;
     let resp = DocumentDeleteRequest::new(doc_id).send_via(&client).await?;
     println!("{resp:#?}");
     Ok(())

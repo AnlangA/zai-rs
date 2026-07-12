@@ -2,15 +2,16 @@
 name = "zai-rs-fuzz"
 version = "0.0.0"
 edition = "2024"
+rust-version = "1.88"
 publish = false
 
 [dependencies]
 libfuzzer-sys = "0.4"
-zai-rs = { path = "..", features = ["toolkits", "realtime"] }
+zai-rs = { path = ".." }
 
 [[bin]]
-name = "fuzz_error_envelope"
-path = "fuzz_targets/fuzz_error_envelope.rs"
+name = "fuzz_error_handling"
+path = "fuzz_targets/fuzz_error_handling.rs"
 
 [[bin]]
 name = "fuzz_sse_decoder"
@@ -19,7 +20,3 @@ path = "fuzz_targets/fuzz_sse_decoder.rs"
 [[bin]]
 name = "fuzz_url_segments"
 path = "fuzz_targets/fuzz_url_segments.rs"
-
-[[bin]]
-name = "fuzz_tool_canonical_json"
-path = "fuzz_targets/fuzz_tool_canonical_json.rs"

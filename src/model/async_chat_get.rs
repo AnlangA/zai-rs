@@ -1,5 +1,9 @@
-//! Retrieve the result of an asynchronous chat task.
+//! Retrieve the result of an asynchronous chat, image, or video task.
 
-/// Request builder and types for fetching an async chat result.
+/// Request builder for fetching an asynchronous task result.
 mod data;
+/// Shared acknowledgement and polling response types.
+mod response;
+
 pub use data::*;
+pub use response::*;

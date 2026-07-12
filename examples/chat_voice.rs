@@ -1,62 +1,45 @@
-use std::{fs::File, io::Write};
+//! Send a WAV voice message and save the model's decoded audio response.
+
+use std::path::PathBuf;
 
 use base64::Engine;
-use zai_rs::client::ZaiClient;
-use zai_rs::model::*;
+use zai_rs::{
+    client::ZaiClient,
+    model::{GLM4_voice, VoiceFormat, VoiceMessage, VoiceRichContent, chat::ChatCompletion},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_voice {};
-    let client = ZaiClient::from_env()?;
+    let mut args = std::env::args().skip(1);
+    let audio_path = args
+        .next()
+        .map(PathBuf::from)
+        .ok_or("usage: chat_voice <audio-input.wav> [output.wav]")?;
+    let output_path = args
+        .next()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("voice_response.wav"));
 
-    let text_contxt = VoiceRichContent::text("复述一遍");
-    // Read the input WAV path from the first CLI argument.
-    let audio_path = match std::env::args().nth(1) {
-        Some(p) => p,
-        None => {
-            eprintln!("usage: chat_voice <audio-input.wav>");
-            std::process::exit(2);
-        },
-    };
-    // Read the audio file
-    let audio_data = std::fs::read(&audio_path)?;
-    // Create audio content from the local WAV file
+    let client = ZaiClient::from_env()?;
+    let audio_data = tokio::fs::read(audio_path).await?;
     let audio_content = VoiceRichContent::input_audio(audio_data, VoiceFormat::WAV);
     let voice_message = VoiceMessage::new_user()
-        .add_content(text_contxt)
+        .add_content(VoiceRichContent::text("请复述这段语音。"))
         .add_content(audio_content);
+    let body = ChatCompletion::new(GLM4_voice {}, voice_message)
+        .with_watermark_enabled(true)
+        .send_via(&client)
+        .await?;
 
-    let request = ChatCompletion::new(model, voice_message);
-
-    match tokio::time::timeout(
-        tokio::time::Duration::from_secs(30),
-        request.send_via(&client),
-    )
-    .await
-    {
-        Ok(Ok(body)) => {
-            // Success responses are JSON; parsed as struct
-
-            let audio_b64 = body
-                .choices()
-                .and_then(|cs| cs.first())
-                .and_then(|c| c.message().audio())
-                .and_then(|a| a.data());
-
-            if let Some(b64) = audio_b64 {
-                let audio_bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
-                let filename = format!("response_{}.wav", chrono::Utc::now().timestamp());
-                File::create(&filename)?.write_all(&audio_bytes)?;
-                println!("Audio saved to: {filename}");
-            }
-        },
-        Ok(Err(e)) => {
-            return Err(e.into());
-        },
-        Err(_) => {
-            eprintln!("Request timed out after 30 seconds");
-            return Err("Request timed out".into());
-        },
-    }
+    let encoded = body
+        .choices()
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.message())
+        .and_then(|message| message.audio())
+        .and_then(|audio| audio.data())
+        .ok_or("voice response did not contain audio")?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+    tokio::fs::write(&output_path, bytes).await?;
+    println!("saved to {}", output_path.display());
     Ok(())
 }

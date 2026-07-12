@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// Rerank model enum
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-#[derive(Default)]
 pub enum RerankModel {
     /// The default rerank model.
     #[default]
@@ -11,7 +10,7 @@ pub enum RerankModel {
 }
 
 /// Request body for rerank API
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 pub struct RerankBody {
     /// Model identifier; currently always `rerank`.
     pub model: RerankModel,
@@ -22,7 +21,8 @@ pub struct RerankBody {
     /// Candidate documents (1–128 items, at most 4,096 characters each).
     pub documents: Vec<String>,
 
-    /// Number of highest-ranked documents to return; omission returns all.
+    /// Number of highest-ranked documents to return; `0` or omission returns
+    /// all documents.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_n: Option<usize>,
 
@@ -41,6 +41,25 @@ pub struct RerankBody {
     /// End-user identifier used for abuse monitoring.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
+}
+
+impl std::fmt::Debug for RerankBody {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RerankBody")
+            .field("model", &self.model)
+            .field("query", &"[REDACTED]")
+            .field("documents_len", &self.documents.len())
+            .field("top_n", &self.top_n)
+            .field("return_documents", &self.return_documents)
+            .field("return_raw_scores", &self.return_raw_scores)
+            .field(
+                "request_id",
+                &self.request_id.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("user_id", &self.user_id.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl RerankBody {
@@ -86,40 +105,97 @@ impl RerankBody {
 
     /// Optional runtime validation for constraints expressed in the docs
     pub fn validate_constraints(&self) -> crate::ZaiResult<()> {
+        if self.query.trim().is_empty() {
+            return Err(crate::client::validation::invalid(
+                "query must not be empty",
+            ));
+        }
         if self.query.chars().count() > 4096 {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "query length exceeds 4096 characters".to_string(),
-            });
+            return Err(crate::client::validation::invalid(
+                "query length exceeds 4096 characters",
+            ));
         }
         if self.documents.is_empty() {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "documents must not be empty".to_string(),
-            });
+            return Err(crate::client::validation::invalid(
+                "documents must not be empty",
+            ));
         }
         if self.documents.len() > 128 {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "documents length exceeds 128".to_string(),
-            });
+            return Err(crate::client::validation::invalid(
+                "documents length exceeds 128",
+            ));
         }
         for (i, d) in self.documents.iter().enumerate() {
+            if d.trim().is_empty() {
+                return Err(crate::client::validation::invalid(format!(
+                    "document at index {i} must not be empty"
+                )));
+            }
             if d.chars().count() > 4096 {
-                return Err(crate::client::error::ZaiError::ApiError {
-                    code: crate::client::error::codes::SDK_VALIDATION,
-                    message: format!("document at index {i} exceeds 4096 characters"),
-                });
+                return Err(crate::client::validation::invalid(format!(
+                    "document at index {i} exceeds 4096 characters"
+                )));
             }
         }
         if let Some(n) = self.top_n
             && n > self.documents.len()
         {
-            return Err(crate::client::error::ZaiError::ApiError {
-                code: crate::client::error::codes::SDK_VALIDATION,
-                message: "top_n cannot exceed documents length".to_string(),
-            });
+            return Err(crate::client::validation::invalid(
+                "top_n cannot exceed documents length",
+            ));
+        }
+        if let Some(request_id) = self.request_id.as_deref()
+            && !(6..=64).contains(&request_id.chars().count())
+        {
+            return Err(crate::client::validation::invalid(
+                "request_id must contain between 6 and 64 characters",
+            ));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_rejects_blank_values_and_accepts_zero_top_n() {
+        assert!(
+            RerankBody::new(RerankModel::Rerank, " ", vec!["doc".into()])
+                .validate_constraints()
+                .is_err()
+        );
+        assert!(
+            RerankBody::new(RerankModel::Rerank, "query", vec![" ".into()])
+                .validate_constraints()
+                .is_err()
+        );
+        assert!(
+            RerankBody::new(RerankModel::Rerank, "query", vec!["doc".into()])
+                .with_top_n(0)
+                .validate_constraints()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn debug_redacts_query_documents_and_identifiers() {
+        let body = RerankBody::new(
+            RerankModel::Rerank,
+            "private query",
+            vec!["private document".to_owned()],
+        )
+        .with_request_id("private-request")
+        .with_user_id("private-user");
+        let debug = format!("{body:?}");
+        for secret in [
+            "private query",
+            "private document",
+            "private-request",
+            "private-user",
+        ] {
+            assert!(!debug.contains(secret));
+        }
     }
 }

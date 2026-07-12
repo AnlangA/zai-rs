@@ -1,5 +1,6 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::moderation::*;
+//! Moderate a single text input.
+
+use zai_rs::{client::ZaiClient, model::moderation::Moderation};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

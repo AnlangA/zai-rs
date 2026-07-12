@@ -1,28 +1,20 @@
-use zai_rs::client::ZaiClient;
-use zai_rs::model::voice_list::*;
+//! List voices, optionally filtering by voice name.
+
+use zai_rs::{
+    client::ZaiClient,
+    model::voice_list::{VoiceListQuery, VoiceListRequest, VoiceListResponse},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ZaiClient loads credentials and transport configuration from the environment.
-    let client = ZaiClient::from_env()?;
-
-    // Build request: optionally filter by name/type
-    let query = VoiceListQuery::new()
-        // .with_voice_name("my_custom")
-        // .with_voice_type(VoiceType::Private)
-        ;
-
-    let request = VoiceListRequest::new().with_query(query);
-
-    let body: VoiceListResponse = request.send_via(&client).await?;
-    if let Some(list) = body.voice_list.as_ref() {
-        println!("voices: {}", list.len());
-        for (i, item) in list.iter().enumerate() {
-            println!("#{}: {:?}", i + 1, item);
-        }
-    } else {
-        println!("voices: 0");
+    let mut request = VoiceListRequest::new();
+    if let Some(name) = std::env::args().nth(1) {
+        request = request.with_query(VoiceListQuery::new().with_voice_name(name));
     }
+
+    let client = ZaiClient::from_env()?;
+    let response: VoiceListResponse = request.send_via(&client).await?;
+    println!("{response:#?}");
 
     Ok(())
 }

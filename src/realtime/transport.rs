@@ -10,13 +10,28 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use http::{HeaderValue, header::AUTHORIZATION};
+use std::time::Duration;
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, connect_async,
-    tungstenite::{client::IntoClientRequest, protocol::Message},
+    MaybeTlsStream, WebSocketStream, connect_async_with_config,
+    tungstenite::{
+        client::IntoClientRequest,
+        protocol::{Message, WebSocketConfig},
+    },
 };
 use tracing::{debug, warn};
 
-use crate::{ZaiResult, client::error::RealtimeErrorKind};
+use crate::{
+    ZaiResult,
+    client::{
+        error::RealtimeErrorKind,
+        transport::limits::{WS_FRAME_MAX, WS_MESSAGE_MAX},
+    },
+};
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+const PONG_TIMEOUT: Duration = Duration::from_secs(10);
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A single inbound WebSocket message of interest to realtime callers.
 #[derive(Debug, Clone)]
@@ -48,16 +63,27 @@ pub struct TungsteniteTransport {
 
 impl TungsteniteTransport {
     /// Open a WebSocket to `url` with the given `Authorization` header value.
-    #[tracing::instrument(name = "realtime.connect", skip_all, fields(url = %url))]
+    #[tracing::instrument(name = "realtime.connect", skip_all)]
     pub async fn connect(url: &str, authorization: &str) -> ZaiResult<Self> {
         let mut req = url.into_client_request()?;
-        let auth_value = HeaderValue::from_str(authorization).map_err(|e| {
+        let mut auth_value = HeaderValue::from_str(authorization).map_err(|e| {
             RealtimeErrorKind::Protocol(format!("invalid Authorization value: {e}"))
         })?;
+        auth_value.set_sensitive(true);
         req.headers_mut().insert(AUTHORIZATION, auth_value);
 
-        let (stream, _response) = connect_async(req).await?;
-        debug!(url = %url, "Realtime WebSocket connected");
+        let config = WebSocketConfig::default()
+            .max_message_size(Some(WS_MESSAGE_MAX as usize))
+            .max_frame_size(Some(WS_FRAME_MAX as usize));
+        let (stream, _response) = tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            connect_async_with_config(req, Some(config), false),
+        )
+        .await
+        .map_err(|_| RealtimeErrorKind::Timeout {
+            operation: "WebSocket connect",
+        })??;
+        debug!("Realtime WebSocket connected");
         Ok(Self { inner: stream })
     }
 }
@@ -66,10 +92,24 @@ impl TungsteniteTransport {
 impl RealtimeTransport for TungsteniteTransport {
     #[tracing::instrument(name = "realtime.send", skip(self, msg))]
     async fn send(&mut self, msg: String) -> ZaiResult<()> {
-        self.inner.send(Message::text(msg)).await.map_err(|e| {
-            warn!(error = %e, "WebSocket send error");
-            RealtimeErrorKind::WebSocket { source: e }.into()
-        })
+        if msg.len() as u64 > WS_MESSAGE_MAX {
+            return Err(RealtimeErrorKind::Protocol(format!(
+                "realtime message exceeds {WS_MESSAGE_MAX} bytes"
+            ))
+            .into());
+        }
+        tokio::time::timeout(WRITE_TIMEOUT, self.inner.send(Message::text(msg)))
+            .await
+            .map_err(|_| RealtimeErrorKind::Timeout {
+                operation: "WebSocket send",
+            })?
+            .map_err(|e| {
+                // The source can include endpoint or server-provided text; it
+                // remains attached to the returned error but is not duplicated
+                // into application logs.
+                warn!("WebSocket send failed");
+                RealtimeErrorKind::WebSocket { source: e }.into()
+            })
     }
 
     #[tracing::instrument(name = "realtime.recv", skip(self))]
@@ -81,7 +121,7 @@ impl RealtimeTransport for TungsteniteTransport {
                     return Ok(None);
                 },
                 Some(Err(e)) => {
-                    warn!(error = %e, "WebSocket recv error");
+                    warn!("WebSocket receive failed");
                     return Err(RealtimeErrorKind::WebSocket { source: e }.into());
                 },
                 Some(Ok(message)) => match message {
@@ -89,7 +129,15 @@ impl RealtimeTransport for TungsteniteTransport {
                     Message::Binary(bytes) => return Ok(Some(WsMessage::Binary(bytes))),
                     Message::Ping(ping) => {
                         // Echo a pong so the server keeps the session alive.
-                        let _ = self.inner.send(Message::Pong(ping)).await;
+                        tokio::time::timeout(PONG_TIMEOUT, self.inner.send(Message::Pong(ping)))
+                            .await
+                            .map_err(|_| RealtimeErrorKind::Timeout {
+                                operation: "WebSocket pong",
+                            })?
+                            .map_err(|e| {
+                                warn!("WebSocket pong failed");
+                                RealtimeErrorKind::WebSocket { source: e }
+                            })?;
                         continue;
                     },
                     Message::Pong(_) | Message::Frame(_) => continue,
@@ -104,9 +152,25 @@ impl RealtimeTransport for TungsteniteTransport {
 
     #[tracing::instrument(name = "realtime.close", skip(self))]
     async fn close(&mut self) -> ZaiResult<()> {
-        self.inner.close(None).await.map_err(|e| {
-            warn!(error = %e, "WebSocket close error");
-            RealtimeErrorKind::WebSocket { source: e }.into()
-        })
+        tokio::time::timeout(CLOSE_TIMEOUT, self.inner.close(None))
+            .await
+            .map_err(|_| RealtimeErrorKind::Timeout {
+                operation: "WebSocket close",
+            })?
+            .map_err(|e| {
+                warn!("WebSocket close failed");
+                RealtimeErrorKind::WebSocket { source: e }.into()
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_frames_have_a_shorter_deadline_than_application_writes() {
+        assert_eq!(PONG_TIMEOUT, Duration::from_secs(10));
+        assert!(PONG_TIMEOUT < WRITE_TIMEOUT);
     }
 }

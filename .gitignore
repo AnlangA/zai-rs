@@ -1,14 +1,23 @@
-# Match `target/` at any depth — root build dir plus nested ones such as
-# `examples/web_chat/target/`.
+# Rust build and coverage output.
 target/
+*.profraw
+
+# Editor and local-agent state.
 .idea/
-/out
+.DS_Store
 /.claude
 /.zcode
-/realtime_out.bin
 
-# Generated artifacts — never commit
+# Generated documentation, examples, fuzzing, and supply-chain artifacts.
+/out/
+/book/
+/realtime_out.bin
+/realtime_response.pcm
+/fuzz/artifacts/
+/fuzz/corpus/
 *.cdx.json
-target/sbom/
-target/coverage*.json
-target/release-evidence/
+
+# Local secrets. Keep a sanitized template when one is added.
+.env
+.env.*
+!.env.example

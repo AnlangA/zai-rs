@@ -57,16 +57,16 @@ pub struct WebSearchResult {
     /// Search-generated page summary.
     pub content: String,
     /// Upstream reference identifier, when supplied.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refer: Option<String>,
     /// Source site or publisher name, when supplied.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub media: Option<String>,
     /// Source-site icon URL, when supplied.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     /// Publication date in the upstream service's original representation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub publish_date: Option<String>,
     /// Additional fields returned by newer versions of the upstream service.
     #[serde(flatten)]

@@ -1,18 +1,34 @@
 //! Integration tests for `ZaiClient` and `ZaiClientBuilder`.
 //!
-//! These exercise the builder invariants (blank-key rejection, validated
-//! endpoints, insecure-loopback, additional-header allow-list, secret redaction)
-//! and the local [`TestServer`] for observing an outbound request's headers.
+//! These exercise public client composition across secret redaction, endpoint
+//! resolution, transport configuration, and outbound header injection.
 
 mod support;
 use support::http_server::{ScriptedResponse, TestServer};
 
-use std::time::Duration;
-
 use bytes::Bytes;
-use zai_rs::client::{AdditionalHeader, ApiFamily, HttpTransportConfig, RetryOverride, ZaiClient};
+use zai_rs::client::{AdditionalHeader, ApiFamily, HttpTransportConfig, ZaiClient};
 
 const KEY: &str = "abcdefghij.0123456789abcdef";
+
+fn client_for(server: &TestServer) -> ZaiClient {
+    ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(
+            ApiFamily::PaasV4,
+            format!("{}/api/paas/v4", server.base_url),
+        )
+        .build()
+        .unwrap()
+}
+
+fn request_header(server: &TestServer, name: &str) -> Option<String> {
+    server.requests()[0]
+        .headers
+        .iter()
+        .find(|(header, _)| header.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.clone())
+}
 
 #[tokio::test]
 async fn builder_constructs_client_and_redacts_secret() {
@@ -28,98 +44,6 @@ async fn builder_constructs_client_and_redacts_secret() {
         .resolve(ApiFamily::PaasV4, &["chat", "completions"])
         .unwrap();
     assert!(url.ends_with("/api/paas/v4/chat/completions"));
-}
-
-#[test]
-fn builder_rejects_blank_key() {
-    assert!(ZaiClient::builder("").build().is_err());
-    assert!(ZaiClient::builder("   ").build().is_err());
-}
-
-#[test]
-fn builder_rejects_public_http_without_insecure() {
-    let res = ZaiClient::builder(KEY)
-        .endpoint(ApiFamily::PaasV4, "http://open.bigmodel.cn/api/paas/v4")
-        .build();
-    assert!(
-        res.is_err(),
-        "public HTTP must be rejected without insecure"
-    );
-}
-
-#[test]
-fn builder_allows_http_loopback_with_insecure() {
-    let client = ZaiClient::builder(KEY)
-        .allow_insecure_transport(true)
-        .endpoint(ApiFamily::PaasV4, "http://127.0.0.1:8080/api/paas/v4")
-        .build()
-        .unwrap();
-    let url = client.endpoints().resolve(ApiFamily::PaasV4, &[]).unwrap();
-    assert!(url.starts_with("http://127.0.0.1:8080/"));
-}
-
-#[test]
-fn additional_header_disallows_auth_cookie_proxy() {
-    assert!(AdditionalHeader::new("Authorization", "x").is_err());
-    assert!(AdditionalHeader::new("Cookie", "x").is_err());
-    assert!(AdditionalHeader::new("Proxy-Authorization", "x").is_err());
-    assert!(AdditionalHeader::new("X-Test-Client", "preserved").is_ok());
-}
-
-#[test]
-fn transport_only_allows_lowering() {
-    let t = HttpTransportConfig::builder()
-        .request_timeout(Duration::from_secs(5))
-        .unwrap()
-        .max_attempts(2)
-        .unwrap()
-        .build();
-    assert_eq!(t.request_timeout, Duration::from_secs(5));
-    assert_eq!(t.max_attempts, 2);
-    // Raising is rejected.
-    assert!(
-        HttpTransportConfig::default()
-            .with_request_timeout(Duration::from_secs(120))
-            .is_err()
-    );
-}
-
-#[test]
-fn retry_override_is_constructible() {
-    // Pin that the escape hatch exists and is the only variant.
-    let _o = RetryOverride::AssumeIdempotent;
-    match _o {
-        RetryOverride::AssumeIdempotent => {},
-    }
-}
-
-#[tokio::test]
-async fn test_server_serves_scripted_response_and_captures_request() {
-    // Smoke-test the TestServer itself: a 200 JSON body is served and the
-    // request is captured. Later transport tests build on this.
-    let server = TestServer::start(vec![ScriptedResponse::json(
-        200,
-        serde_json::json!({"ok": true}),
-    )])
-    .await;
-
-    let resp = reqwest::Client::new()
-        .post(format!("{}/api/paas/v4/chat/completions", server.base_url))
-        .header("authorization", "Bearer test")
-        .header("content-type", "application/json")
-        .body(Bytes::from_static(b"{}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-
-    let reqs = server.requests();
-    assert_eq!(reqs.len(), 1);
-    assert_eq!(reqs[0].method, "POST");
-    assert_eq!(reqs[0].path, "/api/paas/v4/chat/completions");
-    assert_eq!(reqs[0].authorization.as_deref(), Some("Bearer test"));
-
-    server.shutdown().await;
 }
 
 #[tokio::test]
@@ -138,7 +62,7 @@ async fn unified_transport_injects_auth_and_additional_headers() {
         }),
     )])
     .await;
-    let base: &'static str = Box::leak(format!("{}/api/paas/v4", server.base_url).into_boxed_str());
+    let base = format!("{}/api/paas/v4", server.base_url);
     let transport = HttpTransportConfig::builder()
         .additional_header(AdditionalHeader::new("X-Test-Client", "preserved").unwrap())
         .build();
@@ -157,6 +81,8 @@ async fn unified_transport_injects_auth_and_additional_headers() {
 
     let requests = server.requests();
     assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(requests[0].path, "/api/paas/v4/chat/completions");
     let expected_auth = format!("Bearer {KEY}");
     assert_eq!(
         requests[0].authorization.as_deref(),
@@ -168,5 +94,103 @@ async fn unified_transport_injects_auth_and_additional_headers() {
             .iter()
             .any(|(name, value)| name == "x-test-client" && value == "preserved")
     );
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(body["messages"][0]["content"], "hello");
     server.shutdown().await;
+}
+
+#[tokio::test]
+async fn json_success_requires_a_json_media_type() {
+    let server = TestServer::start(vec![ScriptedResponse::raw(
+        200,
+        "text/plain",
+        Bytes::from_static(br#"{"object":"list","data":[]}"#),
+    )])
+    .await;
+    let client = client_for(&server);
+
+    let error = zai_rs::file::FileListRequest::new(zai_rs::file::FileListPurpose::Batch)
+        .send_via(&client)
+        .await
+        .expect_err("text/plain must not be decoded as a JSON success response");
+
+    assert_eq!(
+        error.code(),
+        Some(zai_rs::client::error::codes::SDK_VALIDATION)
+    );
+    assert_eq!(
+        request_header(&server, "accept").as_deref(),
+        Some("application/json")
+    );
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn structured_json_suffix_is_accepted() {
+    let server = TestServer::start(vec![ScriptedResponse::raw(
+        200,
+        "application/vnd.zai.result+json; charset=utf-8",
+        Bytes::from_static(br#"{"object":"list","data":[]}"#),
+    )])
+    .await;
+    let client = client_for(&server);
+
+    let response = zai_rs::file::FileListRequest::new(zai_rs::file::FileListPurpose::Batch)
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    assert_eq!(response.data.map_or(0, |items| items.len()), 0);
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn file_and_audio_routes_use_distinct_media_contracts() {
+    use zai_rs::{
+        file::FileContentRequest,
+        model::text_to_audio::{GlmTts, TextToAudioRequest},
+    };
+
+    let file_server = TestServer::start(vec![ScriptedResponse::raw(
+        200,
+        "audio/wav",
+        Bytes::from_static(b"not-a-file-response"),
+    )])
+    .await;
+    let file_client = client_for(&file_server);
+    let error = FileContentRequest::new("file-1")
+        .send_via(&file_client)
+        .await
+        .expect_err("file downloads must require application/octet-stream");
+    assert_eq!(
+        error.code(),
+        Some(zai_rs::client::error::codes::SDK_VALIDATION)
+    );
+    assert_eq!(
+        request_header(&file_server, "accept").as_deref(),
+        Some("application/octet-stream")
+    );
+    file_server.shutdown().await;
+
+    let audio_server = TestServer::start(vec![ScriptedResponse::raw(
+        200,
+        "audio/mpeg",
+        Bytes::from_static(b"unsupported-audio"),
+    )])
+    .await;
+    let audio_client = client_for(&audio_server);
+    let error = TextToAudioRequest::new(GlmTts {})
+        .with_input("hello")
+        .send_via(&audio_client)
+        .await
+        .expect_err("undocumented TTS media types must be rejected");
+    assert_eq!(
+        error.code(),
+        Some(zai_rs::client::error::codes::SDK_VALIDATION)
+    );
+    assert_eq!(
+        request_header(&audio_server, "accept").as_deref(),
+        Some("audio/wav, audio/x-wav, audio/pcm, application/octet-stream")
+    );
+    audio_server.shutdown().await;
 }

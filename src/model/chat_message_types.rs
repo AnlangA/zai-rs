@@ -5,10 +5,6 @@
 //! the JSON payload but generally do not inspect remote media or enforce
 //! provider-specific size and duration limits.
 //!
-//! [`TextMessages`] is a standalone collection helper with a 1–1,000 item
-//! validator. Call [`Validate::validate`](validator::Validate::validate)
-//! explicitly when using it; adding a message does not validate automatically.
-//!
 //! # Examples
 //!
 //! ```
@@ -25,91 +21,15 @@
 //! let assistant_msg = TextMessage::assistant_with_tools(None, vec![tool_call]);
 //! ```
 
-use base64::{Engine, prelude::*};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
-use validator::*;
 
-/// A collection of text messages with validation constraints.
-///
-/// This structure wraps a vector of [`TextMessage`] instances. Its
-/// [`Validate`] implementation checks that the collection contains between 1
-/// and 1,000 messages; constructors do not run that check automatically.
-///
-/// # Validation
-///
-/// - Must contain at least 1 message
-/// - Must not contain more than 1000 messages
-#[derive(Clone, Serialize, Validate)]
-pub struct TextMessages {
-    /// The collection of text messages. Must contain between 1 and 1000
-    /// messages.
-    #[validate(length(min = 1, max = 1000))]
-    pub messages: Vec<TextMessage>,
-}
-
-impl TextMessages {
-    /// Creates a new `TextMessages` collection with a single message.
-    ///
-    /// # Arguments
-    ///
-    /// * `messages` - The initial message to include in the collection
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessages` instance containing the provided message.
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// let messages = TextMessages::new(TextMessage::user("Hello!"));
-    /// ```
-    pub fn new(messages: TextMessage) -> Self {
-        Self {
-            messages: vec![messages],
-        }
-    }
-
-    /// Adds a message to the collection.
-    ///
-    /// Call [`Validate::validate`] after building if the collection may approach
-    /// the 1,000-message limit.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The message to add to the collection
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` with the new message added, allowing for method chaining.
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// let messages = TextMessages::new(TextMessage::user("Hello!"))
-    ///     .add_message(TextMessage::assistant("Hi there!"))
-    ///     .add_message(TextMessage::user("How are you?"));
-    /// ```
-    pub fn add_message(mut self, msg: TextMessage) -> Self {
-        self.messages.push(msg);
-        self
-    }
-}
-
-/// Represents different types of messages in a chat conversation.
-///
-/// This enum defines the four main types of messages that can appear in a chat:
-/// user messages, assistant responses, system instructions, and tool responses.
-/// Each variant is serialized with a "role" field to distinguish message types.
-///
-/// # Serialization
-///
-/// Messages are serialized as JSON objects with a "role" field that indicates
-/// the message type ("user", "assistant", "system", or "tool").
+/// Text-chat message serialized with a `role` discriminator.
 ///
 /// # Examples
 ///
-/// ```text
-/// // Create different types of messages
+/// ```rust
+/// # use zai_rs::model::*;
 /// let user_msg = TextMessage::user("What's the weather like?");
 /// let system_msg = TextMessage::system("You are a helpful assistant.");
 /// let assistant_msg = TextMessage::assistant("I can help you with that!");
@@ -151,19 +71,12 @@ pub enum TextMessage {
 }
 
 impl TextMessage {
-    /// Creates a new user message.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the user's message
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessage::User` variant.
+    /// Create a user message.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = TextMessage::user("Hello, how can you help me today?");
     /// ```
     pub fn user(content: impl Into<String>) -> Self {
@@ -172,19 +85,12 @@ impl TextMessage {
         }
     }
 
-    /// Creates a new assistant message with text content only.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the assistant's response
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessage::Assistant` variant with content and no tool calls.
+    /// Create an assistant message containing text and no tool calls.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = TextMessage::assistant("I'm happy to help you with that!");
     /// ```
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -194,24 +100,12 @@ impl TextMessage {
         }
     }
 
-    /// Creates a new assistant message with optional content and tool calls.
-    ///
-    /// This method is useful when the assistant needs to call tools or when
-    /// the response consists entirely of tool calls without additional text.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - Optional text content for the assistant's response
-    /// * `tool_calls` - Vector of tool calls made by the assistant
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessage::Assistant` variant with the specified content and
-    /// tool calls.
+    /// Create an assistant message containing optional text and tool calls.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let tool_call = ToolCall::new_function("call_123",
     ///     FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#));
     /// let msg = TextMessage::assistant_with_tools(
@@ -226,22 +120,12 @@ impl TextMessage {
         }
     }
 
-    /// Creates a new system message.
-    ///
-    /// System messages provide instructions or context to the assistant and
-    /// typically appear at the beginning of a conversation.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the system message
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessage::System` variant.
+    /// Create a system-instruction message.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = TextMessage::system("You are a helpful assistant specialized in programming.");
     /// ```
     pub fn system(content: impl Into<String>) -> Self {
@@ -250,19 +134,12 @@ impl TextMessage {
         }
     }
 
-    /// Creates a new tool message without a tool call ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content returned by the tool
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessage::Tool` variant without a tool call ID.
+    /// Create a tool-result message without a tool-call identifier.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = TextMessage::tool("The current temperature is 22°C");
     /// ```
     pub fn tool(content: impl Into<String>) -> Self {
@@ -272,23 +149,12 @@ impl TextMessage {
         }
     }
 
-    /// Creates a new tool message with a specific tool call ID.
-    ///
-    /// This method should be used when responding to a specific tool call
-    /// made by the assistant, linking the tool response to the original call.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content returned by the tool
-    /// * `tool_call_id` - The ID of the tool call this message is responding to
-    ///
-    /// # Returns
-    ///
-    /// A new `TextMessage::Tool` variant with the specified tool call ID.
+    /// Create a tool-result message linked to `tool_call_id`.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = TextMessage::tool_with_id(
     ///     "The current temperature is 22°C",
     ///     "call_123"
@@ -302,16 +168,7 @@ impl TextMessage {
     }
 }
 
-/// Represents messages in vision-enabled chat conversations.
-///
-/// This enum defines message types for conversations that can include
-/// multimedia content like images, videos, and files alongside text.
-/// Each variant is serialized with a "role" field to distinguish message types.
-///
-/// # Serialization
-///
-/// Messages are serialized as JSON objects with a "role" field that indicates
-/// the message type ("user", "system", or "assistant").
+/// Vision-chat message serialized with a `role` discriminator.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "role")]
 #[serde(rename_all = "lowercase")]
@@ -354,11 +211,7 @@ pub struct FileUrlInfo {
     pub url: String,
 }
 
-/// Represents different types of rich multimedia content in vision messages.
-///
-/// This enum defines the various types of content that can be included in
-/// vision-enabled messages, including text, images, videos, and files.
-/// Each variant is serialized with a "type" field to distinguish content types.
+/// Text or remote media content in a vision user message.
 ///
 /// # Serialization
 ///
@@ -394,38 +247,24 @@ pub enum VisionRichContent {
 }
 
 impl VisionRichContent {
-    /// Creates a new text content item.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - The text content
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionRichContent::Text` variant.
+    /// Create a text content part.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let text = VisionRichContent::text("Hello, world!");
     /// ```
     pub fn text(text: impl Into<String>) -> Self {
         VisionRichContent::Text { text: text.into() }
     }
 
-    /// Creates a new image content item.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The URL or Base64 encoded image data
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionRichContent::ImageUrl` variant.
+    /// Create an image content part from a URL or data URL.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let image = VisionRichContent::image("https://example.com/image.jpg");
     /// let base64_image = VisionRichContent::image("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...");
     /// ```
@@ -435,19 +274,12 @@ impl VisionRichContent {
         }
     }
 
-    /// Creates a new video content item.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The URL of the video file
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionRichContent::VideoUrl` variant.
+    /// Create a video content part from a URL.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let video = VisionRichContent::video("https://example.com/video.mp4");
     /// ```
     pub fn video(url: impl Into<String>) -> Self {
@@ -456,19 +288,12 @@ impl VisionRichContent {
         }
     }
 
-    /// Creates a new file content item.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The URL of the file (PDF, Word, etc.)
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionRichContent::FileUrl` variant.
+    /// Create a document content part from a URL.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let file = VisionRichContent::file("https://example.com/document.pdf");
     /// ```
     pub fn file(url: impl Into<String>) -> Self {
@@ -479,15 +304,12 @@ impl VisionRichContent {
 }
 
 impl VisionMessage {
-    /// Creates a new empty user message.
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionMessage::User` variant with empty content.
+    /// Create an empty vision user message.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VisionMessage::new_user();
     /// ```
     pub fn new_user() -> Self {
@@ -496,15 +318,9 @@ impl VisionMessage {
         }
     }
 
-    /// Adds rich content to a user message.
+    /// Append a content part when this is a user message.
     ///
-    /// # Arguments
-    ///
-    /// * `rich_content` - The rich multimedia content to add
-    ///
-    /// # Returns
-    ///
-    /// The updated `VisionMessage::User` variant.
+    /// System and assistant messages are returned unchanged.
     ///
     /// # Examples
     ///
@@ -528,19 +344,12 @@ impl VisionMessage {
         }
     }
 
-    /// Creates a new system message.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the system message
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionMessage::System` variant.
+    /// Create a system-instruction message.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VisionMessage::system("You are a helpful vision assistant.");
     /// ```
     pub fn system(content: impl Into<String>) -> Self {
@@ -549,19 +358,12 @@ impl VisionMessage {
         }
     }
 
-    /// Creates a new assistant message.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the assistant's response
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionMessage::Assistant` variant.
+    /// Create an assistant message containing text.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VisionMessage::assistant("I can see the image contains a cat.");
     /// ```
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -570,22 +372,12 @@ impl VisionMessage {
         }
     }
 
-    /// Creates a new assistant message with optional content.
-    ///
-    /// This method is useful when the assistant response might be empty
-    /// or when you want to explicitly handle optional content.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - Optional content for the assistant's response
-    ///
-    /// # Returns
-    ///
-    /// A new `VisionMessage::Assistant` variant with the specified content.
+    /// Create an assistant message with optional text.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VisionMessage::assistant_with_content(None);
     /// let msg_with_content = VisionMessage::assistant_with_content(Some("I analyzed the image.".to_string()));
     /// ```
@@ -594,39 +386,19 @@ impl VisionMessage {
     }
 }
 
-/// Represents messages in voice-enabled chat conversations.
+/// Voice-chat message serialized with a `role` discriminator.
 ///
-/// This enum defines message types for conversations that can include audio
-/// content alongside text. It's designed for voice-capable AI models that can
-/// process audio input and generate audio responses. Each variant is serialized
-/// with a "role" field to distinguish message types.
-///
-/// # Serialization
-///
-/// Messages are serialized as JSON objects with a "role" field that indicates
-/// the message type ("user", "system", or "assistant").
-///
-/// # Audio Support
-///
-/// - **User messages**: Can contain audio input via
-///   `VoiceRichContent::InputAudio`
-/// - **Assistant messages**: Can include audio responses via the `audio` field
-/// - **System messages**: Text-only for providing context and instructions
-///
-/// # Model Compatibility
-///
-/// This message type is specifically designed for voice-capable models like
-/// GLM-4-Voice. Not all AI models support audio input/output, so check model
-/// compatibility before use.
+/// User messages accept text or input audio, system messages accept text, and
+/// assistant messages may reference generated audio. The sealed model/message
+/// bindings restrict this type to compatible models.
 ///
 /// # Examples
 ///
-/// ```text
-/// // User message with audio input
+/// ```rust
+/// # use zai_rs::model::*;
 /// let audio_content = VoiceRichContent::input_audio(b"audio_data", VoiceFormat::MP3);
 /// let user_msg = VoiceMessage::new_user().add_content(audio_content);
 ///
-/// // Assistant message with audio response
 /// let audio_response = Audio::with_id("audio_123");
 /// let assistant_msg = VoiceMessage::assistant_audio_only(audio_response);
 /// ```
@@ -656,37 +428,24 @@ pub enum VoiceMessage {
     },
 }
 
-/// Represents different types of content in voice-enabled messages.
-///
-/// This enum defines the various types of content that can be included in
-/// voice-enabled conversations, including text messages and audio input.
-/// Each variant is serialized with a "type" field to distinguish content types.
-///
-/// # Serialization
-///
-/// Content is serialized as JSON objects with a "type" field that indicates
-/// the content type ("text" or "input_audio").
+/// Text or input-audio content in a voice user message.
 ///
 /// [`input_audio`](Self::input_audio) base64-encodes the supplied bytes. It does
 /// not inspect the media duration or verify that the bytes match the selected
 /// format.
 ///
-/// # Model Compatibility
-///
-/// Audio input is supported only by specific voice-capable models like
-/// GLM-4-Voice. Always verify model capabilities before using audio features.
-///
 /// # Examples
 ///
-/// ```text
-/// // Text content
+/// ```rust,no_run
+/// # use zai_rs::model::*;
 /// let text_content = VoiceRichContent::text("Hello, I need help with something.");
 ///
-/// // Audio content from file bytes
+/// # fn read_audio() -> std::io::Result<()> {
 /// let audio_bytes = std::fs::read("audio.mp3")?;
 /// let audio_content = VoiceRichContent::input_audio(audio_bytes, VoiceFormat::MP3);
+/// # Ok(())
+/// # }
 ///
-/// // Audio content from memory
 /// let audio_data = b"raw audio data";
 /// let audio_content = VoiceRichContent::input_audio(audio_data, VoiceFormat::WAV);
 /// ```
@@ -694,11 +453,7 @@ pub enum VoiceMessage {
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum VoiceRichContent {
-    /// Text content for voice conversations.
-    ///
-    /// This variant allows users to send text messages in voice-enabled
-    /// conversations, providing flexibility for mixed text and audio
-    /// interactions.
+    /// Text content.
     Text {
         /// The text content of the message.
         text: String,
@@ -708,61 +463,42 @@ pub enum VoiceRichContent {
     ///
     /// # Field Description
     ///
-    /// ## input_audio
-    /// Contains the audio data and format information
+    /// Base64-encoded input audio and its format.
     InputAudio {
-        /// Audio data and format information
+        /// Audio data and format information.
         input_audio: InputAudioData,
     },
 }
 
-/// Represents audio input data structure.
-///
-/// This structure contains the base64 encoded audio data and format information
-/// for voice input in chat messages.
+/// Base64-encoded audio supplied in a voice user message.
 #[derive(Debug, Clone, Serialize)]
 pub struct InputAudioData {
-    /// Base64 encoded audio file data. Maximum audio duration is 10 minutes.
+    /// Base64-encoded audio data. Maximum audio duration is 10 minutes.
     /// 1 second of audio = 12.5 tokens, rounded up.
     pub data: String,
-    /// Audio file format, supports WAV and MP3
+    /// Audio format.
     pub format: VoiceFormat,
 }
 
 impl VoiceRichContent {
-    /// Creates a new text content item.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - The text content
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceRichContent::Text` variant.
+    /// Create a text content part.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let text = VoiceRichContent::text("Hello, world!");
     /// ```
     pub fn text(text: impl Into<String>) -> Self {
         VoiceRichContent::Text { text: text.into() }
     }
 
-    /// Creates a new input audio content item.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - Raw audio bytes; this method base64-encodes them
-    /// * `format` - The audio format
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceRichContent::InputAudio` variant.
+    /// Base64-encode `data` and create an input-audio content part.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let audio_bytes = b"audio data";
     /// let audio = VoiceRichContent::input_audio(audio_bytes, VoiceFormat::MP3);
     /// ```
@@ -777,110 +513,68 @@ impl VoiceRichContent {
     }
 }
 
-/// Represents supported audio formats for voice interactions.
-///
-/// This enum defines the audio file formats that are supported for voice input
-/// in the chat system. Each format corresponds to specific audio encoding
-/// standards and compatibility requirements.
-///
-/// # Supported Formats
-///
-/// - **MP3**: Compressed audio format, widely supported, good for general use
-/// - **WAV**: Uncompressed audio format, higher quality, larger file sizes
-///
-/// # Model Compatibility
-///
-/// Different voice-capable models may have different format support:
-/// - GLM-4-Voice: Supports both MP3 and WAV formats
-/// - Other models: Check specific model documentation
-///
-/// # File Size Considerations
-///
-/// - MP3 files are typically smaller due to compression
-/// - WAV files provide higher quality but use more bandwidth
-/// - Consider the trade-off between quality and file size based on your use
-///   case
+/// Audio format accepted by the voice-chat endpoint.
 ///
 /// # Examples
 ///
-/// ```text
-/// // Use MP3 for general voice input
+/// ```rust
+/// # use zai_rs::model::*;
 /// let format = VoiceFormat::MP3;
 ///
-/// // Use WAV for higher quality audio
 /// let format = VoiceFormat::WAV;
 ///
-/// // Detect format from file extension
 /// let format = VoiceFormat::from_extension("mp3").unwrap_or(VoiceFormat::MP3);
 /// ```
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum VoiceFormat {
-    /// MPEG Audio Layer III format.
-    ///
-    /// Compressed audio format that provides good quality with smaller file
-    /// sizes. Ideal for most voice applications due to its balance of
-    /// quality and size.
+    /// MPEG Audio Layer III.
     MP3,
 
     /// Waveform Audio File Format.
-    ///
-    /// Uncompressed audio format that provides the highest quality but results
-    /// in larger file sizes. Suitable for applications where audio quality is
-    /// critical.
     WAV,
 }
 
 impl VoiceFormat {
-    /// Creates a VoiceFormat from a file extension.
-    ///
-    /// # Arguments
-    ///
-    /// * `extension` - The file extension (case-insensitive)
-    ///
-    /// # Returns
-    ///
-    /// An `Option<VoiceFormat>` containing the matching format, or `None` if
-    /// not found.
+    /// Parse a case-insensitive file extension.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// assert_eq!(VoiceFormat::from_extension("mp3"), Some(VoiceFormat::MP3));
     /// assert_eq!(VoiceFormat::from_extension("wav"), Some(VoiceFormat::WAV));
     /// assert_eq!(VoiceFormat::from_extension("ogg"), None);
     /// ```
     pub fn from_extension(extension: &str) -> Option<Self> {
-        match extension.to_lowercase().as_str() {
-            "mp3" => Some(VoiceFormat::MP3),
-            "wav" => Some(VoiceFormat::WAV),
-            _ => None,
+        if extension.eq_ignore_ascii_case("mp3") {
+            Some(Self::MP3)
+        } else if extension.eq_ignore_ascii_case("wav") {
+            Some(Self::WAV)
+        } else {
+            None
         }
     }
 
-    /// Creates a VoiceFormat from a MIME type.
-    ///
-    /// # Arguments
-    ///
-    /// * `mime_type` - The MIME type (case-insensitive)
-    ///
-    /// # Returns
-    ///
-    /// An `Option<VoiceFormat>` containing the matching format, or `None` if
-    /// not found.
+    /// Parse a supported MIME type case-insensitively.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// assert_eq!(VoiceFormat::from_mime_type("audio/mpeg"), Some(VoiceFormat::MP3));
     /// assert_eq!(VoiceFormat::from_mime_type("audio/wav"), Some(VoiceFormat::WAV));
     /// assert_eq!(VoiceFormat::from_mime_type("audio/ogg"), None);
     /// ```
     pub fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type.to_lowercase().as_str() {
-            "audio/mpeg" => Some(VoiceFormat::MP3),
-            "audio/wav" | "audio/x-wav" => Some(VoiceFormat::WAV),
-            _ => None,
+        if mime_type.eq_ignore_ascii_case("audio/mpeg") {
+            Some(Self::MP3)
+        } else if mime_type.eq_ignore_ascii_case("audio/wav")
+            || mime_type.eq_ignore_ascii_case("audio/x-wav")
+        {
+            Some(Self::WAV)
+        } else {
+            None
         }
     }
 }
@@ -889,45 +583,26 @@ impl VoiceFormat {
 ///
 /// # Examples
 ///
-/// ```text
-/// // Audio with specific ID
+/// ```rust
+/// # use zai_rs::model::*;
 /// let audio_with_id = Audio::with_id("audio_123");
 ///
-/// // Anonymous audio
 /// let anonymous_audio = Audio::new();
-///
-/// // Builder pattern usage
-/// let audio = Audio::new()
-///     .set_id("audio_456")
-///     .clear_id(); // Remove ID if needed
 /// ```
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Audio {
     /// Provider-issued audio identifier used in conversation history.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
 }
 
-impl Default for Audio {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Audio {
-    /// Creates a new Audio instance with the given ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The audio ID
-    ///
-    /// # Returns
-    ///
-    /// A new `Audio` instance with the specified ID.
+    /// Create an audio reference with a provider-issued identifier.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let audio = Audio::with_id("audio_123");
     /// ```
     pub fn with_id(id: impl Into<String>) -> Self {
@@ -936,68 +611,26 @@ impl Audio {
         }
     }
 
-    /// Creates a new Audio instance without an ID.
-    ///
-    /// # Returns
-    ///
-    /// A new `Audio` instance with no ID.
+    /// Create an empty audio reference.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let audio = Audio::new();
     /// ```
     pub fn new() -> Self {
-        Audio { id: None }
-    }
-
-    /// Sets the audio ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The new audio ID
-    ///
-    /// # Returns
-    ///
-    /// A new `Audio` instance with the updated ID.
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// let audio = Audio::new().set_id("audio_123");
-    /// ```
-    pub fn set_id(mut self, id: impl Into<String>) -> Self {
-        self.id = Some(id.into());
-        self
-    }
-
-    /// Clears the audio ID.
-    ///
-    /// # Returns
-    ///
-    /// A new `Audio` instance with no ID.
-    ///
-    /// # Examples
-    ///
-    /// ```text
-    /// let audio = Audio::with_id("audio_123").clear_id();
-    /// ```
-    pub fn clear_id(mut self) -> Self {
-        self.id = None;
-        self
+        Self::default()
     }
 }
 
 impl VoiceMessage {
-    /// Creates a new empty user message.
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceMessage::User` variant with empty content.
+    /// Create an empty voice user message.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VoiceMessage::new_user();
     /// ```
     pub fn new_user() -> Self {
@@ -1006,19 +639,14 @@ impl VoiceMessage {
         }
     }
 
-    /// Adds rich content to a user message.
+    /// Append a content part when this is a user message.
     ///
-    /// # Arguments
-    ///
-    /// * `rich_content` - The rich content to add
-    ///
-    /// # Returns
-    ///
-    /// The updated `VoiceMessage::User` variant.
+    /// System and assistant messages are returned unchanged.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let audio = VoiceRichContent::text("Hello");
     /// let text = VoiceRichContent::text("describe this audio");
     /// let msg = VoiceMessage::new_user()
@@ -1036,19 +664,12 @@ impl VoiceMessage {
         }
     }
 
-    /// Creates a new system message.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the system message
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceMessage::System` variant.
+    /// Create a system-instruction message.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VoiceMessage::system("You are a helpful voice assistant.");
     /// ```
     pub fn system(content: impl Into<String>) -> Self {
@@ -1057,19 +678,12 @@ impl VoiceMessage {
         }
     }
 
-    /// Creates a new assistant message with text content only.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the assistant's response
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceMessage::Assistant` variant with content and no audio.
+    /// Create an assistant message containing text and no audio.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let msg = VoiceMessage::assistant("I can help you with that!");
     /// ```
     pub fn assistant(content: impl Into<String>) -> Self {
@@ -1079,21 +693,12 @@ impl VoiceMessage {
         }
     }
 
-    /// Creates a new assistant message with optional content and audio.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - Optional text content for the assistant's response
-    /// * `audio` - Optional audio data for the assistant's response
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceMessage::Assistant` variant with the specified content and
-    /// audio.
+    /// Create an assistant message containing optional text and audio.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let audio = Audio { id: Some("audio_123".to_string()) };
     /// let msg = VoiceMessage::assistant_with_audio(
     ///     Some("Here's the audio response.".to_string()),
@@ -1104,19 +709,12 @@ impl VoiceMessage {
         VoiceMessage::Assistant { content, audio }
     }
 
-    /// Creates a new assistant message with audio only.
-    ///
-    /// # Arguments
-    ///
-    /// * `audio` - The audio data for the assistant's response
-    ///
-    /// # Returns
-    ///
-    /// A new `VoiceMessage::Assistant` variant with audio and no text content.
+    /// Create an assistant message containing audio and no text.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let audio = Audio { id: Some("audio_123".to_string()) };
     /// let msg = VoiceMessage::assistant_audio_only(audio);
     /// ```
@@ -1128,23 +726,10 @@ impl VoiceMessage {
     }
 }
 
-/// Represents a tool call made by the assistant.
+/// Tool invocation emitted by an assistant message.
 ///
-/// Tool calls allow the assistant to invoke external functions, perform web
-/// searches, or access retrieval systems. Each tool call has a unique ID and a
-/// specific type that determines what kind of operation is being performed.
-///
-/// # Fields
-///
-/// * `id` - A unique identifier for this tool call
-/// * `type_` - The type of tool being called (function, web search, or
-///   retrieval)
-/// * `function` - Function parameters, required when `type_` is `Function`
-///
-/// # Serialization
-///
-/// The struct implements custom serialization logic to ensure that the
-/// `function` field is only included when appropriate for the tool call type.
+/// Function parameters are required only when [`Self::kind`] is
+/// [`ToolCallType::Function`].
 #[derive(Debug, Clone)]
 pub struct ToolCall {
     id: String,
@@ -1153,14 +738,6 @@ pub struct ToolCall {
 }
 
 impl serde::Serialize for ToolCall {
-    /// Custom serialization implementation for `ToolCall`.
-    ///
-    /// This implementation ensures that:
-    /// - The `function` field is required when `type_` is `Function`
-    /// - The `function` field is only included when appropriate for the tool
-    ///   type
-    /// - Validation errors are returned for invalid combinations
-    ///
     /// # Errors
     ///
     /// Returns a serialization error if `type_` is `Function` but `function` is
@@ -1169,48 +746,25 @@ impl serde::Serialize for ToolCall {
     where
         S: serde::Serializer,
     {
-        use serde::ser::SerializeStruct;
-
-        // Validation: function field is required when type_ is Function
-        if matches!(self.type_, ToolCallType::Function) && self.function.is_none() {
-            return Err(serde::ser::Error::custom(
-                "function field is required when type is 'function'",
-            ));
-        }
+        use serde::ser::{Error as _, SerializeStruct};
 
         let mut state = serializer.serialize_struct("ToolCall", 3)?;
         state.serialize_field("id", &self.id)?;
         state.serialize_field("type", &self.type_)?;
-
-        // Include function field based on tool call type
-        match self.type_ {
-            ToolCallType::Function => {
-                // Function type requires function field (validated above)
-                state.serialize_field("function", &self.function)?;
-            },
-            _ => {
-                // Other types only include function field if present
-                if self.function.is_some() {
-                    state.serialize_field("function", &self.function)?;
-                }
-            },
+        if self.type_ == ToolCallType::Function {
+            let function = self.function.as_ref().ok_or_else(|| {
+                S::Error::custom("function field is required when type is 'function'")
+            })?;
+            state.serialize_field("function", function)?;
+        } else if let Some(function) = self.function.as_ref() {
+            state.serialize_field("function", function)?;
         }
-
         state.end()
     }
 }
 
-/// Specifies the type of tool being called.
-///
-/// This enum defines the different types of tools that can be invoked by the
-/// assistant. Each type corresponds to a different capability or service.
-///
-/// # Variants
-///
-/// * `Function` - Call a user-defined function with specific parameters
-/// * `WebSearch` - Perform a web search operation
-/// * `Retrieval` - Access a retrieval/knowledge system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Kind of tool invocation emitted by an assistant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolCallType {
     /// A function call with custom parameters.
@@ -1228,7 +782,8 @@ pub enum ToolCallType {
 ///
 /// # Examples
 ///
-/// ```text
+/// ```rust
+/// # use zai_rs::model::*;
 /// // Simple function call
 /// let params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
 ///
@@ -1245,8 +800,7 @@ pub enum ToolCallType {
 pub struct FunctionParams {
     /// The name of the function to be called.
     ///
-    /// This should match the exact function name as defined in the function
-    /// registry or system where the function will be executed.
+    /// Must match the registered function name exactly.
     name: String,
 
     /// JSON string containing the function arguments.
@@ -1257,24 +811,27 @@ pub struct FunctionParams {
 }
 
 impl ToolCall {
-    /// Creates a new function tool call.
-    ///
-    /// This method creates a tool call that invokes a user-defined function
-    /// with specific parameters. Function calls are the most common type of
-    /// tool usage in AI conversations.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - Unique identifier for this tool call
-    /// * `function` - Function parameters including name and arguments
-    ///
-    /// # Returns
-    ///
-    /// A new `ToolCall` instance configured for function invocation
+    /// Borrow the provider-issued tool-call identifier.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Return the tool-call kind.
+    pub fn kind(&self) -> ToolCallType {
+        self.type_
+    }
+
+    /// Borrow function parameters when this is a function call.
+    pub fn function(&self) -> Option<&FunctionParams> {
+        self.function.as_ref()
+    }
+
+    /// Create a function invocation with its provider-issued identifier.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let function_params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
     /// let tool_call = ToolCall::new_function("call_123", function_params);
     /// ```
@@ -1286,23 +843,12 @@ impl ToolCall {
         }
     }
 
-    /// Creates a new web search tool call.
-    ///
-    /// This method creates a tool call that performs a web search operation.
-    /// Web search tools allow the AI to access current information from the
-    /// internet.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - Unique identifier for this tool call
-    ///
-    /// # Returns
-    ///
-    /// A new `ToolCall` instance configured for web search
+    /// Create a web-search invocation with its provider-issued identifier.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let tool_call = ToolCall::new_web_search("search_456");
     /// ```
     pub fn new_web_search(id: impl Into<String>) -> Self {
@@ -1313,23 +859,12 @@ impl ToolCall {
         }
     }
 
-    /// Creates a new retrieval tool call.
-    ///
-    /// This method creates a tool call that accesses a retrieval or knowledge
-    /// system. Retrieval tools allow the AI to access stored information,
-    /// documents, or knowledge bases.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - Unique identifier for this tool call
-    ///
-    /// # Returns
-    ///
-    /// A new `ToolCall` instance configured for retrieval operations
+    /// Create a retrieval invocation with its provider-issued identifier.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// let tool_call = ToolCall::new_retrieval("retrieval_789");
     /// ```
     pub fn new_retrieval(id: impl Into<String>) -> Self {
@@ -1342,24 +877,22 @@ impl ToolCall {
 }
 
 impl FunctionParams {
-    /// Creates a new function parameters instance.
-    ///
-    /// This method creates function parameters with the specified name and
-    /// JSON-serialized arguments. The arguments should be valid JSON that
-    /// matches the expected schema for the target function.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the function to call
-    /// * `arguments` - JSON string containing the function arguments
-    ///
-    /// # Returns
-    ///
-    /// A new `FunctionParams` instance
+    /// Borrow the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Borrow the JSON-encoded argument string.
+    pub fn arguments(&self) -> &str {
+        &self.arguments
+    }
+
+    /// Create function parameters from a name and JSON-encoded argument string.
     ///
     /// # Examples
     ///
-    /// ```text
+    /// ```rust
+    /// # use zai_rs::model::*;
     /// // Simple function with one parameter
     /// let params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
     ///
@@ -1382,36 +915,8 @@ impl FunctionParams {
 
 #[cfg(test)]
 mod tests {
-    use validator::Validate;
-
     use super::*;
 
-    // TextMessages tests
-    #[test]
-    fn test_text_messages_new() {
-        let msg = TextMessage::user("Hello");
-        let messages = TextMessages::new(msg);
-        assert_eq!(messages.messages.len(), 1);
-        assert!(messages.validate().is_ok());
-    }
-
-    #[test]
-    fn test_text_messages_add_message() {
-        let messages = TextMessages::new(TextMessage::user("Hello"))
-            .add_message(TextMessage::assistant("Hi there!"))
-            .add_message(TextMessage::system("You are helpful"));
-
-        assert_eq!(messages.messages.len(), 3);
-        assert!(messages.validate().is_ok());
-    }
-
-    #[test]
-    fn test_text_messages_validation() {
-        let messages = TextMessages::new(TextMessage::user("Test"));
-        assert!(messages.validate().is_ok());
-    }
-
-    // TextMessage tests
     #[test]
     fn test_text_message_user() {
         let msg = TextMessage::user("Hello world");
@@ -1472,7 +977,6 @@ mod tests {
         assert!(json.contains("call_123"));
     }
 
-    // VisionMessage tests
     #[test]
     fn test_vision_message_new_user() {
         let msg = VisionMessage::new_user();
@@ -1510,7 +1014,6 @@ mod tests {
         assert!(json.contains("\"role\":\"assistant\""));
     }
 
-    // VisionRichContent tests
     #[test]
     fn test_vision_rich_content_text() {
         let content = VisionRichContent::text("Hello");
@@ -1541,7 +1044,6 @@ mod tests {
         assert!(json.contains("\"type\":\"file_url\""));
     }
 
-    // VoiceMessage tests
     #[test]
     fn test_voice_message_new_user() {
         let msg = VoiceMessage::new_user();
@@ -1600,7 +1102,6 @@ mod tests {
         assert!(json.contains("audio_123"));
     }
 
-    // VoiceRichContent tests
     #[test]
     fn test_voice_rich_content_text() {
         let content = VoiceRichContent::text("Hello");
@@ -1619,7 +1120,6 @@ mod tests {
         assert!(json.contains("\"data\":"));
     }
 
-    // VoiceFormat tests
     #[test]
     fn test_voice_format_from_extension() {
         assert_eq!(VoiceFormat::from_extension("mp3"), Some(VoiceFormat::MP3));
@@ -1648,7 +1148,6 @@ mod tests {
         assert_eq!(VoiceFormat::from_mime_type("audio/flac"), None);
     }
 
-    // Audio tests
     #[test]
     fn test_audio_new() {
         let audio = Audio::new();
@@ -1659,18 +1158,6 @@ mod tests {
     fn test_audio_with_id() {
         let audio = Audio::with_id("audio_123");
         assert_eq!(audio.id, Some("audio_123".to_string()));
-    }
-
-    #[test]
-    fn test_audio_set_id() {
-        let audio = Audio::new().set_id("audio_456");
-        assert_eq!(audio.id, Some("audio_456".to_string()));
-    }
-
-    #[test]
-    fn test_audio_clear_id() {
-        let audio = Audio::with_id("audio_123").clear_id();
-        assert!(audio.id.is_none());
     }
 
     #[test]
@@ -1685,7 +1172,6 @@ mod tests {
         assert!(!json_no_id.contains("id"));
     }
 
-    // ToolCall tests
     #[test]
     fn test_tool_call_new_function() {
         let func_params = FunctionParams::new("test_func", r#"{"arg":"value"}"#);
@@ -1713,9 +1199,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_call_function_without_params_panics() {
-        // ToolCall with Function type but no function field should panic during
-        // serialization
+    fn test_tool_call_function_without_params_is_rejected() {
         let tool_call = ToolCall {
             id: "call_123".to_string(),
             type_: ToolCallType::Function,
@@ -1725,7 +1209,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // FunctionParams tests
     #[test]
     fn test_function_params_new() {
         let params = FunctionParams::new("test_func", r#"{"arg":"value"}"#);

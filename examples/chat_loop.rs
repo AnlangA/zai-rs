@@ -1,54 +1,37 @@
+//! Maintain conversation history across an interactive non-streaming chat.
+
 use std::io::{self, Write};
 
-use zai_rs::client::ZaiClient;
-use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
-
-fn extract_text_from_content(v: &serde_json::Value) -> Option<String> {
-    v.as_str().map(std::string::ToString::to_string)
-}
+use zai_rs::{
+    client::ZaiClient,
+    model::{
+        GLM4_5_airx, TextMessage, ThinkingType, chat::ChatCompletion,
+        chat_base_response::ChatCompletionResponse,
+    },
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = GLM4_5_airx {};
     let client = ZaiClient::from_env()?;
-
-    println!("可持续对话示例 (输入 exit 或 quit 退出)\n");
-
+    let mut request = ChatCompletion::new(
+        GLM4_5_airx {},
+        TextMessage::system("你是一个简洁、可靠的中文助手。"),
+    )
+    .with_temperature(0.7)
+    .with_top_p(0.9)
+    .with_thinking(ThinkingType::disabled());
     let mut line = String::new();
 
-    print!("你> ");
-    io::stdout().flush().ok();
-    line.clear();
-    io::stdin().read_line(&mut line)?;
-    let mut user_input = line.trim().to_string();
-    if user_input.eq_ignore_ascii_case("exit") || user_input.eq_ignore_ascii_case("quit") {
-        return Ok(());
-    }
-
-    let mut request = ChatCompletion::new(model, TextMessage::user(&user_input))
-        .with_temperature(0.7)
-        .with_top_p(0.9)
-        .with_thinking(ThinkingType::disabled());
-
+    println!("输入 exit 或 quit 退出。\n");
     loop {
-        let body: ChatCompletionResponse = request.send_via(&client).await?;
-
-        let ai_text = body
-            .choices()
-            .and_then(|cs| cs.first())
-            .and_then(|c| c.message().content())
-            .and_then(extract_text_from_content)
-            .unwrap_or_else(|| "<empty>".to_string());
-
-        println!("AI> {ai_text}\n");
-
-        request = request.add_messages(TextMessage::assistant(ai_text));
-
         print!("你> ");
-        io::stdout().flush().ok();
+        io::stdout().flush()?;
         line.clear();
-        io::stdin().read_line(&mut line)?;
-        user_input = line.trim().to_string();
+        if io::stdin().read_line(&mut line)? == 0 {
+            break;
+        }
+
+        let user_input = line.trim();
         if user_input.eq_ignore_ascii_case("exit") || user_input.eq_ignore_ascii_case("quit") {
             break;
         }
@@ -56,7 +39,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        request = request.add_messages(TextMessage::user(&user_input));
+        request = request.add_message(TextMessage::user(user_input));
+        let body: ChatCompletionResponse = request.send_via(&client).await?;
+        let answer = body
+            .choices()
+            .and_then(|choices| choices.first())
+            .and_then(|choice| choice.message())
+            .and_then(|message| message.content_str())
+            .ok_or("chat response did not contain text")?
+            .to_owned();
+
+        println!("AI> {answer}\n");
+        request = request.add_message(TextMessage::assistant(answer));
     }
 
     Ok(())

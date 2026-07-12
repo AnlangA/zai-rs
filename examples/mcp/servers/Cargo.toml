@@ -2,24 +2,20 @@
 name = "mcp_server"
 version = "0.1.5"
 edition = "2024"
+rust-version = "1.88"
 publish = false
 
 [dependencies]
 rmcp = { version = "2.2.0", features = [
     "server",
     "macros",
-    "client",
-    "transport-io",
     "transport-streamable-http-server",
-    "auth",
-    "elicitation",
     "schemars",
 ] }
 tokio = { version = "1.52.3", features = [
     "macros",
-    "rt",
     "rt-multi-thread",
-    "io-std",
+    "net",
     "signal",
 ] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -33,7 +29,3 @@ tracing-subscriber = { version = "0.3.23", features = [
 ] }
 axum = { version = "0.8.9", features = ["macros"] }
 schemars = "1.2.1"
-
-[dev-dependencies]
-tokio-stream = { version = "0.1.18" }
-tokio-util = { version = "0.7.18", features = ["codec"] }

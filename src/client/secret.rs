@@ -53,12 +53,6 @@ impl fmt::Display for ApiSecret {
     }
 }
 
-impl Default for ApiSecret {
-    fn default() -> Self {
-        Self(SecretString::from(String::new()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

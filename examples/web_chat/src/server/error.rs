@@ -1,194 +1,106 @@
-//! Error types and handling for the web chat application
+//! HTTP-safe error mapping for the example API.
 
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use serde::Serialize;
 
-/// Main application error type
-#[derive(Debug, Error)]
+/// Errors that can reach an HTTP handler.
+#[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("Configuration error: {0}")]
-    Config(#[from] crate::server::config::ConfigError),
-
-    #[error("Chat API error: {0}")]
-    ChatApi(String),
-
-    #[error("Session not found: {0}")]
+    #[error("upstream API request failed: {0}")]
+    Upstream(#[from] zai_rs::ZaiError),
+    #[error("upstream response did not contain assistant text")]
+    InvalidUpstreamResponse,
+    #[error("session not found: {0}")]
     SessionNotFound(String),
-
-    #[error("Session expired: {0}")]
+    #[error("session expired: {0}")]
     SessionExpired(String),
-
-    #[error("Invalid request: {0}")]
+    #[error("invalid request: {0}")]
     InvalidRequest(String),
-
-    #[error("Streaming error: {0}")]
-    StreamingError(String),
-
-    #[error("Rate limit exceeded")]
+    #[error("request body is not valid JSON")]
+    InvalidJson,
+    #[error("request Content-Type is not application/json")]
+    UnsupportedMediaType,
+    #[error("request body is too large")]
+    PayloadTooLarge,
+    #[error("rate limit exceeded")]
     RateLimitExceeded,
-
-    #[error("Internal server error")]
-    InternalError,
-
-    #[error("Bad request: {0}")]
-    BadRequest(String),
-
-    #[error("Unauthorized")]
-    Unauthorized,
-
-    #[error("Service unavailable")]
-    ServiceUnavailable,
-}
-
-/// Error response structure for API responses
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorResponse {
-    pub error: ErrorDetail,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ErrorDetail {
-    pub code: String,
-    pub message: String,
-    pub details: Option<serde_json::Value>,
-    pub timestamp: String,
 }
 
 impl AppError {
-    /// Get the HTTP status code for this error
-    pub fn status_code(&self) -> StatusCode {
+    pub(crate) fn status_and_code(&self) -> (StatusCode, &'static str) {
         match self {
-            AppError::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::ChatApi(_) => StatusCode::BAD_GATEWAY,
-            AppError::SessionNotFound(_) => StatusCode::NOT_FOUND,
-            AppError::SessionExpired(_) => StatusCode::GONE,
-            AppError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
-            AppError::StreamingError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
-            AppError::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
-            AppError::Unauthorized => StatusCode::UNAUTHORIZED,
-            AppError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
-        }
-    }
-
-    /// Get the error code for this error
-    pub fn error_code(&self) -> &'static str {
-        match self {
-            AppError::Config(_) => "CONFIG_ERROR",
-            AppError::ChatApi(_) => "CHAT_API_ERROR",
-            AppError::SessionNotFound(_) => "SESSION_NOT_FOUND",
-            AppError::SessionExpired(_) => "SESSION_EXPIRED",
-            AppError::InvalidRequest(_) => "INVALID_REQUEST",
-            AppError::StreamingError(_) => "STREAMING_ERROR",
-            AppError::RateLimitExceeded => "RATE_LIMIT_EXCEEDED",
-            AppError::InternalError => "INTERNAL_ERROR",
-            AppError::BadRequest(_) => "BAD_REQUEST",
-            AppError::Unauthorized => "UNAUTHORIZED",
-            AppError::ServiceUnavailable => "SERVICE_UNAVAILABLE",
-        }
-    }
-
-    /// Create an error response
-    pub fn to_error_response(&self) -> ErrorResponse {
-        ErrorResponse {
-            error: ErrorDetail {
-                code: self.error_code().to_string(),
-                message: self.to_string(),
-                details: None,
-                timestamp: chrono::Utc::now().to_rfc3339(),
+            Self::Upstream(_) | Self::InvalidUpstreamResponse => {
+                (StatusCode::BAD_GATEWAY, "UPSTREAM_ERROR")
             },
+            Self::SessionNotFound(_) => (StatusCode::NOT_FOUND, "SESSION_NOT_FOUND"),
+            Self::SessionExpired(_) => (StatusCode::GONE, "SESSION_EXPIRED"),
+            Self::InvalidRequest(_) => (StatusCode::BAD_REQUEST, "INVALID_REQUEST"),
+            Self::InvalidJson => (StatusCode::BAD_REQUEST, "INVALID_JSON"),
+            Self::UnsupportedMediaType => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE")
+            },
+            Self::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE"),
+            Self::RateLimitExceeded => (StatusCode::TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED"),
+        }
+    }
+
+    fn public_message(&self) -> String {
+        match self {
+            Self::Upstream(_) | Self::InvalidUpstreamResponse => {
+                "The upstream service could not complete the request.".to_owned()
+            },
+            Self::SessionNotFound(_) => "The requested session was not found.".to_owned(),
+            Self::SessionExpired(_) => "The requested session has expired.".to_owned(),
+            Self::InvalidRequest(message) => message.clone(),
+            Self::InvalidJson => "Request body must be valid JSON.".to_owned(),
+            Self::UnsupportedMediaType => "Content-Type must be application/json.".to_owned(),
+            Self::PayloadTooLarge => "Request body exceeds the server limit.".to_owned(),
+            Self::RateLimitExceeded => "Too many requests. Please try again later.".to_owned(),
         }
     }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = self.status_code();
-        let error_response = self.to_error_response();
-
-        tracing::error!(
-            error.code = %error_response.error.code,
-            error.message = %error_response.error.message,
-            error.status = %status.as_u16(),
-            "Application error occurred"
-        );
-
-        (status, Json(error_response)).into_response()
+        let (status, code) = self.status_and_code();
+        if let Self::Upstream(error) = &self {
+            tracing::warn!(%status, %code, upstream_code = ?error.code(), "request failed");
+        } else {
+            tracing::warn!(%status, %code, "request failed");
+        }
+        let message = self.public_message();
+        (
+            status,
+            Json(ErrorResponse {
+                error: ErrorDetail { code, message },
+            }),
+        )
+            .into_response()
     }
 }
 
-/// Result type alias for application operations
-pub type AppResult<T> = Result<T, AppError>;
-
-/// Convert from local ClientError to AppError
-impl From<crate::client::error_handler::ClientError> for AppError {
-    fn from(error: crate::client::error_handler::ClientError) -> Self {
-        AppError::ChatApi(error.to_string())
-    }
-}
-
-/// Convert from SDK errors to AppError
-impl From<zai_rs::ZaiError> for AppError {
-    fn from(error: zai_rs::ZaiError) -> Self {
-        AppError::ChatApi(error.to_string())
-    }
-}
-
-/// Convert from validation errors to AppError
 impl From<validator::ValidationErrors> for AppError {
-    fn from(errors: validator::ValidationErrors) -> Self {
-        AppError::InvalidRequest(errors.to_string())
+    fn from(_error: validator::ValidationErrors) -> Self {
+        // Validator diagnostics are useful to developers but are not a stable
+        // public protocol and can reveal internal field rules. Keep the HTTP
+        // response intentionally generic.
+        Self::InvalidRequest("Request validation failed.".to_owned())
     }
 }
 
-/// Convert from JSON serialization errors to AppError
-impl From<serde_json::Error> for AppError {
-    fn from(error: serde_json::Error) -> Self {
-        AppError::InvalidRequest(format!("JSON error: {}", error))
-    }
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: ErrorDetail,
 }
 
-/// Convert from UUID parsing errors to AppError
-impl From<uuid::Error> for AppError {
-    fn from(error: uuid::Error) -> Self {
-        AppError::InvalidRequest(format!("Invalid UUID: {}", error))
-    }
+#[derive(Serialize)]
+struct ErrorDetail {
+    code: &'static str,
+    message: String,
 }
 
-/// Convert from std::time::SystemTimeError to AppError
-impl From<std::time::SystemTimeError> for AppError {
-    fn from(error: std::time::SystemTimeError) -> Self {
-        AppError::InternalError
-    }
-}
-
-/// Error handling utilities
-pub mod error_utils {
-    use super::*;
-
-    /// Create a bad request error with a custom message
-    pub fn bad_request(message: impl Into<String>) -> AppError {
-        AppError::BadRequest(message.into())
-    }
-
-    /// Create an invalid request error with a custom message
-    pub fn invalid_request(message: impl Into<String>) -> AppError {
-        AppError::InvalidRequest(message.into())
-    }
-
-    /// Create a session not found error
-    pub fn session_not_found(session_id: impl Into<String>) -> AppError {
-        AppError::SessionNotFound(session_id.into())
-    }
-
-    /// Create a streaming error with a custom message
-    pub fn streaming_error(message: impl Into<String>) -> AppError {
-        AppError::StreamingError(message.into())
-    }
-}
+pub type AppResult<T> = Result<T, AppError>;

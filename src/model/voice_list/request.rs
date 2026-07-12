@@ -3,14 +3,30 @@ use validator::Validate;
 
 /// Query parameters for listing voices.
 #[derive(Debug, Clone, Serialize, Validate)]
+#[validate(schema(function = "validate_voice_list_query"))]
 pub struct VoiceListQuery {
     /// Voice-name filter. Pass the unescaped value; the client percent-encodes
     /// query parameters.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(length(min = 1))]
     pub voice_name: Option<String>,
     /// Voice origin (`OFFICIAL` or `PRIVATE` on the wire).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_type: Option<VoiceType>,
+}
+
+fn validate_voice_list_query(query: &VoiceListQuery) -> Result<(), validator::ValidationError> {
+    if query
+        .voice_name
+        .as_deref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        Err(validator::ValidationError::new(
+            "voice_name_must_not_be_blank",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 impl Default for VoiceListQuery {
@@ -40,7 +56,7 @@ impl VoiceListQuery {
 }
 
 /// Voice origin: official preset or user-cloned private voice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum VoiceType {
     /// Official preset voice.

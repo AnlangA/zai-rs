@@ -18,6 +18,7 @@ impl FileDeleteRequest {
         &self,
         client: &ZaiClient,
     ) -> crate::ZaiResult<super::response::FileDeleteResponse> {
+        crate::client::validation::require_non_blank(&self.file_id, "file_id")?;
         let route = crate::client::routes::FILES_DELETE;
         let url = client.endpoints().resolve_route(route, &[&self.file_id])?;
         client
