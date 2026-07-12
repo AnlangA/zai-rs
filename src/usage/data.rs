@@ -45,9 +45,7 @@ fn parse_next_reset_time(raw: &str) -> Option<DateTime<Utc>> {
 }
 
 fn beijing_offset() -> Option<FixedOffset> {
-    // UTC+08:00 (8*3600s east) is always a valid fixed offset; UTC (offset 0)
-    // is the panic-free fallback. Both are always `Some`, so callers always
-    // receive a timezone — the `Option` just keeps this helper panic-free.
+    // UTC+08:00 is a valid fixed offset; retain UTC as a panic-free fallback.
     FixedOffset::east_opt(8 * 60 * 60).or_else(|| FixedOffset::east_opt(0))
 }
 
@@ -402,7 +400,7 @@ impl CodingPlanQuotaLimit {
         self.number.saturating_sub(consumed.round() as u64)
     }
 
-    /// Remaining fraction in `[0.0, 1.0]`.
+    /// Remaining fraction in `[0.0, 1.0]`, derived from the reported percentage.
     pub fn remaining_ratio(&self) -> f64 {
         if self.number == 0 {
             return 0.0;
@@ -571,7 +569,7 @@ impl fmt::Display for CodingPlanUsageResponse {
 }
 
 /// Coding Plan usage / quota query request
-/// (`GET /api/monitor/usage/quota/limit`) (P05: routes through [`ZaiClient`]).
+/// (`GET /api/monitor/usage/quota/limit`).
 ///
 /// Construct with [`CodingPlanUsageRequest::new`] and execute with
 /// [`CodingPlanUsageRequest::send_via`]. Credentials and transport live on the

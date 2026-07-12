@@ -10,7 +10,8 @@
 //! |-----------|--------|-------------|
 //! | Create | [`CreateKnowledgeRequest`] | Create a new knowledge base |
 //! | List | [`KnowledgeListRequest`] | List knowledge bases |
-//! | Retrieve | [`KnowledgeRetrieveRequest`] | Get knowledge-base details / search |
+//! | Retrieve | [`KnowledgeRetrieveRequest`] | Get knowledge-base details |
+//! | Search | [`KnowledgeSearchRequest`] | Run semantic retrieval against a knowledge base |
 //! | Update | [`KnowledgeUpdateRequest`] | Update metadata |
 //! | Delete | [`KnowledgeDeleteRequest`] | Delete a knowledge base |
 //! | Capacity | [`KnowledgeCapacityRequest`] | Check usage / quota |
@@ -33,17 +34,24 @@
 //!
 //! # Usage
 //!
-//! ```text
-//! use zai_rs::knowledge::*;
+//! ```rust,no_run
+//! use zai_rs::{ZaiResult, client::ZaiClient, knowledge::*};
 //!
-//! // Create a knowledge base
-//! let kb = client.create_knowledge(&CreateKnowledgeRequest::new(body)).await?;
-//!
-//! // Upload a document
-//! let doc = client.upload_document(&DocumentUploadFileRequest::new(kb_id, file, opts)).await?;
-//!
-//! // Semantic search
-//! let results = client.retrieve_knowledge(&KnowledgeRetrieveRequest::new(kb_id, query)).await?;
+//! # async fn example(client: &ZaiClient) -> ZaiResult<()> {
+//! let created = CreateKnowledgeRequest::new(EmbeddingId::Embedding3New, "Product docs")
+//!     .send_via(client)
+//!     .await?;
+//! let uploaded = DocumentUploadFileRequest::new("knowledge-base-id")
+//!     .add_file_path("guide.pdf")
+//!     .send_via(client)
+//!     .await?;
+//! let matches = KnowledgeSearchRequest::new("knowledge-base-id", "How do I authenticate?")
+//!     .with_top_k(5)
+//!     .send_via(client)
+//!     .await?;
+//! # let _ = (created, uploaded, matches);
+//! # Ok(())
+//! # }
 //! ```
 
 /// Knowledge-base capacity / quota query.
@@ -70,7 +78,7 @@ mod document_upload_url;
 mod list;
 /// Retrieve knowledge-base details / semantic search.
 mod retrieve;
-/// Search knowledge-base (POST /knowledge/retrieve, P06).
+/// Search a knowledge base (`POST …/knowledge/retrieve`).
 mod search;
 /// Shared knowledge-base data types.
 mod types;

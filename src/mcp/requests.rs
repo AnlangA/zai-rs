@@ -17,8 +17,10 @@ pub enum SearchContentSize {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SearchLocation {
+    /// Chinese-region results (`cn`).
     #[serde(rename = "cn")]
     China,
+    /// Non-Chinese-region results (`us`).
     #[serde(rename = "us")]
     International,
 }
@@ -27,14 +29,19 @@ pub enum SearchLocation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SearchRecency {
+    /// Limit results to the previous day.
     #[serde(rename = "oneDay")]
     OneDay,
+    /// Limit results to the previous week.
     #[serde(rename = "oneWeek")]
     OneWeek,
+    /// Limit results to the previous month.
     #[serde(rename = "oneMonth")]
     OneMonth,
+    /// Limit results to the previous year.
     #[serde(rename = "oneYear")]
     OneYear,
+    /// Do not apply a recency limit.
     #[serde(rename = "noLimit")]
     NoLimit,
 }
@@ -61,6 +68,9 @@ pub struct WebSearchRequest {
 }
 
 impl WebSearchRequest {
+    /// Create a web-search request using server defaults for optional fields.
+    ///
+    /// Search queries should normally be no longer than 70 characters.
     pub fn new(query: impl Into<String>) -> Self {
         Self {
             query: query.into(),
@@ -71,21 +81,28 @@ impl WebSearchRequest {
         }
     }
 
+    /// Prefer results from the supplied domain.
+    ///
+    /// The upstream service treats this as a search constraint, but callers
+    /// should still validate returned URLs when strict domain isolation matters.
     pub fn domain(mut self, domain: impl Into<String>) -> Self {
         self.domain = Some(domain.into());
         self
     }
 
+    /// Restrict results to a relative time window.
     pub fn recency(mut self, recency: SearchRecency) -> Self {
         self.recency = Some(recency);
         self
     }
 
+    /// Select the amount of summary text returned for each result.
     pub fn content_size(mut self, content_size: SearchContentSize) -> Self {
         self.content_size = Some(content_size);
         self
     }
 
+    /// Supply the search-region hint used to rank results.
     pub fn location(mut self, location: SearchLocation) -> Self {
         self.location = Some(location);
         self
@@ -97,7 +114,9 @@ impl WebSearchRequest {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum WebReaderFormat {
+    /// Return GitHub-Flavored Markdown unless separately disabled.
     Markdown,
+    /// Return plain text.
     Text,
 }
 
@@ -124,6 +143,7 @@ pub struct WebReaderRequest {
 }
 
 impl WebReaderRequest {
+    /// Create a page-reader request using server defaults.
     pub fn new(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),
@@ -138,41 +158,52 @@ impl WebReaderRequest {
         }
     }
 
+    /// Set the returned content format.
     pub fn format(mut self, format: WebReaderFormat) -> Self {
         self.return_format = Some(format);
         self
     }
 
+    /// Choose whether image references remain in the extracted content.
     pub fn retain_images(mut self, retain: bool) -> Self {
         self.retain_images = Some(retain);
         self
     }
 
+    /// Include the page's link summary.
     pub fn links_summary(mut self, include: bool) -> Self {
         self.with_links_summary = Some(include);
         self
     }
 
+    /// Include the page's image summary.
     pub fn images_summary(mut self, include: bool) -> Self {
         self.with_images_summary = Some(include);
         self
     }
 
+    /// Preserve inline image data URLs instead of removing them.
     pub fn keep_image_data_urls(mut self, keep: bool) -> Self {
         self.keep_img_data_url = Some(keep);
         self
     }
 
+    /// Enable or disable GitHub-Flavored Markdown conversion.
     pub fn github_flavored_markdown(mut self, enabled: bool) -> Self {
         self.no_gfm = Some(!enabled);
         self
     }
 
+    /// Enable or bypass the upstream page cache.
     pub fn cache(mut self, enabled: bool) -> Self {
         self.no_cache = Some(!enabled);
         self
     }
 
+    /// Set the upstream page-fetch timeout in seconds.
+    ///
+    /// This is distinct from [`McpClient::with_tool_timeout`](super::McpClient::with_tool_timeout),
+    /// which bounds the complete MCP operation on the client side.
     pub fn timeout_seconds(mut self, timeout: u32) -> Self {
         self.timeout = Some(timeout);
         self
@@ -184,7 +215,9 @@ impl WebReaderRequest {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum RepositoryLanguage {
+    /// Request a Chinese response.
     Zh,
+    /// Request an English response.
     En,
 }
 
@@ -198,6 +231,7 @@ pub struct SearchDocRequest {
 }
 
 impl SearchDocRequest {
+    /// Create a repository search for `owner/repository`.
     pub fn new(repository: impl Into<String>, query: impl Into<String>) -> Self {
         Self {
             repo_name: repository.into(),
@@ -206,6 +240,7 @@ impl SearchDocRequest {
         }
     }
 
+    /// Select the response language.
     pub fn language(mut self, language: RepositoryLanguage) -> Self {
         self.language = Some(language);
         self
@@ -221,6 +256,7 @@ pub struct RepoStructureRequest {
 }
 
 impl RepoStructureRequest {
+    /// Create a request for the root tree of `owner/repository`.
     pub fn new(repository: impl Into<String>) -> Self {
         Self {
             repo_name: repository.into(),
@@ -228,6 +264,7 @@ impl RepoStructureRequest {
         }
     }
 
+    /// Inspect a repository-relative directory instead of the root.
     pub fn directory(mut self, directory: impl Into<String>) -> Self {
         self.dir_path = Some(directory.into());
         self
@@ -242,6 +279,7 @@ pub struct ReadRepoFileRequest {
 }
 
 impl ReadRepoFileRequest {
+    /// Create a request for a repository-relative file path.
     pub fn new(repository: impl Into<String>, path: impl Into<String>) -> Self {
         Self {
             repo_name: repository.into(),
@@ -255,10 +293,14 @@ impl ReadRepoFileRequest {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum UiArtifactOutput {
+    /// Generate frontend implementation code.
     Code,
+    /// Generate an AI prompt for recreating the interface.
     Prompt,
+    /// Generate a design specification.
     #[serde(rename = "spec")]
     Specification,
+    /// Generate a natural-language description.
     Description,
 }
 
@@ -271,6 +313,7 @@ pub struct UiToArtifactRequest {
 }
 
 impl UiToArtifactRequest {
+    /// Create a UI-conversion request from a local image path or remote URL.
     pub fn new(
         image_source: impl Into<String>,
         output_type: UiArtifactOutput,
@@ -294,6 +337,7 @@ pub struct ExtractTextRequest {
 }
 
 impl ExtractTextRequest {
+    /// Create an OCR request from a local image path or remote URL.
     pub fn new(image_source: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             image_source: image_source.into(),
@@ -302,6 +346,7 @@ impl ExtractTextRequest {
         }
     }
 
+    /// Hint at the programming language shown in a code screenshot.
     pub fn programming_language(mut self, language: impl Into<String>) -> Self {
         self.programming_language = Some(language.into());
         self
@@ -318,6 +363,7 @@ pub struct DiagnoseErrorRequest {
 }
 
 impl DiagnoseErrorRequest {
+    /// Create an error-diagnosis request from a local image path or remote URL.
     pub fn new(image_source: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             image_source: image_source.into(),
@@ -326,6 +372,7 @@ impl DiagnoseErrorRequest {
         }
     }
 
+    /// Describe when or where the error occurred.
     pub fn context(mut self, context: impl Into<String>) -> Self {
         self.context = Some(context.into());
         self
@@ -342,6 +389,7 @@ pub struct UnderstandDiagramRequest {
 }
 
 impl UnderstandDiagramRequest {
+    /// Create a technical-diagram request from a local image path or remote URL.
     pub fn new(image_source: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             image_source: image_source.into(),
@@ -350,6 +398,7 @@ impl UnderstandDiagramRequest {
         }
     }
 
+    /// Hint at the diagram type, such as `architecture`, `uml`, or `sequence`.
     pub fn diagram_type(mut self, diagram_type: impl Into<String>) -> Self {
         self.diagram_type = Some(diagram_type.into());
         self
@@ -366,6 +415,7 @@ pub struct AnalyzeVisualizationRequest {
 }
 
 impl AnalyzeVisualizationRequest {
+    /// Create a visualization-analysis request from a local image path or URL.
     pub fn new(image_source: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             image_source: image_source.into(),
@@ -374,6 +424,7 @@ impl AnalyzeVisualizationRequest {
         }
     }
 
+    /// Narrow the analysis to an area such as trends, anomalies, or comparisons.
     pub fn focus(mut self, focus: impl Into<String>) -> Self {
         self.analysis_focus = Some(focus.into());
         self
@@ -389,6 +440,9 @@ pub struct UiDiffRequest {
 }
 
 impl UiDiffRequest {
+    /// Create a comparison between expected and actual UI screenshots.
+    ///
+    /// Each image source may be a local path or a remote URL.
     pub fn new(
         expected_image_source: impl Into<String>,
         actual_image_source: impl Into<String>,
@@ -410,6 +464,7 @@ pub struct AnalyzeImageRequest {
 }
 
 impl AnalyzeImageRequest {
+    /// Create a general image-analysis request from a local path or remote URL.
     pub fn new(image_source: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             image_source: image_source.into(),
@@ -426,6 +481,9 @@ pub struct AnalyzeVideoRequest {
 }
 
 impl AnalyzeVideoRequest {
+    /// Create a video-analysis request from a local path or remote URL.
+    ///
+    /// The Vision MCP accepts MP4, MOV, and M4V inputs up to 8 MB.
     pub fn new(video_source: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             video_source: video_source.into(),

@@ -27,20 +27,18 @@ use super::{tools::*, traits::*};
 ///
 /// # Examples
 ///
-/// ```text
-/// use crate::model::base::{ChatBody, TextMessage};
+/// ```
+/// use zai_rs::model::{
+///     chat_base_request::ChatBody,
+///     chat_message_types::TextMessage,
+///     chat_models::GLM5_2,
+/// };
 ///
 /// // Create a basic chat request
-/// let chat_body = ChatBody {
-///     model: "gpt-4".to_string(),
-///     messages: vec![
-///         TextMessage::user("Hello, how are you?"),
-///         TextMessage::assistant("I'm doing well, thank you!")
-///     ],
-///     temperature: Some(0.7),
-///     max_tokens: Some(1000),
-///     ..Default::default()
-/// };
+/// let chat_body = ChatBody::new(GLM5_2 {}, TextMessage::user("Hello"))
+///     .add_message(TextMessage::assistant("How can I help?"))
+///     .with_temperature(0.7)
+///     .with_max_tokens(1_000);
 /// ```
 #[derive(Debug, Clone, Validate, Serialize)]
 pub struct ChatBody<N, M>
@@ -59,9 +57,7 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
 
-    /// Optional thinking prompt or reasoning text that can guide the model's
-    /// response. Only available for models that support thinking
-    /// capabilities.
+    /// Thinking-mode configuration for models that support extended reasoning.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingType>,
 
@@ -257,8 +253,7 @@ where
     N: ModelName + ThinkEnable,
     (N, M): Bounded,
 {
-    /// Adds thinking text to the chat body for models that support thinking
-    /// capabilities.
+    /// Configure thinking mode for a model that supports extended reasoning.
     ///
     /// This method is only available for models that implement the
     /// `ThinkEnable` trait, ensuring type safety for thinking-enabled
@@ -266,7 +261,8 @@ where
     ///
     /// # Arguments
     ///
-    /// * `thinking` - The thinking prompt or reasoning text to add
+    /// * `thinking` - Whether thinking is enabled and whether prior reasoning is
+    ///   cleared
     ///
     /// # Returns
     ///
@@ -275,9 +271,16 @@ where
     ///
     /// # Examples
     ///
-    /// ```text
-    /// let chat_body = ChatBody::new(model, messages)
-    ///     .with_thinking("Let me think step by step about this problem...");
+    /// ```
+    /// use zai_rs::model::{
+    ///     chat_base_request::ChatBody,
+    ///     chat_message_types::TextMessage,
+    ///     chat_models::GLM5_2,
+    ///     tools::ThinkingType,
+    /// };
+    ///
+    /// let chat_body = ChatBody::new(GLM5_2 {}, TextMessage::user("Solve this"))
+    ///     .with_thinking(ThinkingType::enabled());
     /// ```
     pub fn with_thinking(mut self, thinking: ThinkingType) -> Self {
         self.thinking = Some(thinking);
@@ -332,7 +335,7 @@ where
     }
 }
 
-// 为方便使用，实现从单个Tools到Vec<Tools>的转换
+// Preserve the historical `Into<Vec<Tools>>` convenience used by `with_tools`.
 impl From<Tools> for Vec<Tools> {
     fn from(tool: Tools) -> Self {
         vec![tool]

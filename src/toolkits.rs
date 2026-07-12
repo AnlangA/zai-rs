@@ -6,7 +6,7 @@
 
 //! # Toolkits Module
 //!
-//! A comprehensive tool-calling and execution framework for AI applications.
+//! Tool definition, execution, caching, and LLM tool-call parsing utilities.
 //! Supports both static tool definitions and dynamic registration at runtime.
 //!
 //! # Core Components
@@ -25,9 +25,11 @@
 //!
 //! # Quick Start
 //!
-//! ```text
+//! ```no_run
 //! use zai_rs::toolkits::prelude::*;
+//! use serde_json::json;
 //!
+//! # fn main() -> ToolResult<()> {
 //! let tool = FunctionTool::builder("get_weather", "Get current weather")
 //!     .property("location", json!({"type": "string"}))
 //!     .required("location")
@@ -36,11 +38,13 @@
 //!     })
 //!     .build()?;
 //!
-//! let mut executor = ToolExecutor::new();
-//! executor.register_tool(Box::new(tool))?;
+//! let executor = ToolExecutor::new();
+//! executor.add_dyn_tool(Box::new(tool))?;
+//! # Ok(())
+//! # }
 //! ```
 
-/// In-memory tool-call cache with hit/miss statistics.
+/// In-memory tool-call cache with per-entry hit statistics.
 pub mod cache;
 /// Core traits ([`DynTool`](core::DynTool),
 /// [`FunctionTool`](core::FunctionTool)) and type conversions.
@@ -65,7 +69,7 @@ pub mod rmcp_kits;
 ///
 /// ## Usage
 ///
-/// ```text
+/// ```
 /// use zai_rs::toolkits::prelude::*;
 /// ```
 pub mod prelude {

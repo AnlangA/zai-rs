@@ -3,8 +3,8 @@
 //! Query the remaining quota and consumption statistics for the GLM Coding
 //! Plan via the monitor API `GET /api/monitor/usage/quota/limit`.
 //!
-//! The Coding Plan applies two quota windows — a per-5-hour time window
-//! (`TIME_LIMIT`) and a weekly tokens window (`TOKENS_LIMIT`) — and reports the
+//! The Coding Plan applies two quota windows — a five-hour time window
+//! (`TIME_LIMIT`) and a weekly token window (`TOKENS_LIMIT`) — and reports the
 //! configured cap, consumed percentage, and next reset time for each. This
 //! module surfaces them as strongly-typed [`CodingPlanUsageResponse`].
 //!

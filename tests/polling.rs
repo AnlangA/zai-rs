@@ -1,4 +1,4 @@
-//! P07 acceptance: polling with absolute deadline (plan P07.7).
+//! Polling tests for absolute deadlines and bounded sleep intervals.
 
 use std::time::Duration;
 
@@ -63,7 +63,7 @@ fn sleep_capped_by_remaining() {
 
 #[test]
 fn interval_below_1s_returns_validation() {
-    // Per plan P07.8: calling with interval < 1s returns Validation.
+    // Intervals below one second are rejected as validation errors.
     let interval = Duration::from_millis(500);
     assert!(
         interval < Duration::from_secs(1),

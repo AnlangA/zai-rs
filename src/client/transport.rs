@@ -1,19 +1,15 @@
-//! The crate-private Transport (plan P03.4–P03.8).
+//! Buffered HTTP transport used internally by [`ZaiClient`](super::ZaiClient).
 //!
 //! Execution pipeline:
-//!   validate → build URL → encode body → enforce request limit
-//!   → send/retry → enforce response limit → probe error → decode
-//!   → validate invariant → convert to public response.
+//! build request → enforce the JSON request limit → send/retry → buffer and cap
+//! the response → let the caller decode bytes or JSON.
 //!
-//! Timeouts are split (plan §4): connect 10s, per-attempt 60s, overall 120s,
-//! stream idle 60s. Backoff uses full jitter with an injectable [`JitterSource`]
-//! so tests use virtual time. Retry-After (429/503) replaces jitter when valid.
-//! The Transport only ever logs fixed metadata (method, route template, status,
-//! byte count, attempt, elapsed, sanitized correlation request_id) — never the
-//! URL, header values, query values, or body.
+//! The default client uses a 10-second connect timeout and a 60-second
+//! per-attempt timeout. A configured transport derives its overall deadline as
+//! `request_timeout * max_attempts`. Backoff uses full jitter with an injectable
+//! [`JitterSource`] so tests can use deterministic delays.
 //!
-//! Every REST request is dispatched through this transport. JSON, empty-body,
-//! binary and multipart endpoints therefore share the same authentication,
+//! JSON, empty-body, binary, and multipart endpoints share authentication,
 //! retry, redirect, size-limit and response-decoding behavior.
 
 #![allow(dead_code)]
@@ -48,13 +44,20 @@ use crate::client::transport::retry::{
     is_retryable_outcome, parse_retry_after, reconcile_retry_after,
 };
 
-/// The fixed timeout policy (plan §4). Defaults: connect 10s, attempt 60s,
-/// overall 120s, stream idle 60s.
+/// Timeout values used by the transport.
+///
+/// `Default` yields connect 10s, attempt 60s, overall 120s, and stream idle
+/// 60s. The internal `Transport::new` constructor replaces `overall` with
+/// `request_timeout * max_attempts` from the public transport configuration.
 #[derive(Debug, Clone, Copy)]
 pub struct TimeoutPolicy {
+    /// TCP connection timeout.
     pub connect: Duration,
+    /// Deadline for one HTTP attempt.
     pub attempt: Duration,
+    /// Deadline covering attempts, redirects, and backoff.
     pub overall: Duration,
+    /// Reserved idle deadline for streaming transports.
     pub stream_idle: Duration,
 }
 
@@ -106,12 +109,18 @@ pub struct TransportResponse {
 }
 
 impl TransportResponse {
+    /// Return the HTTP status code from the final response.
     pub fn status(&self) -> u16 {
         self.status
     }
+    /// Borrow the response headers from the final response.
     pub fn headers(&self) -> &reqwest::header::HeaderMap {
         &self.headers
     }
+    /// Consume the response and return its buffered body.
+    ///
+    /// A recognized business-error envelope or non-2xx HTTP status is converted
+    /// to [`ZaiError`] before bytes are returned.
     pub fn bytes(self) -> ZaiResult<Bytes> {
         if let Ok(text) = std::str::from_utf8(&self.body)
             && let Some(error) = decode::extract_error_envelope(text)
@@ -128,6 +137,11 @@ impl TransportResponse {
         Ok(self.body)
     }
 
+    /// Consume the response and deserialize its buffered JSON body.
+    ///
+    /// Business-error envelopes and non-2xx statuses are handled before JSON
+    /// deserialization. This method does not validate the response
+    /// `Content-Type` header.
     pub fn json<T: serde::de::DeserializeOwned>(self) -> ZaiResult<T> {
         if let Ok(text) = std::str::from_utf8(&self.body)
             && let Some(error) = decode::extract_error_envelope(text)
@@ -201,9 +215,8 @@ impl Transport {
     /// (status, headers, body) of the final attempt. The caller performs the
     /// typed decode.
     ///
-    /// This is the P03 reference implementation; it exercises the full pipeline
-    /// except multipart (added in P07) and SSE streaming (P08). For the P02–P05
-    /// window, migrated endpoints call this; legacy endpoints keep their path.
+    /// Multipart bodies are rebuilt for every attempt. Responses are fully
+    /// buffered; this method does not implement SSE streaming.
     #[allow(clippy::too_many_lines)]
     pub(crate) async fn send(&self, prepped: &PreparedRequest<'_>) -> ZaiResult<TransportResponse> {
         // Enforce request body limit up front.
@@ -253,7 +266,7 @@ impl Transport {
                             Ok(Some(target)) => {
                                 hops += 1;
                                 url = target.to_string();
-                                continue; // re-send to the new origin (no auth header)
+                                continue; // rebuild the request for the accepted same-origin target
                             },
                             Ok(None) | Err(_) => {
                                 // Don't follow; treat as terminal with the body.
@@ -326,8 +339,8 @@ impl Transport {
                     if attempt >= max_attempts {
                         return Err(retry_exhausted(e));
                     }
-                    // Full-jitter backoff (Retry-After reconciliation is applied
-                    // in P07 where the per-attempt response headers are in hand).
+                    // Network/timeout failures have no HTTP response headers, so
+                    // this branch uses jitter without a Retry-After hint.
                     let delay = backoff_delay(u32::from(attempt) - 1, self.jitter.as_ref());
                     if self.clock.now() + delay >= deadline {
                         return Err(timeout_overall());
@@ -393,7 +406,11 @@ fn api_error(status: u16, error: decode::BusinessError) -> ZaiError {
     ZaiError::from_api_response(status, code, error.message)
 }
 
-/// Cap a response body to `limit` bytes (plan P03.8).
+/// Buffer at most `limit` response bytes.
+///
+/// Oversized bodies are truncated. A body-read error or 60-second read timeout
+/// produces an empty buffer; callers will subsequently surface a status or
+/// decode error.
 async fn cap_body(resp: reqwest::Response, limit: u64) -> Bytes {
     // Read up to limit+1 to detect overflow.
     match tokio::time::timeout(Duration::from_secs(60), resp.bytes()).await {

@@ -107,7 +107,7 @@ pub struct SessionConfig {
     pub turn_detection: TurnDetection,
     /// Beta / mode toggles.
     pub beta_fields: BetaFields,
-    /// Function tools (ServerVAD requires re-sending `turn_detection`).
+    /// Function tools advertised to the model.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<RealtimeTool>,
 }

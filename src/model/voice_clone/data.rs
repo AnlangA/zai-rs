@@ -4,14 +4,11 @@ use validator::Validate;
 use super::{super::traits::*, request::VoiceCloneBody};
 use crate::client::ZaiClient;
 
-/// Voice clone request wrapper using JSON
+/// Voice-cloning request wrapper using a JSON body.
 ///
 /// Builder for the voice-clone endpoint. Construct with
 /// [`VoiceCloneRequest::new`], tune with the `with_*` methods, then call
 /// [`VoiceCloneRequest::send_via`].
-///
-/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
-/// [`send_via`](Self::send_via).
 pub struct VoiceCloneRequest<N>
 where
     N: ModelName + VoiceClone + Serialize,
@@ -24,9 +21,6 @@ where
     N: ModelName + VoiceClone + Serialize,
 {
     /// Create a new voice clone request with required fields.
-    ///
-    /// **P05**: no longer takes an API key — the key is provided by the
-    /// [`ZaiClient`] at send time.
     pub fn new(
         model: N,
         voice_name: impl Into<String>,

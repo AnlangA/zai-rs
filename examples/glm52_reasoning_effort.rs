@@ -1,4 +1,4 @@
-//! GLM-5.2 Reasoning Effort Example (P05: routes through ZaiClient).
+//! GLM-5.2 reasoning-effort example using `ZaiClient`.
 use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 

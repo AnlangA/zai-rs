@@ -1,4 +1,4 @@
-//! Chat via the Coding Plan endpoint (P05: routes through ZaiClient).
+//! Chat via the Coding Plan endpoint using `ZaiClient`.
 use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};
 

@@ -4,7 +4,7 @@ use super::{
 };
 use crate::client::ZaiClient;
 
-/// Text Embedding request builder (P05: routes through [`ZaiClient`]).
+/// Builder for generating text embeddings through a [`ZaiClient`].
 ///
 /// Credentials and transport live on the `ZaiClient`, passed to
 /// [`send_via`](Self::send_via).

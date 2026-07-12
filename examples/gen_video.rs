@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ZaiClient::from_env()?;
     let user_text = "可爱小猫叠在一起";
 
-    // 提交视频生成请求 (P05: credentials live on the ZaiClient).
+    // 提交视频生成请求；凭证和传输配置由 ZaiClient 管理。
     let request = VideoGenRequest::new(model).with_prompt(user_text);
     let body = request.send_via(&client).await?;
 

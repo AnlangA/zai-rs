@@ -1,7 +1,7 @@
 //! Exercise every Web Reader MCP request option.
 //!
 //! Run with:
-//! cargo run --example mcp_web_reader --features mcp -- https://docs.rs/rmcp/2.2.0/rmcp/
+//! cargo run --example mcp_web_reader --features mcp -- https://docs.rs/rmcp/latest/rmcp/
 
 use std::env;
 

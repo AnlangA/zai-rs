@@ -1,6 +1,6 @@
 //! # Tool-calling Example (non-streaming)
 //!
-//! P05 note: the SSE streaming path is rebuilt in P08.
+//! This minimal tool-calling example uses a non-streaming response.
 
 use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};

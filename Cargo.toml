@@ -63,8 +63,8 @@ jsonschema = { version = "0.46.5", optional = true, default-features = false }
 validator = { version = "0.20.0", features = ["derive"] }
 url = "2.5.8"
 reqwest = { version = "0.13.4", features = ["json", "multipart", "stream", "gzip"] }
-# secrecy wraps the API key so it is never exposed via Debug/Display; the only
-# place the plaintext is read is Authorization-header construction (P02.1).
+# secrecy keeps API keys out of Debug/Display output. Plaintext access is
+# limited to HTTP authentication and SDK-managed MCP child-process setup.
 secrecy = "0.10.3"
 
 fastrand = "2.4.1"
@@ -98,11 +98,8 @@ uuid = { version = "1.23.3", features = ["v4"], optional = true }
 tokio-tungstenite = { version = "0.29", features = ["connect", "rustls-tls-native-roots"], optional = true }
 # JWT signing for the realtime client-auth handshake (HS256).
 hmac = { version = "0.13.0", optional = true }
-# sha2 is a CORE normal dependency (P03.12): the Transport uses it for response
-# hashing/redaction and AtomicDownloadSink integrity. It is no longer feature-
-# gated — the realtime JWT path simply reuses it.
+# SHA-256 is used by realtime JWT signing and cache-key contract tests.
 sha2 = "0.11.0"
-# tokio-util provides `io` for streaming multipart/download (P03.12).
 tokio-util = { version = "0.7.18", default-features = false, features = ["io"] }
 # `BroadcastStream` adapts tokio broadcast channels into `Stream`s for the
 # realtime event/audio fan-out.
@@ -127,8 +124,7 @@ all = "deny"
 
 [features]
 default = []
-# RMCP protocol bridge — builds on the toolkits framework to call remote MCP
-# servers (plan P09.1). Enables `zai_rs::toolkits::rmcp_kits`.
+# RMCP protocol bridge for adapting arbitrary MCP tools to the toolkits API.
 rmcp-kits = ["dep:rmcp", "toolkits"]
 # Unified user-facing MCP API. It does not pull in the lower-level toolkits
 # framework; `rmcp-kits` remains available separately for custom MCP bridges.
@@ -144,8 +140,7 @@ realtime = [
     "dep:uuid",
     "tokio/net",
 ]
-# Core tool-execution framework: dynamic tool registration, schema validation,
-# and effect-aware execution (plan P09.1). Enables `zai_rs::toolkits`.
+# Enables JSON-Schema validation in the tool-execution framework.
 toolkits = ["dep:jsonschema"]
 
 [[example]]
@@ -178,11 +173,11 @@ hyper = { version = "1.10.1", features = ["full"] }
 hyper-util = { version = "0.1.20", features = ["full"] }
 http-body-util = "0.1.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-# tempfile is used by tests that previously read real media from `data/`; it
-# lets them generate minimal PNG/WAV/text fixtures in a temp dir instead (P01.6).
+# Tests generate isolated PNG/WAV/text fixtures instead of relying on repository
+# media files.
 tempfile = "3.27.0"
-# Dev-only tokio `net` feature for the 127.0.0.1:0 TestServer (P02.13);
-# `test-util` for paused-time backoff/deadline tests (P03.13).
+# Dev-only networking supports the loopback test server; `test-util` enables
+# deterministic paused-time tests for backoff and deadlines.
 tokio = { version = "1.52.3", features = ["net", "test-util"] }
-# Property-based testing for contract invariant verification (P11.5).
+# Property-based tests exercise protocol and transport invariants.
 proptest = "1.11.0"

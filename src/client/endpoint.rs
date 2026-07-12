@@ -1,10 +1,10 @@
-//! Validated, URL-based endpoint configuration (plan P02.5–P02.8).
+//! Validated, URL-based endpoint configuration.
 //!
-//! Unlike the legacy string-concatenating `client::EndpointConfig (0.4 legacy)`,
-//! this stores each family's base as a parsed [`url::Url`]. Building rejects
+//! Each family base is stored as a parsed [`url::Url`]. Building rejects
 //! relative URLs, userinfo, query strings and fragments; the scheme is checked
 //! against the family (HTTPS/WSS by default, HTTP/WS only when insecure
-//! transport is explicitly allowed AND the host is loopback/localhost). Dynamic
+//! transport is explicitly allowed and the host passes a syntactic local-host
+//! check). Dynamic
 //! path segments go through [`EndpointConfig::resolve`], which
 //! percent-encodes via `url::PathSegmentsMut` and rejects empty / `.` / `..`
 //! segments — never raw string concatenation.
@@ -14,21 +14,29 @@ use url::Url;
 use super::routes::{Route, Segment};
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
-/// The fixed API endpoint families (plan §4 / P02.5).
+/// API endpoint families understood by [`EndpointConfig`].
 ///
 /// Each variant carries its official default base URL and the scheme class it
 /// accepts. Defaults are HTTPS/WSS; HTTP/WS is only permitted for custom bases
-/// when the caller explicitly enables insecure transport AND the host resolves
-/// to loopback.
+/// when the caller explicitly enables insecure transport and the host passes
+/// the validator's local-host string check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiFamily {
+    /// General PaaS v4 REST API.
     PaasV4,
+    /// Coding-specific PaaS v4 REST API.
     CodingPaasV4,
+    /// Agent v1 REST API.
     AgentV1,
+    /// Shared LLM-application API base.
     LlmApplication,
+    /// Application v2 routes, resolved against the LLM-application base.
     ApplicationV2,
+    /// Application v3 routes, resolved against the LLM-application base.
     ApplicationV3,
+    /// ZRAG API.
     Zrag,
+    /// Usage and quota monitor API.
     Monitor,
     /// WebSocket realtime endpoint.
     Realtime,
@@ -41,7 +49,8 @@ impl ApiFamily {
             ApiFamily::PaasV4 => "https://open.bigmodel.cn/api/paas/v4",
             ApiFamily::CodingPaasV4 => "https://open.bigmodel.cn/api/coding/paas/v4",
             ApiFamily::AgentV1 => "https://open.bigmodel.cn/api/v1",
-            // ApplicationV2/V3 share the LLM-application base per the plan.
+            // ApplicationV2/V3 route paths include their version and share this
+            // family base.
             ApiFamily::LlmApplication | ApiFamily::ApplicationV2 | ApiFamily::ApplicationV3 => {
                 "https://open.bigmodel.cn/api/llm-application/open"
             },
@@ -320,7 +329,7 @@ impl EndpointConfigBuilder {
 
 /// Parse and validate a family base URL string.
 ///
-/// Rules (plan P02.6/P02.7):
+/// Validation rules:
 /// - must be an absolute URL (cannot-be-a-base / relative rejected);
 /// - no userinfo, no query, no fragment;
 /// - scheme must be the family's secure scheme, OR the insecure scheme when
@@ -364,8 +373,10 @@ fn parse_family_base(raw: &str, family: ApiFamily, allow_insecure: bool) -> ZaiR
     Ok(url)
 }
 
-/// `true` for loopback / `localhost` hosts (the only hosts permitted with
-/// insecure transport).
+/// Apply the syntactic host allow-list used for insecure transport.
+///
+/// This function does not resolve DNS. It accepts `localhost`, IPv4/IPv6
+/// loopback literals, and any host string beginning with `127.`.
 fn is_loopback(host: &str) -> bool {
     host == "localhost"
         || host == "127.0.0.1"
@@ -374,7 +385,7 @@ fn is_loopback(host: &str) -> bool {
         || host.starts_with("127.")
 }
 
-/// Reject empty, `.` and `..` path segments (plan P02.8).
+/// Reject empty, `.` and `..` path segments.
 fn validate_segment(seg: &str) -> ZaiResult<()> {
     if seg.is_empty() {
         return Err(ZaiError::ApiError {

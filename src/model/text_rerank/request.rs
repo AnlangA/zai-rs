@@ -13,32 +13,32 @@ pub enum RerankModel {
 /// Request body for rerank API
 #[derive(Debug, Clone, Serialize)]
 pub struct RerankBody {
-    /// 模型编码，默认为 rerank
+    /// Model identifier; currently always `rerank`.
     pub model: RerankModel,
 
-    /// 查询文本（最大长度 4096 字符）
+    /// Query text (at most 4,096 characters).
     pub query: String,
 
-    /// 候选文本数组（最多 128 条，单条最大 4096 字符）
+    /// Candidate documents (1–128 items, at most 4,096 characters each).
     pub documents: Vec<String>,
 
-    /// 返回得分最高的前 n 条，默认 0 返回所有
+    /// Number of highest-ranked documents to return; omission returns all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_n: Option<usize>,
 
-    /// 是否返回原始文本，默认 false
+    /// Whether to include the original document text; defaults to `false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub return_documents: Option<bool>,
 
-    /// 是否返回原始分数，默认 false
+    /// Whether to include raw relevance scores; defaults to `false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub return_raw_scores: Option<bool>,
 
-    /// 客户端请求ID
+    /// Client-provided request identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
 
-    /// 终端用户ID
+    /// End-user identifier used for abuse monitoring.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
 }

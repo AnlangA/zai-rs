@@ -1,12 +1,8 @@
-//! Sealed `RequestSpec` and `PreparedRequest` (plan P03.2).
+//! Prepared HTTP requests and a reserved sealed endpoint contract.
 //!
-//! Every endpoint implements the crate-private sealed `RequestSpec` trait,
-//! declaring the fixed method/path/content-type/retry-safety/limits/validator
-//! and decoder. The Transport turns a `RequestSpec` into a `PreparedRequest`
-//! (validated URL + method + body) and dispatches it.
-//!
-//! The trait is sealed so only crate-internal endpoints can implement it; the
-//! public surface is the service facades, not raw specs.
+//! Current endpoints construct [`PreparedRequest`] values directly. The sealed
+//! [`RequestSpec`] trait describes a possible endpoint contract but currently
+//! has no implementations and is not consumed by the transport.
 
 use std::any::type_name;
 
@@ -18,9 +14,9 @@ use crate::client::transport::retry::RetrySafety;
 pub enum BodyKind<'a> {
     /// No body (GET/DELETE).
     None,
-    /// A JSON-serializable body, serialized once and reused across attempts.
+    /// A JSON value serialized whenever an attempt's request is built.
     Json(&'a serde_json::Value),
-    /// Raw bytes (already serialized); reused via `Arc<Bytes>`.
+    /// Raw bytes, typically containing JSON serialized before dispatch.
     Bytes(&'a bytes::Bytes),
     /// Multipart — built per attempt by a factory (files re-opened each try).
     Multipart(&'a super::multipart::MultipartBodyFactory),
@@ -29,17 +25,25 @@ pub enum BodyKind<'a> {
 /// How the final response body is consumed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResponseMode {
+    /// Buffer the response under the JSON response-size limit.
     Json,
+    /// Buffer the response under the binary/file response-size limit.
     Binary,
 }
 
 /// A fully-prepared, validated request ready to be sent by the Transport.
 pub struct PreparedRequest<'a> {
+    /// Uppercase HTTP method string.
     pub method: &'static str,
+    /// Fully resolved request URL.
     pub url: String,
+    /// Request body representation.
     pub body: BodyKind<'a>,
+    /// Retry classification derived from the request method.
     pub retry_safety: RetrySafety,
+    /// Optional caller assertion that the operation is idempotent.
     pub retry_override: Option<RetryOverride>,
+    /// Response buffering mode and associated size limit.
     pub response_mode: ResponseMode,
     /// Route template for tracing (never the materialized URL).
     pub route_template: &'static str,
@@ -62,11 +66,12 @@ mod private {
     pub trait Sealed {}
 }
 
-/// The fixed specification of an endpoint (plan P03.2).
+/// Reserved sealed specification for a fixed endpoint.
 ///
-/// Associated items mirror plan §4: METHOD, API_FAMILY, PATH_TEMPLATE, content
-/// types, retry safety, response mode, done marker and success invariant.
-#[allow(unused)] // associated items are consumed by the Transport once endpoints migrate (P05).
+/// The current transport does not consume this trait; endpoints build
+/// [`PreparedRequest`] directly. It remains sealed for potential crate-internal
+/// adoption.
+#[allow(unused)] // Reserved endpoint contract; current callers use PreparedRequest directly.
 pub trait RequestSpec: private::Sealed {
     /// The Rust type name, for diagnostics.
     fn spec_name(&self) -> &'static str {

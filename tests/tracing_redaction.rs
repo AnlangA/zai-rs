@@ -1,4 +1,4 @@
-//! Tracing / log redaction tests (plan P01.4).
+//! Tracing and log-redaction tests.
 //!
 //! The SDK instruments every HTTP request/response with `tracing::trace!`
 //! lines. The request body and response body are passed through

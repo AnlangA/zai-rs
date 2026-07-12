@@ -3,7 +3,7 @@ use zai_rs::model::voice_clone::{GlmTtsClone, VoiceCloneResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Credentials and transport come from the environment via ZaiClient (P05).
+    // ZaiClient loads credentials and transport configuration from the environment.
     let client = ZaiClient::from_env()?;
 
     // Example values from the spec

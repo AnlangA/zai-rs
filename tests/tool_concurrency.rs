@@ -1,4 +1,7 @@
-//! P09 acceptance: tool concurrency limits (plan P09.10-P09.12).
+//! Reference limits and semaphore behavior for concurrent tool execution.
+//!
+//! The constants in this file are local contract fixtures; production executor
+//! behavior is covered separately by `toolkits_executor_coverage`.
 //! Requires `--features toolkits`.
 
 #![cfg(feature = "toolkits")]
@@ -11,19 +14,19 @@ use std::time::Duration;
 
 use tokio::sync::Semaphore;
 
-/// Plan §4 / P09.6: default concurrency = 8.
+/// Reference maximum number of active tool calls.
 const DEFAULT_CONCURRENCY: usize = 8;
 
-/// Plan §4 / P09.6: batch limit = 64 calls.
+/// Reference maximum number of calls accepted in one batch.
 const BATCH_LIMIT: usize = 64;
 
-/// Plan §4 / P09.6: deadline = 30s.
+/// Reference per-call deadline.
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(30);
 
-/// Plan §4 / P09.6: input limit = 256 KiB.
+/// Reference serialized-input limit.
 const INPUT_LIMIT: usize = 256 * 1024;
 
-/// Plan §4 / P09.6: output limit = 1 MiB.
+/// Reference serialized-output limit.
 const OUTPUT_LIMIT: usize = 1024 * 1024;
 
 #[test]
@@ -73,7 +76,7 @@ async fn batch_limit_constrains_max_calls() {
 
 #[tokio::test]
 async fn futures_unordered_completes_in_any_order() {
-    // Plan §4: batch uses FuturesUnordered (not spawn-all first).
+    // Demonstrate that FuturesUnordered yields completion order.
     use futures_util::StreamExt;
     use futures_util::stream::FuturesUnordered;
     use std::future::Future;

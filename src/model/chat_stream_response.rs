@@ -20,18 +20,16 @@
 //! - `[DONE]` marker to signal stream completion
 //! - Optional usage statistics on the final chunk
 //!
-//! ## Usage
+//! ## Decoding a chunk
 //!
-//! ```text
-//! let mut client = ChatCompletion::new(model, messages, api_key).enable_stream();
-//! client.stream_for_each(|chunk| async move {
-//!     if let Some(delta) = &chunk.choices[0].delta {
-//!         if let Some(content) = &delta.content {
-//!             print!("{}", content);
-//!         }
-//!     }
-//!     Ok(())
-//! }).await?;
+//! ```
+//! use zai_rs::model::chat_stream_response::ChatStreamResponse;
+//!
+//! let chunk: ChatStreamResponse = serde_json::from_str(
+//!     r#"{"id":null,"choices":[{"index":0,"delta":{"content":"Hello"}}]}"#,
+//! )?;
+//! assert_eq!(chunk.choices[0].delta.as_ref().unwrap().content.as_deref(), Some("Hello"));
+//! # Ok::<(), serde_json::Error>(())
 //! ```
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -176,11 +174,10 @@ pub struct Delta {
 
     /// Streaming tool call payload for tool invocation.
     ///
-    /// When `tool_stream` is enabled and the model emits tool calling
-    /// information, providers often stream this as an array of objects with
-    /// partial fields. Use a flexible Value here to accept
-    /// strings/arrays/objects without failing deserialization on type
-    /// mismatch across increments.
+    /// When `tool_stream` is enabled, the provider emits an array of partially
+    /// populated [`ToolCallMessage`](crate::model::chat_base_response::ToolCallMessage)
+    /// objects. Their `arguments` field accepts either a JSON string or a JSON
+    /// value and normalizes the latter to a compact string.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<crate::model::chat_base_response::ToolCallMessage>>,
 }

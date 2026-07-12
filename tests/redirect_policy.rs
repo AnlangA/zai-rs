@@ -1,4 +1,4 @@
-//! P03 acceptance: redirect policy (plan P03 验证 — redirect_policy).
+//! HTTP redirect-policy tests.
 
 use url::Url;
 use zai_rs::client::transport::redirect::{MAX_REDIRECTS, follow};

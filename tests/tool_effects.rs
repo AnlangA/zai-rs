@@ -1,4 +1,7 @@
-//! P09 acceptance: ToolEffect execution matrix (plan P09.4).
+//! Reference policy matrix for pure, idempotent, and side-effecting tools.
+//!
+//! `Effect` is a local contract fixture; it is not part of the public toolkit
+//! API and these tests do not alter `ToolExecutor` behavior.
 //! Requires `--features toolkits`.
 
 #![cfg(feature = "toolkits")]
@@ -11,8 +14,7 @@ use std::sync::{
 use zai_rs::toolkits::core::{DynTool, ToolMetadata};
 use zai_rs::toolkits::error::ToolResult;
 
-/// ToolEffect classification (plan §4 / P09). Not yet in `core.rs` — this test
-/// defines and pins the semantics until the type lands in P09 core.
+/// Local effect classification used to express the reference policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Effect {
     Pure,
@@ -120,8 +122,8 @@ async fn counting_tool_increments_on_each_call() {
 
 #[test]
 fn transient_tool_error_codes_match_plan() {
-    // Plan §4 / P09.7: transient tool errors include connect/read plus
-    // 408/425/429/500/502/503/504.
+    // The reference transient-status set includes request timeout, rate limiting,
+    // and selected server/gateway failures.
     let transient_statuses = [408u16, 425, 429, 500, 502, 503, 504];
     assert_eq!(transient_statuses.len(), 7);
     // 501/505 are explicitly excluded.

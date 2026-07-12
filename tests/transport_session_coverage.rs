@@ -1,4 +1,4 @@
-//! Coverage for transport/mod.rs and realtime/session.rs.
+//! Coverage for transport.rs and realtime/session.rs.
 //! Tests the pure-logic paths (timeout policy, config builders, session config)
 //! that don't require a real network connection.
 

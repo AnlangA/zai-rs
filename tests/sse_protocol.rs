@@ -1,4 +1,4 @@
-//! P08 acceptance: SSE protocol tests (plan P08.1-P08.4).
+//! SSE framing, parsing, and protocol-error tests.
 //!
 //! Exercises the existing `SseEventParser` against plan requirements:
 //! - arbitrary chunk boundaries (CRLF, UTF-8 cross-chunk)

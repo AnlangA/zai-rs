@@ -7,27 +7,32 @@
 //!
 //! | Operation | Module | Description |
 //! |-----------|--------|-------------|
-//! | Upload | [`FileUploadRequest`] | Upload files (PDF, images, etc.) |
+//! | Upload | [`FileUploadRequest`] | Upload a local file |
 //! | List | [`FileListRequest`] | List files with metadata |
 //! | Content | [`FileContentRequest`] | Retrieve file content |
 //! | Delete | [`FileDeleteRequest`] | Delete files |
+//! | Parse | [`FileParseSyncRequest`] | Submit an open-format synchronous parse request |
 //!
 //! # Usage
 //!
-//! ```text
-//! use zai_rs::file::*;
+//! ```rust,no_run
+//! use zai_rs::{ZaiResult, client::ZaiClient, file::*};
 //!
-//! // Upload
-//! let result = client.upload_file(&FileUploadRequest::new(file, ContentType::Pdf)).await?;
+//! # async fn example(client: &ZaiClient) -> ZaiResult<()> {
+//! let uploaded = FileUploadRequest::new(FilePurpose::FileExtract, "report.pdf")
+//!     .send_via(client)
+//!     .await?;
 //!
-//! // List
-//! let files = client.list_files(&FileListRequest::new().limit(10)).await?;
+//! let files = FileListRequest::new()
+//!     .with_query(FileListQuery::new().with_limit(10))
+//!     .send_via(client)
+//!     .await?;
 //!
-//! // Get content
-//! let content = client.get_file_content(&FileContentRequest::new(file_id)).await?;
-//!
-//! // Delete
-//! client.delete_file(&FileDeleteRequest::new(file_id)).await?;
+//! let content = FileContentRequest::new("file-id").send_via(client).await?;
+//! let deleted = FileDeleteRequest::new("file-id").send_via(client).await?;
+//! # let _ = (uploaded, files, content, deleted);
+//! # Ok(())
+//! # }
 //! ```
 
 /// Request body / shared types for file operations.
@@ -35,14 +40,13 @@ mod request;
 /// Response types for file operations.
 mod response;
 
-// Split operations into clear modules
 /// Retrieve file content (`GET …/files/{id}/content`).
 mod content;
 /// Delete a file (`DELETE …/files/{id}`).
 mod delete;
 /// List files with metadata (`GET …/files`).
 mod list;
-/// Synchronous file parsing (`POST …/files/parser/sync`, P06).
+/// Synchronous file parsing (`POST …/files/parser/sync`).
 mod parse_sync;
 /// Upload files (`POST …/files`, multipart).
 mod upload;

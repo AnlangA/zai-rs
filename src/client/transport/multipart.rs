@@ -1,12 +1,10 @@
-//! Multipart body factory (plan P03.12).
+//! Multipart body factory for retryable request construction.
 //!
 //! A `MultipartBodyFactory` produces a fresh `reqwest::multipart::Form` per
-//! attempt, re-opening each file Path so idempotent retry sends a complete body
-//! without holding file bytes in memory. Files are streamed (never
-//! `tokio::fs::read` whole), and the filename is reduced to a UTF-8 basename
-//! (1..=255 bytes, no control chars / quotes / backslash / `/`).
-//!
-//! P07 wires this into the Transport's multipart path; P03 lands the factory.
+//! attempt and re-reads every path-backed part. Path-backed files are currently
+//! read in full with `std::fs::read` while the form is built; they are not
+//! streamed. Filenames must be UTF-8 basenames of 1..=255 bytes with no control
+//! characters, quotes, backslashes, or slashes.
 
 use std::path::Path;
 
@@ -18,14 +16,17 @@ use crate::{ZaiError, ZaiResult, client::error::codes};
 /// One file part to attach to a multipart form.
 #[derive(Debug, Clone)]
 pub struct FilePart {
+    /// Local file path reopened for each form build.
     pub path: std::path::PathBuf,
+    /// Validated basename sent in the multipart metadata.
     pub filename: String,
+    /// MIME type attached to the part.
     pub content_type: String,
 }
 
 impl FilePart {
-    /// Validate a file part: regular file, basename-only filename, within size
-    /// and part-count budgets.
+    /// Validate a path-backed part as a regular, non-symlink file with an
+    /// acceptable basename and per-file size.
     pub fn from_path(path: &Path) -> ZaiResult<Self> {
         let meta = std::fs::symlink_metadata(path).map_err(ZaiError::from)?;
         if meta.is_symlink() {
@@ -59,6 +60,7 @@ pub struct MultipartBodyFactory {
 }
 
 impl MultipartBodyFactory {
+    /// Create an empty multipart form factory.
     pub fn new() -> Self {
         Self {
             parts: Vec::new(),
@@ -67,7 +69,7 @@ impl MultipartBodyFactory {
         }
     }
 
-    /// Add a file part, enforcing part-count and cross-file byte budgets.
+    /// Add a path-backed file part, enforcing the part-count limit.
     pub fn file(mut self, part: FilePart) -> ZaiResult<Self> {
         let field = part.filename.clone();
         self = self.file_named(field, part)?;
@@ -123,9 +125,10 @@ impl MultipartBodyFactory {
         Ok(self)
     }
 
-    /// Build a fresh form for one attempt. Each file is re-opened from its Path
-    /// and attached via `reqwest::multipart::Part::bytes` of the (already
-    /// size-checked) file contents; the streaming reader form lands in P07.
+    /// Build a fresh form for one attempt.
+    ///
+    /// Each path-backed file is synchronously read in full and attached as a
+    /// buffered byte part. In-memory parts are cloned into the new form.
     pub fn build(&self) -> ZaiResult<reqwest::multipart::Form> {
         let mut form = reqwest::multipart::Form::new();
         for (name, value) in &self.fields {

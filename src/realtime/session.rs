@@ -247,6 +247,8 @@ pub struct RealtimeSession {
 impl RealtimeSession {
     /// Send raw 16-bit LE mono PCM (16 kHz) audio; it is wrapped in a WAV
     /// header, base64-encoded, and uploaded via `input_audio_buffer.append`.
+    /// This helper always encodes 16 kHz input, so use it with the default
+    /// [`InputAudioFormat::Wav`](super::audio::InputAudioFormat::Wav) config.
     pub async fn send_audio(&self, pcm: Bytes) -> ZaiResult<()> {
         let audio = encode_wav_pcm_base64(&pcm, 16_000);
         self.dispatch(ClientEvent::InputAudioBufferAppend {
@@ -256,8 +258,8 @@ impl RealtimeSession {
         .await
     }
 
-    /// Commit buffered audio for inference (client-VAD). Server-VAD commits
-    /// automatically; calling this is harmless.
+    /// Commit buffered audio for inference in client-VAD mode. Server-VAD
+    /// commits automatically and normally does not need this command.
     pub async fn commit_audio(&self) -> ZaiResult<()> {
         self.dispatch(ClientEvent::InputAudioBufferCommit {
             client_timestamp: Some(now_ms()),
@@ -312,9 +314,8 @@ impl RealtimeSession {
             async move {
                 match res {
                     Ok(event) => Some(event),
-                    // A slow consumer fell behind the broadcast buffer. Surface
-                    // the gap so it is observable (the stream still continues
-                    // from the live tail rather than terminating).
+                    // A slow consumer fell behind the broadcast buffer. Log the
+                    // gap, then continue from the live tail.
                     Err(_) => {
                         warn!("Realtime events consumer lagged; some events were dropped");
                         None

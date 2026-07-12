@@ -1,4 +1,4 @@
-//! P04 acceptance: audio + knowledge contract alignment (plan §13.3–13.5).
+//! Contract-alignment tests for audio and knowledge APIs.
 
 use validator::Validate;
 

@@ -13,20 +13,24 @@
 //!
 //! ## Examples
 //!
-//! ```text
+//! ```no_run
 //! use zai_rs::model::moderation::*;
+//! use zai_rs::ZaiClient;
 //!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = ZaiClient::from_env()?;
 //! // Text moderation
-//! let moderation = Moderation::new_text("审核内容安全样例字符串。", api_key);
-//! let result = moderation.send_via(&client).await?;
+//! let moderation = Moderation::new_text("Content to review");
+//! let _result = moderation.send_via(&client).await?;
 //!
 //! // Multimedia moderation
 //! let moderation = Moderation::new_multimedia(
 //!     MediaType::Image,
-//!     "https://example.com/image.jpg",
-//!     api_key
+//!     "https://example.com/image.jpg"
 //! );
-//! let result = moderation.send_via(&client).await?;
+//! let _result = moderation.send_via(&client).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 /// Request builder and client for content moderation.
@@ -34,6 +38,6 @@ mod data;
 /// Supported moderation model ids.
 mod models;
 
-// Re-export main types for convenience
+// Re-export the client-facing builder and all moderation wire types.
 pub use data::Moderation;
 pub use models::*;

@@ -1,4 +1,4 @@
-//! P08 acceptance: Realtime protocol tests (plan P08.5-P08.11).
+//! Realtime event serialization and protocol-shape tests.
 //! Requires `--features realtime`.
 
 #![cfg(feature = "realtime")]

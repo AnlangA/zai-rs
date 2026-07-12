@@ -1,4 +1,4 @@
-//! Images service operations (plan P06).
+//! Image service operations.
 //!
 //! Async image generation under `ApiFamily::PaasV4`.
 

@@ -1,16 +1,15 @@
-//! # Agent v1 API (plan P04).
+//! # Agent v1 wire types
 //!
-//! The previous 0.4 agents CRUD + chat + history surface (the legacy PAAS v4
-//! agents path) is REMOVED — it targeted a non-existent endpoint family. This
-//! module implements the official Agent v1 contract (plan §13.2) with three
-//! operations:
+//! Defines request builders, response types, and response validators for these
+//! Agent v1 endpoints:
 //!
-//! - `POST /v1/agents` — `invoke` (non-stream) / `stream` (SSE), shared request
-//!   via type-state.
-//! - `POST /v1/agents/async-result` — `async_result`.
-//! - `POST /v1/agents/conversation` — `conversation`.
+//! - `POST /v1/agents`
+//! - `POST /v1/agents/async-result`
+//! - `POST /v1/agents/conversation`
 //!
-//! No compatibility alias is kept for the removed 0.4 surface.
+//! This module does not currently dispatch those requests or parse an SSE
+//! stream. Callers that provide their own transport can use the wire types and
+//! invoke the exported validators after deserialization.
 
 mod request;
 mod response;
@@ -84,7 +83,7 @@ impl<N: StreamMode> AgentInvokeRequestBuilder<N> {
         self.messages.push(msg);
         self
     }
-    /// Set the open `custom_variables` map (plan §13.1: additionalProperties).
+    /// Replace the open-ended `custom_variables` object sent to the agent.
     pub fn custom_variables(mut self, vars: serde_json::Map<String, serde_json::Value>) -> Self {
         self.custom_variables = vars;
         self
@@ -132,11 +131,14 @@ impl<N: StreamMode> AgentInvokeRequestBuilder<N> {
     }
 }
 
-/// `POST /v1/agents` request body (plan §13.2).
+/// Request body for `POST /v1/agents`.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentInvokeRequest<N: StreamMode> {
+    /// Agent identifier supplied by the caller.
     pub agent_id: String,
+    /// Conversation messages, in request order.
     pub messages: Vec<AgentMessage>,
+    /// Open-ended variables made available to the configured agent.
     #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
     pub custom_variables: serde_json::Map<String, serde_json::Value>,
     /// Serialized from the type-state; `true` for streaming, `false` otherwise.
@@ -159,11 +161,14 @@ impl<N: StreamMode> AgentInvokeRequest<N> {
 /// `POST /v1/agents/async-result` request body.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentAsyncResultRequest {
+    /// Agent identifier associated with the asynchronous invocation.
     pub agent_id: String,
+    /// Asynchronous task identifier returned by an earlier invocation.
     pub async_id: String,
 }
 
 impl AgentAsyncResultRequest {
+    /// Start a builder for the given agent and asynchronous task identifiers.
     pub fn builder(
         agent_id: impl Into<String>,
         async_id: impl Into<String>,
@@ -175,12 +180,14 @@ impl AgentAsyncResultRequest {
     }
 }
 
+/// Builder that validates identifiers for [`AgentAsyncResultRequest`].
 pub struct AgentAsyncResultRequestBuilder {
     agent_id: String,
     async_id: String,
 }
 
 impl AgentAsyncResultRequestBuilder {
+    /// Validate both identifiers and build the request.
     pub fn build(self) -> ZaiResult<AgentAsyncResultRequest> {
         if self.agent_id.trim().is_empty() || self.async_id.trim().is_empty() {
             return Err(crate::ZaiError::ApiError {
@@ -198,12 +205,16 @@ impl AgentAsyncResultRequestBuilder {
 /// `POST /v1/agents/conversation` request body.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentConversationRequest {
+    /// Agent identifier supplied by the caller.
     pub agent_id: String,
+    /// Existing conversation identifier to continue.
     pub conversation_id: String,
+    /// Messages to append to the conversation.
     pub messages: Vec<AgentMessage>,
 }
 
 impl AgentConversationRequest {
+    /// Start a builder for an existing agent conversation.
     pub fn builder(
         agent_id: impl Into<String>,
         conversation_id: impl Into<String>,
@@ -216,6 +227,10 @@ impl AgentConversationRequest {
     }
 }
 
+/// Builder for [`AgentConversationRequest`].
+///
+/// The builder checks identifiers and requires at least one message. Unlike the
+/// invoke builder, it does not currently validate message role strings.
 pub struct AgentConversationRequestBuilder {
     agent_id: String,
     conversation_id: String,
@@ -223,10 +238,12 @@ pub struct AgentConversationRequestBuilder {
 }
 
 impl AgentConversationRequestBuilder {
+    /// Append a message to the conversation request.
     pub fn message(mut self, msg: AgentMessage) -> Self {
         self.messages.push(msg);
         self
     }
+    /// Validate identifiers and message presence, then build the request.
     pub fn build(self) -> ZaiResult<AgentConversationRequest> {
         if self.agent_id.trim().is_empty() || self.conversation_id.trim().is_empty() {
             return Err(crate::ZaiError::ApiError {

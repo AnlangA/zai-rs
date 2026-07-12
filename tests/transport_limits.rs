@@ -1,4 +1,4 @@
-//! P03 acceptance: payload limits (plan P03 验证 — transport_limits).
+//! Payload-size limit tests for the HTTP transport.
 
 use zai_rs::client::transport::limits::*;
 

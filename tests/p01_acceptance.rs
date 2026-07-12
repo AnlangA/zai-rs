@@ -1,9 +1,9 @@
-//! P01 acceptance integration tests: error-envelope probe ordering.
+//! Integration tests for business-error envelope detection.
 //!
-//! Plan P01.7 acceptance: a 2xx body that carries a business error envelope
+//! A 2xx body that carries a business error envelope
 //! (`{code:500,...}` or `{"error":{...}}`) must return `Err`, not decode into
 //! an all-optional success type. These tests drive the real SDK chat path
-//! (via `ZaiClient` per P05) against an inline mock that returns HTTP 200 with
+//! through `ZaiClient` against an inline mock that returns HTTP 200 with
 //! an error-shaped body.
 
 use std::convert::Infallible;

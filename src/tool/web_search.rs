@@ -6,7 +6,7 @@
 //!
 //! # Features
 //!
-//! - Multiple search engines (Zhipu basic/advanced, Sougou, Quark)
+//! - Multiple search engines (Zhipu basic/advanced, Sogou, Quark)
 //! - Search intent recognition
 //! - Configurable result count (1-50)
 //! - Domain filtering
@@ -16,15 +16,13 @@
 //!
 //! # Example
 //!
-//! ```text
+//! ```no_run
 //! use zai_rs::tool::web_search::{SearchEngine, WebSearchRequest};
+//! use zai_rs::ZaiClient;
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let api_key = std::env::var("ZHIPU_API_KEY")?;
-//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = ZaiClient::from_env()?;
 //!     let request = WebSearchRequest::new(
-//!         api_key,
 //!         "rust programming language".to_string(),
 //!         SearchEngine::SearchStd,
 //!     )
@@ -45,7 +43,7 @@ mod request;
 /// Response body types for web search.
 mod response;
 
-// Re-export main types for convenience
+// Re-export the builder together with the request and response wire types.
 pub use data::WebSearchRequest;
 pub use request::{
     ContentSize, SearchEngine, SearchIntent, SearchRecencyFilter, SearchResult, WebSearchBody,

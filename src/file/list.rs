@@ -23,7 +23,10 @@ impl FileListRequest {
         self
     }
 
-    /// Send request and parse typed response.
+    /// Send the configured query and parse the typed response.
+    ///
+    /// This method does not run [`validator::Validate`]; use
+    /// [`Self::send_with_query_via`] when the query needs local range validation.
     pub async fn send_via(
         &self,
         client: &ZaiClient,

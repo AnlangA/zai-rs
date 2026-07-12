@@ -22,7 +22,8 @@ impl Moderation {
     ///
     /// ## Arguments
     ///
-    /// * `text` - The text content to moderate (max 2000 characters)
+    /// * `text` - Text to moderate; the current validator permits at most 2,000
+    ///   UTF-8 bytes
     ///
     /// ## Returns
     ///

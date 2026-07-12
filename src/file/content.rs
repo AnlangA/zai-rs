@@ -22,9 +22,11 @@ impl FileContentRequest {
         Ok(bytes.to_vec())
     }
 
-    /// Send via a [`ZaiClient`] and write the file content to `path`. It will
-    /// create parent directories if missing. Returns the number of bytes
-    /// written.
+    /// Send via a [`ZaiClient`] and write the file content to `path`.
+    ///
+    /// Parent directories are created when missing. The response is buffered in
+    /// memory before the destination is created, and an existing destination is
+    /// truncated. Returns the number of bytes written.
     pub async fn send_to_via<P: AsRef<std::path::Path>>(
         &self,
         client: &ZaiClient,

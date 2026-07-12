@@ -4,10 +4,11 @@ use validator::Validate;
 /// Query parameters for listing voices.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct VoiceListQuery {
-    /// 音色名称, 如果传入中文, 需要 url encode
+    /// Voice-name filter. Pass the unescaped value; the client percent-encodes
+    /// query parameters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_name: Option<String>,
-    /// 音色类型: OFFICIAL / PRIVATE
+    /// Voice origin (`OFFICIAL` or `PRIVATE` on the wire).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_type: Option<VoiceType>,
 }

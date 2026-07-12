@@ -12,7 +12,7 @@ where
     /// TTS model (e.g., cogtts)
     pub model: N,
 
-    /// Text to convert to speech (max 1024 Unicode scalar values; plan §13.4).
+    /// Text to convert to speech (at most 1,024 Unicode scalar values).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(max = 1024))]
     pub input: Option<String>,
@@ -26,7 +26,7 @@ where
     #[validate(range(min = 0.5, max = 2.0))]
     pub speed: Option<f32>,
 
-    /// Volume in (0, 10] — strictly greater than 0 (plan §13.4). The validator
+    /// Volume in (0, 10] — strictly greater than 0. The validator
     /// `range` cannot express a strict lower bound, so a `0.0` volume is
     /// rejected by a dedicated check in the request's `validate()`/builder.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,7 +78,7 @@ where
         self
     }
 
-    /// Set the playback volume (`0.0`–`10.0`).
+    /// Set the playback volume (greater than `0.0` and at most `10.0`).
     pub fn with_volume(mut self, volume: f32) -> Self {
         self.volume = Some(volume);
         self

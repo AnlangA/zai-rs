@@ -3,29 +3,19 @@
 //! This module provides functionality to retrieve file parsing results,
 //! supporting multiple result formats and asynchronous task monitoring.
 //!
-//! # Features
-//!
-//! - Multiple result formats (text, download_link)
-//! - Task status monitoring
-//! - Asynchronous result retrieval
-//! - Polling support with timeout
-//! - Comprehensive error handling
-//!
 //! # Example
 //!
-//! ```text
+//! ```no_run
 //! use zai_rs::tool::file_parser_result::{FileParserResultRequest, FormatType};
+//! use zai_rs::ZaiClient;
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let api_key = std::env::var("ZHIPU_API_KEY")?;
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = ZaiClient::from_env()?;
 //!     let task_id = "task_123456789";
-//!
-//!     let request = FileParserResultRequest::new(api_key, task_id);
-//!
-//!     let response = request.get_result(FormatType::Text).await?;
+//!     let request = FileParserResultRequest::new(task_id);
+//!     let response = request.get_result_via(&client, FormatType::Text).await?;
 //!     if let Some(content) = response.content() {
-//!         println!("Parsed content: {}", content);
+//!         println!("Parsed content: {content}");
 //!     }
 //!
 //!     Ok(())
@@ -36,7 +26,7 @@ mod data;
 mod request;
 mod response;
 
-// Re-export main types for convenience
+// Keep the result client and its wire types available from one public module.
 pub use data::FileParserResultRequest;
 pub use request::FormatType;
 pub use response::{FileParserResultResponse, ParserStatus};

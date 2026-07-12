@@ -1,4 +1,4 @@
-//! P08 acceptance: Realtime fairness tests (plan P08.12).
+//! Fairness tests for realtime command and receive processing.
 //! Requires `--features realtime`.
 
 #[cfg(feature = "realtime")]

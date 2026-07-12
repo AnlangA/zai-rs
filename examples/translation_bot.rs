@@ -1,7 +1,6 @@
 //! # Translation Bot Example (non-streaming)
 //!
-//! P05 note: the SSE streaming path is rebuilt in P08; this example uses the
-//! non-streaming path for now.
+//! This interactive example deliberately uses the non-streaming response path.
 
 use std::io::{self, Write};
 

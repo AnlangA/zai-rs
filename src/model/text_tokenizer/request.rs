@@ -27,23 +27,23 @@ pub enum TokenizerModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum TokenizerMessage {
-    /// 用户消息
+    /// User message.
     User {
         /// Message text.
         content: String,
     },
-    /// 系统消息
+    /// System instruction.
     System {
         /// System-instruction text.
         content: String,
     },
-    /// 助手消息（content 可选）
+    /// Assistant message with optional content.
     Assistant {
         /// Assistant reply text, if any.
         #[serde(skip_serializing_if = "Option::is_none")]
         content: Option<String>,
     },
-    /// 工具消息
+    /// Tool-result message.
     Tool {
         /// Tool-result text.
         content: String,
@@ -53,14 +53,14 @@ pub enum TokenizerMessage {
 /// Request body for tokenizer
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenizerBody {
-    /// 调用的模型代码（默认 glm-4-plus）
+    /// Model used for token counting (defaults to `glm-4-plus`).
     pub model: TokenizerModel,
-    /// 对话消息列表（至少 1 条）
+    /// Conversation messages; at least one is required.
     pub messages: Vec<TokenizerMessage>,
-    /// 客户端请求 ID
+    /// Client-provided request identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
-    /// 终端用户 ID
+    /// End-user identifier used for abuse monitoring.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
 }

@@ -52,14 +52,16 @@
 //!
 //! # Usage
 //!
-//! ```text
-//! use zai_rs::model::chat_models::*;
-//! use zai_rs::model::chat_message_types::TextMessage;
-//! use zai_rs::model::chat::ChatCompletion;
+//! ```
+//! use zai_rs::model::{
+//!     chat::ChatCompletion,
+//!     chat_message_types::TextMessage,
+//!     chat_models::GLM5_2,
+//! };
 //!
 //! let model = GLM5_2 {};
 //! let messages = TextMessage::user("Hello");
-//! let client = ChatCompletion::new(model, messages, api_key);
+//! let request = ChatCompletion::new(model, messages);
 //! ```
 //!
 //! # Defining New Models

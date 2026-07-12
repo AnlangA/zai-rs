@@ -1,4 +1,4 @@
-//! P07 acceptance: cancellation safety tests (plan P07.9).
+//! Cancellation-safety tests for streaming uploads and downloads.
 //!
 //! When a download/upload future is dropped, the underlying body must be closed
 //! and no partial file residue or background task remain.
@@ -47,7 +47,7 @@ async fn cancel_download_leaves_no_partial_file() {
 
 #[tokio::test]
 async fn cancelled_upload_closes_body() {
-    // P07 acceptance: dropping the upload future must close the body.
+    // Dropping the upload future must close its body reader.
     // We simulate by spawning a task that opens a file, then aborting it.
     let dir = tempdir().unwrap();
     let src = dir.path().join("src.bin");

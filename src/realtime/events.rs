@@ -103,7 +103,11 @@ pub enum ClientEvent {
 // Server events (received server → client). Deserialize-only.
 // ---------------------------------------------------------------------------
 
-/// A server event, tagged by `type`. Unknown/extra fields are ignored.
+/// A server event, tagged by `type`.
+///
+/// Extra fields on a known event are ignored. Unknown event types fail direct
+/// deserialization; [`RealtimeSession`](super::session::RealtimeSession) drops
+/// those frames and keeps its event loop running.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerEvent {

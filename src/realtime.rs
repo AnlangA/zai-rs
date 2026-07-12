@@ -1,7 +1,10 @@
 //! # Realtime API (WebSocket)
 //!
-//! Fully-functional realtime audio/video conversation over the GLM-Realtime
-//! WebSocket protocol (`wss://open.bigmodel.cn/api/paas/v4/realtime`).
+//! Realtime text and audio conversations over the GLM-Realtime WebSocket
+//! protocol (`wss://open.bigmodel.cn/api/paas/v4/realtime`). The protocol types
+//! also model passive-video frames, while
+//! [`RealtimeSession`](crate::realtime::RealtimeSession) currently exposes
+//! high-level send methods for text and audio.
 //!
 //! Verified against the official protocol:
 //! - <https://github.com/MetaGLM/glm-realtime-sdk/blob/main/GLM-Realtime-doc-for-llm.md>
@@ -9,7 +12,7 @@
 //!
 //! ## Quick start
 //!
-//! ```text
+//! ```no_run
 //! use zai_rs::{
 //!     model::GLM4_voice,
 //!     realtime::{RealtimeClient, TurnDetectionType},
@@ -30,8 +33,10 @@
 //! ## Auth modes
 //!
 //! - **Bearer** (default, server-side): `Authorization: Bearer {API_KEY}`.
-//! - **JWT** (client-side): `.with_jwt(ttl_seconds)` signs a short-lived token
-//!   from the API key's secret so the key never reaches the client.
+//! - **JWT**: `.with_jwt(ttl_seconds)` derives a short-lived token locally and
+//!   sends that token, rather than the raw API key, in the WebSocket handshake.
+//!   Generating the token on a trusted server before handing it to an untrusted
+//!   browser or device is still the application's responsibility.
 
 pub mod audio;
 pub mod client;

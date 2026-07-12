@@ -1,4 +1,4 @@
-//! Images request types (plan P06) — async image generation.
+//! Request types for asynchronous image generation.
 
 use crate::ZaiResult;
 use crate::client::ZaiClient;
@@ -11,10 +11,12 @@ use super::response::AsyncImageGenerationResponse;
 
 /// POST /async/images/generations — async image generation.
 pub struct AsyncImageGenerationRequest {
+    /// Open-schema request body sent as JSON.
     pub body: serde_json::Value,
 }
 
 impl AsyncImageGenerationRequest {
+    /// Create an asynchronous image-generation request.
     pub fn new(body: serde_json::Value) -> Self {
         Self { body }
     }
@@ -28,7 +30,3 @@ impl AsyncImageGenerationRequest {
             .await
     }
 }
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------

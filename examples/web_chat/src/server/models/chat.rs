@@ -202,8 +202,8 @@ pub struct ChatCompletionBuilder {
 impl ChatCompletionBuilder {
     /// Create a new chat completion builder
     ///
-    /// (P05 migration: the API key no longer lives on the request builder; the
-    /// shared `ZaiClient` owns it and is supplied at send time via `send_via`.)
+    /// Credentials are owned by the shared `ZaiClient` supplied to `send_via`,
+    /// not by this request builder.
     pub fn new() -> Self {
         Self {
             model: GLM4_6 {},

@@ -1,14 +1,15 @@
-//! JWT generation for GLM-Realtime client-side authentication.
+//! JWT generation for GLM-Realtime authentication.
 //!
 //! The realtime WebSocket supports two auth modes (see
 //! <https://github.com/MetaGLM/glm-realtime-sdk/blob/main/GLM-Realtime-doc-for-llm.md>):
 //!
 //! - **Bearer** (server-side): `Authorization: Bearer {API_KEY}`.
-//! - **JWT** (client-side): a JWT signed with the API key's secret, so the real
-//!   API key never reaches the browser/device. This module implements that JWT.
+//! - **JWT**: a short-lived JWT signed locally with the API key's secret. Only
+//!   the derived token is sent in the WebSocket handshake. Applications that
+//!   use an untrusted browser/device must generate the token on a trusted server.
 //!
 //! The GLM JWT is **non-standard**: header
-//! `{"alg":"HS256","sign_type":"SIGN""}` and payload
+//! `{"alg":"HS256","sign_type":"SIGN"}` and payload
 //! `{"api_key":id,"exp":secs,"timestamp":ms}`, signed with HMAC-SHA256 keyed by
 //! the secret half of the `{id}.{secret}` API key.
 
@@ -36,6 +37,8 @@ pub fn authorization_header(api_key: &str, jwt_seconds: Option<i64>) -> ZaiResul
 }
 
 /// Sign a GLM-Realtime JWT for the given `{id}.{secret}` API key.
+///
+/// `ttl_seconds` must be in `1..=604_800` (seven days).
 pub fn generate(api_key: &str, ttl_seconds: i64) -> ZaiResult<String> {
     let (id, secret) = match api_key.split_once('.') {
         Some(parts) => parts,

@@ -2,23 +2,17 @@ use super::request::VoiceListQuery;
 use crate::ZaiResult;
 use crate::client::ZaiClient;
 
-/// GET voice list request
+/// Builder for a `GET` request to list available voices.
 ///
 /// Builder for the voice-list endpoint. Construct with
 /// [`VoiceListRequest::new`], optionally refine with
 /// [`VoiceListRequest::with_query`], then call [`VoiceListRequest::send_via`].
-///
-/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
-/// [`send_via`](Self::send_via).
 pub struct VoiceListRequest {
     query: VoiceListQuery,
 }
 
 impl VoiceListRequest {
     /// Create a new voice-list request with default (empty) query.
-    ///
-    /// **P05**: no longer takes an API key — the key is provided by the
-    /// [`ZaiClient`] at send time.
     pub fn new() -> Self {
         Self {
             query: VoiceListQuery::new(),

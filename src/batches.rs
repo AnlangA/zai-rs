@@ -1,8 +1,8 @@
 //! # Batch Processing Module
 //!
 //! Provides batch-processing capabilities for the Zhipu AI API. Submit
-//! multiple requests asynchronously and retrieve results later — ideal for
-//! high-volume or scheduled workloads.
+//! multiple requests asynchronously, inspect job state, and use the returned
+//! output/error file identifiers to retrieve results through the file API.
 //!
 //! # Operations
 //!
@@ -11,29 +11,20 @@
 //! - Retrieve — retrieve a batch job's status and results
 //! - Cancel — cancel a running or queued batch job
 //!
-//! # Batch Lifecycle
-//!
-//! 1. `Initializing` — Job is being validated
-//! 2. `In Progress` — Job is being processed
-//! 3. `Completed` — All requests processed successfully
-//! 4. `Failed` — Job encountered errors
-//! 5. `Cancelled` — Job was cancelled by the user
-//! 6. `Expired` — Results expired (default: 24 h)
-//!
 //! # Usage
 //!
-//! ```text
-//! use zai_rs::batches::*;
+//! ```rust,no_run
+//! use zai_rs::{ZaiResult, batches::*, client::ZaiClient};
 //!
-//! // Create
-//! let body = CreateBatchBody { endpoint: BatchEndpoint::ChatCompletions, .. };
-//! let job = client.create_batch(&CreateBatchRequest::new(body)).await?;
-//!
-//! // Retrieve
-//! let result = client.retrieve_batch(&BatchesRetrieveRequest::new(&job.id)).await?;
-//!
-//! // Cancel
-//! client.cancel_batch(&CancelBatchRequest::new(&job.id)).await?;
+//! # async fn example(client: &ZaiClient) -> ZaiResult<()> {
+//! let job = CreateBatchRequest::new("batch-input-file-id", BatchEndpoint::ChatCompletions)
+//!     .send_via(client)
+//!     .await?;
+//! let current = BatchesRetrieveRequest::new("batch-id").send_via(client).await?;
+//! let cancelled = CancelBatchRequest::new("batch-id").send_via(client).await?;
+//! # let _ = (job, current, cancelled);
+//! # Ok(())
+//! # }
 //! ```
 
 /// Cancel a running or queued batch job (`POST …/batches/{id}/cancel`).
@@ -46,7 +37,6 @@ mod list;
 mod retrieve;
 mod types;
 
-// Re-export selected API types for convenient access via `zai_rs::batches::*`
 pub use cancel::{CancelBatchRequest, CancelBatchResponse};
 pub use create::{BatchEndpoint, CreateBatchBody, CreateBatchRequest, CreateBatchResponse};
 pub use list::{BatchesListQuery, BatchesListRequest, BatchesListResponse, ListObject};

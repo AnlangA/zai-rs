@@ -164,7 +164,6 @@ pub struct DocumentItem {
     pub fail_info: Option<DocumentFailInfo>,
 }
 
-/// Document list data payload
 /// Document detail response envelope (data is a single document item)
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct DocumentDetailResponse {

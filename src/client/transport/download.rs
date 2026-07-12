@@ -1,22 +1,27 @@
-//! Atomic download sink (plan P03.12).
+//! Atomic writer for an already-buffered response body.
 //!
-//! `download_to(path)` streams a response body into a same-directory temporary
-//! `.part` file (Unix mode 0600), flushes + fsyncs, closes the handle, then
-//! renames over the target. Any failure or cancellation (future drop) deletes
-//! the partial file so no `.part` residue survives.
+//! [`atomic_download`] writes a [`bytes::Bytes`] value into a same-directory
+//! temporary `.part` file (Unix mode 0600), flushes and syncs it, closes the
+//! handle, then renames it to the target. The response is already buffered before
+//! this function is called; this module does not stream network data.
 //!
-//! The destination must not already exist (returns `Io::AlreadyExists`). This
-//! module lands the core; the Transport wires it into `download_to` in P07.
+//! A pre-existing destination is refused. Failure or cancellation drops the
+//! guard and attempts to delete the partial file.
 
 use std::path::{Path, PathBuf};
 
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
-/// Atomically write `body` to `dest`. Refuses an existing target.
+/// Atomically write buffered `body` bytes to `dest`.
+///
+/// Returns an error when the target already exists, the temporary file cannot
+/// be created or written, or the final rename fails.
 pub async fn atomic_download(dest: &Path, body: bytes::Bytes) -> ZaiResult<()> {
     if dest.exists() {
         return Err(ZaiError::FileError {
-            code: codes::SDK_FILE_NOT_FOUND, // reused: a dedicated AlreadyExists lands in P03's error model
+            // There is no dedicated existing-target SDK code; retain the generic
+            // file-category code used by this helper.
+            code: codes::SDK_FILE_NOT_FOUND,
             message: format!("download target already exists: {}", dest.display()),
         });
     }

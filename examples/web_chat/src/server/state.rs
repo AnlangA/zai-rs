@@ -17,8 +17,8 @@ pub struct AppState {
     /// Application configuration
     pub config: Config,
 
-    /// Shared ZAI client (P05 migration): owns the API key and connection pool,
-    /// and is passed to chat requests via `.send_via(&zai_client)`.
+    /// Shared Z.AI client that owns the API key and connection pool and is
+    /// passed to chat requests through `send_via`.
     pub zai_client: ZaiClient,
 
     /// Session store for managing chat sessions

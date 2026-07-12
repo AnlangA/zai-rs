@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== OCR Handwriting Recognition Example ===\n");
 
-    // Build and send OCR request (P05: credentials live on the client).
+    // Build the OCR request; ZaiClient supplies credentials and transport.
     let request = OcrRequest::new()
         .with_file_path(&file_path)
         .with_tool_type(OcrToolType::HandWrite)

@@ -12,10 +12,10 @@ where
 {
     /// Model identifier for video generation API
     pub model: N,
-    /// Image URL(s) for video generation base
-    /// Supports single URL string or array of URLs (1-2 URLs)
-    /// Supported formats: .png, .jpeg, .jpg, max 5MB
-    /// Either prompt or image_url must be provided (or both)
+    /// Image input used as the video-generation source.
+    ///
+    /// URL constructors serialize one or two URLs as an array; pre-encoded image
+    /// data serializes as a string. Either this field or `prompt` must be set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_url: Option<ImageUrl>,
     /// Text description for video generation, max 1500 characters
@@ -41,10 +41,10 @@ where
     /// aspect ratio Supports up to 4K resolution
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<VideoSize>,
-    /// Video frame rate (FPS), supported values: 30 or 60, defaults to 30
+    /// Video frame-rate selector (`"fps30"` or `"fps60"` on the wire).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fps: Option<Fps>,
-    /// Video duration in seconds, defaults to 5, supported: 5 or 10
+    /// Video-duration selector (`"duration5"` or `"duration10"` on the wire).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<VideoDuration>,
     /// Unique request identifier provided by client
@@ -115,13 +115,13 @@ where
         self
     }
 
-    /// Set video frame rate (30 or 60 FPS)
+    /// Set the video frame-rate selector.
     pub fn with_fps(mut self, fps: Fps) -> Self {
         self.fps = Some(fps);
         self
     }
 
-    /// Set video duration (5 or 10 seconds)
+    /// Set the video-duration selector.
     pub fn with_duration(mut self, duration: VideoDuration) -> Self {
         self.duration = Some(duration);
         self
@@ -215,28 +215,28 @@ pub enum VideoQuality {
     Quality,
 }
 
-/// Image input for video generation — base64 data or one/two URL(s).
+/// Image input for video generation: a pre-encoded string or one/two URLs.
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum ImageUrl {
-    /// Base64 encoded image data
+    /// Pre-encoded image string, typically a `data:` URL; sent unchanged.
     Base64(String),
-    /// Single URL or array of URLs (1-2 URLs)
+    /// One or two URLs, serialized as a JSON array.
     VecUrl(Vec<String>),
 }
 
 impl ImageUrl {
-    /// Create ImageUrl from base64-encoded data
+    /// Wrap a pre-encoded image string without modifying it.
     pub fn base64(data: impl Into<String>) -> Self {
         ImageUrl::Base64(data.into())
     }
 
-    /// Create ImageUrl from a single URL
+    /// Wrap a URL as a one-element JSON array.
     pub fn from_url(url: impl Into<String>) -> Self {
         ImageUrl::VecUrl(vec![url.into()])
     }
 
-    /// Create ImageUrl from exactly two URLs
+    /// Wrap exactly two URLs as a JSON array.
     pub fn from_two_urls(u1: impl Into<String>, u2: impl Into<String>) -> Self {
         ImageUrl::VecUrl(vec![u1.into(), u2.into()])
     }
@@ -272,9 +272,9 @@ pub enum VideoSize {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Fps {
-    /// 30 frames per second
+    /// 30-frame-rate selector (`"fps30"`).
     Fps30,
-    /// 60 frames per second
+    /// 60-frame-rate selector (`"fps60"`).
     Fps60,
 }
 
@@ -282,8 +282,8 @@ pub enum Fps {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VideoDuration {
-    /// 5 seconds duration
+    /// Five-second duration selector (`"duration5"`).
     Duration5,
-    /// 10 seconds duration
+    /// Ten-second duration selector (`"duration10"`).
     Duration10,
 }

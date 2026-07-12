@@ -7,10 +7,7 @@ use super::{
 };
 use crate::client::ZaiClient;
 
-/// Video generation request structure
-/// Handles HTTP requests for video generation API
-///
-/// (plan P05: migrated to route through [`ZaiClient`].)
+/// Typed builder for submitting an asynchronous video-generation task.
 pub struct VideoGenRequest<N>
 where
     N: ModelName + VideoGen + Serialize,
@@ -68,13 +65,13 @@ where
         self
     }
 
-    /// Set video frame rate (30 or 60 FPS)
+    /// Set the video frame-rate selector.
     pub fn with_fps(mut self, fps: Fps) -> Self {
         self.body = self.body.with_fps(fps);
         self
     }
 
-    /// Set video duration (5 or 10 seconds)
+    /// Set the video-duration selector.
     pub fn with_duration(mut self, duration: VideoDuration) -> Self {
         self.body = self.body.with_duration(duration);
         self

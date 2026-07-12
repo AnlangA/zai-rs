@@ -3,27 +3,20 @@
 //! This module provides functionality to create file parsing tasks,
 //! supporting multiple file formats and parsing tools.
 //!
-//! # Features
-//!
-//! - Multiple parsing tools (lite, expert, prime)
-//! - Support for various file formats (PDF, DOCX, XLSX, images, etc.)
-//! - Comprehensive validation
-//! - Type-safe request and response models
-//!
 //! # Example
 //!
-//! ```text
+//! ```no_run
 //! use std::path::Path;
 //!
 //! use zai_rs::tool::file_parser_create::{FileParserCreateRequest, FileType, ToolType};
+//! use zai_rs::ZaiClient;
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let api_key = std::env::var("ZHIPU_API_KEY")?;
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = ZaiClient::from_env()?;
 //!     let file_path = Path::new("document.pdf");
 //!
 //!     let request =
-//!         FileParserCreateRequest::new(api_key, file_path, ToolType::Lite, FileType::PDF)?;
+//!         FileParserCreateRequest::new(file_path, ToolType::Lite, FileType::PDF)?;
 //!
 //!     let response = request.send_via(&client).await?;
 //!     println!("Task created: {}", response.task_id);
@@ -36,7 +29,7 @@ mod data;
 mod request;
 mod response;
 
-// Re-export main types for convenience
+// Keep the task builder and its wire types available from one public module.
 pub use data::FileParserCreateRequest;
 pub use request::{FileType, ToolType};
 pub use response::FileParserCreateResponse;

@@ -201,6 +201,9 @@ impl McpConnection {
 ///
 /// Connections are created lazily on the first capability call and reused
 /// afterwards. The user never needs to select an MCP server or transport.
+/// Remote capabilities use Streamable HTTP. Vision capabilities start the
+/// pinned `@z_ai/mcp-server` package through `npx`, so Node.js and `npx` must be
+/// available when a vision method or [`McpClient::tools`] is first called.
 pub struct McpClient {
     region: McpRegion,
     api_key: ApiSecret,
@@ -240,7 +243,7 @@ impl McpClient {
         }
     }
 
-    /// Set the maximum duration of one MCP tool call.
+    /// Set the maximum duration of connection setup plus one MCP tool call.
     ///
     /// The default is five minutes because vision operations can take longer
     /// than ordinary remote tools.
@@ -285,10 +288,12 @@ impl McpClient {
         Ok(tools)
     }
 
-    /// Invoke any advertised MCP tool with raw JSON.
+    /// Invoke a tool supported by this SDK with raw JSON arguments.
     ///
     /// Most users should use the typed capability methods instead. The correct
-    /// backend and transport are still selected automatically.
+    /// backend and transport are still selected automatically. `arguments` must
+    /// be a JSON object, and the returned value is the complete MCP
+    /// `CallToolResult` envelope rather than only its text or structured content.
     pub async fn call_raw(&self, name: &str, arguments: Value) -> ZaiResult<Value> {
         Ok(serde_json::to_value(
             self.call_result(name, arguments).await?,
@@ -533,6 +538,8 @@ impl McpClient {
     }
 
     /// Analyze a local or remote MP4/MOV/M4V video with the vision server.
+    ///
+    /// The Vision MCP accepts files up to 8 MB.
     pub async fn analyze_video(
         &self,
         video_source: impl Into<String>,

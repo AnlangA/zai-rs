@@ -1,12 +1,16 @@
-//! Agent v1 request value types (plan §13.2).
+//! Shared Agent v1 request values.
 //!
 //! The request *builders* and the typed structs live in [`crate::agent`]; this
 //! module holds the shared value types (`AgentMessage`, `AgentContent`).
 
 use serde::{Deserialize, Serialize};
 
-/// A single agent message. `role` is validated to be system/user/assistant at
-/// build time; `content` follows the official string | object | array union.
+/// A single agent message.
+///
+/// [`AgentInvokeRequestBuilder`](crate::agent::AgentInvokeRequestBuilder)
+/// validates `role` as `system`, `user`, or `assistant`. Other construction
+/// paths, including a struct literal and the conversation builder, retain the
+/// caller-provided role without validation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentMessage {
     /// `system`, `user`, or `assistant`.
@@ -15,15 +19,17 @@ pub struct AgentMessage {
     pub content: AgentContent,
 }
 
-/// Agent message content: a string, a single content-part object, or an array
-/// of content parts (matching the official union). Stored as a JSON value so the
-/// SDK never drops fields the contract allows.
+/// Agent message content represented either as text or an arbitrary JSON value.
+///
+/// The `Json` variant deliberately does not restrict the value to an object or
+/// array; callers are responsible for supplying a shape accepted by the Agent
+/// API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AgentContent {
     /// Plain text content.
     Text(String),
-    /// A structured JSON value (object or array).
+    /// An arbitrary JSON value passed through unchanged.
     Json(serde_json::Value),
 }
 

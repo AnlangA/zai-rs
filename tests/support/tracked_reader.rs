@@ -1,5 +1,5 @@
 #![allow(dead_code, unused_doc_comments)]
-//! Tracked payload reader for streaming upload tests (plan P07.1).
+//! Tracked payload reader for streaming-upload tests.
 //!
 //! A `TrackedReader` wraps a `tokio::io::AsyncRead` and records how many bytes
 //! have been read and how many "live" (read but not yet consumed) bytes are

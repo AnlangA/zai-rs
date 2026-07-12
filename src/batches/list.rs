@@ -64,7 +64,10 @@ impl BatchesListRequest {
         self
     }
 
-    /// Send the request via a [`ZaiClient`] and parse typed response.
+    /// Send the request via a [`ZaiClient`] and parse the typed response.
+    ///
+    /// The query derives [`validator::Validate`], but this method does not invoke
+    /// it; callers must keep `limit` in the documented `1..=100` range.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<BatchesListResponse> {
         let mut params: Vec<(&str, String)> = Vec::new();
         if let Some(after) = self.query.after.as_ref() {

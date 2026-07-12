@@ -1,13 +1,16 @@
-//! Response decode pipeline (plan P03.4/P03.9).
+//! Response-decoding helpers.
 //!
-//! Order: probe the official error envelope → decode the private wire success
-//! → validate the success invariant → convert to the public response. Content-
-//! type is validated against the operation manifest (JSON/+json, SSE, or a
-//! declared binary MIME).
+//! [`extract_error_envelope`] is used by the buffered transport before returning
+//! bytes or deserializing JSON. [`validate_content_type`] is available to
+//! streaming or endpoint-specific callers, but the buffered transport does not
+//! currently call it automatically.
 
 use crate::{ZaiError, ZaiResult, client::error::codes};
 
-/// Accepted JSON content-type prefixes for a typed-decode response.
+/// Prefixes accepted by the current JSON content-type validator.
+///
+/// In addition to JSON and `+json` types, the current implementation accepts any
+/// `application/*` media type.
 pub const JSON_CONTENT_TYPES: &[&str] = &["application/json", "application/"];
 /// The SSE content type.
 pub const SSE_CONTENT_TYPE: &str = "text/event-stream";
@@ -15,13 +18,17 @@ pub const SSE_CONTENT_TYPE: &str = "text/event-stream";
 /// Validate a response `Content-Type` against the expected kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpectedKind {
+    /// A JSON-compatible media type.
     Json,
+    /// The `text/event-stream` SSE media type.
     Sse,
     /// A specific binary MIME from the operation manifest.
     Binary(&'static str),
 }
 
-/// Validate the content-type. Mismatch → Protocol::UnexpectedContentType.
+/// Validate a content type against the requested kind.
+///
+/// A mismatch returns [`ZaiError::ApiError`] with the SDK validation code.
 pub fn validate_content_type(raw: &str, expected: ExpectedKind) -> ZaiResult<()> {
     let lower = raw.to_ascii_lowercase();
     let ok = match expected {
@@ -46,7 +53,6 @@ pub fn validate_content_type(raw: &str, expected: ExpectedKind) -> ZaiResult<()>
 
 /// Decide whether a body parses as a genuine business error envelope.
 ///
-/// Mirrors the P01.7 envelope-probe logic but lives here for the new Transport.
 /// A flat `{code, message}` with `code != 200` is an error; a nested `{error}`
 /// is always an error; `code == 200` (knowledge success) flows through.
 #[derive(serde::Deserialize)]
@@ -96,10 +102,12 @@ pub fn probe_error_envelope(body: &str) -> bool {
         .is_some_and(|env| env.is_error())
 }
 
-/// Extracted business-error parts (public for the Transport's error builder).
+/// Error code and message extracted from a recognized business envelope.
 #[derive(Debug, Clone)]
 pub struct BusinessError {
+    /// Numeric, textual, or otherwise open-format business code.
     pub code: Option<serde_json::Value>,
+    /// Human-readable service error message.
     pub message: String,
 }
 

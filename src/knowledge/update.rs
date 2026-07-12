@@ -9,7 +9,7 @@ use crate::client::ZaiClient;
 /// Update body for editing a knowledge base
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Validate)]
 pub struct UpdateKnowledgeBody {
-    /// Embedding model id (3 or 11)
+    /// Embedding model ID (3, 11, or 12).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_id: Option<EmbeddingId>,
     /// Knowledge base name
@@ -64,7 +64,6 @@ impl KnowledgeUpdateRequest {
         }
     }
 
-    /// Setters to update individual fields
     /// Set the embedding model id.
     pub fn with_embedding_id(mut self, id: EmbeddingId) -> Self {
         self.body.embedding_id = Some(id);

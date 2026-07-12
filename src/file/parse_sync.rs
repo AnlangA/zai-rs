@@ -1,4 +1,4 @@
-//! File parse sync request (POST /paas/v4/files/parser/sync) — plan P06.
+//! Open-format synchronous file-parsing request.
 
 use crate::ZaiResult;
 use crate::client::ZaiClient;
@@ -11,12 +11,17 @@ pub struct FileParseSyncResponse {
     pub data: serde_json::Value,
 }
 
-/// POST /files/parser/sync — synchronous file parsing.
+/// Synchronous file-parsing request for `POST /files/parser/sync`.
+///
+/// The request body is intentionally an open JSON value and is not validated by
+/// the SDK. Callers must supply the object shape expected by the service.
 pub struct FileParseSyncRequest {
+    /// JSON body passed to the endpoint unchanged.
     pub body: serde_json::Value,
 }
 
 impl FileParseSyncRequest {
+    /// Create a request from an open-format JSON body.
     pub fn new(body: serde_json::Value) -> Self {
         Self { body }
     }

@@ -15,19 +15,15 @@ where
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 1, max = 4000))]
     pub prompt: Option<String>,
-    /// Image generation quality
-    /// - HD: generates more refined and detailed images with higher
-    ///   consistency, takes ~20 seconds
-    /// - Standard: fast image generation, suitable for scenarios requiring
-    ///   speed, takes ~5-10 seconds This parameter only supports
-    ///   cogview-4-250304
+    /// Image-generation quality.
+    ///
+    /// This option is supported only by `cogview-4-250304`. `Hd` favors detail
+    /// and consistency; `Standard` favors lower latency.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quality: Option<ImageQuality>,
     /// Image size
-    /// Recommended values: 1024x1024 (default), 768x1344, 864x1152, 1344x768,
-    /// 1152x864, 1440x720, 720x1440 Custom dimensions: width and height
-    /// must be between 512-2048px, divisible by 16, and total pixels must
-    /// not exceed 2^21 (2,097,152)
+    /// Use an [`ImageSize`] preset or custom dimensions satisfying the limits
+    /// documented on that type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<ImageSize>,
     /// Whether to add watermark to AI generated images

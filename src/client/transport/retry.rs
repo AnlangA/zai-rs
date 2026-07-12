@@ -1,4 +1,4 @@
-//! Retry-safety classification, backoff and Retry-After (plan §4 / P03.5–P03.7).
+//! Retry-safety classification, backoff, and `Retry-After` handling.
 //!
 //! - [`RetrySafety`] is the fixed per-method classification (GET/HEAD/OPTIONS/
 //!   PUT/DELETE = Idempotent; POST/PATCH = NonIdempotent). The only per-request
@@ -6,14 +6,16 @@
 //!   the serialized body.
 //! - The retry *status* matrix decides which HTTP statuses/business codes are
 //!   retryable; effective safety + max_attempts then bound the attempts.
-//! - Backoff uses full jitter (cap `min(8s, 200ms * 2^(n-1))`); `Retry-After`
-//!   on 429/503 replaces jitter when valid.
+//! - Backoff uses full jitter (cap `min(8s, 200ms * 2^n)` for zero-based retry
+//!   index `n`). A positive integer `Retry-After` hint replaces the jitter delay
+//!   only when it is at least as long as that delay. HTTP-date hints are not
+//!   currently honored.
 
 use std::time::Duration;
 
 use crate::client::RetryOverride;
 
-/// Fixed retry-safety classification (plan §4).
+/// Fixed retry-safety classification derived from the HTTP method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetrySafety {
     /// GET/HEAD/OPTIONS/PUT/DELETE — safe to retry on transient errors.
@@ -40,25 +42,26 @@ impl RetrySafety {
     }
 }
 
-/// HTTP statuses that are retryable for an idempotent request (plan §4).
+/// HTTP statuses that are retryable for an idempotent request.
 /// 408/425/429/500/502/503/504. 501/505 are excluded.
 pub const RETRYABLE_STATUSES: &[u16] = &[408, 425, 429, 500, 502, 503, 504];
 
-/// Business codes that are non-retryable quota/billing (plan §13.7) and take
-/// precedence over the status-retry set.
+/// Business codes treated as non-retryable quota or billing failures.
+///
+/// These codes take precedence over the status retry set.
 pub const NON_RETRYABLE_QUOTA_CODES: &[u16] = &[
     1113, 1308, 1309, 1310, 1311, 1313, 1314, 1315, 1316, 1317, 1318, 1319, 1320, 1321,
 ];
 
-/// Business codes that are validation/content (plan §13.7), not retried.
+/// Business codes treated as non-retryable validation or content failures.
 pub const NON_RETRYABLE_VALIDATION_CODES: &[u16] =
     &[1210, 1211, 1212, 1213, 1214, 1215, 1221, 1222, 1261, 1301];
 
 /// Decide whether a `(status, business_code)` outcome is retryable for an
 /// idempotent request.
 ///
-/// Precedence (plan §13.7): non-retryable quota/billing and validation/content
-/// codes override the status-retry set; otherwise the status-retry set applies.
+/// Non-retryable quota/billing and validation/content codes override the status
+/// retry set; otherwise the status retry set applies.
 pub fn is_retryable_outcome(status: u16, business_code: Option<u16>) -> bool {
     if let Some(code) = business_code
         && (NON_RETRYABLE_QUOTA_CODES.contains(&code)
@@ -69,14 +72,14 @@ pub fn is_retryable_outcome(status: u16, business_code: Option<u16>) -> bool {
     RETRYABLE_STATUSES.contains(&status)
 }
 
-/// A source of backoff jitter, injectable for virtual-time tests (plan P03.5).
+/// A source of backoff jitter, injectable for deterministic tests.
 pub trait JitterSource: Send + Sync {
-    /// Return a uniform random in `[0, upper]`.
+    /// Choose a delay in the inclusive range `[0, upper]`.
     fn jitter(&self, upper: Duration) -> Duration;
 }
 
 /// Full-jitter backoff upper bound for the n-th retry (0-indexed): `min(8s,
-/// 200ms * 2^n)` (plan §4).
+/// 200ms * 2^n)`.
 pub fn full_jitter_cap(retry_index: u32) -> Duration {
     let base_ms: u64 = 200;
     let cap_ms: u64 = 8_000;
@@ -91,17 +94,17 @@ pub fn backoff_delay(retry_index: u32, jitter: &dyn JitterSource) -> Duration {
     jitter.jitter(full_jitter_cap(retry_index))
 }
 
-/// Parse a `Retry-After` header value. Accepts integer seconds or an HTTP-date;
-/// returns `None` for invalid/zero values (plan P03.7: a zero/garbage hint
-/// carries no information; the caller falls back to jitter).
+/// Parse a `Retry-After` header value expressed as positive integer seconds.
+///
+/// Zero, malformed values, and HTTP-date values currently return `None`, which
+/// makes the caller fall back to jitter.
 pub fn parse_retry_after(value: &str) -> Option<Duration> {
     let trimmed = value.trim();
     if let Ok(secs) = trimmed.parse::<u64>() {
         return (secs > 0).then(|| Duration::from_secs(secs));
     }
-    // HTTP-date form — parse via httpdate if available; otherwise None.
-    // We intentionally do NOT pull a date crate; the SDK only honors integer
-    // seconds (the documented server behavior). HTTP-date falls back to jitter.
+    // The helper recognizes the IMF-fixdate shape but intentionally returns
+    // None until a complete calendar conversion is available.
     parse_http_date(trimmed)
 }
 
@@ -120,8 +123,10 @@ fn parse_http_date(s: &str) -> Option<Duration> {
     }
 }
 
-/// Very small HTTP-date → unix seconds converter for the IMF-fixdate form
-/// (`Sun, 06 Nov 1994 08:49:37 GMT`).
+/// Recognize fields from an IMF-fixdate value.
+///
+/// Calendar conversion is intentionally not implemented, so this currently
+/// returns `None` even for a well-formed value.
 fn httpdate_to_unix(s: &str) -> Option<u64> {
     // Strip leading "Wkd, ".
     let s = s.split_once(',').map(|(_, r)| r.trim()).unwrap_or(s);
@@ -132,9 +137,7 @@ fn httpdate_to_unix(s: &str) -> Option<u64> {
     let day: u32 = parts[0].parse().ok()?;
     let month = month_index(parts[1])?;
     let year: u32 = parts[2].split(':').next().and_then(|y| y.parse().ok())?;
-    // We only need a rough ordering; a full calendar is out of scope. Treat the
-    // HH:MM:SS as "same day" and compare day-of-year-ish. This is deliberately
-    // conservative: on any parse ambiguity we return None (caller uses jitter).
+    // Keep parsing strict while calendar conversion remains unimplemented.
     let _ = (day, month, year);
     None
 }
@@ -159,7 +162,7 @@ fn month_index(name: &str) -> Option<u32> {
 
 /// Reconcile a `Retry-After` hint with the computed jitter delay: the hint
 /// replaces jitter when present and >= computed; otherwise the computed delay
-/// stands (plan P03.7).
+/// stands.
 pub fn reconcile_retry_after(hint: Option<Duration>, computed: Duration) -> Duration {
     match hint {
         Some(h) if h >= computed => h,

@@ -22,10 +22,12 @@ impl McpTextResponse {
         Self { text }
     }
 
+    /// Borrow the returned text.
     pub fn text(&self) -> &str {
         &self.text
     }
 
+    /// Consume the response and return its text.
     pub fn into_text(self) -> String {
         self.text
     }
@@ -48,17 +50,25 @@ impl fmt::Display for McpTextResponse {
 /// One result returned by web search.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebSearchResult {
+    /// Result title.
     pub title: String,
+    /// Result URL.
     pub link: String,
+    /// Search-generated page summary.
     pub content: String,
+    /// Upstream reference identifier, when supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refer: Option<String>,
+    /// Source site or publisher name, when supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<String>,
+    /// Source-site icon URL, when supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    /// Publication date in the upstream service's original representation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish_date: Option<String>,
+    /// Additional fields returned by newer versions of the upstream service.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -66,10 +76,12 @@ pub struct WebSearchResult {
 /// Typed response from `web_search_prime`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebSearchResponse {
+    /// Search results in upstream ranking order.
     pub results: Vec<WebSearchResult>,
 }
 
 impl WebSearchResponse {
+    /// Consume the response and return the result list.
     pub fn into_results(self) -> Vec<WebSearchResult> {
         self.results
     }
@@ -86,20 +98,28 @@ impl Deref for WebSearchResponse {
 /// Typed response from `webReader`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebReaderResponse {
+    /// Page title, or an empty string when the upstream response omits it.
     #[serde(default)]
     pub title: String,
+    /// Page description, or an empty string when unavailable.
     #[serde(default)]
     pub description: String,
+    /// Canonical or requested page URL reported by the reader.
     #[serde(default)]
     pub url: String,
+    /// Extracted page content in the requested format.
     #[serde(default)]
     pub content: String,
+    /// Image labels mapped to their source URLs.
     #[serde(default)]
     pub images: BTreeMap<String, String>,
+    /// Reader metadata whose shape is controlled by the upstream service.
     #[serde(default)]
     pub metadata: BTreeMap<String, Value>,
+    /// Additional externally sourced reader data.
     #[serde(default)]
     pub external: BTreeMap<String, Value>,
+    /// Unknown top-level fields retained for forward compatibility.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }

@@ -10,9 +10,10 @@ use crate::client::endpoint::EndpointConfig;
 pub enum AuthMode {
     /// Server-side Bearer auth: `Authorization: Bearer {API_KEY}` (default).
     Bearer,
-    /// Client-side JWT auth: a short-lived token signed from the API key's
-    /// secret, so the secret never leaves the server. Used when the WebSocket
-    /// is opened directly from a browser/device.
+    /// JWT auth using a short-lived token derived locally from the API key.
+    /// Only the derived token is sent in the WebSocket handshake. Keeping the
+    /// original key away from an untrusted browser or device remains the
+    /// application's responsibility.
     Jwt {
         /// Token validity in seconds.
         ttl_seconds: i64,
@@ -25,7 +26,7 @@ pub enum AuthMode {
 /// [`RealtimeClient::with_jwt`], then start a session with
 /// [`RealtimeClient::session`].
 ///
-/// ```text
+/// ```no_run
 /// use zai_rs::{model::GLM4_voice, realtime::RealtimeClient};
 ///
 /// # async fn go(key: String) -> zai_rs::ZaiResult<()> {
@@ -54,7 +55,10 @@ impl RealtimeClient {
         }
     }
 
-    /// Switch to client-side JWT auth, signing tokens valid for `ttl_seconds`.
+    /// Switch to JWT auth, signing tokens valid for `ttl_seconds`.
+    ///
+    /// The value is validated when the session is built and must be between one
+    /// second and seven days, inclusive.
     pub fn with_jwt(mut self, ttl_seconds: i64) -> Self {
         self.auth = AuthMode::Jwt { ttl_seconds };
         self
@@ -109,6 +113,8 @@ impl RealtimeClient {
     }
 
     /// A reference to the configured API key.
+    ///
+    /// Treat this value as sensitive and never include it in logs or errors.
     pub fn api_key(&self) -> &str {
         &self.api_key
     }

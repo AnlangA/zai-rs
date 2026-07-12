@@ -4,7 +4,7 @@ use validator::Validate;
 use crate::ZaiResult;
 use crate::client::ZaiClient;
 
-/// Embedding model id enum mapped to integer ids (plan §13.5).
+/// Embedding model identifier encoded as the service's integer value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingId {
     /// 3: Embedding-2
@@ -89,7 +89,7 @@ pub enum KnowledgeIcon {
 /// Request body for creating a knowledge base
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct CreateKnowledgeBody {
-    /// Embedding model id (3, 11 or 12; plan §13.5).
+    /// Embedding model ID (3, 11, or 12).
     pub embedding_id: EmbeddingId,
     /// Knowledge base name
     #[validate(length(min = 1))]
@@ -104,10 +104,10 @@ pub struct CreateKnowledgeBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<KnowledgeIcon>,
     /// Embedding model name (optional). When given alongside `embedding_id`,
-    /// the two must be consistent (plan §13.5).
+    /// the service requires the two to be consistent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_model: Option<String>,
-    /// Contextual retrieval flag (0/1; plan §13.5).
+    /// Contextual retrieval flag (`0` or `1`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contextual: Option<u8>,
 }
@@ -135,7 +135,6 @@ impl CreateKnowledgeRequest {
         Self { body }
     }
 
-    /// Optional fields setters
     /// Set the knowledge-base description.
     pub fn with_description(mut self, desc: impl Into<String>) -> Self {
         self.body.description = Some(desc.into());
@@ -152,12 +151,15 @@ impl CreateKnowledgeRequest {
         self
     }
     /// Set the embedding model name (optional). When given alongside
-    /// `embedding_id`, the two must be consistent (plan §13.5).
+    /// `embedding_id`, the service requires the two to be consistent. The SDK
+    /// does not check that relationship locally.
     pub fn with_embedding_model(mut self, model: impl Into<String>) -> Self {
         self.body.embedding_model = Some(model.into());
         self
     }
-    /// Set the contextual-retrieval flag (0 or 1; plan §13.5).
+    /// Set the contextual-retrieval flag (`0` or `1`).
+    ///
+    /// This setter does not validate the numeric value locally.
     pub fn with_contextual(mut self, contextual: u8) -> Self {
         self.body.contextual = Some(contextual);
         self

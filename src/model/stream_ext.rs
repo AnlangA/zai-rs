@@ -1,10 +1,7 @@
-//! Streaming extension traits (P05 cleanup: HttpClient trait removed).
+//! Legacy streaming extension traits retained for source compatibility.
 //!
-//! The SSE streaming methods (`stream_for_each`, `stream_sse_for_each`,
-//! `to_stream`) were default methods on traits that required `HttpClient`.
-//! Since `HttpClient` is removed in 0.5, these traits are now empty marker
-//! traits. The full SSE streaming path will be rebuilt in a future point
-//! release via the new `Transport` + `ZaiClient` architecture.
+//! These marker traits contain no streaming methods and have no implementations
+//! in this crate; they are not an operational streaming API.
 
 use crate::model::traits::SseStreamable;
 

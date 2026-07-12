@@ -1,4 +1,4 @@
-//! Tools request types (plan P06) — layout parsing & reader.
+//! Request types for document layout parsing and content extraction.
 
 use crate::ZaiResult;
 use crate::client::ZaiClient;
@@ -11,10 +11,12 @@ use super::response::{LayoutParsingResponse, ReaderResponse};
 
 /// POST /layout_parsing — document layout analysis.
 pub struct LayoutParsingRequest {
+    /// Open-schema request body sent as JSON.
     pub body: serde_json::Value,
 }
 
 impl LayoutParsingRequest {
+    /// Create a document layout-parsing request.
     pub fn new(body: serde_json::Value) -> Self {
         Self { body }
     }
@@ -35,10 +37,12 @@ impl LayoutParsingRequest {
 
 /// POST /reader — document reading / content extraction.
 pub struct ReaderRequest {
+    /// Open-schema request body sent as JSON.
     pub body: serde_json::Value,
 }
 
 impl ReaderRequest {
+    /// Create a document reader request.
     pub fn new(body: serde_json::Value) -> Self {
         Self { body }
     }
@@ -52,7 +56,3 @@ impl ReaderRequest {
             .await
     }
 }
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------

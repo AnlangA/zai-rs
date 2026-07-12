@@ -1,6 +1,6 @@
 //! # Basic Chat Text Example
 //!
-//! Demonstrates basic text chat completion via `ZaiClient` (P05 migration).
+//! Demonstrates basic text chat completion via `ZaiClient`.
 
 use zai_rs::client::ZaiClient;
 use zai_rs::model::{chat_base_response::ChatCompletionResponse, *};

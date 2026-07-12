@@ -4,11 +4,11 @@ use validator::Validate;
 /// Request body for voice deletion.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct VoiceDeleteBody {
-    /// 要删除的音色标识
+    /// Identifier of the voice to delete.
     #[validate(length(min = 1))]
     pub voice: String,
 
-    /// 可选：请求ID
+    /// Optional client-provided request identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
 }

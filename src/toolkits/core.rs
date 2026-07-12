@@ -1,4 +1,4 @@
-//! Core traits and types with enhanced type safety
+//! Core traits and concrete types for defining executable tools.
 
 use std::{borrow::Cow, collections::HashMap};
 
@@ -54,7 +54,7 @@ static SCHEMA_CACHE: LazyLock<std::sync::RwLock<HashMap<u64, Arc<jsonschema::Val
 #[cfg(feature = "toolkits")]
 const SCHEMA_CACHE_MAX_SIZE: usize = 256;
 
-/// Enhanced tool metadata with better type information and memory optimization
+/// Metadata used to identify, describe, and categorize a tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolMetadata {
     /// Tool name (must be unique)
@@ -105,7 +105,6 @@ impl ToolMetadata {
         })
     }
 
-    /// Builder pattern methods
     /// Set the tool version.
     pub fn version(mut self, version: impl Into<Cow<'static, str>>) -> Self {
         self.version = version.into();

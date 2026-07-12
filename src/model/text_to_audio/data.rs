@@ -7,16 +7,14 @@ use super::{
 };
 use crate::client::ZaiClient;
 
-/// Text-to-speech request wrapper using JSON body
+/// Text-to-speech request wrapper using a JSON body.
 ///
 /// Builder for the text-to-speech endpoint. Construct with
 /// [`TextToAudioRequest::new`], tune with the `with_*` methods, then call
 /// [`TextToAudioRequest::send_via`].
 ///
-/// **P05**: credentials and transport live on the [`ZaiClient`], passed to
-/// [`send_via`](Self::send_via). The endpoint returns raw audio bytes, so
-/// `send_via` yields the underlying `reqwest::Response` for the caller to
-/// extract bytes from.
+/// The endpoint returns raw audio, so [`send_via`](Self::send_via) yields
+/// [`bytes::Bytes`] rather than a JSON response type.
 pub struct TextToAudioRequest<N>
 where
     N: ModelName + TextToAudio + Serialize,
@@ -29,9 +27,6 @@ where
     N: ModelName + TextToAudio + Serialize,
 {
     /// Create a new TTS request for the given model.
-    ///
-    /// **P05**: no longer takes an API key — the key is provided by the
-    /// [`ZaiClient`] at send time.
     pub fn new(model: N) -> Self {
         let body = TextToAudioBody::new(model);
         Self { body }

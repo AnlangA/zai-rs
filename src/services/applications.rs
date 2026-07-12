@@ -1,4 +1,4 @@
-//! # LLM-Application service (plan P06).
+//! # LLM-Application service
 //!
 //! Seven application endpoints spanning three API families:
 //!
@@ -12,7 +12,8 @@
 //! | `history` | GET | `LlmApplication` | `history_session_record/{app_id}/{conversation_id}` |
 //! | `invoke` | POST | `ApplicationV3` | `v3/application/invoke` |
 //!
-//! Each request type follows the established P05 `send_via(&ZaiClient)` pattern.
+//! Request values carry endpoint-specific input and are sent through
+//! [`crate::client::ZaiClient`].
 
 mod request;
 mod response;

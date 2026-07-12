@@ -1,7 +1,7 @@
 //! Exercise the complete Web Search MCP request surface.
 //!
 //! Run with:
-//! cargo run --example mcp_web_search --features mcp -- "Rust rmcp 2.2.0" docs.rs
+//! cargo run --example mcp_web_search --features mcp -- "Rust rmcp" docs.rs
 
 use std::env;
 

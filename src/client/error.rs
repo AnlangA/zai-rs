@@ -20,9 +20,9 @@
 //!
 //! # Sensitive-Data Masking
 //!
-//! The [`mask_sensitive_info`] function automatically redacts API keys,
-//! passwords, tokens and other secrets from log output to prevent accidental
-//! leakage.
+//! [`mask_sensitive_info`] can sanitize text before a caller writes it to a log.
+//! It is an explicit helper, not a logging hook: arbitrary log messages are not
+//! automatically filtered by this module.
 //!
 //! # Example
 //!
@@ -70,11 +70,8 @@ static SENSITIVE_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(
             "$1[FILTERED]",
         ),
         (
-            // Redact the entire `Authorization: Bearer <token>` — including the
-            // `Authorization` header name and `Bearer` scheme word — so neither
-            // the scheme nor the value nor the header name is ever emitted in a
-            // trace/log line (plan P01.4 acceptance: trace must contain neither
-            // `Authorization` nor `Bearer`).
+            // Redact the entire `Authorization: Bearer <token>`, including the
+            // header name and authentication scheme.
             r"(?i)authorization\s*:\s*Bearer\s+[^\s,]+",
             "[AUTH_REDACTED]",
         ),
@@ -108,7 +105,8 @@ static CONTAINS_SENSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 ///
 /// # Returns
 ///
-/// Text with sensitive information masked as `[FILTERED]`
+/// Text with sensitive information masked as `[FILTERED]`, or
+/// `[AUTH_REDACTED]` for a complete Authorization header
 ///
 /// # Patterns Masked
 ///
@@ -167,8 +165,8 @@ pub fn contains_sensitive_info(text: &str) -> bool {
 
 /// Validates Zhipu AI API key format
 ///
-/// Zhipu AI API keys follow the format: `<id>.<secret>`
-/// where both parts are alphanumeric strings.
+/// Zhipu AI API keys follow the format `<id>.<secret>`, where both parts contain
+/// letters, digits, `_`, or `-`.
 ///
 /// # Arguments
 ///
@@ -509,12 +507,9 @@ impl ZaiError {
             };
         }
 
-        // Fall back to HTTP status when no business code is present (plan P01.8).
-        // Every 5xx — including 502/503/504, which previously fell through to
-        // `Unknown` and broke the retry/classification chain — is kept as an
-        // `HttpError` carrying the real status. 401/403 are classified as auth
-        // and 429 as rate-limit so `is_auth_error()`/`is_rate_limit()` hold on
-        // status-only responses (the ApiCode string redesign is deferred to P03).
+        // Fall back to HTTP status when no business code is present. Every 5xx
+        // remains an HttpError carrying the real status; 401/403 are classified
+        // as authentication errors and 429 as rate limiting.
         match status {
             400 => ZaiError::HttpError {
                 status,
@@ -552,9 +547,7 @@ impl ZaiError {
                 status,
                 message: "File size exceeds 100MB limit".to_string(),
             },
-            // All 5xx keep the status (502/503/504 no longer fall through to
-            // Unknown). `is_retryable()` / `is_server_error()` derive from the
-            // carried status via classify_status.
+            // All 5xx keep the status so classification can use it directly.
             s if (500..600).contains(&s) => ZaiError::HttpError {
                 status,
                 message: if api_message.is_empty() {
@@ -643,12 +636,10 @@ impl ZaiError {
 
     /// Whether retrying the request that produced this error could succeed.
     ///
-    /// The HTTP send-path retry policy in one place (consumed by the retry
-    /// loop): rate-limit, network, and server (5xx) failures are retryable;
-    /// client 4xx, auth, and serialization errors are not. This is deliberately
-    /// narrower than [`category`](Self::category) — an unmapped 5xx
-    /// ([`Unknown`](ZaiError::Unknown)) is reported as a server error but not
-    /// retried. Callers still need an attempt-count guard.
+    /// This caller-facing helper marks rate-limit, network, HTTP 429, and HTTP
+    /// 5xx errors as potentially retryable. It does not account for request
+    /// idempotency or attempt limits. The internal HTTP transport uses its own
+    /// status-and-business-code matrix before constructing a final `ZaiError`.
     pub fn is_retryable(&self) -> bool {
         match self {
             ZaiError::HttpError { status, .. } => *status == 429 || (500..600).contains(status),
@@ -1178,10 +1169,6 @@ mod tests {
     #[test]
     fn test_validate_api_key_valid() {
         assert!(validate_api_key("abc123.abcdefghijklmnopqrstuvwxyz").is_ok());
-        // Skip the following tests for now - the validation needs adjustment
-        // assert!(validate_api_key("id123.secret456").is_ok());
-        // assert!(validate_api_key("abc.abcdefghijklmnopqrstuvwxyz123").
-        // is_ok());
     }
 
     #[test]
@@ -1285,8 +1272,8 @@ mod tests {
     fn test_mask_sensitive_info_bearer() {
         let text = "Authorization: Bearer abc123.abc1234567890";
         let filtered = mask_sensitive_info(text);
-        // P01.4: the whole Authorization header (name + Bearer scheme + value)
-        // is redacted — no `Authorization`, no `Bearer`, no key material.
+        // The whole Authorization header is replaced, including the header name
+        // and Bearer scheme.
         assert!(filtered.contains("[AUTH_REDACTED]"));
         assert!(!filtered.contains("abc123"));
         assert!(!filtered.contains("Bearer"));
@@ -1428,12 +1415,12 @@ mod tests {
         }
     }
 
-    // ----- P01.8: HTTP status classification (status-only responses) -----
+    // ----- HTTP status classification for status-only responses -----
 
     #[test]
     fn status_502_503_504_classify_as_server_and_carry_status() {
-        // P01.7/§2.2.6: 502/503/504 previously fell through to Unknown; they
-        // must now keep the status and classify as Server.
+        // Gateway/server failures retain their real status and classify as
+        // server-side and retryable.
         for status in [502, 503, 504] {
             let e = ZaiError::from_api_response(status, 0, String::new());
             match &e {

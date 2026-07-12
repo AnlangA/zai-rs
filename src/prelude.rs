@@ -1,19 +1,24 @@
-//! Prelude for the zai-rs 0.5 public surface (plan P10.1).
+//! Convenience imports for the most common client and chat APIs.
 //!
-//! `use zai_rs::prelude::*;` brings in the four core types plus the essential
-//! model types needed for chat construction.
+//! `use zai_rs::prelude::*;` imports the shared client, transport
+//! configuration, error types, chat request/message aliases, and model
+//! type-state traits. Enabling the `mcp` feature also adds the MCP API.
 //!
-//! ```text
-//! use zai_rs::prelude::*;
+//! ```rust,no_run
+//! use zai_rs::{model::GLM4_5_flash, prelude::*};
 //!
+//! # async fn demo() -> ZaiResult<()> {
 //! let client = ZaiClient::builder("key").build()?;
-//! let request = ChatRequest::new(/* model */, ChatMessage::user("Hello"));
+//! let request = ChatRequest::new(GLM4_5_flash {}, ChatMessage::user("Hello"));
 //! let response = request.send_via(&client).await?;
+//! # Ok(())
+//! # }
 //! ```
 
 pub use crate::client::{HttpTransportConfig, ZaiClient, ZaiClientBuilder, ZaiError, ZaiResult};
 
-// Essential model types for chat construction.
+// Keep the prelude intentionally small; specialized request/response types stay
+// in their semantic modules.
 pub use crate::model::traits::{ModelName, StreamOff as NonStreaming, StreamOn as Streaming};
 pub use crate::model::{ChatCompletion as ChatRequest, TextMessage as ChatMessage};
 

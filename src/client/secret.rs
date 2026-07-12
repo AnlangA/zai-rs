@@ -1,12 +1,10 @@
-//! Secret-string wrapper for the API key (plan P02.1).
+//! Secret-string wrapper for API keys.
 //!
-//! `ApiSecret` wraps [`secrecy::SecretString`]. Its `Clone`, `Debug` and
-//! `Display` implementations ALWAYS print `[REDACTED]` — the plaintext is only
-//! reachable through [`ApiSecret::expose`], which the SDK uses only at audited
-//! authentication boundaries: building an `Authorization` header or supplying
-//! credentials to an SDK-managed local MCP process. This makes accidental
-//! logging of the key a compile-time-shaped impossibility rather than a
-//! discipline.
+//! `ApiSecret` wraps [`secrecy::SecretString`]. Its `Debug` and `Display`
+//! implementations print `[REDACTED]`, while [`ApiSecret::expose`] provides
+//! explicit access to the plaintext for authentication boundaries. Redacted
+//! formatting reduces accidental disclosure but cannot prevent a caller from
+//! exposing or logging the returned string.
 
 use std::fmt;
 
@@ -15,8 +13,8 @@ use secrecy::{ExposeSecret, SecretString};
 /// A redacting wrapper around the Zhipu API key.
 ///
 /// Construct via [`ApiSecret::new`]; never construct a bare `SecretString`
-/// elsewhere in the crate. `Debug`/`Display`/`Clone` are guaranteed to keep the
-/// secret hidden.
+/// elsewhere in the crate. `Debug` and `Display` do not reveal the plaintext;
+/// cloning produces another secret wrapper.
 #[derive(Clone)]
 pub struct ApiSecret(SecretString);
 
@@ -38,9 +36,8 @@ impl ApiSecret {
     }
 }
 
-// `SecretString` already implements these via secrecy; assert the trait bounds
-// hold by routing through them. These impls are what guarantee `Clone` does not
-// leak and `Debug` shows nothing.
+// Keep the crate-wide redaction marker stable instead of exposing secrecy's
+// implementation-specific formatting.
 impl fmt::Debug for ApiSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Intentionally hard-code the redaction marker rather than delegating
@@ -61,11 +58,6 @@ impl Default for ApiSecret {
         Self(SecretString::from(String::new()))
     }
 }
-
-// `SecretString` (secrecy 0.10.3) is a `SecretBox<str>` with a direct `Clone`
-// impl and zeroizes on drop; its plaintext is reachable only through
-// `ExposeSecret::expose_secret`. `ApiSecret` keeps a single audited call site
-// for that (see `expose`).
 
 #[cfg(test)]
 mod tests {

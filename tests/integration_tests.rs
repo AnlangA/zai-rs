@@ -93,7 +93,7 @@ async fn capture_one_sdk_request(
 }
 
 /// Build a `ZaiClient` whose PaasV4 endpoint points at the mock `base_url`
-/// (P05: chat requests route through `ZaiClient` instead of per-request keys).
+/// so chat requests can be captured without external network access.
 fn client_for_mock_base(base_url: &str, key: &str) -> ZaiClient {
     let ep = base_url.to_string();
     let leaked: &'static str = Box::leak(ep.into_boxed_str());
@@ -105,7 +105,7 @@ fn client_for_mock_base(base_url: &str, key: &str) -> ZaiClient {
 }
 
 /// Build a `ZaiClient` whose Monitor endpoint points at the mock `base_url`
-/// (P05: usage requests route through `ZaiClient` instead of per-request keys).
+/// so usage requests can be captured without external network access.
 fn monitor_client_for_base(base_url: &str, key: &str) -> ZaiClient {
     let ep = base_url.to_string();
     let leaked: &'static str = Box::leak(ep.into_boxed_str());
