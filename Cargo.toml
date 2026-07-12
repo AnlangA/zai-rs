@@ -19,7 +19,7 @@ exclude = [
 
 [package]
 name = "zai-rs"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 rust-version = "1.88"
 authors = ["anlang <2682525840@qq.com>"]
