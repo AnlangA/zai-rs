@@ -110,7 +110,7 @@
 //! | `realtime` | disabled | Real-time audio/video over WebSocket (GLM-Realtime) |
 //! | `mcp` | disabled | Unified high-level MCP capability client |
 //! | `rmcp-kits` | disabled | Enable RMCP protocol bridge for MCP tool calling |
-//! | `tool-validation` | disabled | Runtime validation of tool-call arguments against their JSON Schema |
+//! | `toolkits` | disabled | Tool execution with JSON-Schema argument validation |
 //!
 //! Enable in `Cargo.toml`:
 //! ```toml

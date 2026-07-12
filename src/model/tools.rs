@@ -20,7 +20,7 @@ use serde::Serialize;
 use validator::*;
 
 use super::model_validate::validate_json_schema_value;
-use crate::tool::web_search::request::{ContentSize, SearchEngine, SearchRecencyFilter};
+use crate::tool::web_search::{ContentSize, SearchEngine, SearchRecencyFilter};
 
 /// Controls thinking/reasoning capabilities in AI models.
 ///

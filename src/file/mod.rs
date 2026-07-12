@@ -7,10 +7,10 @@
 //!
 //! | Operation | Module | Description |
 //! |-----------|--------|-------------|
-//! | Upload | [`upload`] | Upload files (PDF, images, etc.) |
-//! | List | [`list`] | List files with metadata |
-//! | Content | [`content`] | Retrieve file content |
-//! | Delete | [`delete`] | Delete files |
+//! | Upload | [`FileUploadRequest`] | Upload files (PDF, images, etc.) |
+//! | List | [`FileListRequest`] | List files with metadata |
+//! | Content | [`FileContentRequest`] | Retrieve file content |
+//! | Delete | [`FileDeleteRequest`] | Delete files |
 //!
 //! # Usage
 //!
@@ -31,21 +31,21 @@
 //! ```
 
 /// Request body / shared types for file operations.
-pub mod request;
+mod request;
 /// Response types for file operations.
-pub mod response;
+mod response;
 
 // Split operations into clear modules
 /// Retrieve file content (`GET …/files/{id}/content`).
-pub mod content;
+mod content;
 /// Delete a file (`DELETE …/files/{id}`).
-pub mod delete;
+mod delete;
 /// List files with metadata (`GET …/files`).
-pub mod list;
+mod list;
 /// Synchronous file parsing (`POST …/files/parser/sync`, P06).
-pub mod parse_sync;
+mod parse_sync;
 /// Upload files (`POST …/files`, multipart).
-pub mod upload;
+mod upload;
 
 pub use content::*;
 pub use delete::*;

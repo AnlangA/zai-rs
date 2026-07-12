@@ -3,8 +3,7 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 use zai_rs::model::{
-    chat_base_response::ChatCompletionResponse, chat_models::GLM4_6, TextMessage, ThinkingMode,
-    ThinkingType,
+    chat_base_response::ChatCompletionResponse, chat_models::GLM4_6, TextMessage, ThinkingType,
 };
 
 use crate::server::error::AppResult;
@@ -362,6 +361,7 @@ Guidelines:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zai_rs::model::ThinkingMode;
 
     #[test]
     fn test_chat_request_defaults() {

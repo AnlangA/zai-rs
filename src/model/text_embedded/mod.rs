@@ -1,11 +1,11 @@
 //! Text embeddings — generate vector embeddings for text.
 
 /// Request builder and client for embeddings.
-pub mod data;
+mod data;
 /// Request body types.
-pub mod request;
+mod request;
 /// Response body types.
-pub mod response;
+mod response;
 
 pub use data::*;
 pub use request::*;

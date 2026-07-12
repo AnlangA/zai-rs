@@ -1,5 +1,5 @@
-//! Asynchronous (queued) chat completion — request types live in [`data`].
+//! Asynchronous (queued) chat completion.
 
 /// Request builder and types for async chat completion.
-pub mod data;
+mod data;
 pub use data::*;

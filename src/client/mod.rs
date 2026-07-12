@@ -6,7 +6,6 @@ pub mod endpoint;
 pub mod error;
 pub(crate) mod routes;
 pub mod secret;
-pub mod services;
 pub mod transport;
 
 // Re-export the main public types.
@@ -16,4 +15,3 @@ pub use config::{
 };
 pub use endpoint::{ApiFamily, EndpointConfig, EndpointConfigBuilder};
 pub use error::*;
-pub use services::Services;

@@ -1,5 +1,5 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::model::text_to_audio::{model::GlmTts, *};
+use zai_rs::model::text_to_audio::{GlmTts, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

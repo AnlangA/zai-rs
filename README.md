@@ -156,12 +156,13 @@ cargo run --example chat_loop
 - [x] GET 余量 / 额度查询（`/api/monitor/usage/quota/limit`，5 小时窗口 + 每周窗口）
 
 ```rust,no_run
-use zai_rs::usage::CodingPlanUsageRequest;
+use zai_rs::{ZaiClient, usage::CodingPlanUsageRequest};
 
 # async fn go(key: String) -> zai_rs::ZaiResult<()> {
-let resp = CodingPlanUsageRequest::new(key).send().await?;
-if let Some(window) = resp.time_limit() {
-    println!("5h 余量: {}/{}", window.remaining(), window.number);
+let client = ZaiClient::builder(key).build()?;
+let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
+if let Some(window) = resp.summary().time_limit() {
+    println!("5h 余量: {}/{}", window.remaining, window.quota);
 }
 # Ok(())
 # }
@@ -219,6 +220,20 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 `mcp_zread` 会运行全部 3 个 ZRead 工具，`mcp_vision` 会运行全部 8 个 Vision
 工具。Vision 示例允许省略最后一个对比图片参数，此时会使用同一图片测试 UI
 差异检查；完整执行会产生多次视觉模型调用。
+
+### API 结构
+
+公开 API 按能力组织，内部文件布局不属于 API：
+
+- `zai_rs::model::<capability>`：模型请求与响应，例如 `model::ocr::OcrRequest`
+- `zai_rs::file`、`batches`、`knowledge`、`agent`、`usage`：扁平导出各能力类型
+- `zai_rs::tool::<capability>`：Web 搜索与文件解析工具
+- `zai_rs::mcp`：统一 MCP 客户端（`mcp` feature）
+- `zai_rs::toolkits`：自定义工具执行框架（`toolkits` feature）
+
+不再通过 `data`、`request`、`response`、`model` 等实现模块导入类型。所有 HTTP
+请求统一使用 `request.send_via(&client)`；原先没有业务方法的
+`client.services()` 空门面已删除。
 
 ### 实时 API
 - [x] WebSocket 类型定义

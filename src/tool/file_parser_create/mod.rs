@@ -32,9 +32,9 @@
 //! }
 //! ```
 
-pub mod data;
-pub mod request;
-pub mod response;
+mod data;
+mod request;
+mod response;
 
 // Re-export main types for convenience
 pub use data::FileParserCreateRequest;

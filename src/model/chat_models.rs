@@ -55,7 +55,7 @@
 //! ```text
 //! use zai_rs::model::chat_models::*;
 //! use zai_rs::model::chat_message_types::TextMessage;
-//! use zai_rs::model::chat::data::ChatCompletion;
+//! use zai_rs::model::chat::ChatCompletion;
 //!
 //! let model = GLM5_2 {};
 //! let messages = TextMessage::user("Hello");

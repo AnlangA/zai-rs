@@ -1,6 +1,6 @@
 use tracing::warn;
 use zai_rs::client::ZaiClient;
-use zai_rs::model::{chat::data::ChatCompletion, chat_base_response::ChatCompletionResponse, *};
+use zai_rs::model::{ChatCompletion, chat_base_response::ChatCompletionResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

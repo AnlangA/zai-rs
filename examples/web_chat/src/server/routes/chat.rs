@@ -1,6 +1,6 @@
 //! Chat API routes
 
-use std::{convert::Infallible, sync::Arc, time::Instant};
+use std::{convert::Infallible, time::Instant};
 
 use axum::{
     extract::State,

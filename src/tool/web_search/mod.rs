@@ -39,11 +39,11 @@
 //! ```
 
 /// Request builder and client for the web-search tool.
-pub mod data;
+mod data;
 /// Request body types for web search.
-pub mod request;
+mod request;
 /// Response body types for web search.
-pub mod response;
+mod response;
 
 // Re-export main types for convenience
 pub use data::WebSearchRequest;

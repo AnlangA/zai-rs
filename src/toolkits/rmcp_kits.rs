@@ -325,7 +325,7 @@ pub async fn execute_tool_calls_as_messages(
 pub async fn run_mcp_tool_roundtrip<N>(
     caller: &McpToolCaller,
     client: &crate::client::ZaiClient,
-    mut chat: crate::model::chat::data::ChatCompletion<
+    mut chat: crate::model::chat::ChatCompletion<
         N,
         crate::model::chat_message_types::TextMessage,
         crate::model::traits::StreamOff,

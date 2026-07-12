@@ -3,8 +3,8 @@
 //! These are NEW operations under `ApiFamily::PaasV4`, distinct from the
 //! existing [`crate::tool`] module (web search, file parser).
 
-pub mod request;
-pub mod response;
+mod request;
+mod response;
 
 pub use request::*;
 pub use response::*;

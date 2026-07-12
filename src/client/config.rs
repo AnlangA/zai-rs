@@ -2,7 +2,7 @@
 //!
 //! A `ZaiClient` is the single shared entry point: it owns an `Arc<ClientInner>`
 //! holding the secret, validated endpoints, the one `reqwest::Client`, transport
-//! policies and the [`Services`] facades. `Clone` is cheap (one `Arc` bump) and
+//! policies. `Clone` is cheap (one `Arc` bump) and
 //! does NOT copy the config, secret or connection pool.
 //!
 //! The builder only accepts an [`HttpTransportConfig`] and the API key — it
@@ -16,7 +16,6 @@ use std::time::Duration;
 use crate::ZaiResult;
 use crate::client::endpoint::EndpointConfig;
 use crate::client::secret::ApiSecret;
-use crate::client::services::Services;
 
 /// The shared 0.5 client.
 ///
@@ -66,13 +65,6 @@ impl ZaiClient {
             });
         }
         Self::builder(key).build()
-    }
-
-    /// Obtain the service facades (`client.services().chat()`,
-    /// `client.services().files()`, …). `Services` is a zero-sized handle that
-    /// re-borrows this client, so obtaining it is free.
-    pub fn services(&self) -> Services {
-        Services::new(self.clone())
     }
 
     /// Borrow the validated endpoints.
@@ -205,13 +197,6 @@ impl std::fmt::Debug for ZaiClient {
             .finish_non_exhaustive()
     }
 }
-
-// `ClientInner` needs to hold `Services`, which borrows `&ClientInner` — break
-// the cycle by initializing `Services` after the inner is pinned. We store it
-// in an `OnceLock`-free slot by constructing it in `build()` after the Arc is
-// created. To keep the borrow valid for the lifetime of the Arc, `Services` is
-// a ZST handle that only re-borrows the `Arc<ClientInner>` it was made from; it
-// carries no data of its own. See `services.rs`.
 
 /// Builder for [`ZaiClient`].
 pub struct ZaiClientBuilder {

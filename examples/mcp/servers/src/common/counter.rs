@@ -282,10 +282,7 @@ mod tests {
     #[tokio::test]
     async fn test_example_prompt_template() {
         let message = "Test message";
-        let prompt = format!(
-            "This is an example prompt with your message here: '{}'",
-            message
-        );
+        let prompt = format!("This is an example prompt with your message here: '{message}'");
 
         let prompt_message = PromptMessage::new_text(Role::User, prompt);
 

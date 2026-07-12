@@ -2,12 +2,7 @@
 
 use std::time::Instant;
 
-use axum::{
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::{IntoResponse, Response},
-};
+use axum::{extract::Request, http::StatusCode, middleware::Next, response::Response};
 use tracing::{info, warn};
 
 /// Request logging middleware

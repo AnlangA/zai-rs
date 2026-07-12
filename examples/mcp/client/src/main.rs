@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
     let transport = StreamableHttpClientTransport::from_uri("http://localhost:8000/mcp");
     let client_info = ClientInfo::default();
     let client = client_info.serve(transport).await.inspect_err(|e| {
-        eprintln!("client error: {:?}", e);
+        eprintln!("client error: {e:?}");
     })?;
 
     // Initialize
@@ -66,13 +66,13 @@ async fn main() -> Result<()> {
     )
     .await
     .context("MCP tool-call roundtrip failed")?;
-    println!("AI final response: {:#?}", final_resp);
+    println!("AI final response: {final_resp:#?}");
 
     // Print concise final text if available
     if let Some(answer) = extract_final_text(&final_resp) {
-        println!("Final answer: {}", answer);
+        println!("Final answer: {answer}");
     } else {
-        println!("Final answer (raw): {:#?}", final_resp);
+        println!("Final answer (raw): {final_resp:#?}");
     }
 
     // Clean shutdown

@@ -12,8 +12,8 @@
 //!
 //! No compatibility alias is kept for the removed 0.4 surface.
 
-pub mod request;
-pub mod response;
+mod request;
+mod response;
 
 pub use request::*;
 pub use response::*;

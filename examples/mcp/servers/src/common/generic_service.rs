@@ -41,6 +41,7 @@ impl DataService for MemoryDataService {
 pub struct GenericService<DS: DataService> {
     #[allow(dead_code)]
     data_service: Arc<DS>,
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -70,7 +71,7 @@ impl<DS: DataService> GenericService<DS> {
         Parameters(SetDataRequest { data }): Parameters<SetDataRequest>,
     ) -> String {
         let new_data = data.clone();
-        format!("Current memory: {}", new_data)
+        format!("Current memory: {new_data}")
     }
 }
 

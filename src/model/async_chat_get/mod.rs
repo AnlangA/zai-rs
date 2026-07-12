@@ -1,5 +1,5 @@
-//! Retrieve the result of an asynchronous chat task — types live in [`data`].
+//! Retrieve the result of an asynchronous chat task.
 
 /// Request builder and types for fetching an async chat result.
-pub mod data;
+mod data;
 pub use data::*;

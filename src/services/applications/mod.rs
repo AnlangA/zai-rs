@@ -14,8 +14,8 @@
 //!
 //! Each request type follows the established P05 `send_via(&ZaiClient)` pattern.
 
-pub mod request;
-pub mod response;
+mod request;
+mod response;
 
 pub use request::*;
 pub use response::*;

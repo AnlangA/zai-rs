@@ -1,11 +1,11 @@
 //! Asynchronous text-to-video generation.
 
 /// Request builder and client for video generation.
-pub mod data;
+mod data;
 /// Supported video-model ids and option enums.
-pub mod video_model;
+mod video_model;
 /// Request body types.
-pub mod video_request;
+mod video_request;
 
 pub use data::*;
 pub use video_model::*;

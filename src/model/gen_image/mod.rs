@@ -1,13 +1,13 @@
 //! Text-to-image generation.
 
 /// Request builder and client for image generation.
-pub mod data;
+mod data;
 /// Supported image-model ids.
-pub mod image_model;
+mod image_model;
 /// Request body types.
-pub mod image_request;
+mod image_request;
 /// Response body types.
-pub mod image_response;
+mod image_response;
 
 pub use data::*;
 pub use image_model::*;

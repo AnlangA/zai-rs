@@ -1,5 +1,5 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::model::voice_clone::{model::GlmTtsClone, response::VoiceCloneResponse, *};
+use zai_rs::model::voice_clone::{GlmTtsClone, VoiceCloneResponse, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

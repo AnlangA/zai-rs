@@ -30,9 +30,9 @@
 //! ```
 
 /// Request builder and client for content moderation.
-pub mod data;
+mod data;
 /// Supported moderation model ids.
-pub mod models;
+mod models;
 
 // Re-export main types for convenience
 pub use data::Moderation;

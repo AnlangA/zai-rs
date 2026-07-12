@@ -7,7 +7,8 @@
 //! use zai_rs::prelude::*;
 //!
 //! let client = ZaiClient::builder("key").build()?;
-//! let response = client.services().chat();
+//! let request = ChatRequest::new(/* model */, ChatMessage::user("Hello"));
+//! let response = request.send_via(&client).await?;
 //! ```
 
 pub use crate::client::{HttpTransportConfig, ZaiClient, ZaiClientBuilder, ZaiError, ZaiResult};

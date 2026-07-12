@@ -46,7 +46,7 @@ exclude = [
 ]
 
 [package.metadata.docs.rs]
-# Build the docs with every feature so the `realtime`, `tool-validation`, and
+# Build the docs with every feature so the `realtime`, `toolkits`, and
 # `rmcp-kits` surfaces render on docs.rs (without this, docs.rs documents only
 # the default feature set).
 all-features = true
@@ -147,12 +147,6 @@ realtime = [
 # Core tool-execution framework: dynamic tool registration, schema validation,
 # and effect-aware execution (plan P09.1). Enables `zai_rs::toolkits`.
 toolkits = ["dep:jsonschema"]
-# Runtime validation of tool-call arguments against their JSON Schema. Off by
-# default — disabling it drops the heavy `jsonschema` dependency (and its
-# transitive `reqwest`/`fraction`/`fancy-regex`/... tree) for users who don't
-# need argument validation at execution time.
-# P09.1: this is a compatibility alias for `toolkits`, removed in 0.6.
-tool-validation = ["toolkits"]
 
 [[example]]
 name = "realtime_audio"

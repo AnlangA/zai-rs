@@ -6,10 +6,10 @@
 //!
 //! # Operations
 //!
-//! - [`create`] — Create a new batch job
-//! - [`list`] — List batch jobs with filtering
-//! - [`retrieve`] — Retrieve a batch job's status and results
-//! - [`cancel`] — Cancel a running or queued batch job
+//! - Create — create a new batch job
+//! - List — list batch jobs with filtering
+//! - Retrieve — retrieve a batch job's status and results
+//! - Cancel — cancel a running or queued batch job
 //!
 //! # Batch Lifecycle
 //!
@@ -37,13 +37,13 @@
 //! ```
 
 /// Cancel a running or queued batch job (`POST …/batches/{id}/cancel`).
-pub mod cancel;
+mod cancel;
 /// Create a new batch job (`POST …/batches`).
-pub mod create;
+mod create;
 /// List batch jobs with filtering/pagination (`GET …/batches`).
-pub mod list;
+mod list;
 /// Retrieve a batch job's status and results (`GET …/batches/{id}`).
-pub mod retrieve;
+mod retrieve;
 mod types;
 
 // Re-export selected API types for convenient access via `zai_rs::batches::*`

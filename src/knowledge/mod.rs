@@ -8,24 +8,24 @@
 //!
 //! | Operation | Module | Description |
 //! |-----------|--------|-------------|
-//! | Create | [`create`] | Create a new knowledge base |
-//! | List | [`list`] | List knowledge bases |
-//! | Retrieve | [`retrieve`] | Get knowledge-base details / search |
-//! | Update | [`update`] | Update metadata |
-//! | Delete | [`delete`] | Delete a knowledge base |
-//! | Capacity | [`capacity`] | Check usage / quota |
+//! | Create | [`CreateKnowledgeRequest`] | Create a new knowledge base |
+//! | List | [`KnowledgeListRequest`] | List knowledge bases |
+//! | Retrieve | [`KnowledgeRetrieveRequest`] | Get knowledge-base details / search |
+//! | Update | [`KnowledgeUpdateRequest`] | Update metadata |
+//! | Delete | [`KnowledgeDeleteRequest`] | Delete a knowledge base |
+//! | Capacity | [`KnowledgeCapacityRequest`] | Check usage / quota |
 //!
 //! # Document Operations
 //!
 //! | Operation | Module | Description |
 //! |-----------|--------|-------------|
-//! | Upload (file) | [`document_upload_file`] | Upload a local file |
-//! | Upload (URL) | [`document_upload_url`] | Upload from a URL |
-//! | List | [`document_list`] | List documents in a KB |
-//! | Retrieve | [`document_retrieve`] | Get document details |
-//! | Delete | [`document_delete`] | Delete documents |
-//! | Re-embed | [`document_reembedding`] | Re-run vectorisation |
-//! | Images | [`document_image_list`] | List extracted images |
+//! | Upload (file) | [`DocumentUploadFileRequest`] | Upload a local file |
+//! | Upload (URL) | [`DocumentUploadUrlRequest`] | Upload from a URL |
+//! | List | [`DocumentListRequest`] | List documents in a KB |
+//! | Retrieve | [`DocumentRetrieveRequest`] | Get document details |
+//! | Delete | [`DocumentDeleteRequest`] | Delete documents |
+//! | Re-embed | [`DocumentReembeddingRequest`] | Re-run vectorisation |
+//! | Images | [`DocumentImageListRequest`] | List extracted images |
 //!
 //! # Supported Document Types
 //!
@@ -47,35 +47,35 @@
 //! ```
 
 /// Knowledge-base capacity / quota query.
-pub mod capacity;
+mod capacity;
 /// Create a new knowledge base.
-pub mod create;
+mod create;
 /// Delete a knowledge base.
-pub mod delete;
+mod delete;
 /// Delete documents from a knowledge base.
-pub mod document_delete;
+mod document_delete;
 /// List images extracted from a document.
-pub mod document_image_list;
+mod document_image_list;
 /// List documents in a knowledge base.
-pub mod document_list;
+mod document_list;
 /// Re-run vectorisation (embedding) for documents.
-pub mod document_reembedding;
+mod document_reembedding;
 /// Retrieve document details.
-pub mod document_retrieve;
+mod document_retrieve;
 /// Upload a local file as a document.
-pub mod document_upload_file;
+mod document_upload_file;
 /// Upload a document from a URL.
-pub mod document_upload_url;
+mod document_upload_url;
 /// List knowledge bases.
-pub mod list;
+mod list;
 /// Retrieve knowledge-base details / semantic search.
-pub mod retrieve;
+mod retrieve;
 /// Search knowledge-base (POST /knowledge/retrieve, P06).
-pub mod search;
+mod search;
 /// Shared knowledge-base data types.
-pub mod types;
+mod types;
 /// Update knowledge-base metadata.
-pub mod update;
+mod update;
 
 pub use capacity::KnowledgeCapacityRequest;
 pub use create::{

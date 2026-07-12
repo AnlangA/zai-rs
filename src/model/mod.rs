@@ -123,15 +123,15 @@ pub mod voice_list;
 // Avoid wildcard re-exports to prevent name collisions (e.g., `data`)
 
 // Selective type re-exports for convenience
-pub use async_chat::data::AsyncChatCompletion;
-pub use async_chat_get::data::AsyncChatGetRequest;
-pub use chat::data::ChatCompletion;
+pub use async_chat::AsyncChatCompletion;
+pub use async_chat_get::AsyncChatGetRequest;
+pub use chat::ChatCompletion;
 pub use chat_base_response::TaskStatus;
 pub use chat_message_types::*;
 pub use chat_models::*;
 pub use chat_stream_response::ChatStreamResponse;
 pub use gen_video_async::*;
-pub use moderation::data::Moderation;
+pub use moderation::Moderation;
 pub use stream_ext::StreamChatLikeExt;
 pub use tools::*;
 pub use traits::SseStreamable;

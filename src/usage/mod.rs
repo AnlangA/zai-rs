@@ -65,7 +65,7 @@
 //! # }
 //! ```
 
-pub mod data;
+mod data;
 
 pub use data::{
     CodingPlanQuotaKind, CodingPlanQuotaLimit, CodingPlanQuotaSummary, CodingPlanUsageData,

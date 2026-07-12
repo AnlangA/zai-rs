@@ -1,5 +1,5 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::knowledge::delete::*;
+use zai_rs::knowledge::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

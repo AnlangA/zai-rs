@@ -1,9 +1,5 @@
 use zai_rs::client::ZaiClient;
-use zai_rs::model::ocr::{
-    request::{OcrLanguageType, OcrToolType},
-    response::OcrResponse,
-    *,
-};
+use zai_rs::model::ocr::{OcrLanguageType, OcrResponse, OcrToolType, *};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

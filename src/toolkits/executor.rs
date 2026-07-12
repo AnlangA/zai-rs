@@ -108,7 +108,7 @@ pub struct ExecutionConfig {
     /// Whether to validate input parameters against the tool schema.
     ///
     /// **Reserved:** schema validation currently fires whenever the
-    /// `tool-validation` Cargo feature is enabled (it lives inside
+    /// `toolkits` Cargo feature is enabled (it lives inside
     /// `FunctionTool::execute_json`). This flag is reserved for a future
     /// per-call opt-out and does not yet suppress validation on its own.
     pub validate_parameters: bool,

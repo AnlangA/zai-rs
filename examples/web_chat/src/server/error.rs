@@ -1,7 +1,5 @@
 //! Error types and handling for the web chat application
 
-use std::fmt;
-
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},

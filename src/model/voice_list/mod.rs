@@ -1,11 +1,11 @@
 //! Voice listing — list cloned voices.
 
 /// Request builder and client for voice listing.
-pub mod data;
+mod data;
 /// Request body types.
-pub mod request;
+mod request;
 /// Response body types.
-pub mod response;
+mod response;
 
 pub use data::*;
 pub use request::*;

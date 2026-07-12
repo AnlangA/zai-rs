@@ -1,13 +1,13 @@
 //! Optical character recognition (OCR) — recognize text/handwriting in images.
 
 /// Request builder and client for OCR.
-pub mod data;
+mod data;
 /// Supported OCR model ids.
-pub mod model;
+mod model;
 /// Request body types.
-pub mod request;
+mod request;
 /// Response body types.
-pub mod response;
+mod response;
 
 pub use data::*;
 pub use request::*;

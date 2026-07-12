@@ -2,8 +2,8 @@
 
 use zai_rs::agent::{
     AgentAsyncResult, AgentConversationResponse, AgentInvokeRequest, AgentInvokeResponse,
-    NonStreaming, message, response::validate_async_result,
-    response::validate_conversation_response, response::validate_invoke_response,
+    NonStreaming, message, validate_async_result, validate_conversation_response,
+    validate_invoke_response,
 };
 
 #[test]
