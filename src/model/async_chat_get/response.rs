@@ -396,14 +396,9 @@ impl<'de> Deserialize<'de> for AsyncTaskResult {
                 serde_json::from_value(value)
                     .map_err(|error| D::Error::custom(error.to_string()))?,
             )
-        } else if [
-            "choices",
-            "usage",
-            "web_search",
-            "content_filter",
-        ]
-        .iter()
-        .any(|field| object.contains_key(*field))
+        } else if ["choices", "usage", "web_search", "content_filter"]
+            .iter()
+            .any(|field| object.contains_key(*field))
             || (object.contains_key("id")
                 && !object.contains_key("task_status")
                 && !object.contains_key("model")

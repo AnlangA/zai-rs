@@ -216,6 +216,15 @@ impl Transport {
     ///
     /// Multipart bodies are rebuilt for every attempt. Responses are fully
     /// buffered; this method does not implement SSE streaming.
+    #[tracing::instrument(
+        name = "zai.http.request",
+        skip_all,
+        fields(
+            operation_id = prepped.operation_id,
+            method = prepped.method,
+            route = prepped.route_template.as_str()
+        )
+    )]
     pub(crate) async fn send(&self, prepped: &PreparedRequest<'_>) -> ZaiResult<TransportResponse> {
         // Enforce request body limit up front.
         if let request::BodyKind::Bytes(b) = &prepped.body
@@ -309,6 +318,15 @@ impl Transport {
     /// once the server has accepted a request, replaying it could duplicate a
     /// generation. The request/response handshake uses the configured attempt
     /// deadline; after that, each incoming chunk gets a fresh idle deadline.
+    #[tracing::instrument(
+        name = "zai.http.stream",
+        skip_all,
+        fields(
+            operation_id = prepped.operation_id,
+            method = prepped.method,
+            route = prepped.route_template.as_str()
+        )
+    )]
     pub(crate) async fn send_sse(&self, prepped: &PreparedRequest<'_>) -> ZaiResult<SseByteStream> {
         if let request::BodyKind::Bytes(body) = &prepped.body
             && (body.len() as u64) > JSON_REQUEST_MAX

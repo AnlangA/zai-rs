@@ -22,7 +22,11 @@
 //! ```
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+mod tool_call;
+
+pub use tool_call::{FunctionParams, ToolCall, ToolCallType};
 
 /// Text-chat message serialized with a `role` discriminator.
 ///
@@ -726,193 +730,6 @@ impl VoiceMessage {
     }
 }
 
-/// Tool invocation emitted by an assistant message.
-///
-/// Function parameters are required only when [`Self::kind`] is
-/// [`ToolCallType::Function`].
-#[derive(Debug, Clone)]
-pub struct ToolCall {
-    id: String,
-    type_: ToolCallType,
-    function: Option<FunctionParams>,
-}
-
-impl serde::Serialize for ToolCall {
-    /// # Errors
-    ///
-    /// Returns a serialization error if `type_` is `Function` but `function` is
-    /// `None`.
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::{Error as _, SerializeStruct};
-
-        let mut state = serializer.serialize_struct("ToolCall", 3)?;
-        state.serialize_field("id", &self.id)?;
-        state.serialize_field("type", &self.type_)?;
-        if self.type_ == ToolCallType::Function {
-            let function = self.function.as_ref().ok_or_else(|| {
-                S::Error::custom("function field is required when type is 'function'")
-            })?;
-            state.serialize_field("function", function)?;
-        } else if let Some(function) = self.function.as_ref() {
-            state.serialize_field("function", function)?;
-        }
-        state.end()
-    }
-}
-
-/// Kind of tool invocation emitted by an assistant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolCallType {
-    /// A function call with custom parameters.
-    Function,
-    /// A web search operation.
-    WebSearch,
-    /// A retrieval system access.
-    Retrieval,
-}
-
-/// Parameters for a function call.
-///
-/// The `arguments` value is serialized as a string exactly as supplied. The SDK
-/// does not parse or validate it against the function schema.
-///
-/// # Examples
-///
-/// ```rust
-/// # use zai_rs::model::*;
-/// // Simple function call
-/// let params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
-///
-/// // Complex function with multiple parameters
-/// let params = FunctionParams::new(
-///     "search_users",
-///     r#"{"query": "john", "limit": 10, "filters": {"active": true}}"#
-/// );
-///
-/// // Function with no parameters
-/// let params = FunctionParams::new("get_system_time", "{}");
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionParams {
-    /// The name of the function to be called.
-    ///
-    /// Must match the registered function name exactly.
-    name: String,
-
-    /// JSON string containing the function arguments.
-    ///
-    /// The caller is responsible for supplying valid JSON that matches the
-    /// function's parameter schema.
-    arguments: String,
-}
-
-impl ToolCall {
-    /// Borrow the provider-issued tool-call identifier.
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    /// Return the tool-call kind.
-    pub fn kind(&self) -> ToolCallType {
-        self.type_
-    }
-
-    /// Borrow function parameters when this is a function call.
-    pub fn function(&self) -> Option<&FunctionParams> {
-        self.function.as_ref()
-    }
-
-    /// Create a function invocation with its provider-issued identifier.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use zai_rs::model::*;
-    /// let function_params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
-    /// let tool_call = ToolCall::new_function("call_123", function_params);
-    /// ```
-    pub fn new_function(id: impl Into<String>, function: FunctionParams) -> Self {
-        Self {
-            id: id.into(),
-            type_: ToolCallType::Function,
-            function: Some(function),
-        }
-    }
-
-    /// Create a web-search invocation with its provider-issued identifier.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use zai_rs::model::*;
-    /// let tool_call = ToolCall::new_web_search("search_456");
-    /// ```
-    pub fn new_web_search(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            type_: ToolCallType::WebSearch,
-            function: None,
-        }
-    }
-
-    /// Create a retrieval invocation with its provider-issued identifier.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use zai_rs::model::*;
-    /// let tool_call = ToolCall::new_retrieval("retrieval_789");
-    /// ```
-    pub fn new_retrieval(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            type_: ToolCallType::Retrieval,
-            function: None,
-        }
-    }
-}
-
-impl FunctionParams {
-    /// Borrow the function name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Borrow the JSON-encoded argument string.
-    pub fn arguments(&self) -> &str {
-        &self.arguments
-    }
-
-    /// Create function parameters from a name and JSON-encoded argument string.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use zai_rs::model::*;
-    /// // Simple function with one parameter
-    /// let params = FunctionParams::new("get_weather", r#"{"location": "Tokyo"}"#);
-    ///
-    /// // Complex function with multiple parameters
-    /// let params = FunctionParams::new(
-    ///     "search_users",
-    ///     r#"{"query": "john", "limit": 10, "active": true}"#
-    /// );
-    ///
-    /// // Function with no parameters
-    /// let params = FunctionParams::new("get_system_time", "{}");
-    /// ```
-    pub fn new(name: impl Into<String>, arguments: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            arguments: arguments.into(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1221,9 +1038,8 @@ mod tests {
         let params = FunctionParams::new("test_func", r#"{"arg":"value"}"#);
         let json = serde_json::to_string(&params).unwrap();
         assert!(json.contains("\"name\":\"test_func\""));
-        // arguments is a JSON string, not an object
-        // The serialized JSON will be:
-        // {"name":"test_func","arguments":"{\"arg\":\"value\"}"}
+        // The wire contract preserves `arguments` as a JSON string rather than
+        // embedding it as an object.
         assert!(json.contains(r#""arguments":"{\"arg\":\"value\"}""#));
     }
 

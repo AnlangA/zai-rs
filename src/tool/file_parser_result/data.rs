@@ -57,12 +57,11 @@ impl FileParseResultRequest {
         }
         let route = crate::client::routes::FILES_PARSE_RESULT;
         let format_type = format_type.to_string();
-        let url = client
-            .endpoints()
-            .resolve_route(route, &[&self.task_id, &format_type])?;
         trace!(format = %format_type, "Fetching file parser result");
         client
-            .send_empty::<FileParseResultResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.task_id.as_str(), format_type.as_str()])
+            .send_empty::<FileParseResultResponse>()
             .await
     }
 

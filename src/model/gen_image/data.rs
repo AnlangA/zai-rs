@@ -78,9 +78,9 @@ where
     ) -> crate::ZaiResult<super::image_response::ImageResponse> {
         self.validate()?;
         let route = crate::client::routes::IMAGES_GENERATE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, super::image_response::ImageResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, super::image_response::ImageResponse>(&self.body)
             .await
     }
 }

@@ -54,11 +54,10 @@ impl FileListRequest {
         }
         let borrowed: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
         let route = crate::client::routes::FILES_LIST;
-        let url = client
-            .endpoints()
-            .resolve_route_with_query(route, &[], &borrowed)?;
         client
-            .send_empty::<super::response::FileListResponse>(route.method(), url)
+            .operation(route)
+            .with_query(borrowed)
+            .send_empty::<super::response::FileListResponse>()
             .await
     }
 }

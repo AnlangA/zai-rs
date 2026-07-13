@@ -107,7 +107,6 @@ impl FileParseRequest {
         let part = crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
 
         let route = crate::client::routes::FILES_PARSE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
             .field("tool_type", self.tool_type.as_str())?;
         if let Some(file_type) = self.file_type {
@@ -115,7 +114,8 @@ impl FileParseRequest {
         }
         let factory = factory.file_named("file", part)?;
         let create_response = client
-            .send_multipart::<FileParserCreateResponse>(route.method(), url, &factory)
+            .operation(route)
+            .send_multipart::<FileParserCreateResponse>(&factory)
             .await
             .map_err(|e| e.context("file parser create"))?;
 

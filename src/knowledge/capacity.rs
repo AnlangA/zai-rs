@@ -20,9 +20,9 @@ impl KnowledgeCapacityRequest {
         client: &ZaiClient,
     ) -> crate::ZaiResult<KnowledgeCapacityResponse> {
         let route = crate::client::routes::KNOWLEDGE_CAPACITY;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_empty::<KnowledgeCapacityResponse>(route.method(), url)
+            .operation(route)
+            .send_empty::<KnowledgeCapacityResponse>()
             .await
     }
 }

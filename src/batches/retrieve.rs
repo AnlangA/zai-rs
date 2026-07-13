@@ -19,9 +19,10 @@ impl BatchGetRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<BatchGetResponse> {
         crate::client::validation::require_non_blank(&self.batch_id, "batch_id")?;
         let route = crate::client::routes::BATCHES_GET;
-        let url = client.endpoints().resolve_route(route, &[&self.batch_id])?;
         client
-            .send_empty::<BatchGetResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.batch_id.as_str()])
+            .send_empty::<BatchGetResponse>()
             .await
     }
 }

@@ -112,6 +112,18 @@ fn registry_exactly_matches_frozen_operations_contract() {
     );
 }
 
+#[test]
+fn trace_templates_contain_structure_but_not_parameter_values() {
+    assert_eq!(
+        FILES_PARSE_RESULT.trace_template(),
+        "/files/parser/result/{parameter}/{parameter}"
+    );
+    assert_eq!(
+        APPLICATIONS_HISTORY.trace_template(),
+        "/history_session_record/{parameter}/{parameter}"
+    );
+}
+
 fn normalized_route_path(route: Route) -> String {
     let base = url::Url::parse(route.family().default_base()).unwrap();
     let mut path = base

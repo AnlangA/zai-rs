@@ -299,6 +299,9 @@ pub struct CacheStats {
 }
 
 fn saturating_increment(counter: &AtomicU64) {
+    // `try_update` is the nightly name for this operation, but `fetch_update`
+    // remains necessary until the crate's Rust 1.88 MSRV can use the rename.
+    #[allow(deprecated)]
     let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
         value.checked_add(1)
     });
@@ -367,7 +370,6 @@ mod tests {
 
     #[test]
     fn test_cache_expiration() {
-        // Test expiration with short TTL and sleep
         let cache = ToolCallCache::new().with_ttl(Duration::from_millis(10));
         let args = serde_json::json!({"input": "test"});
         let result = serde_json::json!({"output": "success"});
@@ -376,13 +378,10 @@ mod tests {
 
         let key = CacheKey::new("test_tool".to_string(), args);
 
-        // Entry should be cached initially
         assert!(cache.get(&key).is_some());
 
-        // Wait for TTL to expire
         std::thread::sleep(Duration::from_millis(20));
 
-        // Entry should be expired now
         assert!(cache.get(&key).is_none());
     }
 
@@ -451,7 +450,6 @@ mod tests {
                 let result = serde_json::json!({"output": format!("result_{}", i)});
                 cache_clone.insert_with_key(key_name.clone(), args.clone(), result);
 
-                // Read it back
                 let key = CacheKey::new(key_name, args);
                 cache_clone.get(&key)
             }));
@@ -467,12 +465,10 @@ mod tests {
 
     #[test]
     fn test_cache_evicts_at_capacity() {
-        // Create a cache with small max_size
         let cache = ToolCallCache::new()
             .with_max_size(5)
             .with_ttl(Duration::from_secs(300));
 
-        // Insert 5 entries to fill the cache
         for i in 0..5 {
             let args = serde_json::json!({"input": i});
             cache.insert_with_key(format!("tool_{i}"), args, serde_json::json!({"result": i}));
@@ -480,7 +476,6 @@ mod tests {
 
         assert_eq!(cache.stats().total_entries, 5);
 
-        // Insert one more to trigger eviction
         let args = serde_json::json!({"input": "new"});
         cache.insert_with_key(
             "tool_new".to_string(),

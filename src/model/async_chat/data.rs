@@ -162,9 +162,9 @@ where
     {
         self.validate()?;
         let route = crate::client::routes::CHAT_COMPLETE_ASYNC;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, AsyncResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, AsyncResponse>(&self.body)
             .await?;
         response.validate()?;
         Ok(response)

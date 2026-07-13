@@ -24,11 +24,10 @@ impl DocumentImageListRequest {
     ) -> crate::ZaiResult<DocumentImageListResponse> {
         crate::client::validation::require_non_blank(&self.document_id, "document_id")?;
         let route = crate::client::routes::DOCUMENTS_IMAGES;
-        let url = client
-            .endpoints()
-            .resolve_route(route, &[&self.document_id])?;
         client
-            .send_empty::<DocumentImageListResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.document_id.as_str()])
+            .send_empty::<DocumentImageListResponse>()
             .await
     }
 }

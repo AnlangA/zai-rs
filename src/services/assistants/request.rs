@@ -506,9 +506,9 @@ impl AssistantInvokeRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AssistantInvokeResponse> {
         self.validate()?;
         let route = crate::client::routes::ASSISTANTS_INVOKE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, AssistantInvokeResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, AssistantInvokeResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)
@@ -557,9 +557,9 @@ impl AssistantListRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AssistantListResponse> {
         self.validate()?;
         let route = crate::client::routes::ASSISTANTS_LIST;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, AssistantListResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, AssistantListResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)
@@ -626,9 +626,9 @@ impl AssistantConversationListRequest {
     ) -> ZaiResult<AssistantConversationListResponse> {
         self.validate()?;
         let route = crate::client::routes::ASSISTANTS_CONVERSATIONS;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, AssistantConversationListResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, AssistantConversationListResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)

@@ -45,7 +45,6 @@ impl FileUploadRequest {
     /// attempt. It is never buffered in full by this request builder.
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<FileUploadResponse> {
         let route = crate::client::routes::FILES_UPLOAD;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let mut file_part =
             crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
         if let Some(file_name) = &self.file_name {
@@ -58,7 +57,8 @@ impl FileUploadRequest {
             .field("purpose", self.purpose.as_str())?
             .file_named("file", file_part)?;
         client
-            .send_multipart::<FileUploadResponse>(route.method(), url, &factory)
+            .operation(route)
+            .send_multipart::<FileUploadResponse>(&factory)
             .await
     }
 }

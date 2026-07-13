@@ -162,7 +162,6 @@ impl FileParseSyncRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<FileResponse> {
         let file_part = crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
         let route = crate::client::routes::FILES_PARSE_SYNC;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
             .field("tool_type", self.tool_type())?;
         if let Some(file_type) = self.file_type {
@@ -171,7 +170,8 @@ impl FileParseSyncRequest {
         factory = factory.file_named("file", file_part)?;
 
         client
-            .send_multipart::<FileResponse>(route.method(), url, &factory)
+            .operation(route)
+            .send_multipart::<FileResponse>(&factory)
             .await
     }
 }

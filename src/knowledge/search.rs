@@ -219,9 +219,9 @@ impl KnowledgeSearchRequest {
         }
 
         let route = crate::client::routes::KNOWLEDGE_RETRIEVE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, KnowledgeSearchResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, KnowledgeSearchResponse>(&self.body)
             .await
     }
 }

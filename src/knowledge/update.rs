@@ -174,9 +174,10 @@ impl KnowledgeUpdateRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeUpdateResponse> {
         self.validate()?;
         let route = crate::client::routes::KNOWLEDGE_UPDATE;
-        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_json::<_, KnowledgeUpdateResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .with_parameters([self.id.as_str()])
+            .send_json::<_, KnowledgeUpdateResponse>(&self.body)
             .await
     }
 }

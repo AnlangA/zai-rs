@@ -99,9 +99,9 @@ where
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AudioToTextResponse> {
         let factory = self.build_multipart().await?;
         let route = crate::client::routes::AUDIO_TRANSCRIBE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_multipart::<AudioToTextResponse>(route.method(), url, &factory)
+            .operation(route)
+            .send_multipart::<AudioToTextResponse>(&factory)
             .await
     }
 }
@@ -128,10 +128,7 @@ where
     pub async fn stream_via(&self, client: &ZaiClient) -> ZaiResult<SpeechToTextStream> {
         let factory = self.build_multipart().await?;
         let route = crate::client::routes::AUDIO_TRANSCRIBE;
-        let url = client.endpoints().resolve_route(route, &[])?;
-        let raw = client
-            .send_sse_multipart(route.method(), url, &factory)
-            .await?;
+        let raw = client.operation(route).send_sse_multipart(&factory).await?;
         let inner = crate::model::sse_parser::decode_required_done_stream(raw, |payload| {
             serde_json::from_slice::<SpeechToTextEvent>(payload).map_err(ZaiError::from)
         });

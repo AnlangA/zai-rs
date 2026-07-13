@@ -41,9 +41,9 @@ impl TokenizerRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<TokenizerResponse> {
         self.validate()?;
         let route = crate::client::routes::TOKENIZER_COUNT;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, TokenizerResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, TokenizerResponse>(&self.body)
             .await
     }
 }

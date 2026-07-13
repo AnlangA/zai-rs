@@ -83,10 +83,7 @@ where
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<bytes::Bytes> {
         self.validate()?;
         let route = crate::client::routes::AUDIO_SYNTHESIZE;
-        let url = client.endpoints().resolve_route(route, &[])?;
-        client
-            .send_json_bytes(route.method(), url, &self.body)
-            .await
+        client.operation(route).send_json_bytes(&self.body).await
     }
 }
 
@@ -122,10 +119,7 @@ where
             });
         };
         let route = crate::client::routes::AUDIO_SYNTHESIZE;
-        let url = client.endpoints().resolve_route(route, &[])?;
-        let raw = client
-            .send_sse_json(route.method(), url, &self.body)
-            .await?;
+        let raw = client.operation(route).send_sse_json(&self.body).await?;
         let inner = crate::model::sse_parser::decode_required_done_stream(raw, move |payload| {
             decode_audio_payload(payload, encoding)
         });

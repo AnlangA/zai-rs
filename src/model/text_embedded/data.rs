@@ -40,9 +40,9 @@ impl EmbeddingRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<EmbeddingResponse> {
         self.validate()?;
         let route = crate::client::routes::EMBEDDINGS_CREATE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, EmbeddingResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, EmbeddingResponse>(&self.body)
             .await
     }
 }

@@ -181,9 +181,9 @@ impl DocumentUrlUploadRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<DocumentUrlUploadResponse> {
         self.validate()?;
         let route = crate::client::routes::DOCUMENTS_UPLOAD_URL;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, DocumentUrlUploadResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, DocumentUrlUploadResponse>(&self.body)
             .await
     }
 }

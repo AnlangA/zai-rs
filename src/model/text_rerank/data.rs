@@ -57,9 +57,9 @@ impl RerankRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<RerankResponse> {
         self.validate()?;
         let route = crate::client::routes::RERANK_CREATE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, RerankResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, RerankResponse>(&self.body)
             .await
     }
 }

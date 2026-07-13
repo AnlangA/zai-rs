@@ -66,11 +66,13 @@
 //! ```
 
 mod data;
+mod request;
 
 pub use data::{
     CodingPlanQuotaKind, CodingPlanQuotaLimit, CodingPlanQuotaSummary, CodingPlanUsageData,
-    CodingPlanUsageDetail, CodingPlanUsageRequest, CodingPlanUsageResponse, CodingPlanUsageSummary,
+    CodingPlanUsageDetail, CodingPlanUsageResponse, CodingPlanUsageSummary,
 };
+pub use request::CodingPlanUsageRequest;
 
 use crate::{ZaiResult, client::ZaiClient};
 

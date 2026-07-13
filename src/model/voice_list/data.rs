@@ -43,11 +43,10 @@ impl VoiceListRequest {
             query.push(("voiceType", voice_type.as_str()));
         }
         let route = crate::client::routes::AUDIO_LIST_VOICES;
-        let url = client
-            .endpoints()
-            .resolve_route_with_query(route, &[], &query)?;
         client
-            .send_empty::<super::response::VoiceListResponse>(route.method(), url)
+            .operation(route)
+            .with_query(query)
+            .send_empty::<super::response::VoiceListResponse>()
             .await
     }
 

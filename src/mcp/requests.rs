@@ -4,26 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::ZaiResult;
 
+mod validation;
+
+use validation::{validate_optional, validate_required};
+
 pub(crate) trait McpRequest {
     fn validate(&self) -> ZaiResult<()>;
-}
-
-fn validate_required(fields: &[(&'static str, &str)]) -> ZaiResult<()> {
-    if let Some((name, _)) = fields.iter().find(|(_, value)| value.trim().is_empty()) {
-        return Err(crate::client::validation::invalid(format!(
-            "MCP request field `{name}` must not be empty"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_optional(name: &'static str, value: Option<&str>) -> ZaiResult<()> {
-    if value.is_some_and(|value| value.trim().is_empty()) {
-        return Err(crate::client::validation::invalid(format!(
-            "MCP request field `{name}` must not be empty when provided"
-        )));
-    }
-    Ok(())
 }
 
 macro_rules! impl_redacted_debug {

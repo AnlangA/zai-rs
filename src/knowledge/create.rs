@@ -226,9 +226,9 @@ impl KnowledgeCreateRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeCreateResponse> {
         self.validate()?;
         let route = crate::client::routes::KNOWLEDGE_CREATE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, KnowledgeCreateResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, KnowledgeCreateResponse>(&self.body)
             .await
     }
 }
