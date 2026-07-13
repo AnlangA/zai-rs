@@ -495,7 +495,7 @@ impl RealtimeSession {
                 "realtime audio frame exceeds {REALTIME_AUDIO_FRAME_MAX} bytes"
             )));
         }
-        if pcm.len() % 2 != 0 {
+        if !pcm.len().is_multiple_of(2) {
             return Err(protocol_error(
                 "16-bit PCM input must contain an even number of bytes",
             ));
