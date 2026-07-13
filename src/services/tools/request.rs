@@ -206,9 +206,9 @@ impl LayoutParsingRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<LayoutParsingResponse> {
         self.validate()?;
         let route = crate::client::routes::TOOLS_LAYOUT;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, LayoutParsingResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, LayoutParsingResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)
@@ -375,9 +375,9 @@ impl ReaderRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ReaderResponse> {
         self.validate()?;
         let route = crate::client::routes::TOOLS_READER;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, ReaderResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, ReaderResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)

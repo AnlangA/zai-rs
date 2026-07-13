@@ -26,7 +26,7 @@
 //! | Agent | Agent creation & management | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
 //! | Real-time | WebSocket audio/video (GLM-Realtime) | [`realtime`] |
-//! | Coding Plan usage | GLM Coding Plan quota / 余量查询 | [`usage`] |
+//! | Coding Plan usage | GLM Coding Plan quota and remaining usage | [`usage`] |
 //!
 //! # Module Structure
 //!
@@ -45,7 +45,7 @@
 //!   RMCP bridge)
 //! - [`realtime`] — Real-time audio/video communication (WebSocket,
 //!   experimental)
-//! - [`usage`] — Coding Plan usage / quota query (GLM Coding Plan 余量查询)
+//! - [`usage`] — Coding Plan quota and remaining-usage query
 //!
 //! # Quick Start
 //!

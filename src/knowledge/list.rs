@@ -83,16 +83,10 @@ impl KnowledgeListRequest {
         self.query.validate()?;
         let params = self.query.pairs();
         let route = crate::client::routes::KNOWLEDGE_LIST;
-        let url = client.endpoints().resolve_route_with_query(
-            route,
-            &[],
-            &params
-                .iter()
-                .map(|(k, v)| (*k, v.as_str()))
-                .collect::<Vec<_>>(),
-        )?;
         client
-            .send_empty::<KnowledgeListResponse>(route.method(), url)
+            .operation(route)
+            .with_query(params)
+            .send_empty::<KnowledgeListResponse>()
             .await
     }
 }

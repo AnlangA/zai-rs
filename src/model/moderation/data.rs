@@ -54,9 +54,9 @@ impl Moderation {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<ModerationResponse> {
         self.validate()?;
         let route = crate::client::routes::MODERATION_CHECK;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ModerationResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, ModerationResponse>(&self.body)
             .await
     }
 }

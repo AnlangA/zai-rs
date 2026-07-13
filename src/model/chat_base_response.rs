@@ -66,8 +66,8 @@ pub struct ChatCompletionResponse {
     /// Content safety related information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_filter: Option<Vec<ContentFilterInfo>>,
-    /// Processing status of the task. One of: PROCESSING (处理中), SUCCESS
-    /// (成功), FAIL (失败). Note: When PROCESSING, the final result needs
+    /// Processing status of the task: `PROCESSING`, `SUCCESS`, or `FAIL`.
+    /// While processing, the final result needs
     /// to be retrieved via a subsequent query.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_status: Option<TaskStatus>,
@@ -546,7 +546,7 @@ pub struct ContentFilterInfo {
     pub level: Option<i32>,
 }
 
-// Getter implementations
+// Accessors keep response fields encapsulated while preserving zero-copy reads.
 impl ChatCompletionResponse {
     /// Task id (normalized to `&str`).
     pub fn id(&self) -> Option<&str> {

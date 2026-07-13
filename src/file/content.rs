@@ -25,8 +25,11 @@ impl FileContentRequest {
     async fn fetch_bytes_via(&self, client: &ZaiClient) -> crate::ZaiResult<bytes::Bytes> {
         crate::client::validation::require_non_blank(&self.file_id, "file_id")?;
         let route = crate::client::routes::FILES_GET_CONTENT;
-        let url = client.endpoints().resolve_route(route, &[&self.file_id])?;
-        client.send_empty_bytes(route.method(), url).await
+        client
+            .operation(route)
+            .with_parameters([self.file_id.as_str()])
+            .send_empty_bytes()
+            .await
     }
 
     /// Send via a [`ZaiClient`] and write the file content to `path`.

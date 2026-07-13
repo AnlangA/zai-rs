@@ -189,9 +189,6 @@ impl DocumentUploadRequest {
         self.validate_cross()?;
 
         let route = crate::client::routes::DOCUMENTS_UPLOAD;
-        let url = client
-            .endpoints()
-            .resolve_route(route, &[&self.knowledge_id])?;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new();
         if let Some(t) = self.options.knowledge_type {
             factory = factory.field("knowledge_type", t.as_i64().to_string())?;
@@ -222,7 +219,9 @@ impl DocumentUploadRequest {
             factory = factory.file_named("files", part)?;
         }
         client
-            .send_multipart::<DocumentUploadResponse>(route.method(), url, &factory)
+            .operation(route)
+            .with_parameters([self.knowledge_id.as_str()])
+            .send_multipart::<DocumentUploadResponse>(&factory)
             .await
     }
 }

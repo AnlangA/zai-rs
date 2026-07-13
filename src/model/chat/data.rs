@@ -298,9 +298,9 @@ where
     {
         self.validate()?;
         let route = crate::client::routes::CHAT_COMPLETE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ChatCompletionResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, ChatCompletionResponse>(&self.body)
             .await
     }
 
@@ -315,9 +315,9 @@ where
     {
         self.validate()?;
         let route = crate::client::routes::CHAT_COMPLETE_CODING;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ChatCompletionResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, ChatCompletionResponse>(&self.body)
             .await
     }
 }
@@ -361,15 +361,9 @@ where
         self.body
             .validate()
             .map_err(crate::client::error::ZaiError::from)?;
-        let url = client
-            .endpoints()
-            .resolve_route(crate::client::routes::CHAT_COMPLETE, &[])?;
         let raw = client
-            .send_sse_json(
-                crate::client::routes::CHAT_COMPLETE.method(),
-                url,
-                &self.body,
-            )
+            .operation(crate::client::routes::CHAT_COMPLETE)
+            .send_sse_json(&self.body)
             .await?;
         let stream = crate::model::sse_parser::decode_required_done_stream(raw, |payload| {
             serde_json::from_slice::<ChatStreamResponse>(payload)

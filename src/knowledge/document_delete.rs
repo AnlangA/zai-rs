@@ -20,9 +20,10 @@ impl DocumentDeleteRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<DocumentDeleteResponse> {
         crate::client::validation::require_non_blank(&self.id, "document_id")?;
         let route = crate::client::routes::DOCUMENTS_DELETE;
-        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_empty::<DocumentDeleteResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.id.as_str()])
+            .send_empty::<DocumentDeleteResponse>()
             .await
     }
 }

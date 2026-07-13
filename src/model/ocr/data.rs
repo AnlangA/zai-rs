@@ -176,7 +176,6 @@ impl OcrRequest {
         let file_path = self.validate_file_async().await?;
 
         let route = crate::client::routes::FILES_OCR;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let mime = image_mime_type(file_path)?;
         let file_part = crate::client::transport::multipart::FilePart::from_path(file_path)?
             .with_content_type(mime)?;
@@ -206,7 +205,8 @@ impl OcrRequest {
             factory = factory.field("user_id", uid)?;
         }
         client
-            .send_multipart::<super::response::OcrResponse>(route.method(), url, &factory)
+            .operation(route)
+            .send_multipart::<super::response::OcrResponse>(&factory)
             .await
     }
 }

@@ -63,9 +63,9 @@ where
     ) -> crate::ZaiResult<super::response::VoiceCloneResponse> {
         self.validate()?;
         let route = crate::client::routes::AUDIO_CLONE_VOICE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, super::response::VoiceCloneResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, super::response::VoiceCloneResponse>(&self.body)
             .await
     }
 }

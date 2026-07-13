@@ -4,12 +4,11 @@ use std::{
     panic::AssertUnwindSafe,
     sync::Arc,
     sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use dashmap::{DashMap, mapref::entry::Entry};
 use futures_util::{FutureExt, StreamExt};
-use serde::Serialize;
 use tokio::time::timeout;
 use tracing::warn;
 
@@ -28,6 +27,10 @@ use crate::{
         error::{ToolError, ToolResult, error_context},
     },
 };
+
+mod types;
+
+pub use types::{ExecutionConfig, ExecutionResult, ExecutorBuilder, RetryConfig};
 
 /// Cap on how many tool calls run concurrently in
 /// [`execute_tool_calls_parallel`](ToolExecutor::execute_tool_calls_parallel)
@@ -71,140 +74,6 @@ fn export_enabled_tool(tool: &dyn DynTool) -> Option<Tools> {
     metadata.is_enabled().then(|| Tools::Function {
         function: Function::new(metadata.name(), metadata.description(), tool.input_schema()),
     })
-}
-
-/// Retry configuration with exponential backoff.
-#[derive(Debug, Clone)]
-pub struct RetryConfig {
-    /// Maximum number of retry attempts after the first try.
-    pub max_retries: u32,
-    /// Delay before the first retry.
-    pub initial_delay: Duration,
-    /// Upper bound on the per-attempt delay.
-    pub max_delay: Duration,
-    /// Multiplier applied to the delay between successive retries.
-    pub backoff_multiplier: f64,
-}
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            // Arbitrary tools may have side effects; retries require an
-            // explicit idempotency decision by the caller.
-            max_retries: 0,
-            initial_delay: Duration::from_millis(100),
-            max_delay: Duration::from_secs(30),
-            backoff_multiplier: 2.0,
-        }
-    }
-}
-
-impl RetryConfig {
-    /// Compute the delay to apply before the given (1-based) attempt.
-    pub fn calculate_delay(&self, attempt: u32) -> Duration {
-        if attempt == 0 {
-            return Duration::ZERO;
-        }
-
-        // Public fields allow callers to construct a malformed configuration.
-        // Falling back to a neutral multiplier keeps delay calculation total
-        // without turning a bad value into an unexpectedly long sleep.
-        let initial_ms = self.initial_delay.as_millis() as f64;
-        let max_ms = self.max_delay.as_millis() as f64;
-        let multiplier = if self.backoff_multiplier.is_finite() && self.backoff_multiplier >= 1.0 {
-            self.backoff_multiplier
-        } else {
-            1.0
-        };
-        let raw = initial_ms * multiplier.powf(f64::from(attempt - 1));
-        let capped = if raw.is_finite() { raw } else { max_ms };
-        let delay_ms = capped.clamp(0.0, max_ms) as u64;
-
-        Duration::from_millis(delay_ms)
-    }
-}
-
-/// Tool execution configuration.
-#[derive(Debug, Clone)]
-pub struct ExecutionConfig {
-    /// Per-call execution timeout (`None` = no timeout).
-    ///
-    /// When the deadline elapses the tool's execution future is dropped
-    /// (cancelled) and the call resolves to a [`ToolError::TimeoutError`]. The
-    /// timeout cancels only the *local* future — for a tool backed by a remote
-    /// service the request may already be on the wire (see
-    /// [`ToolError::TimeoutError`] for the full caveat).
-    pub timeout: Option<Duration>,
-    /// Retry/backoff configuration.
-    pub retry_config: RetryConfig,
-}
-
-impl Default for ExecutionConfig {
-    fn default() -> Self {
-        Self {
-            timeout: Some(Duration::from_secs(30)),
-            retry_config: RetryConfig::default(),
-        }
-    }
-}
-
-/// Detailed outcome of a tool execution.
-#[derive(Debug, Clone, Serialize)]
-pub struct ExecutionResult {
-    /// Name of the tool that was executed.
-    pub tool_name: String,
-    /// The tool's return value (JSON).
-    pub result: serde_json::Value,
-    /// Wall-clock duration of the (possibly retried) execution.
-    pub duration: Duration,
-    /// Whether the execution succeeded.
-    pub success: bool,
-    /// Error message, present only on failure.
-    pub error: Option<String>,
-    /// Number of retries performed.
-    pub retries: u32,
-    /// When the execution completed.
-    pub timestamp: std::time::SystemTime,
-    /// Whether the value came from the executor cache.
-    pub cache_hit: bool,
-}
-
-impl ExecutionResult {
-    fn success(
-        tool_name: String,
-        result: serde_json::Value,
-        duration: Duration,
-        retries: u32,
-    ) -> Self {
-        Self {
-            tool_name,
-            result,
-            duration,
-            success: true,
-            error: None,
-            retries,
-            timestamp: std::time::SystemTime::now(),
-            cache_hit: false,
-        }
-    }
-
-    fn failure(tool_name: String, error: String, duration: Duration, retries: u32) -> Self {
-        Self {
-            tool_name,
-            result: serde_json::Value::Null,
-            duration,
-            success: false,
-            error: Some(error),
-            retries,
-            timestamp: std::time::SystemTime::now(),
-            cache_hit: false,
-        }
-    }
-
-    fn with_cache_hit(mut self) -> Self {
-        self.cache_hit = true;
-        self
-    }
 }
 
 /// Tool registry and executor with optional result caching.
@@ -717,80 +586,11 @@ impl ToolExecutor {
     }
 }
 
-/// Builder for creating tool executors with fluent API
-pub struct ExecutorBuilder {
-    config: ExecutionConfig,
-    cache_enabled: bool,
-    cache_ttl: Duration,
-    cache_max_size: usize,
-}
-
-impl Default for ExecutorBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ExecutorBuilder {
-    /// Create a new executor builder
-    pub fn new() -> Self {
-        Self {
-            config: ExecutionConfig::default(),
-            cache_enabled: false,
-            cache_ttl: Duration::from_secs(300),
-            cache_max_size: 1000,
-        }
-    }
-
-    /// Set timeout for tool execution
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.config.timeout = Some(timeout);
-        self
-    }
-
-    /// Set maximum number of retries
-    pub fn retries(mut self, retries: u32) -> Self {
-        self.config.retry_config.max_retries = retries;
-        self
-    }
-
-    /// Enable tool call result caching
-    pub fn enable_cache(mut self) -> Self {
-        self.cache_enabled = true;
-        self
-    }
-
-    /// Configure cache TTL without implicitly enabling caching.
-    pub fn cache_ttl(mut self, ttl: Duration) -> Self {
-        self.cache_ttl = ttl;
-        self
-    }
-
-    /// Configure cache capacity without implicitly enabling caching.
-    pub fn cache_max_size(mut self, size: usize) -> Self {
-        self.cache_max_size = size;
-        self
-    }
-
-    /// Build the final executor
-    pub fn build(self) -> ToolExecutor {
-        let cache = ToolCallCache::new()
-            .with_enabled(self.cache_enabled)
-            .with_ttl(self.cache_ttl)
-            .with_max_size(self.cache_max_size);
-
-        ToolExecutor {
-            tools: Arc::new(DashMap::new()),
-            next_generation: Arc::new(AtomicU64::new(0)),
-            config: self.config,
-            cache,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
     use crate::toolkits::core::FunctionTool;
 
     #[test]
@@ -818,7 +618,7 @@ mod tests {
         // Fourth attempt should quadruple (100 * 2^2)
         assert_eq!(config.calculate_delay(3), Duration::from_millis(400));
 
-        // Test with exponential growth that exceeds max_delay
+        // Exponential growth remains bounded by the configured maximum.
         let config = RetryConfig {
             max_retries: 10,
             initial_delay: Duration::from_millis(500),
@@ -900,7 +700,6 @@ mod tests {
     fn test_tool_executor_register_and_unregister() {
         let executor = ToolExecutor::new();
 
-        // Create a simple test tool
         let tool = FunctionTool::builder("test_tool", "A test tool")
             .handler(|_args| async move { Ok(serde_json::json!({"result": "success"})) })
             .build()

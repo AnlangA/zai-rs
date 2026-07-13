@@ -58,9 +58,9 @@ impl ApplicationFileStatsRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationFileStatsResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_FILE_STATS;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ApplicationFileStatsResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, ApplicationFileStatsResponse>(self)
             .await
     }
 }
@@ -165,7 +165,6 @@ impl ApplicationFileUploadRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationFileUploadResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_UPLOAD_FILE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
             .field("app_id", self.app_id.clone())?;
 
@@ -188,7 +187,8 @@ impl ApplicationFileUploadRequest {
         }
 
         client
-            .send_multipart::<ApplicationFileUploadResponse>(route.method(), url, &factory)
+            .operation(route)
+            .send_multipart::<ApplicationFileUploadResponse>(&factory)
             .await
     }
 }
@@ -231,9 +231,9 @@ impl ApplicationSliceInfoRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationSliceInfoResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_SLICE_INFO;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, ApplicationSliceInfoResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, ApplicationSliceInfoResponse>(self)
             .await
     }
 }
@@ -276,9 +276,10 @@ impl ApplicationConversationCreateRequest {
     ) -> ZaiResult<ApplicationConversationCreateResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_CREATE_CONVERSATION;
-        let url = client.endpoints().resolve_route(route, &[&self.app_id])?;
         client
-            .send_empty::<ApplicationConversationCreateResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.app_id.as_str()])
+            .send_empty::<ApplicationConversationCreateResponse>()
             .await
     }
 }
@@ -316,9 +317,10 @@ impl ApplicationVariablesRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationVariablesResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_VARIABLES;
-        let url = client.endpoints().resolve_route(route, &[&self.app_id])?;
         client
-            .send_empty::<ApplicationVariablesResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.app_id.as_str()])
+            .send_empty::<ApplicationVariablesResponse>()
             .await
     }
 }
@@ -361,11 +363,10 @@ impl ApplicationHistoryRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationHistoryResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_HISTORY;
-        let url = client
-            .endpoints()
-            .resolve_route(route, &[&self.app_id, &self.conversation_id])?;
         client
-            .send_empty::<ApplicationHistoryResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.app_id.as_str(), self.conversation_id.as_str()])
+            .send_empty::<ApplicationHistoryResponse>()
             .await
     }
 }
@@ -586,9 +587,9 @@ impl ApplicationInvokeRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<ApplicationInvokeResponse> {
         self.validate()?;
         let route = crate::client::routes::APPLICATIONS_INVOKE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, ApplicationInvokeResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, ApplicationInvokeResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)

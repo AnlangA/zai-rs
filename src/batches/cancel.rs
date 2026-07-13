@@ -18,9 +18,10 @@ impl BatchCancelRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<BatchCancelResponse> {
         crate::client::validation::require_non_blank(&self.batch_id, "batch_id")?;
         let route = crate::client::routes::BATCHES_CANCEL;
-        let url = client.endpoints().resolve_route(route, &[&self.batch_id])?;
         client
-            .send_empty::<BatchCancelResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.batch_id.as_str()])
+            .send_empty::<BatchCancelResponse>()
             .await
     }
 }

@@ -73,16 +73,17 @@ impl DocumentReembedRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<DocumentReembedResponse> {
         self.validate()?;
         let route = crate::client::routes::DOCUMENTS_REEMBED;
-        let url = client
-            .endpoints()
-            .resolve_route(route, &[&self.document_id])?;
         if self.body.callback_url.is_none() && self.body.callback_header.is_none() {
             client
-                .send_empty::<DocumentReembedResponse>(route.method(), url)
+                .operation(route)
+                .with_parameters([self.document_id.as_str()])
+                .send_empty::<DocumentReembedResponse>()
                 .await
         } else {
             client
-                .send_json::<_, DocumentReembedResponse>(route.method(), url, &self.body)
+                .operation(route)
+                .with_parameters([self.document_id.as_str()])
+                .send_json::<_, DocumentReembedResponse>(&self.body)
                 .await
         }
     }

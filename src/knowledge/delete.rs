@@ -20,9 +20,10 @@ impl KnowledgeDeleteRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeDeleteResponse> {
         crate::client::validation::require_non_blank(&self.id, "knowledge_id")?;
         let route = crate::client::routes::KNOWLEDGE_DELETE;
-        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_empty::<KnowledgeDeleteResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.id.as_str()])
+            .send_empty::<KnowledgeDeleteResponse>()
             .await
     }
 }

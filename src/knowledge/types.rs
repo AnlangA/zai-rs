@@ -312,7 +312,7 @@ pub struct DocumentUploadData {
 /// One parsed image mapping item
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct DocumentImageItem {
-    /// Image index text, e.g. "【示意图序号_...】"
+    /// Provider-generated image index marker.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// Image URL

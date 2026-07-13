@@ -1,6 +1,6 @@
 //! Coding Plan usage / quota query client.
 //!
-//! Wraps the GLM Coding Plan "余量查询" endpoint
+//! Wraps the GLM Coding Plan remaining-quota endpoint
 //! `GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`. The endpoint is
 //! authenticated with a normal Bearer API key and reports the per-5-hour and
 //! weekly quota consumption / remaining amounts for the subscribed Coding Plan.
@@ -12,8 +12,6 @@ use std::fmt;
 
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
-
-use crate::{ZaiResult, client::ZaiClient};
 
 fn parse_next_reset_time(raw: &str) -> Option<DateTime<Utc>> {
     if let Ok(timestamp) = raw.parse::<i64>() {
@@ -597,50 +595,6 @@ impl CodingPlanUsageResponse {
 impl fmt::Display for CodingPlanUsageResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.summary().fmt(f)
-    }
-}
-
-/// Coding Plan usage / quota query request
-/// (`GET /api/monitor/usage/quota/limit`).
-///
-/// Construct with [`CodingPlanUsageRequest::new`] and execute with
-/// [`CodingPlanUsageRequest::send_via`]. Credentials and transport live on the
-/// [`ZaiClient`], passed to `send_via`.
-///
-/// ```rust,no_run
-/// use zai_rs::usage::CodingPlanUsageRequest;
-/// use zai_rs::client::ZaiClient;
-///
-/// # async fn go(client: ZaiClient) -> zai_rs::ZaiResult<()> {
-/// let resp = CodingPlanUsageRequest::new().send_via(&client).await?;
-/// if let Some(five_hour) = resp.time_limit() {
-///     tracing::info!("5h window: {}% used", five_hour.percentage);
-/// }
-/// # Ok(())
-/// # }
-/// ```
-pub struct CodingPlanUsageRequest;
-
-impl CodingPlanUsageRequest {
-    /// Build a quota query. The base URL, credentials and transport are
-    /// supplied by the [`ZaiClient`] passed to [`Self::send_via`].
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Send the quota query via a [`ZaiClient`] and parse the typed envelope.
-    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<CodingPlanUsageResponse> {
-        let route = crate::client::routes::USAGE_GET;
-        let url = client.endpoints().resolve_route(route, &[])?;
-        client
-            .send_empty::<CodingPlanUsageResponse>(route.method(), url)
-            .await
-    }
-}
-
-impl Default for CodingPlanUsageRequest {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

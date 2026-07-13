@@ -51,6 +51,22 @@ impl Route {
     pub(crate) const fn segments(self) -> &'static [Segment] {
         self.segments
     }
+
+    /// Build a value-free path template suitable for diagnostics and tracing.
+    ///
+    /// Dynamic values are represented by `{parameter}` so identifiers and
+    /// user-controlled path contents never enter logs.
+    pub(crate) fn trace_template(self) -> String {
+        let mut template = String::new();
+        for segment in self.segments {
+            template.push('/');
+            match segment {
+                Segment::Static(value) => template.push_str(value),
+                Segment::Parameter => template.push_str("{parameter}"),
+            }
+        }
+        template
+    }
 }
 
 macro_rules! route {

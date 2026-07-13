@@ -58,7 +58,7 @@ pub fn decode_base64(s: &str) -> ZaiResult<Vec<u8>> {
 ///
 /// `samples` must be the raw PCM byte stream (two bytes per sample, mono).
 pub fn encode_wav_pcm_base64(samples: &[u8], sample_rate: u32) -> ZaiResult<String> {
-    if samples.len() % 2 != 0 {
+    if !samples.len().is_multiple_of(2) {
         return Err(RealtimeErrorKind::Protocol(
             "16-bit PCM input must contain an even number of bytes".into(),
         )

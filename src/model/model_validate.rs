@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_validate_json_schema_invalid_schema() {
-        // 使用一个明确无效的 JSON Schema（type 字段值无效）
+        // An invalid `type` value proves that semantic schema validation runs.
         let invalid_schema = r#"{"type": "invalid_type"}"#;
         let result = validate_json_schema(invalid_schema);
         assert!(result.is_err());

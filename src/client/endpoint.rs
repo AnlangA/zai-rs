@@ -222,6 +222,7 @@ impl EndpointConfig {
     /// `parameters` are substituted into parameter slots in declaration order
     /// and percent-encoded as individual path segments. A count mismatch is a
     /// validation error instead of silently producing a malformed URL.
+    #[cfg(test)]
     pub(crate) fn resolve_route(&self, route: Route, parameters: &[&str]) -> ZaiResult<String> {
         self.resolve_route_with_query(route, parameters, &[])
     }

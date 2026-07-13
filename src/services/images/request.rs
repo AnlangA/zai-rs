@@ -173,9 +173,9 @@ impl AsyncImageGenerationRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AsyncResponse> {
         self.validate()?;
         let route = crate::client::routes::IMAGES_GENERATE_ASYNC;
-        let url = client.endpoints().resolve_route(route, &[])?;
         let response = client
-            .send_json::<_, AsyncResponse>(route.method(), url, self)
+            .operation(route)
+            .send_json::<_, AsyncResponse>(self)
             .await?;
         response.validate()?;
         Ok(response)

@@ -19,9 +19,10 @@ impl KnowledgeGetRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<KnowledgeGetResponse> {
         crate::client::validation::require_non_blank(&self.id, "knowledge_id")?;
         let route = crate::client::routes::KNOWLEDGE_GET;
-        let url = client.endpoints().resolve_route(route, &[&self.id])?;
         client
-            .send_empty::<KnowledgeGetResponse>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.id.as_str()])
+            .send_empty::<KnowledgeGetResponse>()
             .await
     }
 }

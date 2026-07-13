@@ -132,9 +132,9 @@ impl BatchCreateRequest {
         self.validate()?;
 
         let route = crate::client::routes::BATCHES_CREATE;
-        let url = client.endpoints().resolve_route(route, &[])?;
         client
-            .send_json::<_, BatchCreateResponse>(route.method(), url, &self.body)
+            .operation(route)
+            .send_json::<_, BatchCreateResponse>(&self.body)
             .await
     }
 }

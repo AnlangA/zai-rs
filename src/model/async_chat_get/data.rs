@@ -44,9 +44,10 @@ impl AsyncTaskGetRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<AsyncTaskResult> {
         self.validate()?;
         let route = crate::client::routes::TASKS_GET;
-        let url = client.endpoints().resolve_route(route, &[&self.task_id])?;
         client
-            .send_empty::<AsyncTaskResult>(route.method(), url)
+            .operation(route)
+            .with_parameters([self.task_id.as_str()])
+            .send_empty::<AsyncTaskResult>()
             .await
     }
 }

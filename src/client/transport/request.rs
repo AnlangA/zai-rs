@@ -57,6 +57,8 @@ impl ResponseMode {
 
 /// A fully-prepared, validated request ready to be sent by the Transport.
 pub struct PreparedRequest<'a> {
+    /// Stable operation identifier from the canonical route registry.
+    pub operation_id: &'static str,
     /// Uppercase HTTP method string.
     pub method: &'static str,
     /// Fully resolved request URL.
@@ -70,13 +72,14 @@ pub struct PreparedRequest<'a> {
     /// Response buffering mode and associated size limit.
     pub response_mode: ResponseMode,
     /// Route template for tracing (never the materialized URL).
-    pub route_template: &'static str,
+    pub route_template: String,
 }
 
 impl<'a> std::fmt::Debug for PreparedRequest<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Never print the body or full URL.
         f.debug_struct("PreparedRequest")
+            .field("operation_id", &self.operation_id)
             .field("method", &self.method)
             .field("route", &self.route_template)
             .field("retry_safety", &self.retry_safety)
