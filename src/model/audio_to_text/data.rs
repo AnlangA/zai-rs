@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     ZaiError, ZaiResult,
-    client::{ZaiClient, error::codes},
+    client::{ZaiClient, error::codes, validation::invalid},
 };
 
 const ASR_FILE_MAX_BYTES: u64 = 25 * 1024 * 1024;
@@ -217,10 +217,10 @@ where
         match (self.file_path.as_deref(), self.file_base64.as_deref()) {
             (Some(path), None) => Ok(AudioInputRef::File(path)),
             (None, Some(encoded)) => Ok(AudioInputRef::Base64(encoded)),
-            (Some(_), Some(_)) => Err(validation_error(
+            (Some(_), Some(_)) => Err(invalid(
                 "ASR input requires file XOR file_base64; both were provided",
             )),
-            (None, None) => Err(validation_error(
+            (None, None) => Err(invalid(
                 "ASR input requires exactly one of file or file_base64",
             )),
         }
@@ -305,7 +305,7 @@ fn validate_base64_audio(encoded: &str) -> ZaiResult<()> {
     }
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(encoded)
-        .map_err(|_| validation_error("file_base64 must use valid standard base64"))?;
+        .map_err(|_| invalid("file_base64 must use valid standard base64"))?;
     if decoded.len() as u64 > ASR_FILE_MAX_BYTES {
         return Err(file_error(
             codes::SDK_FILE_TOO_LARGE,
@@ -342,13 +342,6 @@ fn audio_mime_type(path: &Path) -> ZaiResult<&'static str> {
             codes::SDK_FILE_TYPE_UNSUPPORTED,
             "ASR file_path must use a .wav or .mp3 extension",
         )),
-    }
-}
-
-fn validation_error(message: impl Into<String>) -> ZaiError {
-    ZaiError::ApiError {
-        code: codes::SDK_VALIDATION,
-        message: message.into(),
     }
 }
 

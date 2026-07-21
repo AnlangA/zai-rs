@@ -1,0 +1,15 @@
+# Lychee link-checker configuration, used by the CI `link-check` job.
+# Config reference: https://lychee.cli.rs/guides/config/
+
+# Transient network errors get a few retries before a link is marked broken.
+max_retries = 3
+timeout = 20
+max_concurrency = 16
+
+# Loopback/private hosts in docs (e.g. http://127.0.0.1:3000 examples) are
+# never reachable from CI.
+exclude_loopback = true
+exclude_private = true
+
+# github.com links are authenticated through the GITHUB_TOKEN environment
+# variable (lychee reads it automatically), keeping rate limits away.

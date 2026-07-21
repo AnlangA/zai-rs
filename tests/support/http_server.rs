@@ -8,6 +8,11 @@
 //! This is a test-support module (only compiled for `cfg(test)` / integration
 //! tests); it lives under `tests/support/`.
 
+// Each integration-test binary compiles this module independently and uses
+// only a subset of its API, so per-binary dead-code analysis would otherwise
+// flag the unused remainder.
+#![allow(dead_code)]
+
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +31,7 @@ use tokio::net::TcpListener;
 pub struct CapturedRequest {
     pub method: String,
     pub path: String,
+    pub query: Option<String>,
     pub authorization: Option<String>,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
@@ -52,6 +58,15 @@ impl ScriptedResponse {
             status,
             headers: vec![("content-type".into(), content_type.into())],
             body: body.into(),
+        }
+    }
+
+    /// An empty response with no explicit content type (e.g. a bare 500).
+    pub fn empty(status: u16) -> Self {
+        Self {
+            status,
+            headers: vec![],
+            body: Bytes::new(),
         }
     }
 }
@@ -103,6 +118,7 @@ impl TestServer {
                                     captured.lock().unwrap().push(CapturedRequest {
                                         method,
                                         path: uri.path().to_string(),
+                                        query: uri.query().map(str::to_string),
                                         authorization,
                                         headers: all_headers,
                                         body,

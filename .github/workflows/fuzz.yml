@@ -1,0 +1,65 @@
+name: Fuzz
+
+# Scheduled libFuzzer smoke runs. The fuzz workspace is excluded from the main
+# workspace and only lint-checked in CI; this workflow actually executes each
+# target with a bounded time budget so parser/decoder regressions surface
+# without a manual local run.
+on:
+  schedule:
+    # Daily; the minute is deliberately off the :00/:30 herd marks.
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Fuzz smoke (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_sse_decoder
+          - fuzz_error_handling
+          - fuzz_url_segments
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install nightly Rust toolchain (libFuzzer needs -Zsanitizer)
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: nightly
+          cache: true
+          cache-workspaces: fuzz -> target
+
+      # bootstrap-tools.sh compiles cargo-fuzz with the pinned 1.88.0 toolchain,
+      # so install it alongside nightly first.
+      - name: Install pinned cargo-fuzz
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal
+          ./scripts/bootstrap-tools.sh cargo-fuzz
+
+      - name: Run libFuzzer smoke (10 minute budget)
+        working-directory: fuzz
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=600 -timeout=25
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore

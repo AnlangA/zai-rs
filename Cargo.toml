@@ -195,3 +195,8 @@ tempfile = "3.27.0"
 tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "test-util"] }
 # Property-based tests exercise protocol and transport invariants.
 proptest = "1.11.0"
+# The scripted mock WebSocket server under tests/support drives
+# tokio-tungstenite directly. It is unconditional because tests/support is
+# compiled into every integration-test binary; `handshake` covers the
+# server-side accept while TLS and the client `connect` feature stay off.
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }

@@ -50,7 +50,7 @@ use serde_json::Value;
 use tracing::{debug, warn};
 
 use crate::{
-    client::error::codes,
+    client::{error::codes, validation::invalid},
     model::{Function, Tools},
 };
 
@@ -144,22 +144,15 @@ impl McpCallSpec {
     /// present.
     pub fn validate(&self) -> crate::ZaiResult<()> {
         crate::toolkits::core::validate_tool_name(&self.name)
-            .map_err(|error| validation_error(&error.to_string()))?;
+            .map_err(|error| invalid(error.to_string()))?;
         if self
             .arguments
             .as_ref()
             .is_some_and(|arguments| !arguments.is_object())
         {
-            return Err(validation_error("arguments must be a JSON object"));
+            return Err(invalid("arguments must be a JSON object"));
         }
         Ok(())
-    }
-}
-
-fn validation_error(message: &str) -> crate::client::error::ZaiError {
-    crate::client::error::ZaiError::ApiError {
-        code: codes::SDK_VALIDATION,
-        message: message.to_string(),
     }
 }
 
@@ -178,7 +171,7 @@ pub async fn call_mcp_tool(
     let arguments = match arguments {
         Some(Value::Object(arguments)) => Some(arguments),
         None => None,
-        Some(_) => return Err(validation_error("arguments must be a JSON object")),
+        Some(_) => return Err(invalid("arguments must be a JSON object")),
     };
 
     let mut request = CallToolRequestParams::new(name.clone());
@@ -353,19 +346,17 @@ fn assistant_request_message(
             let id = call
                 .id()
                 .filter(|id| !id.trim().is_empty())
-                .ok_or_else(|| validation_error("tool call id must not be blank"))?;
+                .ok_or_else(|| invalid("tool call id must not be blank"))?;
             let function = call
                 .function()
-                .ok_or_else(|| validation_error("tool call function is required"))?;
+                .ok_or_else(|| invalid("tool call function is required"))?;
             crate::toolkits::core::validate_tool_name(function.name())
-                .map_err(|_| validation_error("tool call function name is invalid"))?;
+                .map_err(|_| invalid("tool call function name is invalid"))?;
             if !matches!(
                 serde_json::from_str(function.arguments()),
                 Ok(Value::Object(_))
             ) {
-                return Err(validation_error(
-                    "tool call arguments must decode to a JSON object",
-                ));
+                return Err(invalid("tool call arguments must decode to a JSON object"));
             }
             Ok(ToolCall::new_function(
                 id,

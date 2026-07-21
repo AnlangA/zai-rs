@@ -4,20 +4,10 @@ use serde::Serialize;
 
 use crate::{
     ZaiResult,
-    client::{
-        ZaiClient,
-        error::{ZaiError, codes},
-    },
+    client::{ZaiClient, validation::invalid},
 };
 
 use super::response::{LayoutParsingResponse, ReaderResponse};
-
-fn validation_error(message: impl Into<String>) -> ZaiError {
-    ZaiError::ApiError {
-        code: codes::SDK_VALIDATION,
-        message: message.into(),
-    }
-}
 
 fn invalid_optional_length(value: Option<&str>, min: usize, max: usize) -> bool {
     value.is_some_and(|value| !(min..=max).contains(&value.chars().count()))
@@ -176,26 +166,24 @@ impl LayoutParsingRequest {
     /// Validate frozen OpenAPI numeric and identifier constraints.
     pub fn validate(&self) -> ZaiResult<()> {
         if self.file.trim().is_empty() {
-            return Err(validation_error("layout parsing file must not be blank"));
+            return Err(invalid("layout parsing file must not be blank"));
         }
         if self.start_page_id == Some(0) || self.end_page_id == Some(0) {
-            return Err(validation_error("layout page ids must be at least 1"));
+            return Err(invalid("layout page ids must be at least 1"));
         }
         if matches!(
             (self.start_page_id, self.end_page_id),
             (Some(start), Some(end)) if start > end
         ) {
-            return Err(validation_error(
-                "layout start_page_id must not exceed end_page_id",
-            ));
+            return Err(invalid("layout start_page_id must not exceed end_page_id"));
         }
         if invalid_optional_length(self.request_id.as_deref(), 6, 64) {
-            return Err(validation_error(
+            return Err(invalid(
                 "layout request_id must contain between 6 and 64 characters",
             ));
         }
         if invalid_optional_length(self.user_id.as_deref(), 6, 128) {
-            return Err(validation_error(
+            return Err(invalid(
                 "layout user_id must contain between 6 and 128 characters",
             ));
         }
@@ -366,7 +354,7 @@ impl ReaderRequest {
     /// Validate the required URL string.
     pub fn validate(&self) -> ZaiResult<()> {
         if self.url.trim().is_empty() {
-            return Err(validation_error("reader url must not be blank"));
+            return Err(invalid("reader url must not be blank"));
         }
         Ok(())
     }

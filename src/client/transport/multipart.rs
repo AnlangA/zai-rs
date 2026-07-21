@@ -419,11 +419,11 @@ mod tests {
         // symlink (on platforms that support it)
         let real = dir.path().join("real.txt");
         std::fs::write(&real, b"hi").unwrap();
-        let link = dir.path().join("link.txt");
+        let _link = dir.path().join("link.txt");
         #[cfg(unix)]
         {
-            std::os::unix::fs::symlink(&real, &link).unwrap();
-            assert!(FilePart::from_path(&link).is_err());
+            std::os::unix::fs::symlink(&real, &_link).unwrap();
+            assert!(FilePart::from_path(&_link).is_err());
         }
         // directory is not regular
         assert!(FilePart::from_path(dir.path()).is_err());
