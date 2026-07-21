@@ -1,4 +1,6 @@
 //! Recognize Chinese and English handwriting in a local image.
+//!
+//! Defaults to `data/ocr_example.png`; pass a path to use another image.
 
 use zai_rs::{
     client::ZaiClient,
@@ -7,7 +9,9 @@ use zai_rs::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let image = std::env::args().nth(1).ok_or("usage: ocr <image-file>")?;
+    let image = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "data/ocr_example.png".to_owned());
 
     let client = ZaiClient::from_env()?;
     let request = OcrRequest::new()
