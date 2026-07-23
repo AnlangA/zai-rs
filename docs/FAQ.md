@@ -281,6 +281,14 @@ let retrieve = KnowledgeGetRequest::new(knowledge_id)
     .await?;
 ```
 
+### Q: 同一能力存在多个入口（图像生成 / OCR / 文件解析），应该选哪个？
+A: 这些入口对应上游不同时期的 API，语义不同而非重复：图像生成默认用
+同步的 `model::gen_image`，长耗时/批量用 `services::images` 异步任务；手写与
+图片文字识别用 `model::ocr`，文档版式结构化解析用 `services::tools` 的
+layout_parsing；小文件解析用 `file::parse_sync`，大文件/批量用
+`tool::file_parser_create` + `tool::file_parser_result` 异步任务。完整对照见
+[能力选择指引](CHOOSING_AN_API.md)。
+
 ---
 
 ## 故障排除

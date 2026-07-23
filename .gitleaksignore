@@ -1,0 +1,19 @@
+# Reviewed synthetic credentials used by historical documentation and redaction
+# tests. Fingerprint-level ignores keep future findings in the same files active.
+7cf95c719fe4cd909722f0cdcbd462ba3735ebe3:src/client/transport/decode.rs:generic-api-key:183
+98c7762c094f2f5b5e3111be62dd49eb430f2a48:tests/send_via_coverage.rs:generic-api-key:1424
+98c7762c094f2f5b5e3111be62dd49eb430f2a48:tests/send_via_coverage.rs:generic-api-key:1445
+1705284d3052ff89ab57b9b654be97eeb5c00da0:tests/integration_tests.rs:generic-api-key:606
+53c33db606f37c7eef7e772b3ca0d00efca23cf9:tests/integration_tests.rs:generic-api-key:149
+53c33db606f37c7eef7e772b3ca0d00efca23cf9:tests/integration_tests.rs:generic-api-key:186
+53c33db606f37c7eef7e772b3ca0d00efca23cf9:tests/integration_tests.rs:generic-api-key:215
+e56b6ebaeae02b373d3f8a6a6a5a3ab079899e0d:tests/integration_tests.rs:generic-api-key:548
+28d5b42126c3164ed2751678418913579e8bb1e9:src/client/config.rs:generic-api-key:133
+35143bd16be9fc6e44a143fff63fd30c5eecd0b7:tests/integration_tests.rs:generic-api-key:109
+35143bd16be9fc6e44a143fff63fd30c5eecd0b7:tests/integration_tests.rs:generic-api-key:145
+35143bd16be9fc6e44a143fff63fd30c5eecd0b7:tests/integration_tests.rs:generic-api-key:191
+beb32e48c8cad22ec27ff00557e17aaeb8faaed8:docs/ADVANCED_TOPICS.md:generic-api-key:598
+beb32e48c8cad22ec27ff00557e17aaeb8faaed8:docs/FAQ.md:generic-api-key:151
+beb32e48c8cad22ec27ff00557e17aaeb8faaed8:tests/common/mock_server.rs:generic-api-key:30
+beb32e48c8cad22ec27ff00557e17aaeb8faaed8:tests/common/mock_server.rs:generic-api-key:276
+beb32e48c8cad22ec27ff00557e17aaeb8faaed8:src/client/error.rs:generic-api-key:780

@@ -333,10 +333,10 @@ impl AsyncTaskResult {
         }
     }
 
-    /// Borrow the status supplied by media and status-only payloads.
+    /// Borrow the status supplied by any task-result payload.
     pub const fn status(&self) -> Option<&TaskStatus> {
         match self {
-            Self::Chat(_) => None,
+            Self::Chat(result) => result.status(),
             Self::Video(result) => result.task_status.as_ref(),
             Self::Image(result) => result.task_status.as_ref(),
             Self::State(result) => result.task_status.as_ref(),
@@ -549,6 +549,11 @@ mod tests {
             chat.status(),
             Some(&TaskStatus::Success),
             "completed chat result should expose its task_status"
+        );
+        assert_eq!(
+            done.status(),
+            Some(&TaskStatus::Success),
+            "the unified result should preserve completed chat status"
         );
         assert_eq!(
             chat.choices().map(<[_]>::len),

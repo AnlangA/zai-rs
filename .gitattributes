@@ -1,0 +1,15 @@
+# Keep repository text deterministic across Linux, macOS, and Windows. This is
+# especially important because rustfmt.toml requires Unix newlines.
+* text=auto eol=lf
+
+# Native Windows command scripts conventionally use CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Media fixtures are binary and must never be newline-normalized.
+*.jpeg binary
+*.jpg binary
+*.mp3 binary
+*.mp4 binary
+*.png binary
+*.wav binary

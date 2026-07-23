@@ -93,13 +93,6 @@ impl std::fmt::Debug for FilePart {
 }
 
 impl FilePart {
-    /// Validate a path-backed part as a regular, non-symlink file with an
-    /// acceptable basename and per-file size.
-    pub fn from_path(path: &Path) -> ZaiResult<Self> {
-        let meta = std::fs::symlink_metadata(path).map_err(ZaiError::from)?;
-        Self::from_metadata(path, &meta)
-    }
-
     /// Asynchronously validate a path-backed part without blocking an async
     /// request path on filesystem metadata I/O.
     pub async fn from_path_async(path: &Path) -> ZaiResult<Self> {
@@ -413,20 +406,20 @@ fn invalid(msg: &str) -> ZaiError {
 mod tests {
     use super::*;
 
-    #[test]
-    fn rejects_symlink_and_nonregular() {
+    #[tokio::test]
+    async fn rejects_symlink_and_nonregular() {
         let dir = tempfile::tempdir().unwrap();
         // symlink (on platforms that support it)
         let real = dir.path().join("real.txt");
         std::fs::write(&real, b"hi").unwrap();
-        let link = dir.path().join("link.txt");
+        let _link = dir.path().join("link.txt");
         #[cfg(unix)]
         {
-            std::os::unix::fs::symlink(&real, &link).unwrap();
-            assert!(FilePart::from_path(&link).is_err());
+            std::os::unix::fs::symlink(&real, &_link).unwrap();
+            assert!(FilePart::from_path_async(&_link).await.is_err());
         }
         // directory is not regular
-        assert!(FilePart::from_path(dir.path()).is_err());
+        assert!(FilePart::from_path_async(dir.path()).await.is_err());
     }
 
     #[test]
@@ -439,15 +432,15 @@ mod tests {
         assert!(validate_basename("back\\slash").is_err());
     }
 
-    #[test]
-    fn part_count_limit_enforced() {
+    #[tokio::test]
+    async fn part_count_limit_enforced() {
         let dir = tempfile::tempdir().unwrap();
         let mut factory = MultipartBodyFactory::new();
         for i in 0..MULTIPART_MAX_FILE_PARTS {
             let p = dir.path().join(format!("f{i}.txt"));
             std::fs::write(&p, b"x").unwrap();
             factory = factory
-                .file_named("file", FilePart::from_path(&p).unwrap())
+                .file_named("file", FilePart::from_path_async(&p).await.unwrap())
                 .unwrap();
         }
         // The 17th part is refused.
@@ -455,13 +448,13 @@ mod tests {
         std::fs::write(&extra, b"x").unwrap();
         assert!(
             factory
-                .file_named("file", FilePart::from_path(&extra).unwrap())
+                .file_named("file", FilePart::from_path_async(&extra).await.unwrap())
                 .is_err()
         );
     }
 
-    #[test]
-    fn mixed_file_kinds_share_one_part_limit() {
+    #[tokio::test]
+    async fn mixed_file_kinds_share_one_part_limit() {
         let mut factory = MultipartBodyFactory::new();
         for index in 0..MULTIPART_MAX_FILE_PARTS {
             factory = factory
@@ -479,7 +472,7 @@ mod tests {
         std::fs::write(&path, b"x").unwrap();
         assert!(
             factory
-                .file_named("file", FilePart::from_path(&path).unwrap())
+                .file_named("file", FilePart::from_path_async(&path).await.unwrap())
                 .is_err()
         );
     }
@@ -518,7 +511,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("document.txt");
         std::fs::write(&path, b"original").unwrap();
-        let part = FilePart::from_path(&path).unwrap();
+        let part = FilePart::from_path_async(&path).await.unwrap();
         let factory = MultipartBodyFactory::new()
             .file_named("file", part)
             .unwrap();

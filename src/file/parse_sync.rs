@@ -160,7 +160,8 @@ impl FileParseSyncRequest {
     /// Validate the local file, stream it as multipart, and decode the parsing
     /// result. The file is reopened and revalidated for the transport attempt.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<FileResponse> {
-        let file_part = crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
+        let file_part =
+            crate::client::transport::multipart::FilePart::from_path_async(&self.file_path).await?;
         let route = crate::client::routes::FILES_PARSE_SYNC;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()
             .field("tool_type", self.tool_type())?;

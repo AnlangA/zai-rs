@@ -46,7 +46,7 @@ impl FileUploadRequest {
     pub async fn send_via(&self, client: &ZaiClient) -> crate::ZaiResult<FileUploadResponse> {
         let route = crate::client::routes::FILES_UPLOAD;
         let mut file_part =
-            crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
+            crate::client::transport::multipart::FilePart::from_path_async(&self.file_path).await?;
         if let Some(file_name) = &self.file_name {
             file_part = file_part.with_filename(file_name)?;
         }

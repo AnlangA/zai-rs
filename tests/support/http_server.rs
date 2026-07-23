@@ -8,8 +8,14 @@
 //! This is a test-support module (only compiled for `cfg(test)` / integration
 //! tests); it lives under `tests/support/`.
 
+// Each integration-test binary compiles this module independently and uses
+// only a subset of its API, so per-binary dead-code analysis would otherwise
+// flag the unused remainder.
+#![allow(dead_code)]
+
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -26,6 +32,7 @@ use tokio::net::TcpListener;
 pub struct CapturedRequest {
     pub method: String,
     pub path: String,
+    pub query: Option<String>,
     pub authorization: Option<String>,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
@@ -38,6 +45,7 @@ pub struct ScriptedResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Bytes,
+    delay: Duration,
 }
 
 impl ScriptedResponse {
@@ -52,7 +60,24 @@ impl ScriptedResponse {
             status,
             headers: vec![("content-type".into(), content_type.into())],
             body: body.into(),
+            delay: Duration::ZERO,
         }
+    }
+
+    /// An empty response with no explicit content type (e.g. a bare 500).
+    pub fn empty(status: u16) -> Self {
+        Self {
+            status,
+            headers: vec![],
+            body: Bytes::new(),
+            delay: Duration::ZERO,
+        }
+    }
+
+    /// Delay this scripted response after its request has been captured.
+    pub fn with_delay(mut self, delay: Duration) -> Self {
+        self.delay = delay;
+        self
     }
 }
 
@@ -103,6 +128,7 @@ impl TestServer {
                                     captured.lock().unwrap().push(CapturedRequest {
                                         method,
                                         path: uri.path().to_string(),
+                                        query: uri.query().map(str::to_string),
                                         authorization,
                                         headers: all_headers,
                                         body,
@@ -117,6 +143,7 @@ impl TestServer {
                                             )))
                                             .unwrap(),
                                         Some(s) => {
+                                            tokio::time::sleep(s.delay).await;
                                             let status =
                                                 StatusCode::from_u16(s.status).unwrap_or_else(|_| {
                                                     StatusCode::from_u16(500).unwrap()
@@ -131,10 +158,9 @@ impl TestServer {
                                     Ok::<_, Infallible>(resp)
                                 }
                             });
-                            ConnBuilder::new(TokioExecutor::new())
+                            let _ = ConnBuilder::new(TokioExecutor::new())
                                 .serve_connection(io, service)
-                                .await
-                                .unwrap();
+                                .await;
                         });
                     }
                 }

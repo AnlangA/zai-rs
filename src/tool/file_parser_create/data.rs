@@ -104,7 +104,8 @@ impl FileParseRequest {
 
     /// Upload the file and create the parser task through `client`.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<FileParserCreateResponse> {
-        let part = crate::client::transport::multipart::FilePart::from_path(&self.file_path)?;
+        let part =
+            crate::client::transport::multipart::FilePart::from_path_async(&self.file_path).await?;
 
         let route = crate::client::routes::FILES_PARSE;
         let mut factory = crate::client::transport::multipart::MultipartBodyFactory::new()

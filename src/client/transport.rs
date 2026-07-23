@@ -234,10 +234,12 @@ impl Transport {
         }
 
         let safety = prepped.retry_safety.effective(prepped.retry_override);
-        let deadline = tokio::time::Instant::now() + self.timeouts.overall;
+        let started = tokio::time::Instant::now();
+        let deadline = started + self.timeouts.overall;
         let max_attempts = effective_max_attempts(safety, self.max_attempts);
 
         let mut attempt: u8 = 1;
+        let mut attempt_deadline = (started + self.timeouts.attempt).min(deadline);
         let mut url = prepped.url.clone();
         let mut hops: u8 = 0;
         loop {
@@ -246,7 +248,7 @@ impl Transport {
             }
 
             let outcome = match self
-                .perform_attempt(prepped, &url, safety, hops, deadline)
+                .perform_attempt(prepped, &url, safety, hops, attempt_deadline, deadline)
                 .await?
             {
                 AttemptStep::Follow(target) => {
@@ -286,6 +288,8 @@ impl Transport {
                         }
                         tokio::time::sleep(delay).await;
                         attempt += 1;
+                        attempt_deadline =
+                            (tokio::time::Instant::now() + self.timeouts.attempt).min(deadline);
                         continue;
                     }
                     return Ok(TransportResponse {
@@ -307,6 +311,8 @@ impl Transport {
                     }
                     tokio::time::sleep(delay).await;
                     attempt += 1;
+                    attempt_deadline =
+                        (tokio::time::Instant::now() + self.timeouts.attempt).min(deadline);
                 },
             }
         }
@@ -411,10 +417,10 @@ impl Transport {
         url: &str,
         safety: RetrySafety,
         hops: u8,
+        attempt_deadline: tokio::time::Instant,
         overall_deadline: tokio::time::Instant,
     ) -> ZaiResult<AttemptStep> {
         let started = tokio::time::Instant::now();
-        let attempt_deadline = (started + self.timeouts.attempt).min(overall_deadline);
         let req = match tokio::time::timeout(
             attempt_deadline.saturating_duration_since(started),
             self.build_request(prepped.method, url, &prepped.body, prepped.response_mode),

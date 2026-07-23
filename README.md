@@ -1,5 +1,7 @@
 # zai-rs
 
+中文 | [English](README.en.md)
+
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
 当前仓库版本为 `0.6.0`。从旧版升级时，请先阅读
@@ -25,6 +27,7 @@
 |------|--------|----------|-----------------|-------|------------|
 | glm-5.2 | `GLM5_2` | ✓ | ✓ | ✓ | ✓ |
 | glm-5.1 | `GLM5_1` | ✓ | ✗ | ✓ | ✓ |
+| glm-5.1-highspeed | `GLM5_1_highspeed` | ✓ | ✗ | ✓ | ✓ |
 | glm-5 | `GLM5` | ✓ | ✗ | ✓ | ✓ |
 | glm-5-turbo | `GLM5_turbo` | ✓ | ✗ | ✓ | ✓ |
 | glm-4.7 | `GLM4_7` | ✓ | ✗ | ✓ | ✓ |
@@ -77,7 +80,11 @@
 `RealtimeClient::session` 通过密封的模型 trait 只接受上述两个 Realtime
 模型，因此错误模型会在编译期被拒绝。`GLM4_voice` 是 HTTP 语音聊天模型，
 不能用于 Realtime WebSocket；无可用操作能力的旧 Realtime marker 已在 0.6
-删除。
+删除。实时音频完整示例见 `examples/realtime_audio.rs`：
+
+```bash
+cargo run --example realtime_audio --features realtime
+```
 
 ## 示例（examples/）
 
@@ -115,6 +122,21 @@
 | `web_search` | 网络搜索 |
 | `batches_create` | 批处理任务创建 |
 | `batches_cancel` | 批处理任务取消 |
+| `agent_invoke` | Agent v1 调用请求构造（wire 契约） |
+| `assistant` | 助手调用（单条消息） |
+| `application` | LLM 应用调用（文本输入） |
+| `batches_list` / `batches_retrieve` | 批处理任务列表 / 详情检索 |
+| `files_list` / `files_content` / `files_delete` | 文件列表 / 内容下载 / 删除 |
+| `knowledge_list` / `knowledge_update` / `knowledge_delete` / `knowledge_capacity` | 知识库列表 / 编辑 / 删除 / 容量查询 |
+| `knowledge_retrieve` | 知识库详情检索 |
+| `knowledge_document_list` / `knowledge_document_detail` / `knowledge_document_delete` | 文档列表 / 详情 / 删除 |
+| `knowledge_document_upload_file` / `knowledge_document_upload_url` | 上传文件 / URL 文档到知识库 |
+| `knowledge_document_reembedding` / `knowledge_document_image_list` | 文档重新向量化 / 提取图片清单 |
+| `rerank` | 候选段落重排序 |
+| `tokenizer` | 文本分词计数 |
+| `simple_moderation` | 内容安全审核 |
+| `voice_list` / `voice_delete` | 音色列表 / 删除 |
+| `realtime_audio` | 实时音频会话（`realtime` feature） |
 
 ### 运行方式
 

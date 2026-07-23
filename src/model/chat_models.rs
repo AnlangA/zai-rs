@@ -21,6 +21,7 @@
 //! |-------|--------|----------|-----------------|-------|------------|
 //! | glm-5.2 | [`GLM5_2`] | yes | yes | yes | yes |
 //! | glm-5.1 | [`GLM5_1`] | yes | no | yes | yes |
+//! | glm-5.1-highspeed | [`GLM5_1_highspeed`] | yes | no | yes | yes |
 //! | glm-5 | [`GLM5`] | yes | no | yes | yes |
 //! | glm-5-turbo | [`GLM5_turbo`] | yes | no | yes | yes |
 //! | glm-4.7 | [`GLM4_7`] | yes | no | yes | yes |
@@ -100,6 +101,14 @@ impl_model_markers!(GLM5_2: Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable,
 define_model_type!(GLM5_1, "glm-5.1");
 impl_message_binding!(GLM5_1, TextMessage);
 impl_model_markers!(GLM5_1: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
+
+define_model_type!(
+    #[allow(non_camel_case_types)]
+    GLM5_1_highspeed,
+    "glm-5.1-highspeed"
+);
+impl_message_binding!(GLM5_1_highspeed, TextMessage);
+impl_model_markers!(GLM5_1_highspeed: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
 
 define_model_type!(
     #[allow(non_camel_case_types)]
@@ -282,6 +291,7 @@ macro_rules! impl_vision_request_schema {
 impl_text_request_schema!(
     GLM5_2,
     GLM5_1,
+    GLM5_1_highspeed,
     GLM5_turbo,
     GLM5,
     GLM4_7,
@@ -364,6 +374,7 @@ mod tests {
     fn request_schema_capabilities_are_typed_by_model_family() {
         assert_text_request_schema::<GLM5_2>();
         assert_text_request_schema::<GLM5_1>();
+        assert_text_request_schema::<GLM5_1_highspeed>();
         assert_text_request_schema::<GLM5_turbo>();
         assert_text_request_schema::<GLM5>();
         assert_text_request_schema::<GLM4_7>();
@@ -395,6 +406,7 @@ mod tests {
         let models = [
             String::from(GLM5_2 {}),
             String::from(GLM5_1 {}),
+            String::from(GLM5_1_highspeed {}),
             String::from(GLM5_turbo {}),
             String::from(GLM5 {}),
             String::from(GLM4_7 {}),
@@ -413,6 +425,7 @@ mod tests {
             [
                 "glm-5.2",
                 "glm-5.1",
+                "glm-5.1-highspeed",
                 "glm-5-turbo",
                 "glm-5",
                 "glm-4.7",
@@ -465,6 +478,7 @@ mod tests {
     fn capability_markers_cover_the_frozen_sync_and_async_enums() {
         assert_sync_model::<GLM5_2, TextMessage>();
         assert_sync_model::<GLM5_1, TextMessage>();
+        assert_sync_model::<GLM5_1_highspeed, TextMessage>();
         assert_sync_model::<GLM5_turbo, TextMessage>();
         assert_sync_model::<GLM5, TextMessage>();
         assert_sync_model::<GLM4_7, TextMessage>();
@@ -479,6 +493,7 @@ mod tests {
 
         assert_async_model::<GLM5_2, TextMessage>();
         assert_async_model::<GLM5_1, TextMessage>();
+        assert_async_model::<GLM5_1_highspeed, TextMessage>();
         assert_async_model::<GLM5_turbo, TextMessage>();
         assert_async_model::<GLM5, TextMessage>();
         assert_async_model::<GLM4_7, TextMessage>();

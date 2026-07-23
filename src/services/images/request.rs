@@ -4,19 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ZaiResult,
-    client::{
-        ZaiClient,
-        error::{ZaiError, codes},
-    },
+    client::{ZaiClient, validation::invalid},
     model::AsyncResponse,
 };
-
-fn validation_error(message: impl Into<String>) -> ZaiError {
-    ZaiError::ApiError {
-        code: codes::SDK_VALIDATION,
-        message: message.into(),
-    }
-}
 
 fn valid_glm_image_size(value: &str) -> bool {
     if matches!(value, "1728x960" | "960x1728") {
@@ -148,21 +138,21 @@ impl AsyncImageGenerationRequest {
     /// Validate documented prompt, size, and user-id constraints.
     pub fn validate(&self) -> ZaiResult<()> {
         if self.prompt.trim().is_empty() {
-            return Err(validation_error("async image prompt must not be blank"));
+            return Err(invalid("async image prompt must not be blank"));
         }
         if self
             .size
             .as_deref()
             .is_some_and(|size| !valid_glm_image_size(size))
         {
-            return Err(validation_error("invalid async GLM-Image size"));
+            return Err(invalid("invalid async GLM-Image size"));
         }
         if self
             .user_id
             .as_ref()
             .is_some_and(|value| !(6..=128).contains(&value.chars().count()))
         {
-            return Err(validation_error(
+            return Err(invalid(
                 "async image user_id must contain between 6 and 128 characters",
             ));
         }

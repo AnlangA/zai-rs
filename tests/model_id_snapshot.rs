@@ -24,6 +24,12 @@ fn all_model_ids() -> Vec<(&'static str, &'static str, String, &'static str)> {
         // chat (text)
         ("chat", "GLM5_2", GLM5_2 {}.into(), "glm-5.2"),
         ("chat", "GLM5_1", GLM5_1 {}.into(), "glm-5.1"),
+        (
+            "chat",
+            "GLM5_1_highspeed",
+            GLM5_1_highspeed {}.into(),
+            "glm-5.1-highspeed",
+        ),
         ("chat", "GLM5_turbo", GLM5_turbo {}.into(), "glm-5-turbo"),
         ("chat", "GLM5", GLM5 {}.into(), "glm-5"),
         ("chat", "GLM4_7", GLM4_7 {}.into(), "glm-4.7"),

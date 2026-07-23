@@ -148,6 +148,7 @@ macro_rules! seal_chat_capability {
 seal_chat_capability!(Chat:
     super::chat_models::GLM5_2,
     super::chat_models::GLM5_1,
+    super::chat_models::GLM5_1_highspeed,
     super::chat_models::GLM5_turbo,
     super::chat_models::GLM5,
     super::chat_models::GLM4_7,
@@ -173,6 +174,7 @@ seal_chat_capability!(Chat:
 seal_chat_capability!(AsyncChat:
     super::chat_models::GLM5_2,
     super::chat_models::GLM5_1,
+    super::chat_models::GLM5_1_highspeed,
     super::chat_models::GLM5_turbo,
     super::chat_models::GLM5,
     super::chat_models::GLM4_7,
@@ -195,6 +197,7 @@ seal_chat_capability!(AsyncChat:
 seal_chat_capability!(ChatRequestModel:
     super::chat_models::GLM5_2,
     super::chat_models::GLM5_1,
+    super::chat_models::GLM5_1_highspeed,
     super::chat_models::GLM5_turbo,
     super::chat_models::GLM5,
     super::chat_models::GLM4_7,

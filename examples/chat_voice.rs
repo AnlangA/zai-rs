@@ -1,4 +1,6 @@
 //! Send a WAV voice message and save the model's decoded audio response.
+//!
+//! Defaults to `data/你好.wav` as input; pass a path to use another file.
 
 use std::path::PathBuf;
 
@@ -14,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audio_path = args
         .next()
         .map(PathBuf::from)
-        .ok_or("usage: chat_voice <audio-input.wav> [output.wav]")?;
+        .unwrap_or_else(|| PathBuf::from("data/你好.wav"));
     let output_path = args
         .next()
         .map(PathBuf::from)

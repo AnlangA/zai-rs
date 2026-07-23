@@ -1,4 +1,6 @@
 //! Transcribe a local WAV or MP3 file, optionally through typed SSE events.
+//!
+//! Defaults to `data/你好.wav`; pass a path to use another file.
 
 use zai_rs::{
     client::ZaiClient,
@@ -8,8 +10,9 @@ use zai_rs::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_path = std::env::args()
-        .nth(1)
-        .ok_or("usage: audio_to_text <audio-file.wav|mp3> [--stream]")?;
+        .skip(1)
+        .find(|argument| argument != "--stream")
+        .unwrap_or_else(|| "data/你好.wav".to_owned());
     let streaming = std::env::args().any(|argument| argument == "--stream");
 
     let client = ZaiClient::from_env()?;
