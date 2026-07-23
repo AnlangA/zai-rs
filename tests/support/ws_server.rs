@@ -152,6 +152,9 @@ impl WsTestServer {
 /// socket fails. Connection tasks are not tied to the server shutdown
 /// signal: every test closes its session, which ends the connection, and a
 /// panicking test drops the client socket with the same effect.
+// `result_large_err`: the handshake callback's `Result<Response, ErrorResponse>`
+// signature is dictated by `accept_hdr_async` and cannot be boxed down.
+#[allow(clippy::result_large_err)]
 async fn run_connection(
     stream: TcpStream,
     handshakes: Arc<Mutex<Vec<CapturedHandshake>>>,
