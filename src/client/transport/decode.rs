@@ -58,8 +58,9 @@ pub(crate) fn validate_binary_content_type(raw: &str, allowed: &[&str]) -> ZaiRe
 
 /// Decide whether a body parses as a genuine business error envelope.
 ///
-/// A flat `{code, message}` with `code != 200` is an error; a nested `{error}`
-/// is always an error; `code == 200` (knowledge success) flows through.
+/// A flat `{code, message}` with a code other than `0` or `200` is an error; a
+/// nested `{error}` is always an error. Both success codes are used by official
+/// API families and must flow through to their typed response decoders.
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 pub(crate) enum WireEnvelope {
@@ -91,14 +92,15 @@ impl WireEnvelope {
 
 fn is_success_code(code: &serde_json::Value) -> bool {
     match code {
-        serde_json::Value::Number(n) => n.as_u64() == Some(200),
-        serde_json::Value::String(s) => s == "200",
+        serde_json::Value::Number(n) => matches!(n.as_u64(), Some(0 | 200)),
+        serde_json::Value::String(s) => matches!(s.as_str(), "0" | "200"),
         _ => false,
     }
 }
 
 /// Probe the body for a genuine business error envelope; return `true` if the
-/// body parses as `{code, message}` with `code != 200` or as `{error}`.
+/// body parses as `{code, message}` with a code other than `0` or `200`, or as
+/// `{error}`.
 ///
 /// The parsed envelope type is crate-private; the Transport uses
 /// [`extract_error_envelope`] to pull the code/message for error construction.
@@ -172,8 +174,11 @@ mod tests {
             r#"{"error":{"code":1302,"message":"x"}}"#
         ));
         assert!(probe_error_envelope(r#"{"error":{"code":1302}}"#));
-        // code == 200 is success, not an error envelope.
+        // Both official success-code conventions flow through.
+        assert!(!probe_error_envelope(r#"{"code":0,"message":"ok"}"#));
+        assert!(!probe_error_envelope(r#"{"code":"0","message":"ok"}"#));
         assert!(!probe_error_envelope(r#"{"code":200,"message":"ok"}"#));
+        assert!(!probe_error_envelope(r#"{"code":"200","message":"ok"}"#));
         // Non-envelope body (chat success) does not match.
         assert!(!probe_error_envelope(r#"{"id":"x","choices":[]}"#));
 

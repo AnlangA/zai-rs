@@ -140,12 +140,14 @@ pub mod knowledge;
 
 /// Unified MCP capability client.
 #[cfg(feature = "mcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
 pub mod mcp;
 
 pub mod model;
 /// WebSocket realtime (GLM-Realtime) client — audio/video over a WebSocket.
 /// Gated behind the `realtime` Cargo feature (off by default).
 #[cfg(feature = "realtime")]
+#[cfg_attr(docsrs, doc(cfg(feature = "realtime")))]
 pub mod realtime;
 mod serde_helpers;
 /// Typed service facades for application, assistant, image, and document tools.

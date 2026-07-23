@@ -254,7 +254,7 @@ async fn test_sdk_coding_plan_usage_query() {
     let (server, base_url) = server_under(
         "/api/monitor",
         json!({
-            "code": 200,
+            "code": 0,
             "msg": "ok",
             "success": true,
             "data": {
@@ -305,7 +305,7 @@ async fn test_sdk_coding_plan_usage_query() {
     assert_eq!(five_hour.next_reset_time.as_deref(), Some("1781778751996"));
 
     let summary = response.summary();
-    assert_eq!(summary.code, 200);
+    assert_eq!(summary.code, 0);
     assert_eq!(summary.msg.as_deref(), Some("ok"));
     assert!(summary.success);
     let summarized_time = summary.time_limit().expect("time limit summary present");

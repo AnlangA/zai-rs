@@ -215,7 +215,7 @@ impl DocumentUploadRequest {
             factory = factory.field("req_id", req_id.as_str())?;
         }
         for path in &self.files {
-            let part = crate::client::transport::multipart::FilePart::from_path(path)?;
+            let part = crate::client::transport::multipart::FilePart::from_path_async(path).await?;
             factory = factory.file_named("files", part)?;
         }
         client

@@ -51,6 +51,7 @@ pub use cache::CacheStats;
 
 /// RMCP protocol bridge for MCP tool calling (feature `rmcp-kits`).
 #[cfg(feature = "rmcp-kits")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rmcp-kits")))]
 pub mod rmcp_kits;
 
 /// Common types and traits used when defining or executing tools.

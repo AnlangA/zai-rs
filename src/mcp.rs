@@ -320,22 +320,25 @@ impl McpClient {
     /// This initializes each capability backend, including the local vision
     /// runtime, and follows MCP pagination internally.
     pub async fn tools(&self) -> ZaiResult<Vec<Tool>> {
-        let (search, reader, zread, vision) = tokio::try_join!(
-            self.connection(McpBackend::WebSearch),
-            self.connection(McpBackend::WebReader),
-            self.connection(McpBackend::Zread),
-            self.connection(McpBackend::Vision),
-        )?;
-        let (mut tools, reader_tools, zread_tools, vision_tools) = tokio::try_join!(
-            search.tools(),
-            reader.tools(),
-            zread.tools(),
-            vision.tools(),
-        )?;
-        tools.extend(reader_tools);
-        tools.extend(zread_tools);
-        tools.extend(vision_tools);
-        Ok(tools)
+        with_mcp_timeout(self.tool_timeout, "MCP tool discovery", async {
+            let (search, reader, zread, vision) = tokio::try_join!(
+                self.connection(McpBackend::WebSearch),
+                self.connection(McpBackend::WebReader),
+                self.connection(McpBackend::Zread),
+                self.connection(McpBackend::Vision),
+            )?;
+            let (mut tools, reader_tools, zread_tools, vision_tools) = tokio::try_join!(
+                search.tools(),
+                reader.tools(),
+                zread.tools(),
+                vision.tools(),
+            )?;
+            tools.extend(reader_tools);
+            tools.extend(zread_tools);
+            tools.extend(vision_tools);
+            Ok(tools)
+        })
+        .await
     }
 
     /// Invoke a tool supported by this SDK with raw JSON arguments.
@@ -361,14 +364,11 @@ impl McpClient {
             code: codes::SDK_VALIDATION,
             message: format!("unknown MCP tool: {name}"),
         })?;
-        tokio::time::timeout(self.tool_timeout, async {
+        let operation = format!("MCP tool {name}");
+        with_mcp_timeout(self.tool_timeout, &operation, async {
             self.connection(backend).await?.call(name, arguments).await
         })
         .await
-        .map_err(|_| ZaiError::ApiError {
-            code: codes::SDK_TIMEOUT,
-            message: format!("MCP tool {name} timed out after {:?}", self.tool_timeout),
-        })?
     }
 
     async fn call_request<R>(&self, name: &str, request: &R) -> ZaiResult<CallToolResult>
@@ -631,6 +631,19 @@ impl McpClient {
     }
 }
 
+async fn with_mcp_timeout<T>(
+    timeout: Duration,
+    operation: &str,
+    future: impl std::future::Future<Output = ZaiResult<T>>,
+) -> ZaiResult<T> {
+    tokio::time::timeout(timeout, future)
+        .await
+        .map_err(|_| ZaiError::ApiError {
+            code: codes::SDK_TIMEOUT,
+            message: format!("{operation} timed out after {timeout:?}"),
+        })?
+}
+
 fn api_key_from_env() -> ZaiResult<String> {
     ["Z_AI_API_KEY", "ZHIPU_API_KEY"]
         .into_iter()
@@ -674,6 +687,7 @@ fn vision_start_error<E: std::fmt::Display>(error: E) -> ZaiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::chat_models::GLM5V_turbo;
 
     #[test]
     fn official_remote_endpoints_are_region_aware() {
@@ -772,8 +786,23 @@ mod tests {
     fn vision_model_override_is_stored_for_the_vision_backend() {
         let client = McpClient::with_region("test.12345678901234567890", McpRegion::Zhipu)
             .unwrap()
-            .with_vision_model("glm-5v-turbo");
+            .with_vision_model(GLM5V_turbo {});
         assert_eq!(client.vision_model.as_deref(), Some("glm-5v-turbo"));
         assert!(client.vision.get().is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timeout_guard_bounds_tool_discovery() {
+        let timeout = Duration::from_secs(5);
+        let error = with_mcp_timeout(
+            timeout,
+            "MCP tool discovery",
+            std::future::pending::<ZaiResult<()>>(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code(), Some(codes::SDK_TIMEOUT));
+        assert!(error.message().contains("MCP tool discovery"));
+        assert!(error.message().contains("5s"));
     }
 }

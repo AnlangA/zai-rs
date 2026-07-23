@@ -177,7 +177,8 @@ impl OcrRequest {
 
         let route = crate::client::routes::FILES_OCR;
         let mime = image_mime_type(file_path)?;
-        let file_part = crate::client::transport::multipart::FilePart::from_path(file_path)?
+        let file_part = crate::client::transport::multipart::FilePart::from_path_async(file_path)
+            .await?
             .with_content_type(mime)?;
         let tool_type = self
             .body

@@ -131,6 +131,15 @@ jobs:
           cargo check --workspace --all-features --all-targets --locked
           cargo check -p zai-rs --no-default-features --all-targets --locked
 
+      # `--all-features` can hide an accidental dependency on a sibling feature
+      # through feature unification. Keep every public feature usable alone.
+      - name: Verify each optional feature independently
+        run: |
+          for feature in mcp realtime toolkits rmcp-kits; do
+            cargo check -p zai-rs --no-default-features \
+              --features "${feature}" --all-targets --locked
+          done
+
   guide:
     name: Guide (mdBook)
     runs-on: ubuntu-24.04
@@ -265,6 +274,24 @@ jobs:
 
       - name: Check dependency licenses and sources
         run: cargo deny check
+
+      # A custom Gitleaks config without inherited/default rules can report a
+      # clean scan while checking nothing. Build (but never commit) a synthetic
+      # token and require the scanner to detect it before trusting the history
+      # result below.
+      - name: Verify secret-detection rules are active
+        run: |
+          canary_suffix="$(printf 'zai-rs-gitleaks-canary' | sha256sum | cut -c1-36)"
+          set +e
+          printf 'github_token = ghp_%s\n' "${canary_suffix}" \
+            | gitleaks stdin --redact --no-banner --config .gitleaks.toml \
+              >/dev/null 2>&1
+          scan_status="${PIPESTATUS[1]}"
+          set -e
+          if [ "${scan_status}" -ne 1 ]; then
+            echo "ERROR: Gitleaks did not detect the runtime canary (exit ${scan_status})"
+            exit 1
+          fi
 
       - name: Scan repository history for secrets
         run: gitleaks git --redact --no-banner --config .gitleaks.toml

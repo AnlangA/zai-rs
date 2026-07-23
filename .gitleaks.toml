@@ -2,7 +2,10 @@
 
 title = "zai-rs gitleaks config"
 
-[allowlist]
+[extend]
+useDefault = true
+
+[[allowlists]]
 description = "Global allowlist — exclude build output and caches."
 paths = [
     '''(?:^|/)(?:target|node_modules)(?:/|$)''',

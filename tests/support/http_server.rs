@@ -15,6 +15,7 @@
 
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -44,6 +45,7 @@ pub struct ScriptedResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Bytes,
+    delay: Duration,
 }
 
 impl ScriptedResponse {
@@ -58,6 +60,7 @@ impl ScriptedResponse {
             status,
             headers: vec![("content-type".into(), content_type.into())],
             body: body.into(),
+            delay: Duration::ZERO,
         }
     }
 
@@ -67,7 +70,14 @@ impl ScriptedResponse {
             status,
             headers: vec![],
             body: Bytes::new(),
+            delay: Duration::ZERO,
         }
+    }
+
+    /// Delay this scripted response after its request has been captured.
+    pub fn with_delay(mut self, delay: Duration) -> Self {
+        self.delay = delay;
+        self
     }
 }
 
@@ -133,6 +143,7 @@ impl TestServer {
                                             )))
                                             .unwrap(),
                                         Some(s) => {
+                                            tokio::time::sleep(s.delay).await;
                                             let status =
                                                 StatusCode::from_u16(s.status).unwrap_or_else(|_| {
                                                     StatusCode::from_u16(500).unwrap()
@@ -147,10 +158,9 @@ impl TestServer {
                                     Ok::<_, Infallible>(resp)
                                 }
                             });
-                            ConnBuilder::new(TokioExecutor::new())
+                            let _ = ConnBuilder::new(TokioExecutor::new())
                                 .serve_connection(io, service)
-                                .await
-                                .unwrap();
+                                .await;
                         });
                     }
                 }
