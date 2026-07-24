@@ -70,11 +70,11 @@ jobs:
           cache: true
           cache-workspaces: fuzz -> target
 
-      # bootstrap-tools.sh compiles cargo-fuzz with the pinned 1.88.0 toolchain,
+      # bootstrap-tools.sh compiles cargo-fuzz with the pinned 1.97.1 toolchain,
       # so install it alongside nightly first.
       - name: Install pinned cargo-fuzz
         run: |
-          rustup toolchain install 1.88.0 --profile minimal
+          rustup toolchain install 1.97.1 --profile minimal
           ./scripts/bootstrap-tools.sh cargo-fuzz
 
       - name: Run libFuzzer

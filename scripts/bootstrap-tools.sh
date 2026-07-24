@@ -21,7 +21,7 @@ RUST_TOOLS=(
   "cargo-audit 0.22.2 1.88.0"
   "cargo-deny 0.20.2 1.88.0"
   "cargo-llvm-cov 0.8.7 1.88.0"
-  "cargo-fuzz 0.13.2 1.88.0"
+  "cargo-fuzz 0.13.2 1.97.1"
   "cargo-cyclonedx 0.5.9 1.88.0"
   "cargo-nextest 0.9.114 1.88.0"
   "mdbook 0.5.4 1.88.0"

@@ -852,9 +852,14 @@ impl ToolExecutor {
 }
 
 fn saturating_increment_epoch(epoch: &AtomicU64) {
-    let _ = epoch.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
-        Some(value.saturating_add(1))
-    });
+    let mut current = epoch.load(Ordering::Acquire);
+    while current != u64::MAX {
+        match epoch.compare_exchange_weak(current, current + 1, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -863,6 +868,17 @@ mod tests {
     use std::time::Duration;
 
     use crate::toolkits::core::{CachePolicy, FunctionTool, RetryPolicy, ToolExecutionPolicy};
+
+    #[test]
+    fn saturating_epoch_increment_stops_at_max() {
+        let epoch = AtomicU64::new(0);
+        saturating_increment_epoch(&epoch);
+        assert_eq!(epoch.load(Ordering::Acquire), 1);
+
+        epoch.store(u64::MAX, Ordering::Release);
+        saturating_increment_epoch(&epoch);
+        assert_eq!(epoch.load(Ordering::Acquire), u64::MAX);
+    }
 
     #[test]
     fn test_retry_config_default() {
