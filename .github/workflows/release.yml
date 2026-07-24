@@ -34,17 +34,32 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify annotated tag
         env:
+          EXPECTED_SHA: ${{ github.sha }}
           TAG_REF: ${{ github.ref }}
         run: |
-          git cat-file -t "${TAG_REF}^{tag}" || {
+          tag_type="$(git cat-file -t "${TAG_REF}" 2>/dev/null || true)"
+          if [ "${tag_type}" != "tag" ]; then
             echo "ERROR: ${TAG_REF} is not an annotated tag"
             exit 1
-          }
+          fi
+
+          tag_commit="$(git rev-parse --verify "${TAG_REF}^{commit}")"
+          if [ "${tag_commit}" != "${EXPECTED_SHA}" ]; then
+            echo "ERROR: ${TAG_REF} points to ${tag_commit}, expected ${EXPECTED_SHA}"
+            exit 1
+          fi
+
+          checked_out_commit="$(git rev-parse --verify HEAD)"
+          if [ "${checked_out_commit}" != "${EXPECTED_SHA}" ]; then
+            echo "ERROR: checkout is ${checked_out_commit}, expected ${EXPECTED_SHA}"
+            exit 1
+          fi
 
       - name: Install release Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
