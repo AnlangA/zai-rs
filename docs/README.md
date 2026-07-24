@@ -23,7 +23,7 @@
   - HTTP、流式 I/O、Realtime 和公共 API 里程碑
   - 每项工作的验收标准与预估工作量
 
-- **[未发布安全加固迁移说明](HARDENING_MIGRATION.md)** - 当前工作树的可观察行为变化
+- **[6.0.1 安全加固迁移说明](HARDENING_MIGRATION.md)** - 从 0.6.0 升级时的可观察行为变化
 
 - **[发布清单](RELEASING.md)** - OIDC、SBOM、provenance 与发布前外部配置
 
@@ -89,9 +89,9 @@
 
 ## 版本说明
 
-Cargo 版本仍为 `0.6.0`，但当前工作树包含尚未发布的安全加固和新增 API。版本升级前
-请阅读 [0.6 迁移指南](MIGRATING-0.6.md)；准备发布当前工作树前还需阅读
-[未发布安全加固迁移说明](HARDENING_MIGRATION.md)。
+当前 Cargo 版本为 `6.0.1`。从较早版本升级前请阅读
+[0.6 迁移指南](MIGRATING-0.6.md)；从 `0.6.0` 升级时还必须阅读
+[6.0.1 安全加固迁移说明](HARDENING_MIGRATION.md)。
 
 ## 维护注记
 

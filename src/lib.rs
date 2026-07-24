@@ -101,7 +101,7 @@
 //! Enable in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! zai-rs = { version = "0.6", features = ["mcp"] }
+//! zai-rs = { version = "6.0.1", features = ["mcp"] }
 //! ```
 //!
 //! # Error Handling

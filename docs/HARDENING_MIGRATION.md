@@ -1,10 +1,9 @@
-# Unreleased hardening migration notes
+# 6.0.1 hardening migration notes
 
-This document records behavior changes introduced by the current optimization
-worktree. The package version has not been changed. Because the first three
-changes below alter observable runtime behavior, release maintainers should
-either ship them in `0.7` or call them out explicitly as a security exception;
-they should not be hidden in an ordinary `0.6.x` patch release.
+This document records behavior changes released in `zai-rs 6.0.1`. Because the
+first four changes below alter observable runtime behavior, `6.0.1`
+deliberately establishes a new major release line instead of presenting them
+as an ordinary `0.6.x` patch release.
 
 ## Vision MCP now requires explicit runtime consent
 
@@ -117,10 +116,25 @@ This changes variant matching, metrics keyed by `code()`, and retry decisions.
 Applications should prefer the category helpers and retain a wildcard arm when
 matching the non-exhaustive error enum.
 
+## HTTP failures now carry request diagnostics
+
+Every failure after a request enters the HTTP transport is now transparently
+wrapped in `ZaiError::Request`. Stable helpers such as `code()`, `category()`,
+`is_retryable()`, and `compact()` continue to delegate to the original error.
+Code that directly matches variants such as `AuthError` or `RateLimitError`
+must instead match on `error.source_error()` and retain a wildcard arm.
+
+`request_metadata()` exposes the number of attempts, a validated request ID,
+the final valid `Retry-After` hint, and the timeout phase (attempt, overall,
+SSE handshake, or SSE idle). These values remain absent from default
+`Display`, `Debug`, and `compact()` output to avoid accidental disclosure.
+
 ## Additive capabilities
 
 - Agent v1 non-streaming invocation, async-result polling, and conversation
   continuation now provide `send_via(&ZaiClient)`.
+- HTTP failures provide bounded, structured request diagnostics through
+  `request_metadata()` while preserving their original classification helpers.
 - `FileContentRequest::stream_via` exposes bounded `Bytes` chunks;
   `send_to_via` writes chunks to a private same-directory partial file and
   publishes without replacing an existing destination.
@@ -138,11 +152,12 @@ matching the non-exhaustive error enum.
 
 ---
 
-# 未发布安全加固迁移说明
+# 6.0.1 安全加固迁移说明
 
-当前工作树尚未修改 crate 版本。Vision MCP 的默认执行行为、工具缓存/重试的默认
-资格，以及未知业务码的错误分类均发生了可观察变化；发布维护者应将其放入 `0.7`，
-或作为安全例外在 `0.6.x` 发布说明中显式披露，不能作为无提示的补丁行为变化。
+`zai-rs 6.0.1` 发布了本文件所列的安全加固。Vision MCP 的默认执行行为、工具
+缓存/重试的默认资格、未知业务码的错误分类，以及 HTTP 错误的外层包装均发生了
+可观察变化，因此
+`6.0.1` 有意建立新的主版本线，而不是把这些变化作为普通 `0.6.x` 补丁发布。
 
 - Vision MCP 默认不再通过 `npx` 下载或执行代码。生产环境使用
   `with_vision_mcp_command` 指向已审计的本地运行时；本地开发若接受 npm 供应链风险，
@@ -161,6 +176,12 @@ matching the non-exhaustive error enum.
 - 未知业务码若伴随 HTTP 401/403、429 或 5xx，现在返回
   `HttpBusinessError`：`code()` 是 HTTP 状态，`raw_business_code()` 才是限长并脱敏
   的 wire 业务码，分类和可重试性按 HTTP 状态决定；已知业务码仍优先。
+- 请求进入 HTTP 传输层后的失败现在由 `ZaiError::Request` 透明包装。
+  `code()`、`category()`、`is_retryable()` 和 `compact()` 仍委托给原错误；直接匹配
+  `AuthError`、`RateLimitError` 等变体的代码必须改为匹配 `error.source_error()` 并
+  保留兜底分支。`request_metadata()` 提供尝试次数、校验后的 request ID、最终有效
+  `Retry-After` 和 attempt/overall/SSE handshake/SSE idle timeout phase；默认
+  `Display`、`Debug` 与 `compact()` 不输出这些诊断字段。
 - Agent v1 非流式调用、异步结果轮询与会话续接的 `send_via`，以及文件内容流、
   no-clobber 文件发布和最高 24 小时的显式请求超时属于新增 API 能力。文件发布依赖
   目标文件系统支持 hard link；文件本身会 `fsync`，当前不承诺父目录项的掉电持久性。

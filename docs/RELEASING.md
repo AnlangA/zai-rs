@@ -8,15 +8,16 @@ short-lived crates.io token obtained through GitHub OIDC.
 
 ## One-time repository setup
 
-1. Confirm the copyright holder in `LICENSE` with the project owner. Do not
-   publish while the holder is uncertain.
+1. Confirm the copyright holder in `LICENSE` with the project owner. The
+   `6.0.1` release retains the existing attribution following owner
+   confirmation on 2026-07-24.
 2. On crates.io, configure a trusted publisher for:
    - repository: `AnlangA/zai-rs`
    - workflow: `release.yml`
    - environment: `crates-io`
-3. In GitHub, protect the `crates-io` environment with the intended reviewer
-   and tag rules. Keep the workflow's `id-token: write` permission scoped to
-   the publish job.
+3. In GitHub, protect the `crates-io` environment with exact release-tag
+   rules. Add a required reviewer when governance calls for manual approval.
+   Keep the workflow's `id-token: write` permission scoped to the publish job.
 4. After one successful OIDC publication, remove any legacy
    `CRATES_IO_TOKEN` repository/environment secret.
 5. Enable GitHub private vulnerability reporting for the repository; the
@@ -29,24 +30,25 @@ action is maintained by
 
 ## Per-release procedure
 
-The current `0.6.0` version already exists on crates.io and cannot be published
-again. Choose a new version before creating a tag; the observable behavior
-changes listed in `HARDENING_MIGRATION.md` must inform that version decision.
+Published crates.io versions are immutable and cannot be reused. Confirm that
+the version in `Cargo.toml` is still available before creating a tag; the
+observable behavior changes listed in `HARDENING_MIGRATION.md` must inform that
+version decision.
 
 1. Make the intended version explicit in `Cargo.toml` and update release notes.
 2. Run the quality gates in `docs/OPTIMIZATION_PLAN.md` from a clean checkout.
 3. Review `cargo package --locked -p zai-rs --all-features --list`; confirm no
    credentials, fixtures, build output, or repository-only tooling is present.
 4. Create an **annotated** tag whose name exactly matches the crate version,
-   for example `git tag -a v0.7.0 -m "zai-rs 0.7.0"`, then push that tag.
-5. Approve the protected `crates-io` environment only after the reusable CI job
-   succeeds.
+   for example `git tag -a v6.0.1 -m "zai-rs 6.0.1"`, then push that tag.
+5. Wait for the reusable CI job to succeed. If the `crates-io` environment
+   requires approval, approve it only after that point.
 6. Download the `zai-rs-<version>-release-evidence` workflow artifact and run
    `sha256sum -c SHA256SUMS` from its directory.
 7. Verify the provenance against this repository, for example:
 
    ```bash
-   gh attestation verify zai-rs-0.7.0.crate --repo AnlangA/zai-rs
+   gh attestation verify zai-rs-6.0.1.crate --repo AnlangA/zai-rs
    ```
 
 Setting the GitHub Actions configuration variable `SKIP_PUBLISH` to `true`

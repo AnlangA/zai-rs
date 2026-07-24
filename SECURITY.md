@@ -6,8 +6,8 @@ Security fixes are currently provided for the latest stable release line.
 
 | Release line | Security support |
 | --- | --- |
-| `0.6.x` (current stable) | Supported |
-| Earlier than `0.6` | Not supported |
+| `6.x` (current stable) | Supported |
+| Earlier than `6.0.0` | Not supported |
 
 This table describes the current policy rather than promising indefinite
 backports. It will be updated when a newer stable release line is published.

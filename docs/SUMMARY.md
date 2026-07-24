@@ -3,7 +3,7 @@
 - [Introduction](./README.md)
 - [Quick Start](./GETTING_STARTED.md)
 - [Migration to 0.6](./MIGRATING-0.6.md)
-- [Unreleased hardening migration](./HARDENING_MIGRATION.md)
+- [6.0.1 hardening migration](./HARDENING_MIGRATION.md)
 - [Architecture](./ARCHITECTURE.md)
 - [Optimization Roadmap](./OPTIMIZATION_PLAN.md)
 - [Error Handling](./ERROR_HANDLING.md)
