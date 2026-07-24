@@ -31,7 +31,7 @@ use futures_util::{Stream, StreamExt};
 
 use crate::ZaiError;
 use crate::ZaiResult;
-use crate::client::error::codes;
+use crate::client::error::{RequestErrorMetadata, TimeoutPhase, codes};
 use crate::client::secret::ApiSecret;
 use crate::client::transport::limits::{
     ERROR_BODY_MAX, JSON_REQUEST_MAX, JSON_RESPONSE_MAX, MULTIPART_FILE_BYTES_MAX,
@@ -101,6 +101,8 @@ pub struct TransportResponse {
     headers: reqwest::header::HeaderMap,
     body: Bytes,
     response_mode: ResponseMode,
+    attempts: u8,
+    retry_after: Option<Duration>,
 }
 
 impl TransportResponse {
@@ -110,16 +112,21 @@ impl TransportResponse {
     /// to [`ZaiError`] before bytes are returned.
     pub fn bytes(self) -> ZaiResult<Bytes> {
         if let Some(error) = self.business_error() {
-            return Err(api_error(self.status, error));
+            let request_id = error.request_id.clone();
+            return Err(self.annotate(api_error(self.status, error), request_id.as_deref()));
         }
         if !(200..300).contains(&self.status) {
-            return Err(ZaiError::from_api_response(
-                self.status,
-                0,
-                String::from_utf8_lossy(&self.body).into_owned(),
+            return Err(self.annotate(
+                ZaiError::from_api_response(
+                    self.status,
+                    0,
+                    String::from_utf8_lossy(&self.body).into_owned(),
+                ),
+                None,
             ));
         }
-        self.validate_success_content_type()?;
+        self.validate_success_content_type()
+            .map_err(|error| self.annotate(error, None))?;
         Ok(self.body)
     }
 
@@ -130,17 +137,24 @@ impl TransportResponse {
     /// documented JSON media type.
     pub fn json<T: serde::de::DeserializeOwned>(self) -> ZaiResult<T> {
         if let Some(error) = self.business_error() {
-            return Err(api_error(self.status, error));
+            let request_id = error.request_id.clone();
+            return Err(self.annotate(api_error(self.status, error), request_id.as_deref()));
         }
         if !(200..300).contains(&self.status) {
-            return Err(ZaiError::from_api_response(
-                self.status,
-                0,
-                String::from_utf8_lossy(&self.body).into_owned(),
+            return Err(self.annotate(
+                ZaiError::from_api_response(
+                    self.status,
+                    0,
+                    String::from_utf8_lossy(&self.body).into_owned(),
+                ),
+                None,
             ));
         }
-        self.validate_success_content_type()?;
-        serde_json::from_slice(&self.body).map_err(ZaiError::from)
+        self.validate_success_content_type()
+            .map_err(|error| self.annotate(error, None))?;
+        serde_json::from_slice(&self.body)
+            .map_err(ZaiError::from)
+            .map_err(|error| self.annotate(error, None))
     }
 
     fn validate_success_content_type(&self) -> ZaiResult<()> {
@@ -165,6 +179,16 @@ impl TransportResponse {
             .then(|| std::str::from_utf8(&self.body).ok())
             .flatten()
             .and_then(decode::extract_error_envelope)
+    }
+
+    fn annotate(&self, error: ZaiError, body_request_id: Option<&str>) -> ZaiError {
+        let request_id =
+            sanitize_request_id(body_request_id).or_else(|| request_id_from_headers(&self.headers));
+        error.with_request_metadata(
+            RequestErrorMetadata::for_attempts(self.attempts)
+                .with_request_id(request_id)
+                .with_retry_after(self.retry_after),
+        )
     }
 }
 
@@ -212,11 +236,14 @@ struct FileStreamState {
     delivered: bool,
     total: u64,
     terminated: bool,
+    request_id: Option<String>,
+    retry_after: Option<Duration>,
 }
 
 #[derive(Clone, Copy)]
 struct AttemptContext {
     safety: RetrySafety,
+    attempt: u8,
     redirect_hops: u8,
     attempt_deadline: tokio::time::Instant,
     overall_deadline: tokio::time::Instant,
@@ -279,25 +306,47 @@ impl Transport {
         let mut attempt_deadline = (started + policy.attempt).min(deadline);
         let mut url = prepped.url.clone();
         let mut hops: u8 = 0;
+        let mut last_retry_after = None;
+        let mut last_request_id = None;
         loop {
             if tokio::time::Instant::now() >= deadline {
-                return Err(timeout_overall());
+                return Err(annotate_request_error(
+                    timeout_overall(),
+                    attempt.saturating_sub(1).max(1),
+                    last_request_id,
+                    last_retry_after,
+                ));
             }
 
-            let outcome = match self
-                .perform_attempt(prepped, &url, safety, hops, attempt_deadline, deadline)
-                .await?
-            {
-                AttemptStep::Follow(target) => {
-                    hops += 1;
-                    url = target.to_string();
-                    // Redirects stay within the current attempt and do not
-                    // consume the retry budget.
-                    continue;
-                },
-                AttemptStep::Final(response) => return Ok(response),
-                AttemptStep::Outcome(outcome) => outcome,
+            let context = AttemptContext {
+                safety,
+                attempt,
+                redirect_hops: hops,
+                attempt_deadline,
+                overall_deadline: deadline,
             };
+            let outcome =
+                match self
+                    .perform_attempt(prepped, &url, context)
+                    .await
+                    .map_err(|error| {
+                        annotate_request_error(
+                            error,
+                            attempt,
+                            last_request_id.clone(),
+                            last_retry_after,
+                        )
+                    })? {
+                    AttemptStep::Follow(target) => {
+                        hops += 1;
+                        url = target.to_string();
+                        // Redirects stay within the current attempt and do not
+                        // consume the retry budget.
+                        continue;
+                    },
+                    AttemptStep::Final(response) => return Ok(response),
+                    AttemptStep::Outcome(outcome) => outcome,
+                };
 
             match outcome {
                 AttemptOutcome::Response {
@@ -305,24 +354,34 @@ impl Transport {
                     headers,
                     body,
                 } => {
-                    let business_code = std::str::from_utf8(&body)
+                    let business_error = std::str::from_utf8(&body)
                         .ok()
-                        .and_then(decode::extract_error_envelope)
-                        .and_then(|e| e.code)
-                        .and_then(|value| parse_business_code(&value));
+                        .and_then(decode::extract_error_envelope);
+                    let business_code = business_error
+                        .as_ref()
+                        .and_then(|error| error.code.as_ref())
+                        .and_then(parse_business_code);
+                    let retry_after = retry_after_from_headers(&headers);
+                    let request_id = business_error
+                        .as_ref()
+                        .and_then(|error| sanitize_request_id(error.request_id.as_deref()))
+                        .or_else(|| request_id_from_headers(&headers));
                     if safety == RetrySafety::Idempotent
                         && is_retryable_outcome(status, business_code)
                         && attempt < max_attempts
                     {
                         let computed = backoff_delay(u32::from(attempt) - 1, self.jitter.as_ref());
-                        let hint = headers
-                            .get(reqwest::header::RETRY_AFTER)
-                            .and_then(|v| v.to_str().ok())
-                            .and_then(parse_retry_after);
-                        let delay = reconcile_retry_after(hint, computed);
+                        let delay = reconcile_retry_after(retry_after, computed);
                         if !delay_fits_before(delay, deadline) {
-                            return Err(timeout_overall());
+                            return Err(annotate_request_error(
+                                timeout_overall(),
+                                attempt,
+                                request_id,
+                                retry_after,
+                            ));
                         }
+                        last_retry_after = retry_after;
+                        last_request_id = request_id;
                         tokio::time::sleep(delay).await;
                         attempt += 1;
                         attempt_deadline =
@@ -334,17 +393,29 @@ impl Transport {
                         headers,
                         body,
                         response_mode: prepped.response_mode,
+                        attempts: attempt,
+                        retry_after,
                     });
                 },
                 AttemptOutcome::Transient(e) => {
                     if attempt >= max_attempts {
-                        return Err(e);
+                        return Err(annotate_request_error(
+                            e,
+                            attempt,
+                            last_request_id,
+                            last_retry_after,
+                        ));
                     }
                     // Network/timeout failures have no HTTP response headers, so
                     // this branch uses jitter without a Retry-After hint.
                     let delay = backoff_delay(u32::from(attempt) - 1, self.jitter.as_ref());
                     if !delay_fits_before(delay, deadline) {
-                        return Err(timeout_overall());
+                        return Err(annotate_request_error(
+                            timeout_overall(),
+                            attempt,
+                            last_request_id,
+                            last_retry_after,
+                        ));
                     }
                     tokio::time::sleep(delay).await;
                     attempt += 1;
@@ -403,8 +474,12 @@ impl Transport {
             delivered: false,
             total: 0,
             terminated: false,
+            request_id: None,
+            retry_after: None,
         };
-        state.open_response().await?;
+        if let Err(error) = state.open_response().await {
+            return Err(state.annotate(error));
+        }
 
         let stream = futures_util::stream::unfold(state, FileStreamState::next_item);
         Ok(Box::pin(stream))
@@ -445,15 +520,19 @@ impl Transport {
             ),
         )
         .await
-        .map_err(|_| timeout_sse_handshake())??;
+        .map_err(|_| annotate_request_error(timeout_sse_handshake(), 1, None, None))?
+        .map_err(|error| annotate_request_error(error, 1, None, None))?;
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         let response = tokio::time::timeout(remaining, request.send())
             .await
-            .map_err(|_| timeout_sse_handshake())?
-            .map_err(ZaiError::from)?;
+            .map_err(|_| annotate_request_error(timeout_sse_handshake(), 1, None, None))?
+            .map_err(ZaiError::from)
+            .map_err(|error| annotate_request_error(error, 1, None, None))?;
 
         let status = response.status().as_u16();
         let headers = response.headers().clone();
+        let header_request_id = request_id_from_headers(&headers);
+        let retry_after = retry_after_from_headers(&headers);
         let content_type = headers
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
@@ -464,29 +543,52 @@ impl Transport {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             let body = read_body(response, ERROR_BODY_MAX, remaining)
                 .await
-                .map_err(|error| sse_handshake_body_read_error(error, ERROR_BODY_MAX))?;
+                .map_err(|error| sse_handshake_body_read_error(error, ERROR_BODY_MAX))
+                .map_err(|error| {
+                    annotate_request_error(error, 1, header_request_id.clone(), retry_after)
+                })?;
             if let Ok(text) = std::str::from_utf8(&body)
                 && let Some(error) = decode::extract_error_envelope(text)
             {
-                return Err(api_error(status, error));
-            }
-            if !(200..300).contains(&status) {
-                return Err(ZaiError::from_api_response(
-                    status,
-                    0,
-                    String::from_utf8_lossy(&body).into_owned(),
+                let request_id = sanitize_request_id(error.request_id.as_deref())
+                    .or_else(|| header_request_id.clone());
+                return Err(annotate_request_error(
+                    api_error(status, error),
+                    1,
+                    request_id,
+                    retry_after,
                 ));
             }
-            return Err(content_type_error
-                .unwrap_or_else(|| invalid("SSE response did not use text/event-stream")));
+            if !(200..300).contains(&status) {
+                return Err(annotate_request_error(
+                    ZaiError::from_api_response(
+                        status,
+                        0,
+                        String::from_utf8_lossy(&body).into_owned(),
+                    ),
+                    1,
+                    header_request_id,
+                    retry_after,
+                ));
+            }
+            return Err(annotate_request_error(
+                content_type_error
+                    .unwrap_or_else(|| invalid("SSE response did not use text/event-stream")),
+                1,
+                header_request_id,
+                retry_after,
+            ));
         }
 
         let idle_timeout = policy.sse_idle;
         let byte_stream = response.bytes_stream();
         let idle_deadline = tokio::time::Instant::now() + idle_timeout;
+        let stream_metadata = RequestErrorMetadata::for_attempts(1)
+            .with_request_id(header_request_id)
+            .with_retry_after(retry_after);
         let stream = futures_util::stream::unfold(
-            (Box::pin(byte_stream), false, idle_deadline),
-            move |(mut inner, terminated, idle_deadline)| async move {
+            (Box::pin(byte_stream), false, idle_deadline, stream_metadata),
+            move |(mut inner, terminated, idle_deadline, metadata)| async move {
                 if terminated {
                     return None;
                 }
@@ -503,17 +605,22 @@ impl Transport {
                 match next {
                     Some(Some(Ok(chunk))) if (chunk.len() as u64) <= JSON_RESPONSE_MAX => {
                         let next_deadline = tokio::time::Instant::now() + idle_timeout;
-                        Some((Ok(chunk), (inner, false, next_deadline)))
+                        Some((Ok(chunk), (inner, false, next_deadline, metadata)))
                     },
                     Some(Some(Ok(_))) => Some((
-                        Err(response_too_large(JSON_RESPONSE_MAX)),
-                        (inner, true, idle_deadline),
+                        Err(response_too_large(JSON_RESPONSE_MAX)
+                            .with_request_metadata(metadata.clone())),
+                        (inner, true, idle_deadline, metadata),
                     )),
-                    Some(Some(Err(error))) => {
-                        Some((Err(ZaiError::from(error)), (inner, true, idle_deadline)))
-                    },
+                    Some(Some(Err(error))) => Some((
+                        Err(ZaiError::from(error).with_request_metadata(metadata.clone())),
+                        (inner, true, idle_deadline, metadata),
+                    )),
                     Some(None) => None,
-                    None => Some((Err(timeout_sse_idle()), (inner, true, idle_deadline))),
+                    None => Some((
+                        Err(timeout_sse_idle().with_request_metadata(metadata.clone())),
+                        (inner, true, idle_deadline, metadata),
+                    )),
                 }
             },
         );
@@ -524,36 +631,29 @@ impl Transport {
         &self,
         prepped: &PreparedRequest<'_>,
         url: &str,
-        safety: RetrySafety,
-        hops: u8,
-        attempt_deadline: tokio::time::Instant,
-        overall_deadline: tokio::time::Instant,
+        context: AttemptContext,
     ) -> ZaiResult<AttemptStep> {
         let started = tokio::time::Instant::now();
         let req = match tokio::time::timeout(
-            attempt_deadline.saturating_duration_since(started),
+            context.attempt_deadline.saturating_duration_since(started),
             self.build_request(prepped.method, url, &prepped.body, prepped.response_mode),
         )
         .await
         {
             Ok(result) => result?,
-            Err(_) => return timeout_step(overall_deadline),
+            Err(_) => return timeout_step(context.overall_deadline),
         };
-        let remaining = attempt_deadline.saturating_duration_since(tokio::time::Instant::now());
+        let remaining = context
+            .attempt_deadline
+            .saturating_duration_since(tokio::time::Instant::now());
         let response = match tokio::time::timeout(remaining, req.send()).await {
-            Err(_) => return timeout_step(overall_deadline),
+            Err(_) => return timeout_step(context.overall_deadline),
             Ok(Err(error)) => {
                 return Ok(AttemptStep::Outcome(AttemptOutcome::Transient(
                     error.into(),
                 )));
             },
             Ok(Ok(response)) => response,
-        };
-        let context = AttemptContext {
-            safety,
-            attempt_deadline,
-            overall_deadline,
-            redirect_hops: hops,
         };
         self.classify_response(response, prepped, url, context)
             .await
@@ -593,11 +693,14 @@ impl Transport {
                 .map_err(|error| {
                     body_read_error(error, ERROR_BODY_MAX, context.overall_deadline)
                 })?;
+            let retry_after = retry_after_from_headers(&headers);
             return Ok(AttemptStep::Final(TransportResponse {
                 status,
                 headers,
                 body,
                 response_mode: prepped.response_mode,
+                attempts: context.attempt,
+                retry_after,
             }));
         }
 
@@ -673,7 +776,7 @@ impl FileStreamState {
     async fn open_response(&mut self) -> ZaiResult<()> {
         loop {
             if tokio::time::Instant::now() >= self.overall_deadline {
-                return Err(timeout_overall());
+                return Err(self.annotate(timeout_overall()));
             }
 
             let remaining = self
@@ -719,6 +822,8 @@ impl FileStreamState {
 
             let status = response.status().as_u16();
             let headers = response.headers().clone();
+            self.request_id = request_id_from_headers(&headers);
+            self.retry_after = retry_after_from_headers(&headers);
             if (300..400).contains(&status) {
                 let location = headers
                     .get(reqwest::header::LOCATION)
@@ -751,7 +856,7 @@ impl FileStreamState {
                     .and_then(|value| value.to_str().ok())
                     .and_then(|value| value.parse::<u64>().ok());
                 if announced_length.is_some_and(|length| length > MULTIPART_FILE_BYTES_MAX) {
-                    return Err(response_too_large(MULTIPART_FILE_BYTES_MAX));
+                    return Err(self.annotate(response_too_large(MULTIPART_FILE_BYTES_MAX)));
                 }
                 self.body = Some(Box::pin(response.bytes_stream()));
                 return Ok(());
@@ -772,7 +877,7 @@ impl FileStreamState {
                     continue;
                 },
                 Err(BodyReadError::TooLarge) => {
-                    return Err(response_too_large(ERROR_BODY_MAX));
+                    return Err(self.annotate(response_too_large(ERROR_BODY_MAX)));
                 },
             };
 
@@ -782,6 +887,12 @@ impl FileStreamState {
                 .then(|| std::str::from_utf8(&response_body).ok())
                 .flatten()
                 .and_then(decode::extract_error_envelope);
+            if let Some(request_id) = business_error
+                .as_ref()
+                .and_then(|error| sanitize_request_id(error.request_id.as_deref()))
+            {
+                self.request_id = Some(request_id);
+            }
             let business_code = business_error
                 .as_ref()
                 .and_then(|error| error.code.as_ref())
@@ -791,25 +902,22 @@ impl FileStreamState {
                 && is_retryable_outcome(status, business_code)
                 && self.attempt < self.max_attempts
             {
-                let retry_after = headers
-                    .get(reqwest::header::RETRY_AFTER)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(parse_retry_after);
-                self.schedule_retry(retry_after).await?;
+                self.schedule_retry(self.retry_after).await?;
                 continue;
             }
             if let Some(error) = business_error {
-                return Err(api_error(status, error));
+                return Err(self.annotate(api_error(status, error)));
             }
             if !(200..300).contains(&status) {
-                return Err(ZaiError::from_api_response(
+                return Err(self.annotate(ZaiError::from_api_response(
                     status,
                     0,
                     String::from_utf8_lossy(&response_body).into_owned(),
-                ));
+                )));
             }
-            return Err(content_type_error
-                .unwrap_or_else(|| invalid("file response did not use application/octet-stream")));
+            return Err(self.annotate(content_type_error.unwrap_or_else(|| {
+                invalid("file response did not use application/octet-stream")
+            })));
         }
     }
 
@@ -837,7 +945,7 @@ impl FileStreamState {
                 None => {
                     self.terminated = true;
                     return Some((
-                        Err(invalid("file response stream was not initialized")),
+                        Err(self.annotate(invalid("file response stream was not initialized"))),
                         self,
                     ));
                 },
@@ -850,7 +958,10 @@ impl FileStreamState {
                         _ => {
                             self.terminated = true;
                             self.body = None;
-                            return Some((Err(response_too_large(MULTIPART_FILE_BYTES_MAX)), self));
+                            return Some((
+                                Err(self.annotate(response_too_large(MULTIPART_FILE_BYTES_MAX))),
+                                self,
+                            ));
                         },
                     };
                     self.total = next_total;
@@ -883,7 +994,7 @@ impl FileStreamState {
 
     async fn retry_body_failure(&mut self, error: ZaiError) -> ZaiResult<()> {
         if self.delivered || self.attempt >= self.max_attempts {
-            return Err(error);
+            return Err(self.annotate(error));
         }
         self.body = None;
         self.schedule_retry(None).await?;
@@ -892,7 +1003,7 @@ impl FileStreamState {
 
     async fn retry_transient(&mut self, error: ZaiError) -> ZaiResult<()> {
         if self.attempt >= self.max_attempts {
-            return Err(error);
+            return Err(self.annotate(error));
         }
         self.schedule_retry(None).await
     }
@@ -901,11 +1012,11 @@ impl FileStreamState {
         let computed = backoff_delay(u32::from(self.attempt) - 1, self.transport.jitter.as_ref());
         let delay = reconcile_retry_after(hint, computed);
         if !delay_fits_before(delay, self.overall_deadline) {
-            return Err(timeout_overall());
+            return Err(self.annotate(timeout_overall()));
         }
         tokio::time::sleep(delay).await;
         if tokio::time::Instant::now() >= self.overall_deadline {
-            return Err(timeout_overall());
+            return Err(self.annotate(timeout_overall()));
         }
         self.attempt += 1;
         self.attempt_deadline =
@@ -915,10 +1026,19 @@ impl FileStreamState {
 
     fn current_timeout(&self) -> ZaiError {
         if tokio::time::Instant::now() >= self.overall_deadline {
-            timeout_overall()
+            self.annotate(timeout_overall())
         } else {
-            timeout_attempt()
+            self.annotate(timeout_attempt())
         }
+    }
+
+    fn annotate(&self, error: ZaiError) -> ZaiError {
+        annotate_request_error(
+            error,
+            self.attempt,
+            self.request_id.clone(),
+            self.retry_after,
+        )
     }
 }
 
@@ -960,6 +1080,50 @@ fn resolve_request_policy(
         sse_idle,
         max_attempts,
     }
+}
+
+fn sanitize_request_id(value: Option<&str>) -> Option<String> {
+    let value = value?;
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return None;
+    }
+    Some(value.to_owned())
+}
+
+fn request_id_from_headers(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    ["x-request-id", "request-id", "x-log-id"]
+        .into_iter()
+        .find_map(|name| {
+            headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| sanitize_request_id(Some(value)))
+        })
+}
+
+fn retry_after_from_headers(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_retry_after)
+}
+
+fn annotate_request_error(
+    error: ZaiError,
+    attempts: u8,
+    request_id: Option<String>,
+    retry_after: Option<Duration>,
+) -> ZaiError {
+    error.with_request_metadata(
+        RequestErrorMetadata::for_attempts(attempts)
+            .with_request_id(request_id)
+            .with_retry_after(retry_after),
+    )
 }
 
 fn response_limit(status: u16, mode: ResponseMode) -> u64 {
@@ -1115,6 +1279,9 @@ fn timeout_attempt() -> ZaiError {
         code: codes::SDK_TIMEOUT,
         message: "per-attempt timeout exceeded".to_string(),
     }
+    .with_request_metadata(
+        RequestErrorMetadata::default().with_timeout_phase(TimeoutPhase::Attempt),
+    )
 }
 
 fn timeout_overall() -> ZaiError {
@@ -1122,6 +1289,9 @@ fn timeout_overall() -> ZaiError {
         code: codes::SDK_TIMEOUT,
         message: "overall deadline exceeded".to_string(),
     }
+    .with_request_metadata(
+        RequestErrorMetadata::default().with_timeout_phase(TimeoutPhase::Overall),
+    )
 }
 
 fn timeout_sse_handshake() -> ZaiError {
@@ -1129,6 +1299,9 @@ fn timeout_sse_handshake() -> ZaiError {
         code: codes::SDK_TIMEOUT,
         message: "SSE handshake timeout exceeded".to_string(),
     }
+    .with_request_metadata(
+        RequestErrorMetadata::default().with_timeout_phase(TimeoutPhase::SseHandshake),
+    )
 }
 
 fn timeout_sse_idle() -> ZaiError {
@@ -1136,6 +1309,9 @@ fn timeout_sse_idle() -> ZaiError {
         code: codes::SDK_TIMEOUT,
         message: "SSE idle timeout exceeded".to_string(),
     }
+    .with_request_metadata(
+        RequestErrorMetadata::default().with_timeout_phase(TimeoutPhase::SseIdle),
+    )
 }
 
 fn delay_fits_before(delay: Duration, deadline: tokio::time::Instant) -> bool {
@@ -1233,5 +1409,22 @@ mod tests {
         let diagnostic = business_code_diagnostic(&serde_json::json!("x".repeat(200)));
         assert!(diagnostic.chars().count() <= 131);
         assert!(diagnostic.ends_with("…\""));
+    }
+
+    #[test]
+    fn request_id_sanitization_is_bounded_and_conservative() {
+        assert_eq!(
+            sanitize_request_id(Some("request_42:attempt-2")),
+            Some("request_42:attempt-2".to_string())
+        );
+        for rejected in [
+            "",
+            " request-42",
+            "request/42",
+            "request\n42",
+            &"x".repeat(129),
+        ] {
+            assert_eq!(sanitize_request_id(Some(rejected)), None);
+        }
     }
 }

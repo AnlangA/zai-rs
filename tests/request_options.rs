@@ -8,7 +8,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use serde_json::json;
 use support::http_server::{ScriptedResponse, TestServer};
-use zai_rs::client::{ApiFamily, HttpTransportConfig, RequestOptions, RetryOverride, ZaiClient};
+use zai_rs::client::{
+    ApiFamily, HttpTransportConfig, RequestOptions, RetryOverride, TimeoutPhase, ZaiClient,
+    ZaiError,
+};
 use zai_rs::file::{FileListPurpose, FileListRequest};
 use zai_rs::model::{ChatCompletion, GLM5_2, TextMessage};
 
@@ -46,6 +49,8 @@ async fn scoped_attempt_timeout_does_not_mutate_the_shared_client() {
     let scoped = client.clone().with_request_options(
         RequestOptions::default()
             .with_attempt_timeout(Duration::from_millis(20))
+            .unwrap()
+            .with_overall_timeout(Duration::from_secs(1))
             .unwrap(),
     );
 
@@ -57,6 +62,9 @@ async fn scoped_attempt_timeout_does_not_mutate_the_shared_client() {
         error.code(),
         Some(zai_rs::client::error::codes::SDK_TIMEOUT)
     );
+    let metadata = error.request_metadata().unwrap();
+    assert_eq!(metadata.attempts(), 1);
+    assert_eq!(metadata.timeout_phase(), Some(TimeoutPhase::Attempt));
     assert!(client.request_options().attempt_timeout().is_none());
 
     let response = FileListRequest::new(FileListPurpose::Batch)
@@ -146,6 +154,10 @@ async fn overall_deadline_includes_retry_after_backoff() {
         Some(zai_rs::client::error::codes::SDK_TIMEOUT)
     );
     assert!(error.message().contains("overall"));
+    let metadata = error.request_metadata().unwrap();
+    assert_eq!(metadata.attempts(), 1);
+    assert_eq!(metadata.timeout_phase(), Some(TimeoutPhase::Overall));
+    assert_eq!(metadata.retry_after(), Some(Duration::from_secs(1)));
     assert_eq!(server.requests().len(), 1);
     server.shutdown().await;
 }
@@ -211,6 +223,9 @@ async fn sse_handshake_and_idle_deadlines_are_independent() {
         Some(zai_rs::client::error::codes::SDK_TIMEOUT)
     );
     assert!(handshake_error.message().contains("handshake"));
+    let metadata = handshake_error.request_metadata().unwrap();
+    assert_eq!(metadata.attempts(), 1);
+    assert_eq!(metadata.timeout_phase(), Some(TimeoutPhase::SseHandshake));
     handshake_server.shutdown().await;
 
     let first = json!({
@@ -252,6 +267,49 @@ async fn sse_handshake_and_idle_deadlines_are_independent() {
         Some(zai_rs::client::error::codes::SDK_TIMEOUT)
     );
     assert!(idle_error.message().contains("idle"));
+    let metadata = idle_error.request_metadata().unwrap();
+    assert_eq!(metadata.attempts(), 1);
+    assert_eq!(metadata.timeout_phase(), Some(TimeoutPhase::SseIdle));
     assert!(stream.next().await.is_none());
     idle_server.shutdown().await;
+}
+
+#[tokio::test]
+async fn final_http_error_exposes_safe_structured_diagnostics() {
+    let mut limited = ScriptedResponse::json(
+        429,
+        json!({
+            "code": 1302,
+            "message": "slow down",
+            "request_id": "provider-request-42"
+        }),
+    );
+    limited.headers.push(("retry-after".into(), "2".into()));
+    let server = TestServer::start(vec![
+        ScriptedResponse::json(503, json!({"message": "temporary"})),
+        limited,
+    ])
+    .await;
+    let transport = HttpTransportConfig::default().with_max_attempts(2).unwrap();
+    let client = client_for(&server, transport);
+
+    let error = FileListRequest::new(FileListPurpose::Batch)
+        .send_via(&client)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        error.source_error(),
+        ZaiError::RateLimitError { code: 1302, .. }
+    ));
+    let metadata = error.request_metadata().unwrap();
+    assert_eq!(metadata.request_id(), Some("provider-request-42"));
+    assert_eq!(metadata.attempts(), 2);
+    assert_eq!(metadata.timeout_phase(), None);
+    assert_eq!(metadata.retry_after(), Some(Duration::from_secs(2)));
+    for rendered in [error.to_string(), format!("{error:?}"), error.compact()] {
+        assert!(!rendered.contains("provider-request-42"));
+    }
+    assert_eq!(server.requests().len(), 2);
+    server.shutdown().await;
 }

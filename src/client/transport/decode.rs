@@ -66,11 +66,15 @@ pub(crate) fn validate_binary_content_type(raw: &str, allowed: &[&str]) -> ZaiRe
 pub(crate) enum WireEnvelope {
     Nested {
         error: WireError,
+        #[serde(default)]
+        request_id: Option<serde_json::Value>,
     },
     Flat {
         code: serde_json::Value,
         #[serde(default)]
         message: Option<String>,
+        #[serde(default)]
+        request_id: Option<serde_json::Value>,
     },
 }
 
@@ -118,6 +122,8 @@ pub struct BusinessError {
     pub code: Option<serde_json::Value>,
     /// Human-readable service error message.
     pub message: String,
+    /// Provider request identifier, when returned as a JSON string.
+    pub request_id: Option<String>,
 }
 
 /// Parse and extract a genuine business error envelope's code/message, or
@@ -128,15 +134,21 @@ pub fn extract_error_envelope(body: &str) -> Option<BusinessError> {
         return None;
     }
     match env {
-        WireEnvelope::Nested { error } => Some(BusinessError {
+        WireEnvelope::Nested { error, request_id } => Some(BusinessError {
             code: Some(error.code),
             message: error
                 .message
                 .unwrap_or_else(|| "API request failed".to_string()),
+            request_id: request_id.and_then(|value| value.as_str().map(str::to_owned)),
         }),
-        WireEnvelope::Flat { code, message } => Some(BusinessError {
+        WireEnvelope::Flat {
+            code,
+            message,
+            request_id,
+        } => Some(BusinessError {
             code: Some(code),
             message: message.unwrap_or_else(|| "API request failed".to_string()),
+            request_id: request_id.and_then(|value| value.as_str().map(str::to_owned)),
         }),
     }
 }
@@ -192,5 +204,23 @@ mod tests {
             let body = format!(r#"{{"code":{code},"message":"x"}}"#);
             assert!(probe_error_envelope(&body), "business code {code}");
         }
+    }
+
+    #[test]
+    fn error_envelopes_retain_only_string_request_ids() {
+        let flat =
+            extract_error_envelope(r#"{"code":1302,"message":"slow","request_id":"request-42"}"#)
+                .unwrap();
+        assert_eq!(flat.request_id.as_deref(), Some("request-42"));
+
+        let nested = extract_error_envelope(
+            r#"{"error":{"code":1302,"message":"slow"},"request_id":"request-43"}"#,
+        )
+        .unwrap();
+        assert_eq!(nested.request_id.as_deref(), Some("request-43"));
+
+        let non_string =
+            extract_error_envelope(r#"{"code":1302,"request_id":{"unexpected":true}}"#).unwrap();
+        assert_eq!(non_string.request_id, None);
     }
 }

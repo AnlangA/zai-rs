@@ -42,7 +42,7 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 | 里程碑 | 当前状态 | 剩余重点 |
 | --- | --- | --- |
 | M0 绿色基线 | 本轮完成 | 等 CI 在 Linux/Windows/macOS/nightly 再验证 |
-| M1 HTTP/错误 | 大部完成 | 结构化 request id/attempt/phase/Retry-After |
+| M1 HTTP/错误 | 本轮完成 | 等跨平台 CI 与真实 API smoke test 再验证 |
 | M2 流式 I/O | 核心完成 | crash durability、跨文件系统发布、并发预算、RSS 长压 |
 | M3 Realtime | 核心可靠性完成 | 有序优先级调度、公开配置/注入、压测 |
 | M4 API/工具/MCP | 核心完成 | 0.7 保留未知枚举原值 |
@@ -63,7 +63,7 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 
 ## M1：HTTP 正确性、超时与错误上下文
 
-状态：大部完成，错误元数据仍为 P1。
+状态：本轮完成。
 
 已完成：
 
@@ -80,11 +80,9 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 - `RetryOverride::AssumeIdempotent` 现在公开可达；只有显式断言后 POST 才可 retry
   或跟随同源 307/308，SSE 即使带断言也始终不重放。
 - SSE handshake 与 idle timeout 使用不同诊断消息，不再误报为普通 attempt/overall。
-
-剩余：
-
-- 在错误中结构化保留安全 request id、attempt 数、timeout phase 和最终
-  `Retry-After`，同时保持默认显示不泄密。
+- `RequestErrorMetadata` 在透明的 `ZaiError::Request` 包装中结构化保留安全
+  request id、实际 attempt 数、timeout phase 和最终 `Retry-After`；原有错误
+  分类、错误码、消息和 retry 判断继续透传，默认 `Display`/`Debug` 不显示 request id。
 
 ## M2：有界流式 I/O 与异步文件路径
 
