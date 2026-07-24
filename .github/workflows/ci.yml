@@ -321,8 +321,8 @@ jobs:
       - name: Install pinned cargo-semver-checks
         run: ./scripts/bootstrap-tools.sh cargo-semver-checks
 
-      # The analyzer selects the latest published registry version. That is
-      # currently 0.6.0 and will advance automatically after later releases.
+      # The analyzer selects the latest published registry version and advances
+      # automatically after later releases.
       # A deliberate breaking release must update the package version and
       # migration notes rather than hiding lints.
       - name: Compare public API with latest crates.io release

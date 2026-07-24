@@ -1,7 +1,7 @@
 # 全面优化路线图
 
 更新日期：2026-07-24
-适用范围：当前尚未发布的 `zai-rs 0.6.0` 工作树；破坏性调整进入 `0.7`
+适用范围：`zai-rs 6.0.1` 发布线；后续破坏性调整进入 `7.0`
 
 ## 目标与原则
 
@@ -14,7 +14,7 @@
 - 默认测试不使用真实 API key 或外网，网络状态机由本机脚本化服务验证。
 - 日志、错误和测试报告不得包含凭据、用户正文、完整 URL 查询或文件内容。
 
-## 2026-07-23 验证基线
+## 2026-07-24 发布验证基线
 
 当前工作树已经通过：
 
@@ -22,12 +22,12 @@
   optional feature 和全部六个二元 feature 组合。
 - Rust stable `1.97.1`：all-features/no-default check 与 Clippy
   `-D warnings`，以及 fuzz workspace Clippy。
-- 测试：all-features 742 项、no-default 612 项，均为 0 失败；其中真实回环
+- 测试：all-features 774 项、no-default 636 项，均为 0 失败；其中真实回环
   HTTP/WebSocket 集成测试在允许绑定本机端口的环境运行。
-- Rustdoc：74 个正向示例和 10 个 `compile_fail` 示例；严格
+- Rustdoc：75 个正向示例和 10 个 `compile_fail` 示例；严格
   `RUSTDOCFLAGS="-D warnings"` 文档构建通过。
 - 所有 workspace examples 构建通过；mdBook `0.5.4` build/test 通过。
-- crates.io dry-run：272 个文件，约 1.9 MiB 未压缩、413.2 KiB 压缩；仓库工具配置、
+- crates.io dry-run：275 个文件，约 2.0 MiB 未压缩、437.0 KiB 压缩；仓库工具配置、
   fuzz、CI 和上游快照未进入包。
 - 发布证据链实测：CycloneDX 1.5 全目标 SBOM（298 个组件）、SHA-256 校验、artifact
   路径和 attestation 输入一致；生成 SBOM 前后 crate 字节不变。
@@ -45,8 +45,8 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 | M1 HTTP/错误 | 本轮完成 | 等跨平台 CI 与真实 API smoke test 再验证 |
 | M2 流式 I/O | 核心完成 | crash durability、跨文件系统发布、并发预算、RSS 长压 |
 | M3 Realtime | 核心可靠性完成 | 有序优先级调度、公开配置/注入、压测 |
-| M4 API/工具/MCP | 核心完成 | 0.7 保留未知枚举原值 |
-| M5 0.7 架构 | 未开始 | registry、pagination、模块/feature 收敛 |
+| M4 API/工具/MCP | 核心完成 | 7.0 保留未知枚举原值 |
+| M5 7.0 架构 | 未开始 | registry、pagination、模块/feature 收敛 |
 | M6 治理/发布 | 大部完成 | 长压 RSS/p95/p99 趋势、外部发布配置 |
 
 ## M0：恢复并锁定绿色基线
@@ -135,7 +135,7 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
   不能以“高优先级”为由越过更早的 audio、commit 或 create。当前选择正确 FIFO。
 - 引入 `RealtimeTransportConfig`（connect/write/pong/close/idle/queue/frame），并设计只在
   `session.update` 前允许的安全首次连接重试。
-- 为公开 `RealtimeTransport` 提供稳定注入入口，或在 0.7 收为内部抽象。
+- 为公开 `RealtimeTransport` 提供稳定注入入口，或在 7.0 收为内部抽象。
 - 增加 20 ms 音频帧长压、慢/停读对端和任务失败组合的 RSS/p95/p99 基准。
 
 ## M4：响应兼容、工具副作用与能力完整性
@@ -162,10 +162,10 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 
 剩余：
 
-- 0.7 将开放字符串枚举改为可保留原始值的类型；当前 `TaskStatus::Unknown` 会丢失
+- 7.0 将开放字符串枚举改为可保留原始值的类型；当前 `TaskStatus::Unknown` 会丢失
   provider 的未知字符串，部分 Agent 枚举仍是 closed enum。
 
-## M5：0.7 架构与公共 API 收敛
+## M5：7.0 架构与公共 API 收敛
 
 状态：未开始，P2/破坏性。
 
@@ -175,7 +175,7 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 - 收敛 `model` 实现子模块暴露，澄清 `services::tools` 与 `crate::tool` 边界；旧路径先
   重导出并 deprecate。
 - 重新命名 feature，区分 tool executor 与 JSON Schema validation，并评估默认依赖。
-- 建立 `cargo-semver-checks` 基线；所有破坏性调整只在 0.7 合并。
+- 建立 `cargo-semver-checks` 基线；所有破坏性调整只在 7.0 合并。
 
 ## M6：CI、发布、安全与性能治理
 
@@ -197,8 +197,9 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
 - `cargo-llvm-cov 0.8.7` 实测 workspace all-features tests 基线为 region 83.14%、
   function 76.11%、line 82.92%；CI 分别设 83.10%/76.10%/82.90% floor，阈值只允许
   上调。
-- 独立 CI job 使用 Rust 1.97.1 与固定 `cargo-semver-checks 0.49.0`，对 crates.io
-  `0.6.0` 基线运行 all-features 公共 API 检查；当前 196 pass、57 skip、无 break。
+- 独立 CI job 使用 Rust 1.97.1 与固定 `cargo-semver-checks 0.49.0`，在 `6.0.1`
+  发布前对 crates.io `0.6.0` 基线运行 all-features 公共 API 检查；当时
+  196 pass、57 skip、无 break。后续检查会自动使用最新 registry 版本。
 - Criterion `0.8.2` 基准覆盖 SSE 不同分片、1/64 KiB 脱敏、静态/动态 endpoint、
   tool cache hit/miss 和 Realtime 20 ms/64 KiB PCM→WAV→base64。PR 的 all-targets
   门禁只编译基准；每周和手动 workflow 运行完整测量并上传 `target/criterion`，共享
@@ -210,17 +211,16 @@ CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在�
   再讨论统计回归阈值。
 - 仓库外发布配置与法律信息见下一节。
 
-## 当前发布阻塞
+## 6.0.1 发布确认
 
-以下事项不能由实现代码代替维护者决策：
+发布维护者在 2026-07-24 确认：
 
-1. `LICENSE` 写的是 `Copyright (c) 2025 Model Context Protocol`，而 Cargo 作者和仓库
-   属于 AnlangA。发布前必须由权利人确认，不能自动猜测修改。
-2. `zai-rs 0.6.0` 已存在于 crates.io；当前工作树必须先选择新版本。前三项可观察行为
-   变化应优先进入 0.7，或作为安全例外在 0.6.x 发布说明中明确披露。
-3. crates.io Trusted Publisher 必须精确配置为 `AnlangA/zai-rs`、`release.yml`、
-   environment `crates-io`；GitHub 对该 environment 的查询当前返回 404，应按未创建或
-   当前凭据不可访问处理，并在发 tag 前确认 reviewer/tag protection。
+1. `LICENSE` 保留现有 `Copyright (c) 2025 Model Context Protocol` 归属。
+2. 新版本选择为 `6.0.1`；前三项可观察行为变化已在
+   [安全加固迁移说明](HARDENING_MIGRATION.md) 中显式披露，并通过新的主版本线表达。
+3. GitHub `crates-io` environment 已创建且仅允许 `v6.0.1` 标签部署。crates.io
+   Trusted Publisher 必须精确匹配 `AnlangA/zai-rs`、`release.yml` 和 environment
+   `crates-io`；该私有配置由正式 tag workflow 的 OIDC 认证作最终验证。
 
 ## 每批改动的统一验收
 

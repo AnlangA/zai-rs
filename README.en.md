@@ -4,10 +4,10 @@
 
 A concise, type-safe Rust SDK for Zhipu AI (BigModel / Z.ai). It focuses on developer ergonomics for Rust users: less boilerplate, consistent error handling, readable request/response types, and ready-to-run examples.
 
-The current repository version is `0.6.0`. When upgrading from an older
+The current repository version is `6.0.1`. When upgrading from an older
 release, read the [0.6 migration guide](docs/MIGRATING-0.6.md) first. When
-evaluating the unreleased hardening worktree, also read the
-[hardening migration notes](docs/HARDENING_MIGRATION.md).
+upgrading from `0.6.0` to `6.0.1`, also read the
+[6.0.1 hardening migration notes](docs/HARDENING_MIGRATION.md).
 
 ## Quick start
 

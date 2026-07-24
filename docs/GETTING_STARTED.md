@@ -13,7 +13,7 @@
 
 ```toml
 [dependencies]
-zai-rs = "0.6"
+zai-rs = "6.0.1"
 ```
 
 ## 配置
