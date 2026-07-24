@@ -10,7 +10,7 @@ HTTP 或业务错误码，也提供适合恢复策略的分类方法。
 ```rust,ignore
 use zai_rs::{
     ZaiClient,
-    client::error::{ZaiError, ZaiResult},
+    client::error::ZaiResult,
     model::{ChatCompletion, GLM4_5_flash, TextMessage},
 };
 
@@ -43,8 +43,12 @@ async fn main() {
 
     match result {
         Ok(()) => {},
-        Err(ZaiError::AuthError { code, message }) => {
-            tracing::error!(code, %message, "认证失败");
+        Err(error) if error.is_auth_error() => {
+            tracing::error!(
+                code = error.code(),
+                message = %error.message(),
+                "认证失败",
+            );
         },
         Err(error) if error.is_rate_limit() => {
             tracing::warn!(error = %error.compact(), "请求受到限流");
@@ -63,6 +67,7 @@ async fn main() {
 
 | 变体 | 含义 |
 |------|------|
+| `Request` | 已进入 HTTP 传输层的失败；透明包装原错误并携带结构化诊断 |
 | `HttpError` | 未映射为专用类型的 HTTP 状态错误 |
 | `AuthError` | HTTP 401/403 或认证类业务错误 |
 | `AccountError` | 账户、套餐或余额错误 |
@@ -82,6 +87,43 @@ async fn main() {
 `raw_business_code()` 才返回经过限长、规范化和凭据脱敏的未知 wire 业务码。
 SDK 自身使用保留的 `9000..=9999` 错误码；可通过 `is_sdk_error()` 区分它们
 与服务端的 `1000..=1499` 业务码。
+
+## 请求诊断元数据
+
+进入 HTTP 传输层后的失败会由 `Request` 变体透明包装。现有的 `code()`、
+`message()`、`category()`、`is_retryable()` 与 `compact()` 都会委托给原错误，
+无需先拆包装。需要精确诊断时可显式读取元数据和原错误：
+
+```rust,ignore
+use zai_rs::client::{TimeoutPhase, ZaiError};
+
+fn report(error: &ZaiError) {
+    if let Some(metadata) = error.request_metadata() {
+        tracing::warn!(
+            attempts = metadata.attempts(),
+            request_id = metadata.request_id(),
+            retry_after_ms = metadata.retry_after().map(|value| value.as_millis()),
+            timeout_phase = ?metadata.timeout_phase(),
+            category = ?error.category(),
+            "API 请求失败",
+        );
+
+        if metadata.timeout_phase() == Some(TimeoutPhase::Overall) {
+            tracing::warn!("请求的整体 deadline 已耗尽");
+        }
+    }
+
+    match error.source_error() {
+        ZaiError::AuthError { .. } => tracing::warn!("需要更新凭据"),
+        _ => {}
+    }
+}
+```
+
+`attempts` 包含首次请求。`timeout_phase` 区分普通 attempt、overall、SSE
+handshake 和 SSE idle；`retry_after` 是最后一个通过校验的服务端提示。
+`request_id` 只有在值满足长度和保守 ASCII 字符约束时才保留。为避免日志意外
+泄露，默认 `Display`、`Debug` 和 `compact()` 都不会输出它。
 
 ## 自动重试
 

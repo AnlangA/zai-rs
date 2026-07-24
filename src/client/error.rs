@@ -8,6 +8,7 @@
 //!
 //! | Variant | Code range | Description |
 //! |---------|------------|-------------|
+//! | [`ZaiError::Request`] | — | HTTP-dispatched failure with structured request diagnostics |
 //! | [`ZaiError::AuthError`] | 1000, 1001, 1003, 1005, 1220 | Authentication / authorization (invalid API key, etc.) |
 //! | [`ZaiError::AccountError`] | 1110–1121 except 1113 | Account/package-related errors |
 //! | [`ZaiError::ApiError`] | 1200–1234, 1261 | Request validation or upstream execution errors |
@@ -28,7 +29,7 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use zai_rs::client::error::{ZaiError, ZaiResult};
+//! use zai_rs::client::error::ZaiResult;
 //!
 //! async fn call_api() -> ZaiResult<String> {
 //!     Ok("result".to_string())
@@ -37,18 +38,18 @@
 //! # async fn example() {
 //! match call_api().await {
 //!     Ok(data) => println!("Success: {}", data),
-//!     Err(ZaiError::AuthError { code, message }) => {
-//!         tracing::error!("Auth failed ({}): {}", code, message);
+//!     Err(error) if error.is_auth_error() => {
+//!         tracing::error!("Auth failed ({:?}): {}", error.code(), error.message());
 //!     },
-//!     Err(ZaiError::RateLimitError { code, message }) => {
-//!         tracing::error!("Rate limited ({}): {}", code, message);
+//!     Err(error) if error.is_rate_limit() => {
+//!         tracing::error!("Rate limited ({:?}): {}", error.code(), error.message());
 //!     },
 //!     Err(e) => tracing::error!("Error: {}", e),
 //! }
 //! # }
 //! ```
 
-use std::{fmt, sync::Arc};
+use std::{fmt, sync::Arc, time::Duration};
 
 use thiserror::Error;
 
@@ -122,10 +123,119 @@ impl fmt::Display for HttpBusinessErrorContext {
     }
 }
 
+/// Phase in which an HTTP request deadline expired.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TimeoutPhase {
+    /// One ordinary HTTP attempt exceeded its deadline.
+    Attempt,
+    /// The deadline covering all attempts, redirects, and backoff expired.
+    Overall,
+    /// An SSE response was not established before its handshake deadline.
+    SseHandshake,
+    /// An established SSE response remained silent beyond its idle deadline.
+    SseIdle,
+}
+
+/// Safe, structured diagnostics for a request dispatched by [`ZaiClient`](crate::client::ZaiClient).
+///
+/// Metadata is attached only after the transport starts dispatching a request.
+/// Local validation and serialization failures therefore have no request
+/// metadata. The request identifier is bounded and restricted to a conservative
+/// ASCII character set before storage. It is intentionally omitted from
+/// [`Debug`] and from the parent error's [`fmt::Display`] output; callers must
+/// explicitly read it through [`request_id`](Self::request_id).
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct RequestErrorMetadata {
+    request_id: Option<String>,
+    attempts: u8,
+    timeout_phase: Option<TimeoutPhase>,
+    retry_after: Option<Duration>,
+}
+
+impl RequestErrorMetadata {
+    pub(crate) fn for_attempts(attempts: u8) -> Self {
+        Self {
+            attempts,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn with_request_id(mut self, request_id: Option<String>) -> Self {
+        self.request_id = request_id;
+        self
+    }
+
+    pub(crate) fn with_timeout_phase(mut self, timeout_phase: TimeoutPhase) -> Self {
+        self.timeout_phase = Some(timeout_phase);
+        self
+    }
+
+    pub(crate) fn with_retry_after(mut self, retry_after: Option<Duration>) -> Self {
+        self.retry_after = retry_after;
+        self
+    }
+
+    fn merge(self, newer: Self) -> Self {
+        Self {
+            request_id: newer.request_id.or(self.request_id),
+            attempts: newer.attempts.max(self.attempts),
+            timeout_phase: newer.timeout_phase.or(self.timeout_phase),
+            retry_after: newer.retry_after.or(self.retry_after),
+        }
+    }
+
+    /// Provider request identifier, when a safe value was present.
+    pub fn request_id(&self) -> Option<&str> {
+        self.request_id.as_deref()
+    }
+
+    /// Number of HTTP attempts made, including the initial attempt.
+    pub const fn attempts(&self) -> u8 {
+        self.attempts
+    }
+
+    /// Timeout phase, when the failure was caused by a deadline.
+    pub const fn timeout_phase(&self) -> Option<TimeoutPhase> {
+        self.timeout_phase
+    }
+
+    /// Final valid `Retry-After` hint observed from the service.
+    pub const fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+}
+
+impl fmt::Debug for RequestErrorMetadata {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RequestErrorMetadata")
+            .field("request_id_present", &self.request_id.is_some())
+            .field("attempts", &self.attempts)
+            .field("timeout_phase", &self.timeout_phase)
+            .field("retry_after", &self.retry_after)
+            .finish()
+    }
+}
+
 /// Main error type for the ZAI-RS SDK
 #[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum ZaiError {
+    /// A transport-dispatched request failure with structured diagnostics.
+    ///
+    /// Existing classification and message helpers transparently delegate to
+    /// `source`. Use [`request_metadata`](Self::request_metadata) when the
+    /// attempt count, timeout phase, request ID, or retry hint is needed.
+    #[error("{source}")]
+    Request {
+        /// Original SDK, HTTP, or provider error.
+        #[source]
+        source: Arc<ZaiError>,
+        /// Safe transport diagnostics.
+        metadata: RequestErrorMetadata,
+    },
+
     /// HTTP status errors
     #[error("HTTP error [{status}]: {message}")]
     HttpError {
@@ -449,6 +559,7 @@ impl ZaiError {
     /// never disagree.
     pub fn category(&self) -> ErrorCategory {
         match self {
+            ZaiError::Request { source, .. } => source.category(),
             ZaiError::RateLimitError { .. } => ErrorCategory::RateLimit,
             ZaiError::NetworkError(_) => ErrorCategory::Network,
             ZaiError::ApiError { code, .. } if *code == codes::SDK_TIMEOUT => {
@@ -513,6 +624,7 @@ impl ZaiError {
     /// additional constraints.
     pub fn is_retryable(&self) -> bool {
         match self {
+            ZaiError::Request { source, .. } => source.is_retryable(),
             ZaiError::HttpError { status, .. } => {
                 crate::client::transport::retry::RETRYABLE_STATUSES.contains(status)
             },
@@ -551,6 +663,7 @@ impl ZaiError {
     /// Get a compact representation of error suitable for logging
     pub fn compact(&self) -> String {
         match self {
+            ZaiError::Request { source, .. } => source.compact(),
             ZaiError::HttpError { status, message } => {
                 format!("HTTP[{status}]: {message}")
             },
@@ -596,6 +709,7 @@ impl ZaiError {
     /// Get error code if available
     pub fn code(&self) -> Option<u16> {
         match self {
+            ZaiError::Request { source, .. } => source.code(),
             ZaiError::HttpError { status, .. } => Some(*status),
             ZaiError::HttpBusinessError(context) => Some(context.status),
             ZaiError::AuthError { code, .. } => Some(*code),
@@ -619,14 +733,54 @@ impl ZaiError {
     /// return `None`.
     pub fn raw_business_code(&self) -> Option<&str> {
         match self {
+            Self::Request { source, .. } => source.raw_business_code(),
             Self::HttpBusinessError(context) => Some(context.business_code()),
             _ => None,
+        }
+    }
+
+    /// Structured diagnostics retained by the HTTP transport.
+    ///
+    /// Returns `None` for local failures that occurred before dispatch. The
+    /// request ID is not rendered by `Display`, `Debug`, or [`compact`](Self::compact);
+    /// reading this value is an explicit diagnostics action.
+    pub fn request_metadata(&self) -> Option<&RequestErrorMetadata> {
+        match self {
+            Self::Request { metadata, .. } => Some(metadata),
+            _ => None,
+        }
+    }
+
+    /// Original error beneath the request-diagnostics wrapper.
+    ///
+    /// Returns `self` when no request metadata is attached.
+    pub fn source_error(&self) -> &ZaiError {
+        match self {
+            Self::Request { source, .. } => source.source_error(),
+            _ => self,
+        }
+    }
+
+    pub(crate) fn with_request_metadata(self, metadata: RequestErrorMetadata) -> Self {
+        match self {
+            Self::Request {
+                source,
+                metadata: existing,
+            } => Self::Request {
+                source,
+                metadata: existing.merge(metadata),
+            },
+            source => Self::Request {
+                source: Arc::new(source),
+                metadata,
+            },
         }
     }
 
     /// Get error message
     pub fn message(&self) -> String {
         match self {
+            ZaiError::Request { source, .. } => source.message(),
             ZaiError::HttpError { message, .. } => message.clone(),
             ZaiError::HttpBusinessError(context) => context.message.clone(),
             ZaiError::AuthError { message, .. } => message.clone(),
@@ -672,6 +826,10 @@ impl ZaiError {
         let context = mask_sensitive_info(context);
         let with_context = |message: String| mask_sensitive_info(&format!("{context}: {message}"));
         match self {
+            Self::Request { source, metadata } => Self::Request {
+                source: Arc::new(source.as_ref().clone().context(&context)),
+                metadata,
+            },
             Self::HttpError { status, message } => Self::HttpError {
                 status,
                 message: with_context(message),

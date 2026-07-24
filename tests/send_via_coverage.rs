@@ -1517,7 +1517,10 @@ async fn async_task_get_rejects_an_empty_result() {
         .send_via(&c)
         .await
         .unwrap_err();
-    assert!(matches!(error, zai_rs::ZaiError::JsonError(_)));
+    assert!(matches!(
+        error.source_error(),
+        zai_rs::ZaiError::JsonError(_)
+    ));
     assert_request(&s, "GET", "/api/paas/v4/async-result/task-1");
     assert_empty_body(&s);
     s.shutdown().await;
