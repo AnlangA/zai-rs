@@ -177,7 +177,11 @@ impl ExecutorBuilder {
         self
     }
 
-    /// Set the number of retries after the first attempt.
+    /// Set the maximum number of retries after the first attempt.
+    ///
+    /// This is a global upper bound. A tool is retried only when it also opts
+    /// in with [`RetryPolicy::Idempotent`](crate::toolkits::core::RetryPolicy::Idempotent)
+    /// and the returned failure is retryable.
     pub fn retries(mut self, retries: u32) -> Self {
         self.config.retry_config.max_retries = retries;
         self
@@ -211,8 +215,12 @@ impl ExecutorBuilder {
         ToolExecutor {
             tools: Arc::new(DashMap::<String, RegisteredTool>::new()),
             next_generation: Arc::new(AtomicU64::new(0)),
+            registry_mutation_lock: Arc::new(std::sync::Mutex::new(())),
             config: self.config,
             cache,
+            cache_flights: Arc::new(DashMap::new()),
+            cache_global_epoch: Arc::new(AtomicU64::new(0)),
+            cache_epoch_fence: Arc::new(std::sync::RwLock::new(())),
         }
     }
 }

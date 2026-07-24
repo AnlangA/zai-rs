@@ -1,204 +1,228 @@
 # 全面优化路线图
 
-更新日期：2026-07-21  
-适用版本：`zai-rs 0.6.x`，其中明确标注的破坏性调整进入 `0.7`
+更新日期：2026-07-24
+适用范围：当前尚未发布的 `zai-rs 0.6.0` 工作树；破坏性调整进入 `0.7`
 
 ## 目标与原则
 
 本路线图覆盖正确性、安全、传输性能、Realtime、公共 API、测试、发布和文档。
-实施时遵守以下边界：
 
-- 先修错误结果、数据风险和发布假绿，再做性能与结构重构。
-- `0.6.x` 默认保持源码兼容；需要改变公共类型或模块路径的工作集中到 `0.7`。
-- 性能修改必须先有可复现基准，完成后保留回归门槛。
-- 默认测试不依赖真实 API key 或外网，网络行为使用本地脚本化服务验证。
+- 先处理错误结果、凭据风险、数据破坏和发布假绿，再处理性能与结构。
+- 可观察行为变化必须进入合适的版本，并在
+  [安全加固迁移说明](HARDENING_MIGRATION.md) 中披露；不以“安全修复”为由隐藏兼容影响。
+- 性能结论必须有可复现基准；没有数据的改动只记为结构或有界性改进。
+- 默认测试不使用真实 API key 或外网，网络状态机由本机脚本化服务验证。
 - 日志、错误和测试报告不得包含凭据、用户正文、完整 URL 查询或文件内容。
 
-## 当前基线
+## 2026-07-23 验证基线
 
-2026-07-21 审计时已验证：
+当前工作树已经通过：
 
-- Rust `1.88.0`（项目 MSRV）能够构建 workspace。
-- `cargo check --workspace --all-features --all-targets --locked` 通过。
-- `cargo test --workspace --all-features --tests --locked`：693 项通过。
-- `cargo test -p zai-rs --no-default-features --tests --locked`：580 项通过。
-- Rustdoc：73 个正向示例和 9 个 `compile_fail` 示例通过。
-- all-features Clippy、四个可选 feature 的独立 check、严格 Rustdoc 构建通过。
-- crates.io 包为 266 个文件、约 376 KiB 压缩后体积；媒体夹具未进入发布包。
+- Rust `1.88.0`（MSRV）：workspace all-features/all-targets、no-default、四个独立
+  optional feature 和全部六个二元 feature 组合。
+- Rust stable `1.97.1`：all-features/no-default check 与 Clippy
+  `-D warnings`，以及 fuzz workspace Clippy。
+- 测试：all-features 742 项、no-default 612 项，均为 0 失败；其中真实回环
+  HTTP/WebSocket 集成测试在允许绑定本机端口的环境运行。
+- Rustdoc：74 个正向示例和 10 个 `compile_fail` 示例；严格
+  `RUSTDOCFLAGS="-D warnings"` 文档构建通过。
+- 所有 workspace examples 构建通过；mdBook `0.5.4` build/test 通过。
+- crates.io dry-run：272 个文件，约 1.9 MiB 未压缩、413.2 KiB 压缩；仓库工具配置、
+  fuzz、CI 和上游快照未进入包。
+- 发布证据链实测：CycloneDX 1.5 全目标 SBOM（298 个组件）、SHA-256 校验、artifact
+  路径和 attestation 输入一致；生成 SBOM 前后 crate 字节不变。
+- workflow/Dependabot YAML 可解析，外部 Actions 均固定 40 位 commit SHA；
+  `bash -n`、浏览器 JavaScript 语法和 `git diff --check` 通过。
 
-首批已完成的修复：
+本机未重复安装 `shellcheck`、`cargo-audit`、`cargo-deny`、Gitleaks 和 Lychee；
+CI 使用固定版本执行这些门禁。真实 API smoke test 仍只允许在受保护环境按需运行。
 
-- 修复 `mcp` all-targets 测试误用字符串模型而导致的编译阻断。
-- 修复 Coding Plan Usage 合法 `code: 0` 被统一传输层误判为错误。
-- 修复完成态异步聊天任务在 `AsyncTaskResult::status()` 丢失状态。
-- 为 MCP 工具发现增加与工具调用一致的超时保护。
-- 修复重定向 hop 反复重置 per-attempt deadline；累计延迟回归测试证明仅真正重试会
-  获得新 deadline。
-- 将五条异步上传路径统一切换到异步文件 metadata 预检，避免在 Tokio worker 上执行
-  同步文件系统查询。
-- 修正 `mcp_vision` 示例格式，并增加 LF `.gitattributes` 约束。
-- 修复 Gitleaks 自定义配置未继承默认规则的发布假绿；完整历史复扫通过，运行时
-  canary 检测通过。历史测试占位值仅使用 fingerprint 级豁免。
+## 状态总览
 
-## 优先级定义
-
-- **P0**：错误结果、凭据风险、数据破坏或发布门禁失效；立即阻断发布。
-- **P1**：会影响生产可靠性、资源上限或主要公共能力；当前主线完成。
-- **P2**：结构、效率和治理增强；在 P1 稳定后迭代。
+| 里程碑 | 当前状态 | 剩余重点 |
+| --- | --- | --- |
+| M0 绿色基线 | 本轮完成 | 等 CI 在 Linux/Windows/macOS/nightly 再验证 |
+| M1 HTTP/错误 | 大部完成 | 结构化 request id/attempt/phase/Retry-After |
+| M2 流式 I/O | 核心完成 | crash durability、跨文件系统发布、并发预算、RSS 长压 |
+| M3 Realtime | 核心可靠性完成 | 有序优先级调度、公开配置/注入、压测 |
+| M4 API/工具/MCP | 核心完成 | 0.7 保留未知枚举原值 |
+| M5 0.7 架构 | 未开始 | registry、pagination、模块/feature 收敛 |
+| M6 治理/发布 | 大部完成 | 长压 RSS/p95/p99 趋势、外部发布配置 |
 
 ## M0：恢复并锁定绿色基线
 
-状态：进行中，预计 0.5–1 人日。
+状态：本轮完成。
 
-- [x] 修复 all-features/all-targets 编译失败。
-- [x] 修复 `code: 0` 与统一异步任务状态。
-- [x] 恢复真实 Gitleaks 默认规则并复扫历史。
-- [x] 修复 Windows fuzz 源文件换行门禁。
-- [x] 修复 redirect hop 重置 per-attempt deadline，并补累计延迟回归测试。
-- [ ] 运行最终全量 fmt/check/test/clippy/doc/package 安全检查。
+- [x] 修复 all-features/all-targets 编译失败和 Coding Plan `code: 0` 误判。
+- [x] 修复异步任务状态、redirect attempt deadline、MCP discovery timeout。
+- [x] 所有异步上传入口使用异步 metadata 预检。
+- [x] Gitleaks 配置继承默认规则并保留 canary 门禁。
+- [x] fmt/check/test/clippy/doc/examples/mdBook/package 最终门禁通过。
 
-完成标准：工作树中的所有新增改动通过与 CI 等价的本地检查；计划之外没有未解释的
-警告或测试跳过。
+完成标准仍是：计划之外没有未解释的警告、测试跳过或发布包内容。
 
 ## M1：HTTP 正确性、超时与错误上下文
 
-优先级：P1，预计 5–8 人日。
+状态：大部完成，错误元数据仍为 P1。
 
-1. **拆分超时策略**
+已完成：
 
-   将当前单一 `request_timeout` 拆分为 connect、attempt、overall、SSE handshake、
-   SSE idle，并支持受控的 per-request override。取消不可提高的 60 秒上限，保留安全
-   默认值和上界校验。
+- 请求超时保持 60 秒安全默认值，可显式提高到 24 小时；connect timeout 最长 10 秒。
+- attempt/overall budget 覆盖 redirect、backoff 和 body 消费，不会在 redirect hop 重置。
+- `Retry-After` 支持 delta-seconds 与 IMF-fixdate，并与本地 backoff 取更保守值。
+- 未知业务码遇到 HTTP 401/403、429、5xx 时返回 `HttpBusinessError`，保留限长、
+  canonical、credential-redacted 的原始业务码，并按 HTTP 恢复语义分类。
+- 外部错误、MCP 错误和后加的 error context 都经过限长与脱敏。
+- GET retry、redirect deadline、慢 body、错误 envelope 和文件流重试有端到端测试。
+- 公开 `RequestOptions` 通过共享连接池的 scoped `ZaiClient` handle 覆盖 attempt、
+  overall、SSE handshake/idle 和较低的尝试次数；timeout 可按慢请求放宽但受
+  24h/72h hard cap，尝试次数受全局上限。
+- `RetryOverride::AssumeIdempotent` 现在公开可达；只有显式断言后 POST 才可 retry
+  或跟随同源 307/308，SSE 即使带断言也始终不重放。
+- SSE handshake 与 idle timeout 使用不同诊断消息，不再误报为普通 attempt/overall。
 
-   验收：慢速 100 MiB 本地上传/下载能够通过；REST attempt 与 SSE idle 相互独立；
-   paused-time 测试覆盖 deadline、backoff 和边界竞争。
+剩余：
 
-2. **保留完整错误元数据**
-
-   为最终错误保留 HTTP status、原始业务码、`Retry-After`、安全的 request id、attempt
-   数和 timeout phase。未知业务码按 HTTP 401/429/5xx 回退分类，而不是丢失状态。
-
-   验收：带未知或文本业务码的 401/429/503 仍正确归类；错误显示和 tracing 不泄露
-   header、URL、正文或凭据。
-
-3. **公开可达的请求策略**
-
-   用受控 `RequestOptions` 替代当前公开但不可使用的 `RetryOverride`。POST 只有调用者
-   明确声明幂等时才允许重放；SSE 继续禁止自动重放。
-
-   验收：编译级和 mock-server 测试证明 opt-in 会改变 attempt 数，默认行为不变。
-
-4. **补齐正向传输状态机测试**
-
-   增加 GET retry、`Retry-After`、慢 body、redirect 累计 deadline、重试后 MIME/业务
-   错误等端到端测试。
+- 在错误中结构化保留安全 request id、attempt 数、timeout phase 和最终
+  `Retry-After`，同时保持默认显示不泄密。
 
 ## M2：有界流式 I/O 与异步文件路径
 
-优先级：P1，预计 6–10 人日。
+状态：核心完成，耐久性与性能验收未闭环。
 
-1. **真正的流式下载**
+已完成：
 
-   新增 `Stream<Item = ZaiResult<Bytes>>` 路径；`send_to_via` 将受限 chunk 直接写入
-   同目录临时文件，完成 fsync 后原子发布。保留缓冲便利 API，并在兼容窗口后修正
-   `ByteStream = Vec<u8>` 的误导命名。
+- `FileContentRequest::stream_via` 返回 pull-based `Bytes` chunk；总响应限制 128 MiB，
+  慢消费者产生背压。
+- 瞬时错误只在首个可见 chunk 前重试；交付字节后断流直接报错，避免重复可见内容。
+- `send_to_via` 写入同目录私有 partial，文件 `fsync` 后以 no-clobber hard link
+  发布；并发写者只有一个成功，已有目标永不覆盖，常规错误/取消会清理 partial。
+- SSE 使用单事件增量状态机，限制单事件 32 MiB 和 4096 条 data line，覆盖 BOM、
+  lone CR、任意分片和一次性终止错误；旧公开 helper 已从分片 O(N²) 修为摊销 O(N)。
+- 三个 fuzz target 均有小型 seed corpus，PR/push 运行 45 秒，定时任务运行 10 分钟。
 
-   验收：100 MiB 下载额外常驻内存为 O(chunk)；超限、取消和断流都清理临时文件；
-   目标文件永不被覆盖；慢消费者产生背压。
+剩余：
 
-2. **SSE 增量、有界解析**
-
-   将 `Vec<Vec<u8>>` 批量产出改成逐事件状态机；分别限制 incomplete line、单事件
-   行数、pending 数和 pending 总字节，并补 lone CR/BOM 兼容。
-
-   验收：32 MiB 极小事件恶意输入内存有界；超限只返回一次错误；fuzz 与分配/吞吐
-   benchmark 覆盖大量空行、分片和单 chunk 多事件。
-
-3. **异步文件预检（已完成）**
-
-   所有 async 上传入口改用已有 `FilePart::from_path_async`，避免网络盘 metadata 阻塞
-   Tokio worker；ASR base64 校验和 multipart 构造减少整包复制。
-
-4. **可选并发预算**
-
-   为 SDK 增加 `max_in_flight` 和 queue timeout；文档示例默认展示有界 fan-out。
+- 当前 hard-link 发布要求目标文件系统支持 hard link，且尚未 fsync 父目录；设计
+  可移植 no-clobber fallback 和明确的掉电恢复协议。
+- `Drop` 中的 best-effort 同步 partial 删除在慢 NFS/FUSE 上可能阻塞 runtime worker；
+  评估安全的后台清理与进程重启 scavenger。
+- 持有但不 poll 的响应 stream 只能在下次 poll 或 Drop 时释放连接；评估独立 deadline
+  驱动是否值得额外 task。
+- 增加 SDK 级 `max_in_flight` / queue timeout，并补 100 MiB RSS、SSE 吞吐和分配基准。
 
 ## M3：Realtime 双工与背压
 
-优先级：P1，预计 8–13 人日。
+状态：核心可靠性完成，调度和配置仍是 P1/P2。
 
-1. 将 WebSocket sink/stream 拆成独立 writer/reader task，统一 cancellation 和一次性
-   错误上报，避免最长 30 秒 send 阻塞 heartbeat 与服务端事件。
-2. 将按“消息条数”的 FIFO 改为按字节预算；控制命令与媒体数据分队列，cancel、commit
-   和 close 拥有更高优先级。
-3. 引入 `RealtimeTransportConfig`，配置连接、写入、pong、关闭、idle、队列字节和单帧
-   推荐上限；仅在发送 `session.update` 前允许安全的首次连接重试。
-4. 为公开 `RealtimeTransport` 提供可用的 transport 注入入口，或在 `0.7` 将其收为内部
-   抽象。
+已完成：
 
-验收：writer 停滞 20–30 秒时 reader 仍处理 heartbeat；cancel 不受媒体 backlog 影响；
-任一 task 失败会关闭另一侧且无悬挂；20 ms 音频帧压测下队列不持续增长。
+- 内建 WebSocket 拆出独立 writer；session 继续读取 heartbeat/事件，不因应用 send
+  阻塞 30 秒。
+- session 队列和 writer backlog 都有字节预算；消息上限 8 MiB，出站 frame 手工分片
+  为最多 2 MiB。
+- RFC Pong 使用独立、latest-value 合并控制路径，可插入 continuation frame 之间；
+  10 秒绝对 deadline 包含排队时间，单个数据 frame 也最多阻塞 10 秒。
+- shutdown 可中断发送；writer 失败会向 reader/session 传播；close 有边界且等待 future
+  被取消后仍可继续 join，重复 close 保留同一终态。
+- audio → commit → create → cancel 等应用命令保持严格 FIFO，避免 cancel 越过其对应
+  create；burst Ping、分片、deadline、permit 和关闭竞态都有回归测试。
+- 单会话 preparation semaphore 在 audio/video base64 与 JSON 序列化前准入；事件在
+  等待精确字节预算前释放，WAV header+PCM 直接流入 base64 目标，不再分配完整 WAV
+  中间 `Vec`。
+
+剩余：
+
+- cancel/commit 若要跨越媒体 backlog，必须实现带单调序号的 typed ordered barrier；
+  不能以“高优先级”为由越过更早的 audio、commit 或 create。当前选择正确 FIFO。
+- 引入 `RealtimeTransportConfig`（connect/write/pong/close/idle/queue/frame），并设计只在
+  `session.update` 前允许的安全首次连接重试。
+- 为公开 `RealtimeTransport` 提供稳定注入入口，或在 0.7 收为内部抽象。
+- 增加 20 ms 音频帧长压、慢/停读对端和任务失败组合的 RSS/p95/p99 基准。
 
 ## M4：响应兼容、工具副作用与能力完整性
 
-优先级：P1，预计 7–12 人日。
+状态：大部完成。
 
-1. **Provider 响应前向兼容**
+已完成：
 
-   审核响应上的 `deny_unknown_fields`。先为 untagged union 建立显式判别，再允许叶节点
-   接受新增字段；对可扩展字符串枚举使用能够保留原值的开放类型。
+- Agent/异步聊天响应先显式判别 union，再允许响应叶节点接受 provider 新字段；
+  空对象、矛盾状态和错误嵌套形状仍拒绝。
+- `TaskStatus::Unknown` 前向兼容，显示和再次序列化稳定。
+- 工具默认 `CachePolicy::Never` / `RetryPolicy::Never`；只有 executor 全局开启且工具
+  分别声明 `Pure` / `Idempotent` 时才缓存或重试，TTL 使用单调时钟。
+- 纯工具同注册代际/规范化参数的并发 cache miss 使用取消安全 singleflight；热缓存
+  保持无等待 fast path。等待者取消会清理 gate，clear/按工具 invalidate 通过 epoch
+  fence 阻止旧执行回填；按工具失效不影响无关工具，失败仍不缓存、不共享。
+- 目录工具保留安全的旧 registry API，并新增绑定本地 handler 与可信 effect policy
+  的 `ToolRegistration`；JSON 不能提权，解析、schema 校验、重复/冲突预检与整批提交
+  采用两阶段流程，不会留下半批注册。
+- Agent v1 非流式调用、异步结果轮询和会话续接都有生产 route 与
+  `send_via(&ZaiClient)`。
+- Vision MCP 默认不再隐式运行 `npx`；本地运行时/下载必须显式同意。子进程清空继承
+  环境后只传 allowlist，discovery/call/close 均有边界，外部错误输出限长脱敏。
 
-   验收：fixture 注入未知字段仍能解析，错误形状和 variant 混淆仍被拒绝。
+剩余：
 
-2. **工具 effect policy**
-
-   在每个工具上声明 cache、idempotency 和 retry policy；默认有副作用且不缓存、不重试，
-   只有显式安全工具参与缓存/重试。TTL 使用单调时钟，并评估同 key singleflight。
-
-   验收：全局打开 cache/retry 时副作用工具仍只执行一次；纯函数工具产生可测 cache hit。
-
-3. **Agent 能力承诺对齐**
-
-   当前文档宣称完整 Agent 调用，生产代码却只有 wire 类型。`0.6.x` 要么补三个 facade
-   和生产 route，要么明确降级为 contract-only；优先补齐 `send_via`。
-
-4. **MCP 运行时供应链与生命周期**
-
-   在已完成 discovery timeout 的基础上，为 close 增加边界；允许使用预安装可执行文件
-   或禁止 `npx` 自动下载，文档明确固定包版本、Node 要求和凭据传递边界。
+- 0.7 将开放字符串枚举改为可保留原始值的类型；当前 `TaskStatus::Unknown` 会丢失
+  provider 的未知字符串，部分 Agent 枚举仍是 closed enum。
 
 ## M5：0.7 架构与公共 API 收敛
 
-优先级：P2/破坏性，预计 8–15 人日。
+状态：未开始，P2/破坏性。
 
-- 用单一声明式 model registry 生成模型类型、ID、消息绑定、能力 marker、schema 分组和
-  文档快照，消除多处手工真源。
-- 抽取 cursor/page pagination primitive 与 query helper，统一公开字段和 builder 策略。
-- 收敛 `model` 的实现子模块暴露；澄清 `services::tools` 与 `crate::tool` 的领域边界，旧路径
-  先兼容重导出并 deprecate。
-- 重新命名 feature：区分 tool executor 与 JSON Schema validation，评估将重依赖从默认
-  构建移出。
-- 建立迁移指南和 `cargo-semver-checks` 基线，所有破坏性调整只在 `0.7` 合并。
+- 用单一声明式 model registry 生成模型 ID、类型、消息绑定、能力 marker、schema 分组
+  和文档快照。
+- 抽取 cursor/page pagination primitive 与 query helper。
+- 收敛 `model` 实现子模块暴露，澄清 `services::tools` 与 `crate::tool` 边界；旧路径先
+  重导出并 deprecate。
+- 重新命名 feature，区分 tool executor 与 JSON Schema validation，并评估默认依赖。
+- 建立 `cargo-semver-checks` 基线；所有破坏性调整只在 0.7 合并。
 
 ## M6：CI、发布、安全与性能治理
 
-优先级：P1/P2，可与 M1–M5 并行，预计 5–9 人日。
+状态：大部完成。
 
-- Feature：each-feature 门禁已完成；继续加入 depth-2 powerset 门禁。
-- Coverage：记录 all-features/no-default 基线，设置只升不降的 line/region/function 阈值。
-- Platform：Linux、Windows、macOS 跑轻量 check/test；重型 security/coverage 保持 Linux。
-- Security：CI 统一使用固定 `cargo-audit`；cargo-deny 覆盖 root 与 fuzz workspace；增加
-  `SECURITY.md` 和最小 CODEOWNERS。
-- Release：迁移 crates.io Trusted Publishing/OIDC，保留受保护 environment；发布 SBOM、
-  校验和与 provenance。
-- Compatibility：PR 和 release 增加固定版本 `cargo-semver-checks`。
-- Fuzz：提交三个 target 的小型 seed corpus；相关 PR 跑 30–60 秒，日程任务保留长跑；
-  crash 必须转确定性回归测试。
-- Dependencies：增加 Dependabot/Renovate 的 Cargo 与 Actions 分组更新。
-- Docs：`mcp`、`realtime`、`rmcp-kits` 的 `doc(cfg(...))` feature badge 已完成；继续保持
-  中英文 README 同步。
-- Benchmarks：覆盖 SSE、下载、错误脱敏、endpoint、tool cache 和 Realtime 队列；记录吞吐、
-  峰值内存、分配次数和 p95/p99 延迟。
+已完成：
+
+- CI 覆盖 no-default、每个 optional feature、depth-2 feature powerset、stable/nightly、
+  MSRV 1.88、Windows 2025 和 macOS 15。
+- `cargo-audit`、`cargo-deny`、Gitleaks 和 fuzz 工具固定版本；root/fuzz lockfile 与
+  license/source policy 都进入门禁。
+- 新增 `SECURITY.md`、CODEOWNERS、Cargo/Actions Dependabot 分组和私有漏洞报告流程；
+  GitHub private vulnerability reporting 已确认启用。
+- 发布 workflow 要求 annotated tag 与 Cargo version 一致，经受保护 environment 后用
+  crates.io Trusted Publishing/OIDC 临时 token 发布。
+- 发布产出 `.crate`、全目标 CycloneDX 1.5 SBOM、SHA-256 和 GitHub provenance/SBOM
+  attestation；Actions 固定到完整 commit SHA。
+- 文档增加安全迁移说明和发布清单；中英文 README 暴露迁移入口。
+- `cargo-llvm-cov 0.8.7` 实测 workspace all-features tests 基线为 region 83.14%、
+  function 76.11%、line 82.92%；CI 分别设 83.10%/76.10%/82.90% floor，阈值只允许
+  上调。
+- 独立 CI job 使用 Rust 1.97.1 与固定 `cargo-semver-checks 0.49.0`，对 crates.io
+  `0.6.0` 基线运行 all-features 公共 API 检查；当前 196 pass、57 skip、无 break。
+- Criterion `0.8.2` 基准覆盖 SSE 不同分片、1/64 KiB 脱敏、静态/动态 endpoint、
+  tool cache hit/miss 和 Realtime 20 ms/64 KiB PCM→WAV→base64。PR 的 all-targets
+  门禁只编译基准；每周和手动 workflow 运行完整测量并上传 `target/criterion`，共享
+  runner 不设置脆弱的 wall-clock 阈值。
+
+剩余：
+
+- 补下载/100 MiB RSS、慢对端和长压的 p95/p99 趋势；先固定专用 runner 与噪声模型，
+  再讨论统计回归阈值。
+- 仓库外发布配置与法律信息见下一节。
+
+## 当前发布阻塞
+
+以下事项不能由实现代码代替维护者决策：
+
+1. `LICENSE` 写的是 `Copyright (c) 2025 Model Context Protocol`，而 Cargo 作者和仓库
+   属于 AnlangA。发布前必须由权利人确认，不能自动猜测修改。
+2. `zai-rs 0.6.0` 已存在于 crates.io；当前工作树必须先选择新版本。前三项可观察行为
+   变化应优先进入 0.7，或作为安全例外在 0.6.x 发布说明中明确披露。
+3. crates.io Trusted Publisher 必须精确配置为 `AnlangA/zai-rs`、`release.yml`、
+   environment `crates-io`；GitHub 对该 environment 的查询当前返回 404，应按未创建或
+   当前凭据不可访问处理，并在发 tag 前确认 reviewer/tag protection。
 
 ## 每批改动的统一验收
 
@@ -211,15 +235,20 @@ cargo test --workspace --all-features --tests --locked
 cargo test -p zai-rs --no-default-features --tests --locked
 cargo test --workspace --all-features --doc --locked
 cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
+cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
-gitleaks git --redact --no-banner --config .gitleaks.toml
+mdbook build
+mdbook test -L target/debug/deps
+cargo publish --dry-run --locked -p zai-rs --all-features
 ```
 
-涉及 feature、fuzz、coverage、semver 或发布的批次，还必须运行对应专项门禁。真实 API
-smoke test 只在受保护环境按需执行，不进入默认 PR 流程。
+涉及 feature、fuzz、coverage、semver 或发布的批次，还必须运行对应专项门禁。
+涉及热点实现的批次还应运行
+`cargo bench --locked -p zai-rs --features realtime,toolkits --bench hot_paths -- --test`
+进行轻量 smoke；完整性能报告由定时或手动 benchmark workflow 生成。
 
 ## 进度维护规则
 
-- 每个 PR 只承担一个可独立回滚的优化主题，并在描述中引用本路线图条目。
-- 完成条目时记录基准前后数据、测试名称和兼容性结论；没有数据的“优化”不标完成。
-- 若上游协议变化使优先级改变，先更新本路线图和冻结契约，再修改实现。
+- 每个 PR 只承担一个可独立回滚的主题，并引用本路线图条目。
+- 完成性能条目时记录基准环境、前后数据和回归阈值。
+- 若上游协议变化影响优先级，先更新冻结契约与路线图，再修改实现。

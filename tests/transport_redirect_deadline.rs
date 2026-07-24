@@ -118,3 +118,30 @@ async fn redirect_hops_share_one_attempt_deadline() {
     assert_eq!(requests[2].path, "/api/paas/v4/redirect-2");
     server.shutdown().await;
 }
+
+#[tokio::test]
+async fn redirect_without_location_is_terminal_and_never_replayed() {
+    let server = TestServer::start(vec![
+        ScriptedResponse::empty(307),
+        ScriptedResponse::json(200, file_list_response()),
+    ])
+    .await;
+    let base_url = format!("{}/api/paas/v4", server.base_url);
+    let client = ZaiClient::builder(KEY)
+        .allow_insecure_transport(true)
+        .endpoint(ApiFamily::PaasV4, base_url)
+        .build()
+        .unwrap();
+
+    FileListRequest::new(FileListPurpose::Batch)
+        .send_via(&client)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        server.requests().len(),
+        1,
+        "a missing Location must not resolve back to the current URL"
+    );
+    server.shutdown().await;
+}

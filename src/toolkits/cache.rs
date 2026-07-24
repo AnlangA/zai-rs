@@ -6,7 +6,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 use serde_json::Value;
@@ -32,10 +32,10 @@ impl CacheKey {
     }
 
     /// Build an executor cache key tied to one registration generation.
-    pub(crate) fn for_generation(tool_name: String, arguments: Value, generation: u64) -> Self {
+    pub(crate) fn for_generation(tool_name: String, arguments: &Value, generation: u64) -> Self {
         Self {
             tool_name,
-            arguments: format!("{generation}:{}", canonical_json(&arguments)),
+            arguments: format!("{generation}:{}", canonical_json(arguments)),
         }
     }
 }
@@ -46,7 +46,7 @@ struct CacheEntry {
     /// Cached tool result.
     result: Value,
     /// When the entry was inserted.
-    timestamp: SystemTime,
+    timestamp: Instant,
     /// Time-to-live for this entry.
     ttl: Duration,
 }
@@ -56,17 +56,14 @@ impl CacheEntry {
     fn new(result: Value, ttl: Duration) -> Self {
         Self {
             result,
-            timestamp: SystemTime::now(),
+            timestamp: Instant::now(),
             ttl,
         }
     }
 
     /// Whether this entry has exceeded its TTL.
     fn is_expired(&self) -> bool {
-        match self.timestamp.elapsed() {
-            Ok(elapsed) => elapsed >= self.ttl,
-            Err(_) => true,
-        }
+        self.timestamp.elapsed() >= self.ttl
     }
 }
 
@@ -135,16 +132,37 @@ impl ToolCallCache {
         self
     }
 
-    /// Whether the cache is currently enabled (a `get`/`insert` no-op when
-    /// false). Lets callers avoid building a [`CacheKey`] — which deep-clones
-    /// and re-serializes the arguments — when the cache is disabled.
+    /// Whether the cache is currently enabled.
     pub(crate) fn enabled(&self) -> bool {
         self.enable_cache
     }
 
+    /// Whether an entry using the default TTL could persist.
+    ///
+    /// Executors use this stronger predicate before building a key or joining
+    /// a singleflight gate. A zero-capacity or zero-TTL cache must not
+    /// serialize otherwise independent calls when it cannot retain a result.
+    pub(crate) fn can_store(&self) -> bool {
+        self.enable_cache && self.max_size > 0 && !self.default_ttl.is_zero()
+    }
+
     /// Look up a cached result, returning `None` if disabled, missing, or
     /// expired (expired entries are atomically removed).
+    #[cfg(test)]
     pub(crate) fn get(&self, key: &CacheKey) -> Option<Value> {
+        let result = self.peek(key);
+        if self.enable_cache {
+            if result.is_some() {
+                self.record_hit();
+            } else {
+                self.record_miss();
+            }
+        }
+        result
+    }
+
+    /// Look up a value without changing aggregate hit/miss counters.
+    pub(crate) fn peek(&self, key: &CacheKey) -> Option<Value> {
         if !self.enable_cache {
             return None;
         }
@@ -164,22 +182,34 @@ impl ToolCallCache {
                 .retain(|(queued_key, generation)| {
                     queued_key != key || *generation != expired.generation
                 });
-            saturating_increment(&self.state.total_misses);
             return None;
         }
 
-        let Some(stored) = self.state.entries.get(key) else {
+        self.state
+            .entries
+            .get(key)
+            .map(|stored| stored.value.result.clone())
+    }
+
+    /// Account for one cache hit whose lookup used [`Self::peek`].
+    pub(crate) fn record_hit(&self) {
+        if self.enable_cache {
+            saturating_increment(&self.state.total_hits);
+        }
+    }
+
+    /// Account for one cache miss whose lookup used [`Self::peek`].
+    pub(crate) fn record_miss(&self) {
+        if self.enable_cache {
             saturating_increment(&self.state.total_misses);
-            return None;
-        };
-        saturating_increment(&self.state.total_hits);
-        Some(stored.value.result.clone())
+        }
     }
 
     /// Insert a result, evicting the oldest entries at capacity. No-op if
     /// disabled.
     pub(crate) fn insert(&self, key: CacheKey, result: Value, ttl: Option<Duration>) {
-        if !self.enable_cache || self.max_size == 0 {
+        let ttl = ttl.unwrap_or(self.default_ttl);
+        if !self.enable_cache || self.max_size == 0 || ttl.is_zero() {
             return;
         }
 
@@ -195,7 +225,7 @@ impl ToolCallCache {
         // also bounds the queue under repeated writes to one key.
         order.retain(|(queued_key, _)| queued_key != &key);
         let generation = self.state.next_generation.fetch_add(1, Ordering::Relaxed);
-        let entry = CacheEntry::new(result, ttl.unwrap_or(self.default_ttl));
+        let entry = CacheEntry::new(result, ttl);
         self.state.entries.insert(
             key.clone(),
             StoredEntry {
@@ -308,10 +338,50 @@ fn saturating_increment(counter: &AtomicU64) {
 }
 
 fn canonical_json(value: &Value) -> String {
-    // `serde_json::Value`'s Display implementation emits valid compact JSON.
-    // With serde_json's default map backend, object keys are sorted, so
-    // equivalent objects with different insertion order share a key.
-    value.to_string()
+    fn write(value: &Value, output: &mut String) {
+        match value {
+            Value::Null => output.push_str("null"),
+            Value::Bool(value) => output.push_str(if *value { "true" } else { "false" }),
+            Value::Number(value) => output.push_str(&value.to_string()),
+            Value::String(value) => {
+                output.push_str(
+                    &serde_json::to_string(value)
+                        .expect("serializing a serde_json string is infallible"),
+                );
+            },
+            Value::Array(values) => {
+                output.push('[');
+                for (index, value) in values.iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    write(value, output);
+                }
+                output.push(']');
+            },
+            Value::Object(values) => {
+                output.push('{');
+                let mut keys = values.keys().collect::<Vec<_>>();
+                keys.sort_unstable();
+                for (index, key) in keys.into_iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    output.push_str(
+                        &serde_json::to_string(key)
+                            .expect("serializing a serde_json object key is infallible"),
+                    );
+                    output.push(':');
+                    write(&values[key], output);
+                }
+                output.push('}');
+            },
+        }
+    }
+
+    let mut output = String::new();
+    write(value, &mut output);
+    output
 }
 
 #[cfg(test)]
@@ -328,13 +398,12 @@ mod tests {
 
     #[test]
     fn cache_key_distinguishes_name_input_and_registration_generation() {
-        let first = CacheKey::for_generation("one".to_string(), serde_json::json!({"n": 1}), 7);
-        let other_name =
-            CacheKey::for_generation("two".to_string(), serde_json::json!({"n": 1}), 7);
-        let other_input =
-            CacheKey::for_generation("one".to_string(), serde_json::json!({"n": 2}), 7);
-        let other_generation =
-            CacheKey::for_generation("one".to_string(), serde_json::json!({"n": 1}), 8);
+        let first_input = serde_json::json!({"n": 1});
+        let other_input_value = serde_json::json!({"n": 2});
+        let first = CacheKey::for_generation("one".to_string(), &first_input, 7);
+        let other_name = CacheKey::for_generation("two".to_string(), &first_input, 7);
+        let other_input = CacheKey::for_generation("one".to_string(), &other_input_value, 7);
+        let other_generation = CacheKey::for_generation("one".to_string(), &first_input, 8);
 
         assert_ne!(first, other_name);
         assert_ne!(first, other_input);
@@ -350,7 +419,7 @@ mod tests {
         assert!(!entry.is_expired());
 
         let mut entry_mut = entry;
-        entry_mut.timestamp = SystemTime::now() - Duration::from_secs(2);
+        entry_mut.timestamp = Instant::now() - Duration::from_secs(2);
         assert!(entry_mut.is_expired());
     }
 
@@ -433,6 +502,31 @@ mod tests {
         let parsed: Value = serde_json::from_str(&normalized).unwrap();
         assert!(parsed.as_object().unwrap().contains_key("CityName"));
         assert!(parsed.as_object().unwrap().contains_key(" UserID "));
+    }
+
+    #[test]
+    fn canonical_json_recursively_sorts_object_keys() {
+        let mut nested = serde_json::Map::new();
+        nested.insert("z".to_string(), serde_json::json!(1));
+        nested.insert("a".to_string(), serde_json::json!(2));
+        let mut outer = serde_json::Map::new();
+        outer.insert("second".to_string(), Value::Object(nested));
+        outer.insert("first".to_string(), serde_json::json!([{"y": 3, "b": 4}]));
+
+        assert_eq!(
+            canonical_json(&Value::Object(outer)),
+            r#"{"first":[{"b":4,"y":3}],"second":{"a":2,"z":1}}"#
+        );
+    }
+
+    #[test]
+    fn zero_capacity_or_ttl_cannot_store() {
+        assert!(!ToolCallCache::new().with_max_size(0).can_store());
+        assert!(
+            !ToolCallCache::new()
+                .with_ttl(Duration::from_secs(0))
+                .can_store()
+        );
     }
 
     #[test]

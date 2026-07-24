@@ -41,6 +41,76 @@ static SCHEMA_CACHE: LazyLock<std::sync::RwLock<HashMap<String, Arc<jsonschema::
 #[cfg(feature = "toolkits")]
 const SCHEMA_CACHE_MAX_SIZE: usize = 256;
 
+/// Whether successful calls to a tool may be stored in the executor cache.
+///
+/// Caching requires a stronger guarantee than idempotency: a [`Pure`](Self::Pure)
+/// tool must have no externally observable side effects and must produce the
+/// same result for the same JSON input while a cached entry is live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CachePolicy {
+    /// Never cache this tool's result.
+    #[default]
+    Never,
+    /// The tool is pure and its successful results may be cached.
+    Pure,
+}
+
+/// Whether a failed or timed-out tool call may be attempted again.
+///
+/// A retry can start after the remote side effect of the previous attempt has
+/// already happened. Select [`Idempotent`](Self::Idempotent) only when repeating
+/// the complete call cannot duplicate or otherwise corrupt that effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RetryPolicy {
+    /// Never retry this tool automatically.
+    #[default]
+    Never,
+    /// The complete tool call is idempotent and may be retried.
+    Idempotent,
+}
+
+/// Per-tool eligibility for executor caching and automatic retries.
+///
+/// The executor's global cache/retry settings are only upper bounds. A tool
+/// must also opt in here before either behavior is used. The default is safe
+/// for tools with unknown or side-effecting behavior: no caching and no retry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+pub struct ToolExecutionPolicy {
+    cache: CachePolicy,
+    retry: RetryPolicy,
+}
+
+impl ToolExecutionPolicy {
+    /// Construct an explicit cache/retry policy.
+    pub const fn new(cache: CachePolicy, retry: RetryPolicy) -> Self {
+        Self { cache, retry }
+    }
+
+    /// Cache eligibility for this tool.
+    pub const fn cache_policy(self) -> CachePolicy {
+        self.cache
+    }
+
+    /// Retry eligibility for this tool.
+    pub const fn retry_policy(self) -> RetryPolicy {
+        self.retry
+    }
+
+    /// Whether successful results may participate in executor caching.
+    pub const fn allows_cache(self) -> bool {
+        matches!(self.cache, CachePolicy::Pure)
+    }
+
+    /// Whether retryable failures may be attempted again.
+    pub const fn allows_retry(self) -> bool {
+        matches!(self.retry, RetryPolicy::Idempotent)
+    }
+}
+
 /// Metadata used to identify, describe, and categorize a tool.
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolMetadata {
@@ -62,6 +132,11 @@ pub struct ToolMetadata {
     /// Whether the tool is enabled
     enabled: bool,
 
+    /// Local execution-safety policy. This is deliberately not serialized into
+    /// model-facing metadata.
+    #[serde(skip)]
+    execution_policy: ToolExecutionPolicy,
+
     /// Additional metadata
     metadata: HashMap<Cow<'static, str>, serde_json::Value>,
 }
@@ -81,6 +156,7 @@ impl ToolMetadata {
             author: None,
             tags: Vec::new(),
             enabled: true,
+            execution_policy: ToolExecutionPolicy::default(),
             metadata: HashMap::new(),
         })
     }
@@ -115,6 +191,11 @@ impl ToolMetadata {
         self.enabled
     }
 
+    /// Local cache/retry eligibility for this tool.
+    pub const fn execution_policy(&self) -> ToolExecutionPolicy {
+        self.execution_policy
+    }
+
     /// Additional application-defined metadata.
     pub fn additional_metadata(&self) -> &HashMap<Cow<'static, str>, serde_json::Value> {
         &self.metadata
@@ -144,6 +225,12 @@ impl ToolMetadata {
     /// Enable or disable the tool.
     pub fn with_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    /// Declare the tool's cache and retry eligibility.
+    pub fn with_execution_policy(mut self, policy: ToolExecutionPolicy) -> Self {
+        self.execution_policy = policy;
         self
     }
 
@@ -237,6 +324,54 @@ pub type ToolHandler = std::sync::Arc<
         > + Send
         + Sync,
 >;
+
+/// Trusted local registration for a directory-loaded function.
+///
+/// JSON function specifications describe only the model-facing name,
+/// description, and input schema. Cache/retry eligibility is intentionally
+/// supplied out of band through this type, so an untrusted specification
+/// cannot grant itself execution privileges.
+#[derive(Clone)]
+pub struct ToolRegistration {
+    handler: ToolHandler,
+    execution_policy: ToolExecutionPolicy,
+}
+
+impl ToolRegistration {
+    /// Bind a handler using the safe default policy (no caching and no retry).
+    pub fn new(handler: ToolHandler) -> Self {
+        Self {
+            handler,
+            execution_policy: ToolExecutionPolicy::default(),
+        }
+    }
+
+    /// Explicitly declare cache and retry eligibility for this registration.
+    ///
+    /// Executor-wide cache/retry settings remain upper bounds; both the
+    /// executor and this policy must opt in before either behavior is used.
+    pub fn with_execution_policy(mut self, policy: ToolExecutionPolicy) -> Self {
+        self.execution_policy = policy;
+        self
+    }
+
+    /// The trusted local execution policy attached to this registration.
+    pub const fn execution_policy(&self) -> ToolExecutionPolicy {
+        self.execution_policy
+    }
+
+    pub(crate) fn handler(&self) -> ToolHandler {
+        std::sync::Arc::clone(&self.handler)
+    }
+}
+
+impl std::fmt::Debug for ToolRegistration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolRegistration")
+            .field("execution_policy", &self.execution_policy)
+            .finish_non_exhaustive()
+    }
+}
 
 /// A single-struct tool that carries metadata, JSON schema, and an async
 /// handler
@@ -437,6 +572,7 @@ impl FunctionToolBuilder {
             author: None,
             tags: Vec::new(),
             enabled: true,
+            execution_policy: ToolExecutionPolicy::default(),
             metadata: HashMap::new(),
         };
         Self {
@@ -457,6 +593,15 @@ impl FunctionToolBuilder {
     /// Mutate the tool's metadata (e.g. version, tags) via a closure.
     pub fn metadata(mut self, f: impl FnOnce(ToolMetadata) -> ToolMetadata) -> Self {
         self.metadata = f(self.metadata);
+        self
+    }
+
+    /// Declare the tool's cache and retry eligibility.
+    ///
+    /// This policy is checked in addition to the executor's global cache and
+    /// retry configuration.
+    pub fn execution_policy(mut self, policy: ToolExecutionPolicy) -> Self {
+        self.metadata = self.metadata.with_execution_policy(policy);
         self
     }
 
@@ -617,6 +762,9 @@ mod tests {
         assert_eq!(metadata.description(), "A test tool");
         assert_eq!(metadata.version(), "1.0.0");
         assert!(metadata.is_enabled());
+        assert_eq!(metadata.execution_policy(), ToolExecutionPolicy::default());
+        assert!(!metadata.execution_policy().allows_cache());
+        assert!(!metadata.execution_policy().allows_retry());
 
         let hyphenated = ToolMetadata::new("test-tool", "A test tool").unwrap();
         assert_eq!(hyphenated.name(), "test-tool");

@@ -294,7 +294,8 @@ layout_parsing；小文件解析用 `file::parse_sync`，大文件/批量用
 ## 故障排除
 
 ### Q: 连接超时怎么办？
-A: 可以收紧（不能提高）SDK 的连接与单次请求超时上限：
+A: 连接超时可以在 10 秒安全上限内收紧；单次请求默认 60 秒，大文件或慢速链路可
+显式提高，最高 24 小时：
 
 ```rust,ignore
 use std::time::Duration;
@@ -302,7 +303,7 @@ use zai_rs::client::HttpTransportConfig;
 
 let config = HttpTransportConfig::builder()
     .connect_timeout(Duration::from_secs(5))?
-    .request_timeout(Duration::from_secs(30))?
+    .request_timeout(Duration::from_secs(120))?
     .build();
 ```
 

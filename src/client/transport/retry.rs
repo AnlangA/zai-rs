@@ -8,8 +8,8 @@
 //!   retryable; effective safety + max_attempts then bound the attempts.
 //! - Backoff uses full jitter (cap `min(8s, 200ms * 2^n)` for zero-based retry
 //!   index `n`). A positive integer `Retry-After` hint replaces the jitter delay
-//!   only when it is at least as long as that delay. The SDK currently accepts
-//!   the standard delta-seconds form and ignores HTTP-date values.
+//!   only when it is at least as long as that delay. Both standard
+//!   delta-seconds and IMF-fixdate values are accepted.
 
 use std::time::Duration;
 
@@ -108,17 +108,27 @@ pub fn backoff_delay(retry_index: u32, jitter: &dyn JitterSource) -> Duration {
     jitter.jitter(full_jitter_cap(retry_index))
 }
 
-/// Parse a `Retry-After` header value expressed as positive integer seconds.
+/// Parse a `Retry-After` header as positive delta-seconds or IMF-fixdate.
 ///
-/// Zero, malformed values, and HTTP-date values return `None`, which makes the
+/// Zero, expired dates, and malformed values return `None`, which makes the
 /// caller fall back to jitter.
 pub fn parse_retry_after(value: &str) -> Option<Duration> {
+    parse_retry_after_at(value, chrono::Utc::now())
+}
+
+fn parse_retry_after_at(value: &str, now: chrono::DateTime<chrono::Utc>) -> Option<Duration> {
     let trimmed = value.trim();
-    trimmed
-        .parse::<u64>()
+    if let Some(seconds) = trimmed.parse::<u64>().ok().filter(|seconds| *seconds > 0) {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    let retry_at = chrono::DateTime::parse_from_rfc2822(trimmed)
+        .ok()?
+        .with_timezone(&chrono::Utc);
+    (retry_at - now)
+        .to_std()
         .ok()
-        .filter(|seconds| *seconds > 0)
-        .map(Duration::from_secs)
+        .filter(|duration| !duration.is_zero())
 }
 
 /// Reconcile a `Retry-After` hint with the computed jitter delay: the hint
@@ -228,12 +238,30 @@ mod tests {
     }
 
     #[test]
-    fn parse_retry_after_integer_seconds() {
+    fn parse_retry_after_delta_seconds() {
         assert_eq!(parse_retry_after("120"), Some(Duration::from_secs(120)));
         assert_eq!(parse_retry_after("0"), None);
         assert_eq!(parse_retry_after("garbage"), None);
-        assert_eq!(parse_retry_after("Sun, 06 Nov 1994 08:49:37 GMT"), None);
         assert_eq!(parse_retry_after("  5  "), Some(Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn parse_retry_after_http_date() {
+        let now = chrono::DateTime::parse_from_rfc2822("Sun, 06 Nov 1994 08:47:37 GMT")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(
+            parse_retry_after_at("Sun, 06 Nov 1994 08:49:37 GMT", now),
+            Some(Duration::from_secs(120))
+        );
+        assert_eq!(
+            parse_retry_after_at("Sun, 06 Nov 1994 08:47:37 GMT", now),
+            None
+        );
+        assert_eq!(
+            parse_retry_after_at("Sun, 06 Nov 1994 08:40:00 GMT", now),
+            None
+        );
     }
 
     #[test]

@@ -25,6 +25,7 @@ use crate::client::secret::ApiSecret;
 #[derive(Clone)]
 pub struct ZaiClient {
     pub(super) inner: Arc<ClientInner>,
+    pub(super) request_options: RequestOptions,
 }
 
 /// Interior of a [`ZaiClient`], shared via `Arc`.
@@ -72,6 +73,37 @@ impl ZaiClient {
     pub fn transport(&self) -> &HttpTransportConfig {
         &self.inner.transport
     }
+
+    /// Return a cheap client handle carrying scoped options for the next
+    /// request(s) dispatched through it.
+    ///
+    /// The returned handle shares credentials, endpoints, and the connection
+    /// pool with `self`. This makes per-request policy explicit without putting
+    /// transport-only fields into serialized API request bodies:
+    ///
+    /// ```
+    /// # use std::time::Duration;
+    /// # use zai_rs::client::{RequestOptions, ZaiClient};
+    /// # fn example(client: ZaiClient) -> zai_rs::ZaiResult<()> {
+    /// let one_shot = client.clone().with_request_options(
+    ///     RequestOptions::default()
+    ///         .with_attempt_timeout(Duration::from_secs(10))?
+    ///         .with_max_attempts(1)?,
+    /// );
+    /// // request.send_via(&one_shot).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_request_options(mut self, options: RequestOptions) -> Self {
+        self.request_options = options;
+        self
+    }
+
+    /// Borrow the scoped request options carried by this client handle.
+    pub fn request_options(&self) -> &RequestOptions {
+        &self.request_options
+    }
 }
 
 impl std::fmt::Debug for ZaiClient {
@@ -81,6 +113,7 @@ impl std::fmt::Debug for ZaiClient {
             .field("credentials", &"[REDACTED]")
             .field("endpoints", &self.inner.endpoints)
             .field("transport", &self.inner.transport)
+            .field("request_options", &self.request_options)
             .finish_non_exhaustive()
     }
 }
@@ -167,7 +200,10 @@ impl ZaiClientBuilder {
             transport: self.transport,
             sender,
         });
-        Ok(ZaiClient { inner })
+        Ok(ZaiClient {
+            inner,
+            request_options: RequestOptions::default(),
+        })
     }
 }
 
@@ -263,12 +299,142 @@ pub enum RetryOverride {
     AssumeIdempotent,
 }
 
+/// Transport-only policy overrides carried by a scoped [`ZaiClient`] handle.
+///
+/// Start with [`Default::default`] and set only the values that differ from the
+/// client's [`HttpTransportConfig`]. A handle created with
+/// [`ZaiClient::with_request_options`] still shares the same connection pool
+/// and credentials as its source client.
+///
+/// `max_attempts` is capped by the client's global maximum. Retrying a
+/// non-idempotent operation additionally requires the explicit
+/// [`RetryOverride::AssumeIdempotent`] assertion. SSE requests are never
+/// replayed; their handshake and idle deadlines can still be set separately.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RequestOptions {
+    attempt_timeout: Option<Duration>,
+    overall_timeout: Option<Duration>,
+    sse_handshake_timeout: Option<Duration>,
+    sse_idle_timeout: Option<Duration>,
+    max_attempts: Option<u8>,
+    retry_override: Option<RetryOverride>,
+}
+
+impl RequestOptions {
+    /// Maximum supported overall deadline (three 24-hour attempts).
+    pub const MAX_OVERALL_TIMEOUT: Duration = Duration::from_secs(3 * 24 * 60 * 60);
+
+    fn validate_timeout(name: &str, value: Duration, max: Duration) -> ZaiResult<()> {
+        if value.is_zero() || value > max {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: format!("{name} must be in 1ns..={}s", max.as_secs()),
+            });
+        }
+        Ok(())
+    }
+
+    /// Override the absolute deadline for each attempt.
+    pub fn with_attempt_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        Self::validate_timeout(
+            "attempt_timeout",
+            value,
+            HttpTransportConfig::MAX_REQUEST_TIMEOUT,
+        )?;
+        self.attempt_timeout = Some(value);
+        Ok(self)
+    }
+
+    /// Override the absolute deadline covering attempts and backoff.
+    pub fn with_overall_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        Self::validate_timeout("overall_timeout", value, Self::MAX_OVERALL_TIMEOUT)?;
+        self.overall_timeout = Some(value);
+        Ok(self)
+    }
+
+    /// Override the deadline for establishing an SSE response.
+    pub fn with_sse_handshake_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        Self::validate_timeout(
+            "sse_handshake_timeout",
+            value,
+            HttpTransportConfig::MAX_REQUEST_TIMEOUT,
+        )?;
+        self.sse_handshake_timeout = Some(value);
+        Ok(self)
+    }
+
+    /// Override the maximum silence between SSE response chunks.
+    pub fn with_sse_idle_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        Self::validate_timeout(
+            "sse_idle_timeout",
+            value,
+            HttpTransportConfig::MAX_REQUEST_TIMEOUT,
+        )?;
+        self.sse_idle_timeout = Some(value);
+        Ok(self)
+    }
+
+    /// Limit this request to between one and three attempts.
+    ///
+    /// The effective value cannot exceed the client's global
+    /// [`HttpTransportConfig::max_attempts`] setting.
+    pub fn with_max_attempts(mut self, value: u8) -> ZaiResult<Self> {
+        if !(1..=3).contains(&value) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "request max_attempts must be 1, 2 or 3".to_string(),
+            });
+        }
+        self.max_attempts = Some(value);
+        Ok(self)
+    }
+
+    /// Assert a transport retry-safety override for this request.
+    #[must_use]
+    pub const fn with_retry_override(mut self, value: RetryOverride) -> Self {
+        self.retry_override = Some(value);
+        self
+    }
+
+    /// Per-attempt deadline override, if set.
+    pub const fn attempt_timeout(&self) -> Option<Duration> {
+        self.attempt_timeout
+    }
+
+    /// Overall deadline override, if set.
+    pub const fn overall_timeout(&self) -> Option<Duration> {
+        self.overall_timeout
+    }
+
+    /// SSE handshake deadline override, if set.
+    pub const fn sse_handshake_timeout(&self) -> Option<Duration> {
+        self.sse_handshake_timeout
+    }
+
+    /// SSE idle deadline override, if set.
+    pub const fn sse_idle_timeout(&self) -> Option<Duration> {
+        self.sse_idle_timeout
+    }
+
+    /// Requested attempt cap, if set.
+    pub const fn max_attempts(&self) -> Option<u8> {
+        self.max_attempts
+    }
+
+    /// Explicit retry-safety assertion, if set.
+    pub const fn retry_override(&self) -> Option<RetryOverride> {
+        self.retry_override
+    }
+}
+
 /// Transport policy for [`ZaiClient`].
 ///
 /// The `with_*` helpers and [`HttpTransportConfigBuilder`] reject timeout values
-/// outside their supported ranges and attempt counts outside `1..=3`. Fields
-/// remain public for direct construction; [`ZaiClientBuilder::build`] validates
-/// the same invariants before creating any network client.
+/// outside their supported ranges and attempt counts outside `1..=3`.
+/// `request_timeout` defaults to 60 seconds but may be raised for large,
+/// intentionally slow transfers. Fields remain public for direct construction;
+/// [`ZaiClientBuilder::build`] validates the same invariants before creating any
+/// network client.
 #[derive(Debug, Clone)]
 pub struct HttpTransportConfig {
     /// Connect timeout (default 10s).
@@ -296,6 +462,9 @@ impl Default for HttpTransportConfig {
 }
 
 impl HttpTransportConfig {
+    /// Maximum supported per-attempt request timeout (24 hours).
+    pub const MAX_REQUEST_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+
     /// Start a builder.
     pub fn builder() -> HttpTransportConfigBuilder {
         HttpTransportConfigBuilder {
@@ -312,10 +481,10 @@ impl HttpTransportConfig {
                 message: "connect_timeout must be in 1ns..=10s".to_string(),
             });
         }
-        if self.request_timeout.is_zero() || self.request_timeout > Duration::from_secs(60) {
+        if self.request_timeout.is_zero() || self.request_timeout > Self::MAX_REQUEST_TIMEOUT {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
-                message: "request_timeout must be in 1ns..=60s".to_string(),
+                message: "request_timeout must be in 1ns..=24h".to_string(),
             });
         }
         if !(1..=3).contains(&self.max_attempts) {
@@ -339,13 +508,15 @@ impl HttpTransportConfig {
         Ok(())
     }
 
-    /// Lower the per-attempt request timeout. Values above the default are
-    /// rejected by this helper.
+    /// Set the per-attempt request timeout.
+    ///
+    /// Values up to [`Self::MAX_REQUEST_TIMEOUT`] are accepted, allowing slow
+    /// large uploads and downloads without changing the 60-second default.
     pub fn with_request_timeout(mut self, d: Duration) -> ZaiResult<Self> {
-        if d.is_zero() || d > Duration::from_secs(60) {
+        if d.is_zero() || d > Self::MAX_REQUEST_TIMEOUT {
             return Err(crate::ZaiError::ApiError {
                 code: crate::client::error::codes::SDK_CONFIG,
-                message: "request_timeout must be in 1ns..=60s".to_string(),
+                message: "request_timeout must be in 1ns..=24h".to_string(),
             });
         }
         self.request_timeout = d;
@@ -383,14 +554,14 @@ impl HttpTransportConfig {
     }
 }
 
-/// Builder for [`HttpTransportConfig`] (tighten-only).
+/// Builder for [`HttpTransportConfig`].
 #[derive(Debug, Clone)]
 pub struct HttpTransportConfigBuilder {
     config: HttpTransportConfig,
 }
 
 impl HttpTransportConfigBuilder {
-    /// Set the per-attempt timeout, rejecting values above 60 seconds.
+    /// Set the per-attempt timeout, rejecting zero or values above 24 hours.
     pub fn request_timeout(mut self, d: Duration) -> ZaiResult<Self> {
         self.config = self.config.with_request_timeout(d)?;
         Ok(self)
@@ -446,6 +617,57 @@ mod tests {
     }
 
     #[test]
+    fn scoped_request_options_share_inner_without_mutating_source_handle() {
+        let client = ZaiClient::builder("abcdefghij.0123456789abcdef")
+            .build()
+            .unwrap();
+        let options = RequestOptions::default()
+            .with_attempt_timeout(Duration::from_secs(7))
+            .unwrap()
+            .with_max_attempts(1)
+            .unwrap()
+            .with_retry_override(RetryOverride::AssumeIdempotent);
+        let scoped = client.clone().with_request_options(options);
+
+        assert!(Arc::ptr_eq(&client.inner, &scoped.inner));
+        assert_eq!(client.request_options(), &RequestOptions::default());
+        assert_eq!(scoped.request_options(), &options);
+    }
+
+    #[test]
+    fn request_options_validate_every_public_bound() {
+        assert!(
+            RequestOptions::default()
+                .with_attempt_timeout(Duration::ZERO)
+                .is_err()
+        );
+        assert!(
+            RequestOptions::default()
+                .with_sse_handshake_timeout(
+                    HttpTransportConfig::MAX_REQUEST_TIMEOUT + Duration::from_nanos(1)
+                )
+                .is_err()
+        );
+        assert!(
+            RequestOptions::default()
+                .with_sse_idle_timeout(Duration::from_secs(1))
+                .is_ok()
+        );
+        assert!(
+            RequestOptions::default()
+                .with_overall_timeout(RequestOptions::MAX_OVERALL_TIMEOUT)
+                .is_ok()
+        );
+        assert!(
+            RequestOptions::default()
+                .with_overall_timeout(RequestOptions::MAX_OVERALL_TIMEOUT + Duration::from_nanos(1))
+                .is_err()
+        );
+        assert!(RequestOptions::default().with_max_attempts(0).is_err());
+        assert!(RequestOptions::default().with_max_attempts(3).is_ok());
+    }
+
+    #[test]
     fn additional_header_allow_list() {
         assert!(AdditionalHeader::new("X-Test-Client", "preserved").is_ok());
         assert_eq!(
@@ -468,14 +690,14 @@ mod tests {
     }
 
     #[test]
-    fn transport_only_tightens() {
-        // Request timeout above default rejected.
+    fn transport_timeout_bounds() {
+        // Slow large transfers may explicitly exceed the 60-second default.
         assert!(
             HttpTransportConfig::default()
                 .with_request_timeout(Duration::from_secs(120))
-                .is_err()
+                .is_ok()
         );
-        // Lowering accepted.
+        // Lowering remains supported.
         assert!(
             HttpTransportConfig::default()
                 .with_request_timeout(Duration::from_secs(5))
@@ -488,6 +710,18 @@ mod tests {
         assert!(
             HttpTransportConfig::default()
                 .with_request_timeout(Duration::ZERO)
+                .is_err()
+        );
+        assert!(
+            HttpTransportConfig::default()
+                .with_request_timeout(HttpTransportConfig::MAX_REQUEST_TIMEOUT)
+                .is_ok()
+        );
+        assert!(
+            HttpTransportConfig::default()
+                .with_request_timeout(
+                    HttpTransportConfig::MAX_REQUEST_TIMEOUT + Duration::from_nanos(1)
+                )
                 .is_err()
         );
     }
@@ -514,5 +748,23 @@ mod tests {
             .with_additional_header(AdditionalHeader::new("X-Test-Client", "a").unwrap())
             .with_additional_header(AdditionalHeader::new("x-test-client", "b").unwrap());
         assert!(duplicate_headers.validate().is_err());
+
+        let long_transfer = HttpTransportConfig::default()
+            .with_request_timeout(Duration::from_secs(120))
+            .unwrap()
+            .with_max_attempts(2)
+            .unwrap();
+        let client = ZaiClient::builder("abcdefghij.0123456789abcdef")
+            .transport(long_transfer)
+            .build()
+            .unwrap();
+        assert_eq!(
+            client.inner.sender.timeouts.attempt,
+            Duration::from_secs(120)
+        );
+        assert_eq!(
+            client.inner.sender.timeouts.overall,
+            Duration::from_secs(240)
+        );
     }
 }

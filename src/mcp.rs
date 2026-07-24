@@ -13,11 +13,15 @@ use rmcp::{
     model::{CallToolRequestParams, CallToolResult, ClientInfo, Tool},
     service::RunningService,
     transport::{
-        ConfigureCommandExt, StreamableHttpClientTransport, TokioChildProcess,
+        StreamableHttpClientTransport, TokioChildProcess,
         streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
-use std::time::Duration;
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -84,6 +88,83 @@ impl McpRegion {
     }
 }
 
+/// Explicit command used to start the local Vision MCP server.
+///
+/// The child receives only a small runtime environment allowlist plus
+/// `Z_AI_API_KEY`, `Z_AI_MODE`, and the optional `Z_AI_VISION_MODEL`; it does
+/// not inherit the caller's other environment variables. Prefer an absolute
+/// path to a reviewed, preinstalled executable or wrapper script.
+///
+/// ```no_run
+/// use zai_rs::mcp::{McpClient, VisionMcpCommand};
+///
+/// # fn build() -> zai_rs::ZaiResult<McpClient> {
+/// let runtime = VisionMcpCommand::new("/opt/zai/vision-mcp")?.arg("--stdio");
+/// let client = McpClient::new("test.12345678901234567890")?
+///     .with_vision_mcp_command(runtime);
+/// # Ok(client)
+/// # }
+/// ```
+#[derive(Clone, PartialEq, Eq)]
+pub struct VisionMcpCommand {
+    program: PathBuf,
+    arguments: Vec<OsString>,
+}
+
+impl std::fmt::Debug for VisionMcpCommand {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("VisionMcpCommand")
+            .field("program", &self.program)
+            .field("arguments", &"[REDACTED]")
+            .field("argument_count", &self.arguments.len())
+            .finish()
+    }
+}
+
+impl VisionMcpCommand {
+    /// Create a command for a non-empty executable path or program name.
+    pub fn new(program: impl Into<PathBuf>) -> ZaiResult<Self> {
+        let program = program.into();
+        if program.as_os_str().is_empty() {
+            return Err(ZaiError::ApiError {
+                code: codes::SDK_CONFIG,
+                message: "vision MCP executable must not be empty".to_owned(),
+            });
+        }
+        Ok(Self {
+            program,
+            arguments: Vec::new(),
+        })
+    }
+
+    /// Append one non-secret command-line argument.
+    pub fn arg(mut self, argument: impl Into<OsString>) -> Self {
+        self.arguments.push(argument.into());
+        self
+    }
+
+    /// Append multiple non-secret command-line arguments.
+    pub fn args<I, S>(mut self, arguments: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,
+    {
+        self.arguments.extend(arguments.into_iter().map(Into::into));
+        self
+    }
+
+    /// Borrow the configured executable.
+    pub fn program(&self) -> &Path {
+        &self.program
+    }
+
+    /// Borrow the configured arguments.
+    pub fn arguments(&self) -> &[OsString] {
+        &self.arguments
+    }
+}
+
 /// Internal target selected from a capability or advertised tool name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum McpBackend {
@@ -132,10 +213,11 @@ impl McpConnection {
         region: McpRegion,
         api_key: &str,
         vision_model: Option<&str>,
+        vision_command: Option<&VisionMcpCommand>,
     ) -> ZaiResult<Self> {
         crate::client::error::validate_api_key(api_key)?;
         if backend == McpBackend::Vision {
-            return Self::connect_vision(region, api_key, vision_model).await;
+            return Self::connect_vision(region, api_key, vision_model, vision_command).await;
         }
         Self::connect_remote(backend, region, api_key).await
     }
@@ -164,17 +246,13 @@ impl McpConnection {
         region: McpRegion,
         api_key: &str,
         vision_model: Option<&str>,
+        vision_command: Option<&VisionMcpCommand>,
     ) -> ZaiResult<Self> {
-        let transport =
-            TokioChildProcess::new(tokio::process::Command::new(NPX_PROGRAM).configure(|cmd| {
-                cmd.args(["-y", VISION_MCP_PACKAGE])
-                    .env("Z_AI_API_KEY", api_key)
-                    .env("Z_AI_MODE", region.vision_mode());
-                if let Some(model) = vision_model {
-                    cmd.env("Z_AI_VISION_MODEL", model);
-                }
-            }))
-            .map_err(vision_start_error)?;
+        let vision_command = vision_command.ok_or_else(vision_runtime_not_configured)?;
+        let mut command = tokio::process::Command::new(vision_command.program());
+        command.args(vision_command.arguments());
+        configure_vision_environment(&mut command, region, api_key, vision_model);
+        let transport = TokioChildProcess::new(command).map_err(vision_start_error)?;
         let service = ClientInfo::default()
             .serve(transport)
             .await
@@ -215,9 +293,9 @@ impl McpConnection {
 ///
 /// Connections are created lazily on the first capability call and reused
 /// afterwards. The user never needs to select an MCP server or transport.
-/// Remote capabilities use Streamable HTTP. Vision capabilities start the
-/// pinned `@z_ai/mcp-server` package through `npx`, so Node.js and `npx` must be
-/// available when a vision method or [`McpClient::tools`] is first called.
+/// Remote capabilities use Streamable HTTP. Vision capabilities require an
+/// explicitly configured local executable; the SDK never downloads or executes
+/// an npm package unless [`McpClient::with_vision_npx_download`] is selected.
 pub struct McpClient {
     region: McpRegion,
     api_key: ApiSecret,
@@ -227,6 +305,7 @@ pub struct McpClient {
     vision: tokio::sync::OnceCell<McpConnection>,
     tool_timeout: Duration,
     vision_model: Option<String>,
+    vision_command: Option<VisionMcpCommand>,
 }
 
 impl McpClient {
@@ -260,10 +339,12 @@ impl McpClient {
             vision: tokio::sync::OnceCell::new(),
             tool_timeout: DEFAULT_TOOL_TIMEOUT,
             vision_model: None,
+            vision_command: None,
         })
     }
 
-    /// Set the maximum duration of connection setup plus one MCP tool call.
+    /// Set the maximum duration of connection setup, one MCP tool call, tool
+    /// discovery, or concurrent connection shutdown.
     ///
     /// The default is five minutes because vision operations can take longer
     /// than ordinary remote tools.
@@ -276,10 +357,11 @@ impl McpClient {
     ///
     /// Only models with image recognition capability — those bound to
     /// [`VisionMessage`] — are accepted at compile time. The model id is
-    /// passed as `Z_AI_VISION_MODEL` to the spawned `@z_ai/mcp-server`
-    /// process, replacing its built-in default (`glm-4.6v`). It takes effect
-    /// when the vision backend is first started; setting it after a vision
-    /// capability has connected has no effect on the already-running server.
+    /// passed as `Z_AI_VISION_MODEL` to the configured Vision MCP process,
+    /// replacing the official server's built-in default (`glm-4.6v`). It takes
+    /// effect when the vision backend is first started; setting it after a
+    /// vision capability has connected has no effect on the already-running
+    /// server.
     ///
     /// ```
     /// use zai_rs::{mcp::McpClient, model::chat_models::GLM5V_turbo};
@@ -297,6 +379,29 @@ impl McpClient {
         self
     }
 
+    /// Configure a reviewed, preinstalled command for the Vision MCP backend.
+    ///
+    /// The process receives the Z.ai API key because it must authenticate its
+    /// model calls. It does not inherit unrelated parent environment variables.
+    pub fn with_vision_mcp_command(mut self, command: VisionMcpCommand) -> Self {
+        self.vision_command = Some(command);
+        self
+    }
+
+    /// Explicitly allow `npx` to download and run the pinned Vision MCP package.
+    ///
+    /// This restores the historical convenience behavior, but it introduces a
+    /// runtime npm supply chain that is outside `Cargo.lock` and `cargo-deny`.
+    /// Production applications should prefer
+    /// [`Self::with_vision_mcp_command`] with a reviewed, preinstalled artifact.
+    pub fn with_vision_npx_download(mut self) -> Self {
+        self.vision_command = Some(VisionMcpCommand {
+            program: PathBuf::from(NPX_PROGRAM),
+            arguments: vec![OsString::from("-y"), OsString::from(VISION_MCP_PACKAGE)],
+        });
+        self
+    }
+
     async fn connection(&self, backend: McpBackend) -> ZaiResult<&McpConnection> {
         let cell = match backend {
             McpBackend::WebSearch => &self.web_search,
@@ -310,6 +415,7 @@ impl McpClient {
                 self.region,
                 self.api_key.expose(),
                 self.vision_model.as_deref(),
+                self.vision_command.as_ref(),
             )
         })
         .await
@@ -317,25 +423,23 @@ impl McpClient {
 
     /// Return all available MCP tools.
     ///
-    /// This initializes each capability backend, including the local vision
-    /// runtime, and follows MCP pagination internally.
+    /// This initializes the three remote capability backends and follows MCP
+    /// pagination internally. When a Vision MCP command was explicitly
+    /// configured, its tools are included as well.
     pub async fn tools(&self) -> ZaiResult<Vec<Tool>> {
         with_mcp_timeout(self.tool_timeout, "MCP tool discovery", async {
-            let (search, reader, zread, vision) = tokio::try_join!(
+            let (search, reader, zread) = tokio::try_join!(
                 self.connection(McpBackend::WebSearch),
                 self.connection(McpBackend::WebReader),
                 self.connection(McpBackend::Zread),
-                self.connection(McpBackend::Vision),
             )?;
-            let (mut tools, reader_tools, zread_tools, vision_tools) = tokio::try_join!(
-                search.tools(),
-                reader.tools(),
-                zread.tools(),
-                vision.tools(),
-            )?;
+            let (mut tools, reader_tools, zread_tools) =
+                tokio::try_join!(search.tools(), reader.tools(), zread.tools())?;
             tools.extend(reader_tools);
             tools.extend(zread_tools);
-            tools.extend(vision_tools);
+            if self.vision_command.is_some() {
+                tools.extend(self.connection(McpBackend::Vision).await?.tools().await?);
+            }
             Ok(tools)
         })
         .await
@@ -613,21 +717,24 @@ impl McpClient {
 
     /// Shut down every connection that was initialized by this client.
     pub async fn close(self) -> ZaiResult<()> {
+        let timeout = self.tool_timeout;
         let connections = [
             self.web_search.into_inner(),
             self.web_reader.into_inner(),
             self.zread.into_inner(),
             self.vision.into_inner(),
         ];
-        let mut first_error = None;
-        for connection in connections.into_iter().flatten() {
-            if let Err(error) = connection.close().await
-                && first_error.is_none()
-            {
-                first_error = Some(error);
-            }
-        }
-        first_error.map_or(Ok(()), Err)
+        let results = futures_util::future::join_all(
+            connections
+                .into_iter()
+                .flatten()
+                .map(|connection| with_mcp_timeout(timeout, "MCP shutdown", connection.close())),
+        )
+        .await;
+        results
+            .into_iter()
+            .find_map(Result::err)
+            .map_or(Ok(()), Err)
     }
 }
 
@@ -677,10 +784,60 @@ fn vision_start_error<E: std::fmt::Display>(error: E) -> ZaiError {
         // Spawn failures come from the OS (for example a missing executable),
         // never from provider payloads, so the detail is safe to surface.
         message: format!(
-            "failed to start vision MCP: {error}; the vision backend runs \
-             `{VISION_MCP_PACKAGE}` through `{NPX_PROGRAM}`, so install Node.js \
-             and make sure `{NPX_PROGRAM}` is on PATH"
+            "failed to start the configured vision MCP executable: {error}; \
+             install the configured runtime or choose an available command"
         ),
+    }
+}
+
+fn vision_runtime_not_configured() -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_CONFIG,
+        message: "vision MCP runtime is disabled by default; configure a reviewed executable with \
+                  McpClient::with_vision_mcp_command, or explicitly allow the pinned npx download \
+                  with McpClient::with_vision_npx_download"
+            .to_owned(),
+    }
+}
+
+fn configure_vision_environment(
+    command: &mut tokio::process::Command,
+    region: McpRegion,
+    api_key: &str,
+    vision_model: Option<&str>,
+) {
+    command.env_clear();
+
+    // Keep only variables required to locate/run ordinary command-line
+    // programs. In particular, cloud credentials, proxy credentials, npm
+    // tokens, and application secrets are not inherited.
+    for name in ["PATH", "HOME", "TMPDIR"] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    #[cfg(windows)]
+    for name in [
+        "SystemRoot",
+        "WINDIR",
+        "ComSpec",
+        "PATHEXT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+
+    command
+        .env("Z_AI_API_KEY", api_key)
+        .env("Z_AI_MODE", region.vision_mode());
+    if let Some(model) = vision_model {
+        command.env("Z_AI_VISION_MODEL", model);
     }
 }
 
@@ -758,6 +915,7 @@ mod tests {
             McpRegion::Zhipu,
             "bad\ncredential",
             None,
+            None,
         )
         .await
         .err()
@@ -774,12 +932,11 @@ mod tests {
     }
 
     #[test]
-    fn vision_start_errors_explain_the_node_requirement() {
+    fn vision_start_errors_explain_the_runtime_requirement() {
         let error = vision_start_error(std::io::Error::from(std::io::ErrorKind::NotFound));
         assert_eq!(error.code(), Some(codes::SDK_EXTERNAL_TOOL));
-        assert!(error.message().contains("failed to start vision MCP"));
-        assert!(error.message().contains(NPX_PROGRAM));
-        assert!(error.message().contains("Node.js"));
+        assert!(error.message().contains("configured vision MCP"));
+        assert!(error.message().contains("configured runtime"));
     }
 
     #[test]
@@ -789,6 +946,75 @@ mod tests {
             .with_vision_model(GLM5V_turbo {});
         assert_eq!(client.vision_model.as_deref(), Some("glm-5v-turbo"));
         assert!(client.vision.get().is_none());
+    }
+
+    #[test]
+    fn vision_runtime_requires_explicit_configuration() {
+        let client = McpClient::with_region("test.12345678901234567890", McpRegion::Zhipu).unwrap();
+        assert!(client.vision_command.is_none());
+
+        let command = VisionMcpCommand::new("/opt/zai/vision-mcp")
+            .unwrap()
+            .args(["--stdio", "private-argument"]);
+        let debug = format!("{command:?}");
+        assert!(debug.contains("/opt/zai/vision-mcp"));
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("private-argument"));
+        let client = client.with_vision_mcp_command(command.clone());
+        assert_eq!(client.vision_command.as_ref(), Some(&command));
+
+        let client = McpClient::with_region("test.12345678901234567890", McpRegion::Zhipu)
+            .unwrap()
+            .with_vision_npx_download();
+        let command = client.vision_command.as_ref().unwrap();
+        assert_eq!(command.program(), Path::new(NPX_PROGRAM));
+        assert_eq!(
+            command.arguments(),
+            [OsString::from("-y"), OsString::from(VISION_MCP_PACKAGE)]
+        );
+    }
+
+    #[tokio::test]
+    async fn vision_connection_fails_before_spawn_when_runtime_is_disabled() {
+        let error = McpConnection::connect_with_key(
+            McpBackend::Vision,
+            McpRegion::Zhipu,
+            "test.12345678901234567890",
+            None,
+            None,
+        )
+        .await
+        .err()
+        .expect("missing vision runtime must fail before spawn");
+        assert_eq!(error.code(), Some(codes::SDK_CONFIG));
+        assert!(error.message().contains("disabled by default"));
+    }
+
+    #[test]
+    fn vision_child_environment_is_cleared_and_allowlisted() {
+        let mut command = tokio::process::Command::new("vision-mcp");
+        command.env("UNRELATED_APPLICATION_TOKEN", "must-not-leak");
+        configure_vision_environment(
+            &mut command,
+            McpRegion::Zhipu,
+            "test.12345678901234567890",
+            Some("glm-5v-turbo"),
+        );
+
+        let command = command.as_std();
+        assert!(
+            command
+                .get_envs()
+                .all(|(name, _)| { name != std::ffi::OsStr::new("UNRELATED_APPLICATION_TOKEN") })
+        );
+        assert!(command.get_envs().any(|(name, value)| {
+            name == std::ffi::OsStr::new("Z_AI_MODE")
+                && value == Some(std::ffi::OsStr::new("ZHIPU"))
+        }));
+        assert!(command.get_envs().any(|(name, value)| {
+            name == std::ffi::OsStr::new("Z_AI_VISION_MODEL")
+                && value == Some(std::ffi::OsStr::new("glm-5v-turbo"))
+        }));
     }
 
     #[tokio::test(start_paused = true)]

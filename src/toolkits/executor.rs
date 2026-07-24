@@ -1,20 +1,24 @@
 //! Tool registry and executor with caching, retries, and bounded concurrency.
 
 use std::{
+    collections::HashMap,
     panic::AssertUnwindSafe,
-    sync::Arc,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc, Mutex, RwLock,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
     time::Instant,
 };
 
 use dashmap::{DashMap, mapref::entry::Entry};
 use futures_util::{FutureExt, StreamExt};
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio::time::timeout;
 use tracing::warn;
 
 use super::{
     cache::{CacheKey, ToolCallCache},
-    core::{ToolHandler, validate_tool_name},
+    core::{FunctionTool, ToolHandler, validate_tool_name},
 };
 use crate::{
     model::{
@@ -30,6 +34,7 @@ use crate::{
 
 mod types;
 
+pub use super::core::ToolRegistration;
 pub use types::{ExecutionConfig, ExecutionResult, ExecutorBuilder, RetryConfig};
 
 /// Cap on how many tool calls run concurrently in
@@ -81,13 +86,79 @@ fn export_enabled_tool(tool: &dyn DynTool) -> Option<Tools> {
 pub struct ToolExecutor {
     tools: Arc<DashMap<String, RegisteredTool>>,
     next_generation: Arc<AtomicU64>,
+    registry_mutation_lock: Arc<Mutex<()>>,
     config: ExecutionConfig,
     cache: ToolCallCache,
+    cache_flights: Arc<DashMap<CacheKey, Arc<FlightGate>>>,
+    cache_global_epoch: Arc<AtomicU64>,
+    cache_epoch_fence: Arc<RwLock<()>>,
+}
+
+#[derive(Clone, Copy)]
+struct CacheEpoch {
+    global: u64,
+    tool: u64,
 }
 
 struct RegisteredTool {
     tool: Arc<dyn DynTool>,
     generation: u64,
+    cache_epoch: Arc<AtomicU64>,
+}
+
+struct FlightGate {
+    lock: Arc<AsyncMutex<()>>,
+    users: AtomicUsize,
+}
+
+/// Owns one registered user of a keyed cache-miss admission slot.
+///
+/// Registration happens before waiting for the mutex, so cancellation at any
+/// await point decrements the user count and removes an idle slot.
+struct CacheFlight {
+    flights: Arc<DashMap<CacheKey, Arc<FlightGate>>>,
+    key: CacheKey,
+    gate: Arc<FlightGate>,
+    guard: Option<OwnedMutexGuard<()>>,
+}
+
+impl CacheFlight {
+    async fn enter(flights: Arc<DashMap<CacheKey, Arc<FlightGate>>>, key: CacheKey) -> Self {
+        let entry = flights.entry(key.clone()).or_insert_with(|| {
+            Arc::new(FlightGate {
+                lock: Arc::new(AsyncMutex::new(())),
+                users: AtomicUsize::new(0),
+            })
+        });
+        // Increment while the DashMap entry guard is alive. A concurrent
+        // last-user cleanup therefore cannot remove this gate between lookup
+        // and registration.
+        entry.users.fetch_add(1, Ordering::AcqRel);
+        let gate = Arc::clone(entry.value());
+        drop(entry);
+        let mut flight = Self {
+            flights,
+            key,
+            gate: Arc::clone(&gate),
+            guard: None,
+        };
+        flight.guard = Some(gate.lock.clone().lock_owned().await);
+        flight
+    }
+}
+
+impl Drop for CacheFlight {
+    fn drop(&mut self) {
+        // Unlock first so a registered waiter can advance immediately.
+        self.guard.take();
+        let previous = self.gate.users.fetch_sub(1, Ordering::AcqRel);
+        debug_assert!(previous > 0, "cache-flight user count underflow");
+        if previous == 1 {
+            self.flights.remove_if(&self.key, |_key, current| {
+                Arc::ptr_eq(current, &self.gate) && current.users.load(Ordering::Acquire) == 0
+            });
+        }
+    }
 }
 
 impl std::fmt::Debug for ToolExecutor {
@@ -114,10 +185,14 @@ impl ToolExecutor {
         Self {
             tools: Arc::new(DashMap::new()),
             next_generation: Arc::new(AtomicU64::new(0)),
+            registry_mutation_lock: Arc::new(Mutex::new(())),
             config: ExecutionConfig::default(),
             // Tool purity is unknown at registration time, so caching is an
             // explicit opt-in.
             cache: ToolCallCache::new().with_enabled(false),
+            cache_flights: Arc::new(DashMap::new()),
+            cache_global_epoch: Arc::new(AtomicU64::new(0)),
+            cache_epoch_fence: Arc::new(RwLock::new(())),
         }
     }
 
@@ -128,11 +203,23 @@ impl ToolExecutor {
 
     /// Clear the cache
     pub fn clear_cache(&self) {
+        let _fence = self
+            .cache_epoch_fence
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        saturating_increment_epoch(&self.cache_global_epoch);
         self.cache.clear();
     }
 
     /// Invalidate cache for a specific tool
     pub fn invalidate_cache_for_tool(&self, tool_name: &str) {
+        let _fence = self
+            .cache_epoch_fence
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(registered) = self.tools.get(tool_name) {
+            saturating_increment_epoch(&registered.cache_epoch);
+        }
         self.cache.invalidate_tool(tool_name);
     }
 
@@ -145,29 +232,43 @@ impl ToolExecutor {
     pub fn add_dyn_tool(&self, tool: Box<dyn DynTool>) -> ToolResult<&Self> {
         let name = tool.name().to_string();
         validate_tool_name(&name)?;
+        let mutation = self
+            .registry_mutation_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match self.tools.entry(name.clone()) {
-            Entry::Occupied(_) => Err(ToolError::RegistrationError {
-                message: format!("Tool '{name}' is already registered").into(),
-            }),
+            Entry::Occupied(_) => {
+                return Err(ToolError::RegistrationError {
+                    message: format!("Tool '{name}' is already registered").into(),
+                });
+            },
             Entry::Vacant(entry) => {
                 let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
                 entry.insert(RegisteredTool {
                     tool: Arc::from(tool),
                     generation,
+                    cache_epoch: Arc::new(AtomicU64::new(0)),
                 });
-                // Remove entries from a prior registration with this name.
-                self.cache.invalidate_tool(&name);
-                Ok(self)
             },
         }
+        drop(mutation);
+        // Remove entries from a prior registration with this name after the
+        // registry shard guard has been released.
+        self.invalidate_cache_for_tool(&name);
+        Ok(self)
     }
 
     /// Unregister a tool
     pub fn unregister(&self, name: &str) -> ToolResult<()> {
+        let mutation = self
+            .registry_mutation_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if self.tools.remove(name).is_none() {
             return Err(error_context().with_tool(name).tool_not_found());
         }
-        self.cache.invalidate_tool(name);
+        drop(mutation);
+        self.invalidate_cache_for_tool(name);
         Ok(())
     }
 
@@ -188,19 +289,37 @@ impl ToolExecutor {
         names
     }
 
-    fn get_tool(&self, name: &str) -> Option<(Arc<dyn DynTool>, u64)> {
-        self.tools
-            .get(name)
-            .map(|entry| (Arc::clone(&entry.tool), entry.generation))
+    fn get_tool(&self, name: &str) -> Option<(Arc<dyn DynTool>, u64, Arc<AtomicU64>)> {
+        self.tools.get(name).map(|entry| {
+            (
+                Arc::clone(&entry.tool),
+                entry.generation,
+                Arc::clone(&entry.cache_epoch),
+            )
+        })
     }
 
     fn cache_if_still_registered(
         &self,
         tool_name: &str,
         generation: u64,
+        tool_cache_epoch: &AtomicU64,
+        cache_epoch: CacheEpoch,
         key: CacheKey,
         result: serde_json::Value,
     ) {
+        // This read fence makes clear/invalidate linearizable with insertion:
+        // either the value lands before the mutation and is removed by it, or
+        // the epoch has changed and the stale execution cannot write back.
+        let _fence = self
+            .cache_epoch_fence
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.cache_global_epoch.load(Ordering::Acquire) != cache_epoch.global
+            || tool_cache_epoch.load(Ordering::Acquire) != cache_epoch.tool
+        {
+            return;
+        }
         // Keep the map guard until after insertion. An unregister operation
         // either happens first (and this write is skipped) or happens after
         // the write and invalidates it, so an old in-flight call cannot leave
@@ -209,6 +328,13 @@ impl ToolExecutor {
             && registered.generation == generation
         {
             self.cache.insert(key, result, None);
+        }
+    }
+
+    fn current_cache_epoch(&self, tool_cache_epoch: &AtomicU64) -> CacheEpoch {
+        CacheEpoch {
+            global: self.cache_global_epoch.load(Ordering::Acquire),
+            tool: tool_cache_epoch.load(Ordering::Acquire),
         }
     }
 
@@ -227,7 +353,7 @@ impl ToolExecutor {
         let mut retries = 0;
         let retry_config = &self.config.retry_config;
 
-        let Some((tool, generation)) = self.get_tool(tool_name) else {
+        let Some((tool, generation, tool_cache_epoch)) = self.get_tool(tool_name) else {
             let error = error_context().with_tool(tool_name).tool_not_found();
             return Ok(ExecutionResult::failure(
                 tool_name.to_string(),
@@ -247,21 +373,23 @@ impl ToolExecutor {
                 0,
             ));
         }
+        let execution_policy = tool.metadata().execution_policy();
 
         // Registration generation prevents an in-flight call from repopulating
         // a cache entry that a later tool with the same name could consume.
-        let cache_key = if self.cache.enabled() {
+        let cache_key = if self.cache.can_store() && execution_policy.allows_cache() {
             Some(CacheKey::for_generation(
                 tool_name.to_string(),
-                input.clone(),
+                &input,
                 generation,
             ))
         } else {
             None
         };
         if let Some(ref key) = cache_key
-            && let Some(cached_result) = self.cache.get(key)
+            && let Some(cached_result) = self.cache.peek(key)
         {
+            self.cache.record_hit();
             let duration = start_time.elapsed();
             return Ok(ExecutionResult::success(
                 tool_name.to_string(),
@@ -271,13 +399,47 @@ impl ToolExecutor {
             )
             .with_cache_hit());
         }
+        // Collapse concurrent misses for the same tool generation and
+        // canonical input. A second lookup after admission observes the
+        // leader's successful result without serializing hot-cache hits.
+        let _cache_flight = if let Some(ref key) = cache_key {
+            let flight = CacheFlight::enter(Arc::clone(&self.cache_flights), key.clone()).await;
+            if let Some(cached_result) = self.cache.peek(key) {
+                self.cache.record_hit();
+                let duration = start_time.elapsed();
+                return Ok(ExecutionResult::success(
+                    tool_name.to_string(),
+                    cached_result,
+                    duration,
+                    retries,
+                )
+                .with_cache_hit());
+            }
+            self.cache.record_miss();
+            Some(flight)
+        } else {
+            None
+        };
+        // Capture the invalidation generation only after admission and the
+        // second miss. A waiter queued before clear/invalidate therefore
+        // executes in the new generation and can repopulate the cache.
+        let cache_epoch = cache_key
+            .as_ref()
+            .map(|_| self.current_cache_epoch(&tool_cache_epoch));
 
         loop {
             match self.execute_once(&tool, tool_name, &input).await {
                 Ok(result) => {
                     let duration = start_time.elapsed();
                     if let Some(key) = cache_key {
-                        self.cache_if_still_registered(tool_name, generation, key, result.clone());
+                        self.cache_if_still_registered(
+                            tool_name,
+                            generation,
+                            &tool_cache_epoch,
+                            cache_epoch.expect("cache key always has an epoch"),
+                            key,
+                            result.clone(),
+                        );
                     }
 
                     return Ok(ExecutionResult::success(
@@ -288,8 +450,10 @@ impl ToolExecutor {
                     ));
                 },
                 Err(error) => {
-                    // Only retry on retryable errors (timeout, transient failures)
-                    if !error.is_retryable() {
+                    // Both gates are required: the error must be transient and
+                    // the tool author must have declared the complete call
+                    // idempotent.
+                    if !execution_policy.allows_retry() || !error.is_retryable() {
                         let duration = start_time.elapsed();
                         return Ok(ExecutionResult::failure(
                             tool_name.to_string(),
@@ -345,18 +509,63 @@ impl ToolExecutor {
     /// function names to implementations. When `strict` is `false`, files
     /// without a matching handler are skipped; otherwise they cause an error.
     ///
-    /// Returns the list of function names successfully registered.
+    /// This compatibility API always attaches the safe
+    /// [`ToolExecutionPolicy::default`](crate::toolkits::core::ToolExecutionPolicy)
+    /// to every handler. Use
+    /// [`Self::add_functions_from_dir_with_registrations`] for explicit
+    /// cache/retry eligibility.
+    ///
+    /// All JSON files and selected schemas are validated before registry
+    /// mutation. Duplicate names in the directory or conflicts with existing
+    /// tools reject the whole batch; no selected tool is registered.
     pub fn add_functions_from_dir_with_registry(
         &self,
         dir: impl AsRef<std::path::Path>,
-        handlers: &std::collections::HashMap<String, ToolHandler>,
+        handlers: &HashMap<String, ToolHandler>,
         strict: bool,
     ) -> ToolResult<Vec<String>> {
+        let registrations = handlers
+            .iter()
+            .map(|(name, handler)| (name.clone(), ToolRegistration::new(Arc::clone(handler))))
+            .collect();
+        self.add_functions_from_dir_with_registrations(dir, &registrations, strict)
+    }
+
+    /// Register directory-loaded functions with trusted local effect policies.
+    ///
+    /// Each `.json` file may contain either a direct function object or an
+    /// OpenAI-style `{ "type": "function", "function": ... }` wrapper.
+    /// Model-facing JSON controls only the function name, description, and
+    /// parameters. Fields that resemble an execution policy are ignored:
+    /// cache/retry eligibility comes exclusively from [`ToolRegistration`].
+    ///
+    /// When `strict` is `true`, every valid JSON specification must have a
+    /// matching registration. When it is `false`, missing registrations are
+    /// skipped; registrations without a matching file are always ignored.
+    /// Duplicate function names in the directory and names already present in
+    /// this executor are errors. Files are parsed, schemas are compiled, and
+    /// conflicts are checked before the batch is committed, so an error does
+    /// not leave a partially registered batch.
+    ///
+    /// Returns registered names in deterministic file-path order.
+    pub fn add_functions_from_dir_with_registrations(
+        &self,
+        dir: impl AsRef<std::path::Path>,
+        registrations: &HashMap<String, ToolRegistration>,
+        strict: bool,
+    ) -> ToolResult<Vec<String>> {
+        let staged = Self::stage_directory_tools(dir.as_ref(), registrations, strict)?;
+        self.commit_directory_tools(staged)
+    }
+
+    fn stage_directory_tools(
+        dir: &std::path::Path,
+        registrations: &HashMap<String, ToolRegistration>,
+        strict: bool,
+    ) -> ToolResult<Vec<(String, FunctionTool)>> {
         use std::fs;
 
         use serde_json::Value;
-        let dir = dir.as_ref();
-        let mut added = Vec::new();
         let read_dir = fs::read_dir(dir).map_err(|e| {
             error_context().invalid_parameters(format!(
                 "Failed to read dir {}: {}",
@@ -377,6 +586,8 @@ impl ToolExecutor {
         });
         paths.sort_unstable();
 
+        let mut first_path_by_name = HashMap::new();
+        let mut staged = Vec::new();
         for path in paths {
             let content = fs::read_to_string(&path).map_err(|e| {
                 error_context().invalid_parameters(format!(
@@ -402,8 +613,19 @@ impl ToolExecutor {
                     ))
                 })?;
 
-            let handler = match handlers.get(&name) {
-                Some(handler) => Arc::clone(handler),
+            if let Some(first_path) = first_path_by_name.insert(name.clone(), path.clone()) {
+                return Err(ToolError::RegistrationError {
+                    message: format!(
+                        "Duplicate function name '{name}' in {} and {}; directory batch was not changed",
+                        first_path.display(),
+                        path.display()
+                    )
+                    .into(),
+                });
+            }
+
+            let registration = match registrations.get(&name) {
+                Some(registration) => registration,
                 None => {
                     if strict {
                         return Err(error_context().invalid_parameters(format!(
@@ -416,11 +638,12 @@ impl ToolExecutor {
                 },
             };
 
-            let mut builder =
-                crate::toolkits::core::FunctionTool::builder(name.clone(), description);
+            let mut builder = FunctionTool::builder(name.clone(), description)
+                .execution_policy(registration.execution_policy());
             if let Some(p) = parameters {
                 builder = builder.schema(p);
             }
+            let handler = registration.handler();
             let tool = builder
                 .handler(move |args| {
                     let handler = Arc::clone(&handler);
@@ -428,8 +651,50 @@ impl ToolExecutor {
                 })
                 .build()?;
 
-            self.add_dyn_tool(Box::new(tool))?;
+            staged.push((name, tool));
+        }
+        Ok(staged)
+    }
+
+    fn commit_directory_tools(
+        &self,
+        staged: Vec<(String, FunctionTool)>,
+    ) -> ToolResult<Vec<String>> {
+        let mutation = self
+            .registry_mutation_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((name, _)) = staged
+            .iter()
+            .find(|(name, _)| self.tools.contains_key(name))
+        {
+            return Err(ToolError::RegistrationError {
+                message: format!(
+                    "Tool '{name}' is already registered; directory batch was not changed"
+                )
+                .into(),
+            });
+        }
+
+        let mut added = Vec::with_capacity(staged.len());
+        for (name, tool) in staged {
+            let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+            let tool: Arc<dyn DynTool> = Arc::new(tool);
+            let previous = self.tools.insert(
+                name.clone(),
+                RegisteredTool {
+                    tool,
+                    generation,
+                    cache_epoch: Arc::new(AtomicU64::new(0)),
+                },
+            );
+            debug_assert!(previous.is_none(), "directory conflict preflight drifted");
             added.push(name);
+        }
+        drop(mutation);
+
+        for name in &added {
+            self.invalidate_cache_for_tool(name);
         }
         Ok(added)
     }
@@ -586,12 +851,34 @@ impl ToolExecutor {
     }
 }
 
+fn saturating_increment_epoch(epoch: &AtomicU64) {
+    let mut current = epoch.load(Ordering::Acquire);
+    while current != u64::MAX {
+        match epoch.compare_exchange_weak(current, current + 1, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
 
-    use crate::toolkits::core::FunctionTool;
+    use crate::toolkits::core::{CachePolicy, FunctionTool, RetryPolicy, ToolExecutionPolicy};
+
+    #[test]
+    fn saturating_epoch_increment_stops_at_max() {
+        let epoch = AtomicU64::new(0);
+        saturating_increment_epoch(&epoch);
+        assert_eq!(epoch.load(Ordering::Acquire), 1);
+
+        epoch.store(u64::MAX, Ordering::Release);
+        saturating_increment_epoch(&epoch);
+        assert_eq!(epoch.load(Ordering::Acquire), u64::MAX);
+    }
 
     #[test]
     fn test_retry_config_default() {
@@ -950,6 +1237,10 @@ mod tests {
         let counter_clone = attempt_counter.clone();
 
         let tool = FunctionTool::builder("flaky_tool", "Flaky tool")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Never,
+                RetryPolicy::Idempotent,
+            ))
             .handler(move |_args| {
                 let counter = counter_clone.clone();
                 async move {
@@ -1135,6 +1426,10 @@ mod tests {
 
         // ToolNotFound is not retryable, so it should fail immediately without retries
         let tool = FunctionTool::builder("not_found_tool", "Not found tool")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Never,
+                RetryPolicy::Idempotent,
+            ))
             .handler(move |_args| {
                 let counter = counter_clone.clone();
                 async move {
@@ -1315,5 +1610,397 @@ mod tests {
         assert_eq!(result.result, serde_json::json!({"x": 1}));
         // Cache stays empty (disabled).
         assert_eq!(executor.cache_stats().total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_waiters_release_their_flight_registration() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let tool = FunctionTool::builder("flight_cleanup", "flight cleanup fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler({
+                let started = Arc::clone(&started);
+                move |_| {
+                    let started = Arc::clone(&started);
+                    async move {
+                        started.notify_one();
+                        std::future::pending::<()>().await;
+                        #[allow(unreachable_code)]
+                        Ok(serde_json::json!({}))
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        let executor = ToolExecutor::builder().enable_cache().build();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let leader = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute("flight_cleanup", serde_json::json!({}))
+                    .await
+            })
+        };
+        started.notified().await;
+        let waiter_one = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute("flight_cleanup", serde_json::json!({}))
+                    .await
+            })
+        };
+        let waiter_two = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute("flight_cleanup", serde_json::json!({}))
+                    .await
+            })
+        };
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let users = executor
+                    .cache_flights
+                    .iter()
+                    .next()
+                    .map(|entry| entry.users.load(Ordering::Acquire))
+                    .unwrap_or(0);
+                if users == 3 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("waiters were not registered");
+
+        waiter_one.abort();
+        waiter_two.abort();
+        assert!(waiter_one.await.unwrap_err().is_cancelled());
+        assert!(waiter_two.await.unwrap_err().is_cancelled());
+        assert_eq!(executor.cache_flights.len(), 1);
+
+        leader.abort();
+        assert!(leader.await.unwrap_err().is_cancelled());
+        assert!(executor.cache_flights.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cache_clear_fences_an_in_flight_write_back() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let tool = FunctionTool::builder("clear_fence", "cache clear fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler({
+                let calls = Arc::clone(&calls);
+                let started = Arc::clone(&started);
+                let release = Arc::clone(&release);
+                move |_| {
+                    let calls = Arc::clone(&calls);
+                    let started = Arc::clone(&started);
+                    let release = Arc::clone(&release);
+                    async move {
+                        let invocation = calls.fetch_add(1, Ordering::SeqCst);
+                        if invocation == 0 {
+                            started.notify_one();
+                            release.notified().await;
+                        }
+                        Ok(serde_json::json!({"invocation": invocation + 1}))
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        let executor = ToolExecutor::builder().enable_cache().build();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let execution = {
+            let executor = executor.clone();
+            tokio::spawn(
+                async move { executor.execute("clear_fence", serde_json::json!({})).await },
+            )
+        };
+        started.notified().await;
+        executor.clear_cache();
+        release.notify_one();
+        assert!(execution.await.unwrap().unwrap().success);
+        assert_eq!(executor.cache_stats().total_entries, 0);
+
+        let next = executor
+            .execute("clear_fence", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert_eq!(next.result, serde_json::json!({"invocation": 2}));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(executor.cache_stats().total_entries, 1);
+    }
+
+    #[tokio::test]
+    async fn waiter_queued_before_clear_repopulates_the_new_cache_generation() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let tool = FunctionTool::builder("clear_waiter", "cache clear waiter fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler({
+                let calls = Arc::clone(&calls);
+                let started = Arc::clone(&started);
+                let release = Arc::clone(&release);
+                move |_| {
+                    let calls = Arc::clone(&calls);
+                    let started = Arc::clone(&started);
+                    let release = Arc::clone(&release);
+                    async move {
+                        let invocation = calls.fetch_add(1, Ordering::SeqCst) + 1;
+                        if invocation == 1 {
+                            started.notify_one();
+                            release.notified().await;
+                        }
+                        Ok(serde_json::json!({"invocation": invocation}))
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        let executor = ToolExecutor::builder().enable_cache().build();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let leader = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute("clear_waiter", serde_json::json!({}))
+                    .await
+            })
+        };
+        started.notified().await;
+        let waiter = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute("clear_waiter", serde_json::json!({}))
+                    .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let users = executor
+                    .cache_flights
+                    .iter()
+                    .next()
+                    .map(|entry| entry.users.load(Ordering::Acquire))
+                    .unwrap_or(0);
+                if users == 2 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("waiter was not admitted before clear");
+
+        executor.clear_cache();
+        release.notify_one();
+        assert!(leader.await.unwrap().unwrap().success);
+        let waiter_result = waiter.await.unwrap().unwrap();
+        assert_eq!(waiter_result.result, serde_json::json!({"invocation": 2}));
+
+        let cached = executor
+            .execute("clear_waiter", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(cached.cache_hit);
+        assert_eq!(cached.result, serde_json::json!({"invocation": 2}));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn per_tool_invalidation_fences_an_in_flight_write_back() {
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let tool = FunctionTool::builder("invalidate_fence", "cache invalidation fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler({
+                let calls = Arc::clone(&calls);
+                let started = Arc::clone(&started);
+                let release = Arc::clone(&release);
+                move |_| {
+                    let calls = Arc::clone(&calls);
+                    let started = Arc::clone(&started);
+                    let release = Arc::clone(&release);
+                    async move {
+                        let invocation = calls.fetch_add(1, Ordering::SeqCst);
+                        if invocation == 0 {
+                            started.notify_one();
+                            release.notified().await;
+                        }
+                        Ok(serde_json::json!({"invocation": invocation + 1}))
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        let executor = ToolExecutor::builder().enable_cache().build();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let execution = {
+            let executor = executor.clone();
+            tokio::spawn(async move {
+                executor
+                    .execute("invalidate_fence", serde_json::json!({}))
+                    .await
+            })
+        };
+        started.notified().await;
+        executor.invalidate_cache_for_tool("invalidate_fence");
+        release.notify_one();
+        assert!(execution.await.unwrap().unwrap().success);
+        assert_eq!(executor.cache_stats().total_entries, 0);
+
+        executor
+            .execute("invalidate_fence", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(executor.cache_stats().total_entries, 1);
+    }
+
+    #[tokio::test]
+    async fn invalidating_one_tool_does_not_fence_another_tools_write_back() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let tool_a = FunctionTool::builder("epoch_a", "unrelated cache fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler({
+                let calls = Arc::clone(&calls);
+                let started = Arc::clone(&started);
+                let release = Arc::clone(&release);
+                move |_| {
+                    let calls = Arc::clone(&calls);
+                    let started = Arc::clone(&started);
+                    let release = Arc::clone(&release);
+                    async move {
+                        let invocation = calls.fetch_add(1, Ordering::SeqCst);
+                        if invocation == 0 {
+                            started.notify_one();
+                            release.notified().await;
+                        }
+                        Ok(serde_json::json!({"tool": "a"}))
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        let tool_b = FunctionTool::builder("epoch_b", "invalidated cache fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler(|_| async { Ok(serde_json::json!({"tool": "b"})) })
+            .build()
+            .unwrap();
+        let executor = ToolExecutor::builder().enable_cache().build();
+        executor.add_dyn_tool(Box::new(tool_a)).unwrap();
+        executor.add_dyn_tool(Box::new(tool_b)).unwrap();
+
+        let execution = {
+            let executor = executor.clone();
+            tokio::spawn(async move { executor.execute("epoch_a", serde_json::json!({})).await })
+        };
+        started.notified().await;
+        executor.invalidate_cache_for_tool("epoch_b");
+        release.notify_one();
+        assert!(execution.await.unwrap().unwrap().success);
+
+        let cached = executor
+            .execute("epoch_a", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(cached.cache_hit);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    async fn assert_non_storing_cache_does_not_singleflight(
+        executor: ToolExecutor,
+        tool_name: &'static str,
+    ) {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let tool = FunctionTool::builder(tool_name, "non-storing cache fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Pure,
+                RetryPolicy::Never,
+            ))
+            .handler({
+                let calls = Arc::clone(&calls);
+                let barrier = Arc::clone(&barrier);
+                move |_| {
+                    let calls = Arc::clone(&calls);
+                    let barrier = Arc::clone(&barrier);
+                    async move {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        barrier.wait().await;
+                        Ok(serde_json::json!({"ok": true}))
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let (first, second) = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(
+                executor.execute(tool_name, serde_json::json!({})),
+                executor.execute(tool_name, serde_json::json!({}))
+            )
+        })
+        .await
+        .expect("non-storing cache unexpectedly serialized the calls");
+        assert!(first.unwrap().success);
+        assert!(second.unwrap().success);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(executor.cache_stats().total_entries, 0);
+        assert!(executor.cache_flights.is_empty());
+    }
+
+    #[tokio::test]
+    async fn zero_capacity_and_zero_ttl_caches_do_not_singleflight() {
+        assert_non_storing_cache_does_not_singleflight(
+            ToolExecutor::builder()
+                .enable_cache()
+                .cache_max_size(0)
+                .build(),
+            "zero_capacity",
+        )
+        .await;
+        assert_non_storing_cache_does_not_singleflight(
+            ToolExecutor::builder()
+                .enable_cache()
+                .cache_ttl(Duration::ZERO)
+                .build(),
+            "zero_ttl",
+        )
+        .await;
     }
 }

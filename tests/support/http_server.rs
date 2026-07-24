@@ -14,12 +14,14 @@
 #![allow(dead_code)]
 
 use std::convert::Infallible;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
-use hyper::body::Incoming;
+use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::{BodyExt, Full, StreamBody};
+use hyper::body::{Frame, Incoming};
 use hyper::http::StatusCode;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
@@ -46,6 +48,16 @@ pub struct ScriptedResponse {
     pub headers: Vec<(String, String)>,
     pub body: Bytes,
     delay: Duration,
+    stream: Option<StreamScript>,
+}
+
+#[derive(Clone)]
+struct StreamScript {
+    chunks: Vec<Bytes>,
+    chunk_delay: Duration,
+    disconnect_after: Option<usize>,
+    gate: Option<Arc<tokio::sync::Semaphore>>,
+    emitted: Option<Arc<AtomicUsize>>,
 }
 
 impl ScriptedResponse {
@@ -61,6 +73,28 @@ impl ScriptedResponse {
             headers: vec![("content-type".into(), content_type.into())],
             body: body.into(),
             delay: Duration::ZERO,
+            stream: None,
+        }
+    }
+
+    /// A chunked response whose body frames are produced lazily by Hyper.
+    pub fn chunked(
+        status: u16,
+        content_type: &str,
+        chunks: impl IntoIterator<Item = Bytes>,
+    ) -> Self {
+        Self {
+            status,
+            headers: vec![("content-type".into(), content_type.into())],
+            body: Bytes::new(),
+            delay: Duration::ZERO,
+            stream: Some(StreamScript {
+                chunks: chunks.into_iter().collect(),
+                chunk_delay: Duration::ZERO,
+                disconnect_after: None,
+                gate: None,
+                emitted: None,
+            }),
         }
     }
 
@@ -71,12 +105,45 @@ impl ScriptedResponse {
             headers: vec![],
             body: Bytes::new(),
             delay: Duration::ZERO,
+            stream: None,
         }
     }
 
     /// Delay this scripted response after its request has been captured.
     pub fn with_delay(mut self, delay: Duration) -> Self {
         self.delay = delay;
+        self
+    }
+
+    /// Delay every body chunk after the response headers have been sent.
+    pub fn with_chunk_delay(mut self, delay: Duration) -> Self {
+        if let Some(stream) = &mut self.stream {
+            stream.chunk_delay = delay;
+        }
+        self
+    }
+
+    /// Abort the response body before chunk `count` is emitted.
+    pub fn disconnect_after(mut self, count: usize) -> Self {
+        if let Some(stream) = &mut self.stream {
+            stream.disconnect_after = Some(count);
+        }
+        self
+    }
+
+    /// Require one semaphore permit before emitting each body chunk.
+    pub fn with_chunk_gate(mut self, gate: Arc<tokio::sync::Semaphore>) -> Self {
+        if let Some(stream) = &mut self.stream {
+            stream.gate = Some(gate);
+        }
+        self
+    }
+
+    /// Increment `emitted` whenever the scripted body produces a chunk.
+    pub fn with_chunk_counter(mut self, emitted: Arc<AtomicUsize>) -> Self {
+        if let Some(stream) = &mut self.stream {
+            stream.emitted = Some(emitted);
+        }
         self
     }
 }
@@ -138,7 +205,7 @@ impl TestServer {
                                     let resp = match next {
                                         None => Response::builder()
                                             .status(StatusCode::from_u16(599).unwrap())
-                                            .body(Full::new(Bytes::from_static(
+                                            .body(full_body(Bytes::from_static(
                                                 b"no more scripted responses",
                                             )))
                                             .unwrap(),
@@ -152,7 +219,7 @@ impl TestServer {
                                             for (k, v) in &s.headers {
                                                 builder = builder.header(k.as_str(), v.as_str());
                                             }
-                                            builder.body(Full::new(s.body)).unwrap()
+                                            builder.body(scripted_body(s)).unwrap()
                                         }
                                     };
                                     Ok::<_, Infallible>(resp)
@@ -185,6 +252,62 @@ impl TestServer {
         // `notify_waiters` could lose the shutdown signal in that window.
         self.shutdown.notify_one();
     }
+}
+
+type TestBody = UnsyncBoxBody<Bytes, std::io::Error>;
+
+fn full_body(body: Bytes) -> TestBody {
+    Full::new(body)
+        .map_err(|never: Infallible| match never {})
+        .boxed_unsync()
+}
+
+fn scripted_body(response: ScriptedResponse) -> TestBody {
+    let Some(script) = response.stream else {
+        return full_body(response.body);
+    };
+    let frames = futures_util::stream::unfold((script, 0_usize), |(script, index)| async move {
+        if index == usize::MAX {
+            return None;
+        }
+        if script.disconnect_after == Some(index) {
+            // Give the preceding frame time to reach the peer before the
+            // connection is aborted. This distinguishes "failed before
+            // first visible byte" from "failed after delivery".
+            tokio::time::sleep(script.chunk_delay).await;
+            return Some((
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionAborted,
+                    "scripted response body disconnected",
+                )),
+                (script, usize::MAX),
+            ));
+        }
+        if index >= script.chunks.len() {
+            return None;
+        }
+        if let Some(gate) = script.gate.clone() {
+            match gate.acquire_owned().await {
+                Ok(permit) => permit.forget(),
+                Err(_) => {
+                    return Some((
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "scripted response gate closed",
+                        )),
+                        (script, usize::MAX),
+                    ));
+                },
+            }
+        }
+        tokio::time::sleep(script.chunk_delay).await;
+        if let Some(emitted) = &script.emitted {
+            emitted.fetch_add(1, Ordering::SeqCst);
+        }
+        let chunk = script.chunks[index].clone();
+        Some((Ok(Frame::data(chunk)), (script, index + 1)))
+    });
+    StreamBody::new(frames).boxed_unsync()
 }
 
 fn header_opt(req: &Request<Incoming>, name: &str) -> Option<String> {

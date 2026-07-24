@@ -6,6 +6,10 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  schedule:
+    # Refresh RustSec advisories weekly even when the repository is idle. All
+    # non-security jobs skip scheduled events below.
+    - cron: "17 4 * * 1"
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,11 +18,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Keep the weekly audit from cancelling an in-flight push build on `main`.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   lint:
+    if: github.event_name != 'schedule'
     name: Lint (fmt + clippy)
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -59,6 +65,7 @@ jobs:
           node --check examples/web_chat/static/js/app.js
 
   test:
+    if: github.event_name != 'schedule'
     name: Test (stable & nightly)
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -108,7 +115,43 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --all-features --no-deps --locked
 
+  platform:
+    if: github.event_name != 'schedule'
+    name: Platform (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows 2025
+            os: windows-2025
+          - name: macOS 15
+            os: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+          cache: true
+
+      - name: cargo check (all features + targets)
+        run: cargo check -p zai-rs --all-features --all-targets --locked
+
+      # The no-default suite uses only ephemeral loopback listeners. Its
+      # symlink-specific cases are already gated with `cfg(unix)`, so the same
+      # command is portable without duplicating Linux-only policy/tooling jobs.
+      - name: cargo test (core crate, no optional features)
+        run: cargo test -p zai-rs --no-default-features --tests --locked
+
   msrv:
+    if: github.event_name != 'schedule'
     name: MSRV (edition 2024 → 1.88)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -140,7 +183,24 @@ jobs:
               --features "${feature}" --all-targets --locked
           done
 
+      # Pairwise checks catch feature interactions that the individual-feature
+      # and all-features builds can both hide through feature unification.
+      - name: Verify every optional feature pair
+        run: |
+          for features in \
+            mcp,realtime \
+            mcp,toolkits \
+            mcp,rmcp-kits \
+            realtime,toolkits \
+            realtime,rmcp-kits \
+            toolkits,rmcp-kits
+          do
+            cargo check -p zai-rs --no-default-features \
+              --features "${features}" --all-targets --locked
+          done
+
   guide:
+    if: github.event_name != 'schedule'
     name: Guide (mdBook)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -166,6 +226,7 @@ jobs:
           mdbook test -L target/debug/deps
 
   link-check:
+    if: github.event_name != 'schedule'
     name: Link check (lychee)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -191,6 +252,7 @@ jobs:
         run: lychee --config lychee.toml --no-progress '*.md' 'docs/**/*.md' 'examples/**/*.md'
 
   coverage:
+    if: github.event_name != 'schedule'
     name: Coverage (cargo-llvm-cov)
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -213,8 +275,22 @@ jobs:
       # `--tests` mirrors the test matrix of the `test` job; doc-tests are not
       # instrumented by llvm-cov. The report is uploaded as a build artifact
       # instead of an external service so no token has to be managed.
-      - name: Generate lcov report
-        run: cargo llvm-cov --workspace --all-features --tests --locked --lcov --output-path lcov.info
+      # Baseline measured on 2026-07-24:
+      # regions 83.14%, functions 76.11%, lines 82.92%.
+      # These floors may only move upward. Keeping them explicit makes a
+      # coverage loss fail before the report is uploaded.
+      - name: Enforce coverage baseline and generate lcov report
+        run: |
+          cargo llvm-cov \
+            --workspace \
+            --all-features \
+            --tests \
+            --locked \
+            --fail-under-regions 83.10 \
+            --fail-under-functions 76.10 \
+            --fail-under-lines 82.90 \
+            --lcov \
+            --output-path lcov.info
 
       - name: Upload coverage report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -223,34 +299,64 @@ jobs:
           path: lcov.info
           if-no-files-found: error
 
-  security:
-    name: Security audit (${{ matrix.lockfile.name }})
+  semver:
+    if: github.event_name != 'schedule'
+    name: Public API compatibility (cargo-semver-checks)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        lockfile:
-          - name: workspace
-            path: .
-          - name: fuzz
-            path: fuzz
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
-      - name: Install cargo-audit with locked dependencies
-        run: cargo install cargo-audit --locked
-
-      - name: Run cargo-audit
-        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+      # cargo-semver-checks 0.49.0 requires Rust >=1.91. This toolchain is only
+      # for the analyzer; the crate's actual MSRV remains covered separately.
+      - name: Install analyzer Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: ${{ matrix.lockfile.path }}
+          toolchain: "1.97.1"
+          cache: true
+
+      - name: Install pinned cargo-semver-checks
+        run: ./scripts/bootstrap-tools.sh cargo-semver-checks
+
+      # The analyzer selects the latest published registry version. That is
+      # currently 0.6.0 and will advance automatically after later releases.
+      # A deliberate breaking release must update the package version and
+      # migration notes rather than hiding lints.
+      - name: Compare public API with latest crates.io release
+        run: cargo +1.97.1 semver-checks --package zai-rs --all-features --color never
+
+  security:
+    name: Security audit (workspace + fuzz)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.88
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.88.0"
+          cache: true
+
+      - name: Install pinned cargo-audit
+        run: ./scripts/bootstrap-tools.sh cargo-audit
+
+      - name: Audit workspace and fuzz lockfiles
+        run: |
+          audit_status=0
+          for lockfile in Cargo.lock fuzz/Cargo.lock; do
+            cargo audit --file "${lockfile}" || audit_status=1
+          done
+          exit "${audit_status}"
 
   supply-chain-policy:
+    if: github.event_name != 'schedule'
     name: Supply-chain policy (licenses + secrets)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -273,7 +379,9 @@ jobs:
           ./scripts/bootstrap-tools.sh gitleaks
 
       - name: Check dependency licenses and sources
-        run: cargo deny check
+        run: |
+          cargo deny check
+          cargo deny --manifest-path fuzz/Cargo.toml check
 
       # A custom Gitleaks config without inherited/default rules can report a
       # clean scan while checking nothing. Build (but never commit) a synthetic
@@ -297,6 +405,7 @@ jobs:
         run: gitleaks git --redact --no-banner --config .gitleaks.toml
 
   publish-dry-run:
+    if: github.event_name != 'schedule'
     name: Publish dry-run (packaging sanity)
     runs-on: ubuntu-24.04
     timeout-minutes: 25

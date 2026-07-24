@@ -69,7 +69,8 @@ pub mod prelude {
     pub use crate::mcp::*;
     pub use crate::toolkits::CacheStats;
     pub use crate::toolkits::core::{
-        DynTool, FunctionTool, ToolHandler, ToolMetadata, conversions,
+        CachePolicy, DynTool, FunctionTool, RetryPolicy, ToolExecutionPolicy, ToolHandler,
+        ToolMetadata, ToolRegistration, conversions,
     };
     pub use crate::toolkits::error::{ToolError, ToolResult, error_context};
     pub use crate::toolkits::executor::{
@@ -86,7 +87,10 @@ pub mod prelude {
 }
 
 pub use crate::toolkits::{
-    core::{FunctionTool, ToolMetadata},
+    core::{
+        CachePolicy, FunctionTool, RetryPolicy, ToolExecutionPolicy, ToolHandler, ToolMetadata,
+        ToolRegistration,
+    },
     error::{ToolError, ToolResult},
     executor::ToolExecutor,
 };

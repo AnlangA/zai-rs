@@ -158,7 +158,7 @@ pub enum TaskStatus {
     /// (`#[serde(other)]`) keeps a single unknown value from failing the whole
     /// response deserialization; callers should treat it as not-yet-complete
     /// (keep polling) or surface it, rather than aborting.
-    #[serde(other)]
+    #[serde(rename = "UNKNOWN", other)]
     Unknown,
 }
 impl TaskStatus {
@@ -177,6 +177,20 @@ impl TaskStatus {
 impl std::fmt::Display for TaskStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod task_status_tests {
+    use super::TaskStatus;
+
+    #[test]
+    fn unknown_status_serializes_consistently_with_display() {
+        assert_eq!(
+            serde_json::to_string(&TaskStatus::Unknown).unwrap(),
+            r#""UNKNOWN""#
+        );
+        assert_eq!(TaskStatus::Unknown.to_string(), "UNKNOWN");
     }
 }
 

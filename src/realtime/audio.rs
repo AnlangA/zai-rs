@@ -10,6 +10,7 @@
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 
 use crate::{ZaiResult, client::error::RealtimeErrorKind};
 
@@ -80,31 +81,52 @@ pub fn encode_wav_pcm_base64(samples: &[u8], sample_rate: u32) -> ZaiResult<Stri
     let chunk_size = data_len
         .checked_add(36)
         .ok_or_else(|| RealtimeErrorKind::Protocol("PCM input is too large for WAV".into()))?;
-    let capacity = samples
+    let total_len = samples
         .len()
         .checked_add(44)
         .ok_or_else(|| RealtimeErrorKind::Protocol("PCM input is too large for WAV".into()))?;
+    let encoded_len = base64::encoded_len(total_len, true)
+        .ok_or_else(|| RealtimeErrorKind::Protocol("PCM input is too large for base64".into()))?;
 
-    let mut wav = Vec::with_capacity(capacity);
+    // Build only the fixed-size header locally, then stream the header and PCM
+    // directly into the base64 destination. This avoids retaining a second
+    // full-size WAV Vec beside the encoded payload.
+    let mut header = [0u8; 44];
     // RIFF header
-    wav.extend_from_slice(b"RIFF");
-    wav.extend_from_slice(&chunk_size.to_le_bytes());
-    wav.extend_from_slice(b"WAVE");
+    header[0..4].copy_from_slice(b"RIFF");
+    header[4..8].copy_from_slice(&chunk_size.to_le_bytes());
+    header[8..12].copy_from_slice(b"WAVE");
     // fmt chunk
-    wav.extend_from_slice(b"fmt ");
-    wav.extend_from_slice(&16u32.to_le_bytes()); // PCM fmt chunk size
-    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    wav.extend_from_slice(&(channels as u16).to_le_bytes());
-    wav.extend_from_slice(&sample_rate.to_le_bytes());
-    wav.extend_from_slice(&byte_rate.to_le_bytes());
-    wav.extend_from_slice(&block_align.to_le_bytes());
-    wav.extend_from_slice(&((bytes_per_sample * 8) as u16).to_le_bytes()); // bits per sample
+    header[12..16].copy_from_slice(b"fmt ");
+    header[16..20].copy_from_slice(&16u32.to_le_bytes()); // PCM fmt chunk size
+    header[20..22].copy_from_slice(&1u16.to_le_bytes()); // PCM
+    header[22..24].copy_from_slice(&(channels as u16).to_le_bytes());
+    header[24..28].copy_from_slice(&sample_rate.to_le_bytes());
+    header[28..32].copy_from_slice(&byte_rate.to_le_bytes());
+    header[32..34].copy_from_slice(&block_align.to_le_bytes());
+    header[34..36].copy_from_slice(&((bytes_per_sample * 8) as u16).to_le_bytes());
     // data chunk
-    wav.extend_from_slice(b"data");
-    wav.extend_from_slice(&data_len.to_le_bytes());
-    wav.extend_from_slice(samples);
+    header[36..40].copy_from_slice(b"data");
+    header[40..44].copy_from_slice(&data_len.to_le_bytes());
 
-    Ok(encode_base64(&wav))
+    let mut encoded = Vec::with_capacity(encoded_len);
+    {
+        let mut encoder = base64::write::EncoderWriter::new(
+            &mut encoded,
+            &base64::engine::general_purpose::STANDARD,
+        );
+        encoder
+            .write_all(&header)
+            .and_then(|()| encoder.write_all(samples))
+            .and_then(|()| encoder.finish().map(|_| ()))
+            .map_err(|error| {
+                RealtimeErrorKind::Protocol(format!("base64 encode failed: {error}"))
+            })?;
+    }
+    String::from_utf8(encoded).map_err(|error| {
+        RealtimeErrorKind::Protocol(format!("base64 encoder produced invalid UTF-8: {error}"))
+            .into()
+    })
 }
 
 /// Base64-encode a JPEG video frame for

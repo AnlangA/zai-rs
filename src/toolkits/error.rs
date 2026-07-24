@@ -67,9 +67,10 @@ pub enum ToolError {
     /// Note: the timeout cancels only the *local* execution future. For a tool
     /// backed by a remote service (e.g. an MCP tool, or any tool that performs
     /// I/O), the request may already be on the wire and the remote side effect
-    /// may still occur. A timed-out call is not cached, and because
-    /// `TimeoutError` is retryable the same call may be issued more than once —
-    /// so keep per-call timeouts conservative for non-idempotent tools.
+    /// may still occur. A timed-out call is not cached. It may be issued again
+    /// only when the executor has a retry budget **and** that tool explicitly
+    /// declares [`RetryPolicy::Idempotent`](super::RetryPolicy::Idempotent);
+    /// leave the default policy in place for non-idempotent tools.
     #[error("Timeout error for tool '{tool}': execution exceeded {timeout:?}")]
     TimeoutError {
         /// Name of the tool.

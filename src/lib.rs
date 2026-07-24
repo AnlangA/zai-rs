@@ -23,7 +23,7 @@
 //! | Knowledge base | CRUD, document upload, retrieval | [`knowledge`] |
 //! | Tool calling | Function calling, web search, file parsing | [`tool`] |
 //! | MCP | Unified search, reader, repository, and vision capabilities | [`mcp`] |
-//! | Agent | Agent creation & management | [`agent`] |
+//! | Agent | Agent v1 invocation, async polling, conversation continuation | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
 //! | Real-time | WebSocket audio/video (GLM-Realtime) | [`realtime`] |
 //! | Coding Plan usage | GLM Coding Plan quota and remaining usage | [`usage`] |
@@ -40,7 +40,8 @@
 //! - [`tool`] — Tool implementations (web search, file parsing)
 //! - [`mcp`] — Unified MCP capabilities with automatic backend and transport
 //!   selection (feature `mcp`)
-//! - [`agent`] — Agent API (creation, chat, history)
+//! - [`agent`] — Agent v1 invocation, async-result polling, and conversation
+//!   continuation
 //! - [`toolkits`] — Tool execution framework (registration, execution, caching,
 //!   RMCP bridge)
 //! - [`realtime`] — Real-time audio/video communication (WebSocket,

@@ -25,7 +25,7 @@
 ### 重试策略
 
 重试采用 full jitter。第 `n` 次重试的随机等待上限为
-`min(8s, 200ms × 2^n)`；正整数秒格式的 `Retry-After` 可能延长等待。
+`min(8s, 200ms × 2^n)`；`Retry-After` 的正整数秒或 IMF-fixdate 格式可能延长等待。
 
 ### 哪些错误会重试
 
@@ -153,6 +153,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 种类型。完整闭环请参考
 `examples/function_call_with_toolkits.rs`，不要把 `model::Tools` 直接注册到
 `ToolExecutor`。
+
+### 从目录安全加载工具
+
+目录中的 JSON 只负责模型可见的名称、描述和参数 schema，不能声明本地缓存或重试
+权限。旧的 `add_functions_from_dir_with_registry` 保持兼容，并固定使用
+`CachePolicy::Never` / `RetryPolicy::Never`。若应用已经审计 handler 的副作用，可
+在本地 registration 中显式声明：
+
+```rust,ignore
+use std::{collections::HashMap, sync::Arc};
+use zai_rs::toolkits::{
+    CachePolicy, RetryPolicy, ToolExecutionPolicy, ToolHandler,
+    ToolRegistration, executor::ToolExecutor,
+};
+
+let handler: ToolHandler =
+    Arc::new(|arguments| Box::pin(async move { Ok(arguments) }));
+let registrations = HashMap::from([(
+    "local_lookup".to_string(),
+    ToolRegistration::new(handler).with_execution_policy(
+        ToolExecutionPolicy::new(CachePolicy::Pure, RetryPolicy::Never),
+    ),
+)]);
+
+let executor = ToolExecutor::builder().enable_cache().build();
+let names = executor.add_functions_from_dir_with_registrations(
+    "./tool-specs",
+    &registrations,
+    true,
+)?;
+```
+
+`strict = true` 要求每份 JSON 都存在同名本地 registration；`false` 会跳过缺失项，
+而没有对应文件的额外 registration 始终忽略。同一目录出现重复函数名，或目标
+executor 已有同名工具时，整批拒绝且不留下部分注册。所有 JSON 与选中的 schema
+也会在提交前完成解析/编译。JSON 中伪造的 `execution_policy` 字段始终被忽略；
+可信策略只能来自进程内构造的 `ToolRegistration`。
 
 ## 异步聊天
 
@@ -313,12 +350,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = ZaiClient::from_env()?;
     let file_id = "file-abc123";
 
-    let content = FileContentRequest::new(file_id).send_via(&client).await?;
-    println!("文件字节数: {}", content.len());
+    // 拉取式 chunk stream；慢消费者会自然施加背压。
+    let mut chunks = FileContentRequest::new(file_id).stream_via(&client).await?;
+    let mut received = 0usize;
+    while let Some(chunk) = chunks.next().await {
+        received += chunk?.len();
+    }
+    println!("文件字节数: {received}");
+
+    // 也可直接写入新文件；已存在的目标绝不会被覆盖。
+    let written = FileContentRequest::new(file_id)
+        .send_to_via(&client, "download.bin")
+        .await?;
+    println!("已写入: {written}");
 
     Ok(())
 }
 ```
+
+文件内容总量上限为 128 MiB。瞬时错误只会在第一个 chunk 对调用者可见前重试；
+中途断流会返回错误而不会重放已交付的字节。`send_to_via` 依赖目标文件系统支持
+hard link，先同步文件内容再执行 no-clobber 发布；当前不承诺父目录项的掉电持久性。
 
 ### 删除文件
 
@@ -490,10 +542,10 @@ for i in 0..10 {
 
 ### 2. 并发请求
 
-使用 Tokio 进行并发处理：
+使用有界并发，避免请求集合增长时同时占满连接、内存和上游配额：
 
 ```rust,ignore
-use tokio::task::JoinSet;
+use futures_util::{stream, StreamExt};
 use zai_rs::{ZaiClient, model::*};
 
 #[tokio::main]
@@ -501,18 +553,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queries = vec!["问题1", "问题2", "问题3"];
     let client = ZaiClient::from_env()?;
 
-    let mut tasks = JoinSet::new();
-    for query in queries {
+    let responses = stream::iter(queries.into_iter().map(|query| {
         let client = client.clone();
-        tasks.spawn(async move {
+        async move {
             ChatCompletion::new(GLM4_5_flash {}, TextMessage::user(query))
                 .send_via(&client)
                 .await
-        });
-    }
+        }
+    }))
+    .buffer_unordered(5);
+    tokio::pin!(responses);
 
-    while let Some(result) = tasks.join_next().await {
-        println!("{:?}", result??);
+    while let Some(result) = responses.next().await {
+        println!("{:?}", result?);
     }
 
     Ok(())
@@ -521,9 +574,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### 3. 合理设置超时
 
+全局默认由 `HttpTransportConfig` 管理。单个慢文件、短交互或特殊幂等请求可以使用
+带 `RequestOptions` 的轻量 client handle；它仍共享原 client 的连接池和凭据，选项
+不会进入 JSON body：
+
 ```rust,ignore
-// 通过 ZaiClient::builder(...).transport(HttpTransportConfig) 收紧统一传输层超时。
+use std::time::Duration;
+use zai_rs::{
+    ZaiClient,
+    client::RequestOptions,
+    file::FileContentRequest,
+};
+
+# async fn download(client: &ZaiClient) -> zai_rs::ZaiResult<()> {
+let scoped = client.clone().with_request_options(
+    RequestOptions::default()
+        .with_attempt_timeout(Duration::from_secs(10 * 60))?
+        .with_overall_timeout(Duration::from_secs(20 * 60))?
+        .with_max_attempts(2)?,
+);
+
+let bytes = FileContentRequest::new("file-id")
+    .send_via(&scoped)
+    .await?;
+# Ok(())
+# }
 ```
+
+优先级和作用范围：
+
+| `RequestOptions` | 普通/文件请求 | SSE |
+| --- | --- | --- |
+| `attempt_timeout` | 每次尝试的绝对 deadline；文件流中也包含调用方暂停消费的时间 | 未单独设置时，作为 handshake 和 idle 默认值 |
+| `overall_timeout` | 覆盖尝试、redirect 与 backoff | 只封顶 handshake，不限制已建立的长连接总寿命 |
+| `sse_handshake_timeout` | 不适用 | 建立响应和校验错误响应的 deadline |
+| `sse_idle_timeout` | 不适用 | 从最近一个响应 chunk 起算的绝对静默 deadline |
+| `max_attempts` | 不超过全局 `max_attempts` | 忽略；SSE POST 永不自动重放 |
+| `retry_override` | 显式声明幂等后，才允许 POST retry 和同源 307/308 重放 | 忽略 |
+
+timeout override 可高于全局默认，但仍受 attempt/SSE 24 小时、overall 72 小时的绝对
+上限约束；`max_attempts` 则始终以全局 transport 配置为上限。只有服务端具有可靠
+幂等键或去重语义时，才可使用 `RetryOverride::AssumeIdempotent`。
+SSE idle deadline 不会因调用方暂停 poll 而重新开始；恢复 poll 时，deadline 前已经
+进入网络缓冲的 chunk 优先交付，否则已到期的静默会立即报错。当前实现保持 pull-based
+背压，不为每条流启动无界后台 reader。
 
 ## 安全最佳实践
 

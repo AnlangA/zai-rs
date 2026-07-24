@@ -15,7 +15,7 @@ use std::{
 use bytes::Bytes;
 use futures_util::{Stream, stream};
 use tokio::{
-    sync::{broadcast, mpsc, watch},
+    sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc, watch},
     task::JoinHandle,
 };
 use tracing::{debug, warn};
@@ -54,6 +54,34 @@ const INBOUND_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
 /// backpressure or consumer lag is detected before large audio/event backlogs
 /// accumulate in memory.
 const SESSION_CHANNEL_CAPACITY: usize = 8;
+/// Only one caller may expand/serialize a large outbound event at a time.
+/// Once the exact JSON byte budget is reserved, the next caller may prepare
+/// concurrently while the prior command waits for the channel.
+const OUTBOUND_PREPARATION_CAPACITY: usize = 1;
+/// Aggregate bytes admitted to the regular outbound queue. A message-count
+/// bound alone permits eight maximum-size WebSocket messages to retain 64 MiB;
+/// the byte budget keeps the queued payload bounded to one maximum message.
+const OUTBOUND_QUEUE_BYTES_MAX: usize = WS_MESSAGE_MAX as usize;
+
+struct OutboundCommand {
+    json: String,
+    _budget: Option<OwnedSemaphorePermit>,
+}
+
+impl OutboundCommand {
+    fn unbudgeted(json: impl Into<String>) -> Self {
+        Self {
+            json: json.into(),
+            _budget: None,
+        }
+    }
+}
+
+impl From<String> for OutboundCommand {
+    fn from(json: String) -> Self {
+        Self::unbudgeted(json)
+    }
+}
 
 /// One decoded `response.audio.delta` payload with its correlation metadata.
 #[derive(Debug, Clone)]
@@ -255,13 +283,14 @@ impl SessionBuilder {
         let mut transport =
             super::transport::TungsteniteTransport::connect(&realtime_url, &authorization).await?;
 
-        if let Err(error) = transport.send(init).await {
+        if let Err(error) = transport.send_confirmed(init).await {
             let _ = transport.close().await;
             return Err(error);
         }
+        let transport = transport.into_buffered();
         debug!(model = %model_name, "Realtime session opened");
 
-        let (cmd_tx, cmd_rx) = mpsc::channel::<String>(SESSION_CHANNEL_CAPACITY);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<OutboundCommand>(SESSION_CHANNEL_CAPACITY);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let (events_tx, _) = broadcast::channel::<ServerEvent>(SESSION_CHANNEL_CAPACITY);
         let (audio_tx, _) = broadcast::channel::<RealtimeAudioChunk>(SESSION_CHANNEL_CAPACITY);
@@ -288,6 +317,8 @@ impl SessionBuilder {
 
         Ok(RealtimeSession {
             cmd_tx,
+            outbound_budget: Arc::new(Semaphore::new(OUTBOUND_QUEUE_BYTES_MAX)),
+            outbound_preparation: Arc::new(Semaphore::new(OUTBOUND_PREPARATION_CAPACITY)),
             shutdown_tx,
             events_tx,
             audio_tx,
@@ -304,13 +335,17 @@ impl SessionBuilder {
 /// Background event-loop body: drains commands onto the socket and fans server
 /// messages out to the broadcast channels. Generic over the transport so a mock
 /// can be substituted in tests.
-async fn run_loop<T: RealtimeTransport>(
+async fn run_loop<T, C>(
     mut transport: T,
-    mut cmd_rx: mpsc::Receiver<String>,
+    mut cmd_rx: mpsc::Receiver<C>,
     mut shutdown_rx: watch::Receiver<bool>,
     events_tx: broadcast::Sender<ServerEvent>,
     audio_tx: broadcast::Sender<RealtimeAudioChunk>,
-) -> ZaiResult<()> {
+) -> ZaiResult<()>
+where
+    T: RealtimeTransport,
+    C: Into<OutboundCommand>,
+{
     let idle_deadline = tokio::time::sleep(INBOUND_IDLE_TIMEOUT);
     tokio::pin!(idle_deadline);
 
@@ -357,12 +392,18 @@ async fn run_loop<T: RealtimeTransport>(
 
                     match cmd_rx.try_recv() {
                         Ok(command) => {
-                            if !handle_outbound(&mut transport, Some(command)).await? {
+                            if !handle_outbound(
+                                &mut transport,
+                                Some(command.into()),
+                                &mut shutdown_rx,
+                            )
+                            .await?
+                            {
                                 return Ok(());
                             }
                         },
                         Err(mpsc::error::TryRecvError::Disconnected) => {
-                            handle_outbound(&mut transport, None).await?;
+                            handle_outbound(&mut transport, None, &mut shutdown_rx).await?;
                             return Ok(());
                         },
                         Err(mpsc::error::TryRecvError::Empty) => {},
@@ -377,6 +418,10 @@ async fn run_loop<T: RealtimeTransport>(
                 },
                 Ok(None) => {
                     debug!("Realtime session closed (peer disconnected)");
+                    // The built-in transport owns an independent writer task;
+                    // join its shutdown even though the peer close itself is a
+                    // clean session outcome.
+                    let _ = transport.close().await;
                     return Ok(());
                 },
                 Err(error) => {
@@ -399,7 +444,13 @@ async fn run_loop<T: RealtimeTransport>(
                 .into());
             },
             cmd = cmd_rx.recv() => {
-                if !handle_outbound(&mut transport, cmd).await? {
+                if !handle_outbound(
+                    &mut transport,
+                    cmd.map(Into::into),
+                    &mut shutdown_rx,
+                )
+                .await?
+                {
                     return Ok(());
                 }
             },
@@ -445,15 +496,54 @@ fn decode_server_frame(text: &str) -> ZaiResult<DecodedServerFrame> {
 
 async fn handle_outbound<T: RealtimeTransport>(
     transport: &mut T,
-    message: Option<String>,
+    message: Option<OutboundCommand>,
+    shutdown_rx: &mut watch::Receiver<bool>,
 ) -> ZaiResult<bool> {
     match message {
-        Some(json) => {
-            if let Err(error) = transport.send(json).await {
-                let _ = transport.close().await;
-                return Err(error);
+        Some(command) => {
+            enum SendOutcome {
+                Sent(ZaiResult<()>),
+                Shutdown,
             }
-            Ok(true)
+            let OutboundCommand {
+                json,
+                _budget: budget,
+            } = command;
+
+            // A third-party transport may block inside `send`. The dedicated
+            // shutdown channel must still be able to cancel that future so
+            // `close()` never waits for an entire media backlog or write
+            // timeout. The built-in transport's send path is cancellation-safe
+            // because it only admits a frame to its bounded writer queue.
+            let outcome = {
+                let send = transport.send(json);
+                tokio::pin!(send);
+                loop {
+                    tokio::select! {
+                        biased;
+                        changed = shutdown_rx.changed() => {
+                            if changed.is_err() || *shutdown_rx.borrow() {
+                                break SendOutcome::Shutdown;
+                            }
+                        },
+                        result = &mut send => break SendOutcome::Sent(result),
+                    }
+                }
+            };
+            drop(budget);
+
+            match outcome {
+                SendOutcome::Sent(Ok(())) => Ok(true),
+                SendOutcome::Sent(Err(error)) => {
+                    let _ = transport.close().await;
+                    Err(error)
+                },
+                SendOutcome::Shutdown => {
+                    debug!("Realtime session closed (client requested)");
+                    transport.close().await?;
+                    Ok(false)
+                },
+            }
         },
         None => {
             debug!("Realtime session closed (client requested)");
@@ -468,7 +558,9 @@ async fn handle_outbound<T: RealtimeTransport>(
 /// Cheap to share indirectly via the channels it owns; call
 /// [`RealtimeSession::close`] to terminate the background task.
 pub struct RealtimeSession {
-    cmd_tx: mpsc::Sender<String>,
+    cmd_tx: mpsc::Sender<OutboundCommand>,
+    outbound_budget: Arc<Semaphore>,
+    outbound_preparation: Arc<Semaphore>,
     shutdown_tx: watch::Sender<bool>,
     events_tx: broadcast::Sender<ServerEvent>,
     audio_tx: broadcast::Sender<RealtimeAudioChunk>,
@@ -500,13 +592,16 @@ impl RealtimeSession {
                 "16-bit PCM input must contain an even number of bytes",
             ));
         }
-        let audio = match self.input_audio_format {
-            InputAudioFormat::Wav => encode_wav_pcm_base64(&pcm, 16_000)?,
-            InputAudioFormat::Pcm16 | InputAudioFormat::Pcm24 => encode_base64(&pcm),
-        };
-        self.dispatch(ClientEvent::InputAudioBufferAppend {
-            audio,
-            client_timestamp: Some(now_ms()),
+        let input_audio_format = self.input_audio_format;
+        self.prepare_and_dispatch(move || {
+            let audio = match input_audio_format {
+                InputAudioFormat::Wav => encode_wav_pcm_base64(&pcm, 16_000)?,
+                InputAudioFormat::Pcm16 | InputAudioFormat::Pcm24 => encode_base64(&pcm),
+            };
+            Ok(ClientEvent::InputAudioBufferAppend {
+                audio,
+                client_timestamp: Some(now_ms()),
+            })
         })
         .await
     }
@@ -523,9 +618,11 @@ impl RealtimeSession {
                 "realtime video frame must be a complete JPEG image",
             ));
         }
-        self.dispatch(ClientEvent::InputAudioBufferAppendVideoFrame {
-            video_frame: encode_jpeg_frame_base64(&jpeg),
-            client_timestamp: Some(now_ms()),
+        self.prepare_and_dispatch(move || {
+            Ok(ClientEvent::InputAudioBufferAppendVideoFrame {
+                video_frame: encode_jpeg_frame_base64(&jpeg),
+                client_timestamp: Some(now_ms()),
+            })
         })
         .await
     }
@@ -616,6 +713,10 @@ impl RealtimeSession {
     }
 
     /// Cancel the in-flight response (`response.cancel`), e.g. on interruption.
+    ///
+    /// The event shares the ordered application queue, so an awaited
+    /// `create_response()` or audio commit is always written before its later
+    /// cancellation.
     pub async fn cancel(&self) -> ZaiResult<()> {
         self.dispatch(ClientEvent::ResponseCancel {
             client_timestamp: Some(now_ms()),
@@ -659,9 +760,28 @@ impl RealtimeSession {
 
     #[tracing::instrument(name = "realtime.dispatch", skip(self, event))]
     async fn dispatch(&self, event: ClientEvent) -> ZaiResult<()> {
+        self.prepare_and_dispatch(|| Ok(event)).await
+    }
+
+    async fn prepare_and_dispatch<F>(&self, prepare: F) -> ZaiResult<()>
+    where
+        F: FnOnce() -> ZaiResult<ClientEvent>,
+    {
+        let admission = Arc::clone(&self.outbound_preparation)
+            .acquire_owned()
+            .await
+            .map_err(|_| RealtimeErrorKind::Closed)?;
+        let event = prepare()?;
         let message = serialize_event(&event)?;
+        // The serialized message contains the complete wire payload. Release
+        // the event (and its base64 String) before waiting for byte capacity.
+        drop(event);
+        let command = budget_outbound_command(Arc::clone(&self.outbound_budget), message).await?;
+        // Exact queued bytes are now accounted by `command`; another caller
+        // may prepare while this one waits for a channel slot.
+        drop(admission);
         self.cmd_tx
-            .send(message)
+            .send(command)
             .await
             .map_err(|_| RealtimeErrorKind::Closed.into())
     }
@@ -693,6 +813,22 @@ impl RealtimeSession {
             ))),
         }
     }
+}
+
+async fn budget_outbound_command(
+    budget: Arc<Semaphore>,
+    json: String,
+) -> ZaiResult<OutboundCommand> {
+    let permits = u32::try_from(json.len())
+        .map_err(|_| protocol_error("realtime outbound message length overflow"))?;
+    let permit = budget
+        .acquire_many_owned(permits)
+        .await
+        .map_err(|_| RealtimeErrorKind::Closed)?;
+    Ok(OutboundCommand {
+        json,
+        _budget: Some(permit),
+    })
 }
 
 struct BroadcastState<T> {
@@ -908,6 +1044,7 @@ mod run_loop_tests {
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     use std::time::Duration;
+    use tokio::sync::Notify;
 
     /// Mock transport with scripted responses.
     struct ScriptedTransport {
@@ -941,6 +1078,7 @@ mod run_loop_tests {
             self.sent.lock().unwrap().push(msg);
             Ok(())
         }
+
         async fn recv(&mut self) -> crate::ZaiResult<Option<WsMessage>> {
             match self.messages.pop_front() {
                 Some(message) => Ok(Some(WsMessage::Text(message))),
@@ -1004,6 +1142,64 @@ mod run_loop_tests {
         }
     }
 
+    struct BlockingSendTransport {
+        send_started: Arc<Notify>,
+        closed: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl RealtimeTransport for BlockingSendTransport {
+        async fn send(&mut self, _msg: String) -> crate::ZaiResult<()> {
+            self.send_started.notify_one();
+            std::future::pending().await
+        }
+
+        async fn recv(&mut self) -> crate::ZaiResult<Option<WsMessage>> {
+            std::future::pending().await
+        }
+
+        async fn close(&mut self) -> crate::ZaiResult<()> {
+            self.closed.store(true, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    /// Mirrors the built-in transport: `send` admits into a bounded writer
+    /// queue while an independent wire task can be blocked in the actual sink.
+    struct BufferedBlockingWireTransport {
+        writer_tx: mpsc::Sender<String>,
+        heartbeat_delivered: bool,
+        writer_shutdown: Arc<Notify>,
+        closed: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl RealtimeTransport for BufferedBlockingWireTransport {
+        async fn send(&mut self, msg: String) -> crate::ZaiResult<()> {
+            self.writer_tx
+                .try_send(msg)
+                .map_err(|_| protocol_error("test writer queue unavailable"))
+        }
+
+        async fn recv(&mut self) -> crate::ZaiResult<Option<WsMessage>> {
+            if self.heartbeat_delivered {
+                return std::future::pending().await;
+            }
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            // Mutate only after the cancellation-safe wait completes: the
+            // session select may drop this future when an outbound command is
+            // admitted to the independent writer.
+            self.heartbeat_delivered = true;
+            Ok(Some(WsMessage::Text(r#"{"type":"heartbeat"}"#.into())))
+        }
+
+        async fn close(&mut self) -> crate::ZaiResult<()> {
+            self.closed.store(true, Ordering::Relaxed);
+            self.writer_shutdown.notify_one();
+            Ok(())
+        }
+    }
+
     async fn assert_loop_ok(join: JoinHandle<ZaiResult<()>>) {
         tokio::time::timeout(Duration::from_secs(2), join)
             .await
@@ -1012,14 +1208,15 @@ mod run_loop_tests {
             .expect("run_loop returned an error");
     }
 
-    fn spawn_test_loop<T>(
+    fn spawn_test_loop<T, C>(
         transport: T,
-        cmd_rx: mpsc::Receiver<String>,
+        cmd_rx: mpsc::Receiver<C>,
         events_tx: broadcast::Sender<ServerEvent>,
         audio_tx: broadcast::Sender<RealtimeAudioChunk>,
     ) -> (watch::Sender<bool>, JoinHandle<ZaiResult<()>>)
     where
         T: RealtimeTransport + 'static,
+        C: Into<OutboundCommand> + Send + 'static,
     {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let join = tokio::spawn(run_loop(
@@ -1176,6 +1373,244 @@ mod run_loop_tests {
         shutdown_tx.send(true).unwrap();
         assert_loop_ok(join).await;
         assert!(closed.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn shutdown_preempts_a_blocked_third_party_send() {
+        let send_started = Arc::new(Notify::new());
+        let closed = Arc::new(AtomicBool::new(false));
+        let transport = BlockingSendTransport {
+            send_started: Arc::clone(&send_started),
+            closed: Arc::clone(&closed),
+        };
+        let (cmd_tx, cmd_rx) = mpsc::channel::<String>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<RealtimeAudioChunk>(16);
+        let (shutdown_tx, join) = spawn_test_loop(transport, cmd_rx, events_tx, audio_tx);
+
+        cmd_tx.send("blocked frame".into()).await.unwrap();
+        send_started.notified().await;
+        shutdown_tx.send(true).unwrap();
+        assert_loop_ok(join).await;
+        assert!(closed.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn blocked_wire_write_does_not_stall_heartbeat_or_close() {
+        let (writer_tx, mut writer_rx) = mpsc::channel::<String>(1);
+        let writer_blocked = Arc::new(AtomicBool::new(false));
+        let writer_shutdown = Arc::new(Notify::new());
+        let closed = Arc::new(AtomicBool::new(false));
+        let blocked = Arc::clone(&writer_blocked);
+        let stop = Arc::clone(&writer_shutdown);
+        let writer = tokio::spawn(async move {
+            let _frame = writer_rx.recv().await.expect("writer received frame");
+            blocked.store(true, Ordering::Relaxed);
+            stop.notified().await;
+        });
+        let transport = BufferedBlockingWireTransport {
+            writer_tx,
+            heartbeat_delivered: false,
+            writer_shutdown,
+            closed: Arc::clone(&closed),
+        };
+        let (cmd_tx, cmd_rx) = mpsc::channel::<String>(8);
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let mut events_rx = events_tx.subscribe();
+        let (audio_tx, _) = broadcast::channel::<RealtimeAudioChunk>(16);
+        let (shutdown_tx, join) = spawn_test_loop(transport, cmd_rx, events_tx, audio_tx);
+
+        cmd_tx.send("queued frame".into()).await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(
+            writer_blocked.load(Ordering::Relaxed),
+            "wire writer never entered its blocked state"
+        );
+
+        tokio::time::advance(Duration::from_secs(30)).await;
+        let heartbeat = events_rx.recv().await;
+        assert!(
+            matches!(heartbeat, Ok(ServerEvent::Heartbeat)),
+            "unexpected event while the wire writer was blocked: {heartbeat:?}"
+        );
+        assert!(!join.is_finished(), "heartbeat did not keep session alive");
+
+        shutdown_tx.send(true).unwrap();
+        assert_loop_ok(join).await;
+        writer.await.expect("writer task panicked");
+        assert!(closed.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn create_then_cancel_preserves_application_fifo_order() {
+        let transport = ScriptedTransport::new(vec![]);
+        let sent = Arc::clone(&transport.sent);
+        let (cmd_tx, cmd_rx) = mpsc::channel::<OutboundCommand>(8);
+        let (session_shutdown_tx, _) = watch::channel(false);
+        let (session_events_tx, _) = broadcast::channel(8);
+        let (session_audio_tx, _) = broadcast::channel(8);
+        let (_completion_tx, completion_rx) = watch::channel(None);
+        let session = RealtimeSession {
+            cmd_tx,
+            outbound_budget: Arc::new(Semaphore::new(OUTBOUND_QUEUE_BYTES_MAX)),
+            outbound_preparation: Arc::new(Semaphore::new(OUTBOUND_PREPARATION_CAPACITY)),
+            shutdown_tx: session_shutdown_tx,
+            initial_events_rx: Mutex::new(Some(session_events_tx.subscribe())),
+            initial_audio_rx: Mutex::new(Some(session_audio_tx.subscribe())),
+            events_tx: session_events_tx,
+            audio_tx: session_audio_tx,
+            completion_rx,
+            model_name: "test-realtime".into(),
+            input_audio_format: InputAudioFormat::Pcm16,
+            join: tokio::spawn(async { Ok(()) }),
+        };
+        session
+            .send_audio(Bytes::from_static(&[0, 0]))
+            .await
+            .unwrap();
+        session.commit_audio().await.unwrap();
+        session.create_response().await.unwrap();
+        session.cancel().await.unwrap();
+
+        let (events_tx, _) = broadcast::channel::<ServerEvent>(16);
+        let (audio_tx, _) = broadcast::channel::<RealtimeAudioChunk>(16);
+        let (shutdown_tx, join) = spawn_test_loop(transport, cmd_rx, events_tx, audio_tx);
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if sent.lock().unwrap().len() == 4 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("outbound commands were not drained");
+        shutdown_tx.send(true).unwrap();
+        assert_loop_ok(join).await;
+
+        let sent = sent.lock().unwrap();
+        let event_types: Vec<_> = sent
+            .iter()
+            .map(|json| {
+                serde_json::from_str::<serde_json::Value>(json).unwrap()["type"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(
+            event_types,
+            [
+                "input_audio_buffer.append",
+                "input_audio_buffer.commit",
+                "response.create",
+                "response.cancel"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn outbound_budget_counts_bytes_and_releases_on_drop() {
+        let budget = Arc::new(Semaphore::new(5));
+        let first = budget_outbound_command(Arc::clone(&budget), "1234".into())
+            .await
+            .unwrap();
+        let second = budget_outbound_command(Arc::clone(&budget), "12".into());
+        tokio::pin!(second);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut second)
+                .await
+                .is_err(),
+            "second payload ignored the aggregate byte budget"
+        );
+
+        drop(first);
+        let second = tokio::time::timeout(Duration::from_secs(1), second)
+            .await
+            .expect("released byte permits were not reusable")
+            .unwrap();
+        drop(second);
+        assert_eq!(budget.available_permits(), 5);
+    }
+
+    #[tokio::test]
+    async fn outbound_preparation_is_bounded_before_serialization() {
+        let (cmd_tx, mut cmd_rx) = mpsc::channel::<OutboundCommand>(8);
+        let (session_shutdown_tx, _) = watch::channel(false);
+        let (session_events_tx, _) = broadcast::channel(8);
+        let (session_audio_tx, _) = broadcast::channel(8);
+        let (_completion_tx, completion_rx) = watch::channel(None);
+        let budget = Arc::new(Semaphore::new(OUTBOUND_QUEUE_BYTES_MAX));
+        let session = RealtimeSession {
+            cmd_tx,
+            outbound_budget: Arc::clone(&budget),
+            outbound_preparation: Arc::new(Semaphore::new(OUTBOUND_PREPARATION_CAPACITY)),
+            shutdown_tx: session_shutdown_tx,
+            initial_events_rx: Mutex::new(Some(session_events_tx.subscribe())),
+            initial_audio_rx: Mutex::new(Some(session_audio_tx.subscribe())),
+            events_tx: session_events_tx,
+            audio_tx: session_audio_tx,
+            completion_rx,
+            model_name: "test-realtime".into(),
+            input_audio_format: InputAudioFormat::Pcm16,
+            join: tokio::spawn(async { Ok(()) }),
+        };
+        let blocked_budget = Arc::clone(&budget)
+            .acquire_many_owned(OUTBOUND_QUEUE_BYTES_MAX as u32)
+            .await
+            .unwrap();
+        let prepared = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let first = session.prepare_and_dispatch({
+            let prepared = Arc::clone(&prepared);
+            move || {
+                prepared.fetch_add(1, Ordering::SeqCst);
+                Ok(ClientEvent::ResponseCreate {
+                    client_timestamp: Some(1),
+                })
+            }
+        });
+        tokio::pin!(first);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut first)
+                .await
+                .is_err()
+        );
+        assert_eq!(prepared.load(Ordering::SeqCst), 1);
+
+        let second = session.prepare_and_dispatch({
+            let prepared = Arc::clone(&prepared);
+            move || {
+                prepared.fetch_add(1, Ordering::SeqCst);
+                Ok(ClientEvent::ResponseCancel {
+                    client_timestamp: Some(2),
+                })
+            }
+        });
+        tokio::pin!(second);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut second)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            prepared.load(Ordering::SeqCst),
+            1,
+            "the second event was prepared outside the admission bound"
+        );
+
+        drop(blocked_budget);
+        let (first_result, second_result) = tokio::join!(first, second);
+        first_result.unwrap();
+        second_result.unwrap();
+        assert_eq!(prepared.load(Ordering::SeqCst), 2);
+        assert!(budget.available_permits() < OUTBOUND_QUEUE_BYTES_MAX);
+
+        let first_command = cmd_rx.recv().await.unwrap();
+        let second_command = cmd_rx.recv().await.unwrap();
+        drop((first_command, second_command));
+        assert_eq!(budget.available_permits(), OUTBOUND_QUEUE_BYTES_MAX);
     }
 
     #[tokio::test]

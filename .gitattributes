@@ -13,3 +13,7 @@
 *.mp4 binary
 *.png binary
 *.wav binary
+
+# Fuzzer seeds are byte-exact protocol inputs; several intentionally contain
+# CR, invalid UTF-8, or NUL bytes and must not be normalized as text.
+fuzz/corpus/**/seed-* binary

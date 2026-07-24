@@ -55,6 +55,7 @@ impl CapturedFrame {
 pub enum ScriptedFrame {
     Text(String),
     Binary(Vec<u8>),
+    PingBurst(Vec<Vec<u8>>),
     Close,
 }
 
@@ -198,6 +199,16 @@ async fn run_connection(
             },
             Some(ScriptedFrame::Binary(bytes)) => {
                 if socket.send(Message::Binary(bytes.into())).await.is_err() {
+                    return;
+                }
+            },
+            Some(ScriptedFrame::PingBurst(payloads)) => {
+                for payload in payloads {
+                    if socket.feed(Message::Ping(payload.into())).await.is_err() {
+                        return;
+                    }
+                }
+                if socket.flush().await.is_err() {
                     return;
                 }
             },

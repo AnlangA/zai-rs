@@ -51,6 +51,12 @@ pub fn follow(
     if !allowed {
         return Ok(None);
     }
+    // `Url::join("")` resolves to `current`, so accepting a missing or blank
+    // Location would replay the request against the same URL. That is wasteful
+    // for GET and can duplicate effects for explicitly idempotent POSTs.
+    if location.trim().is_empty() {
+        return Ok(None);
+    }
     if hops >= MAX_REDIRECTS {
         return Err(redirect_err("redirect limit (3) exceeded"));
     }
@@ -131,6 +137,18 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert_eq!(result.as_str(), "https://open.bigmodel.cn/b");
+        }
+    }
+
+    #[test]
+    fn blank_location_is_terminal_instead_of_replaying_current_url() {
+        let cur = url("https://open.bigmodel.cn/a");
+        for location in ["", " ", "\t"] {
+            assert!(
+                follow(&cur, 307, location, RetrySafety::Idempotent, "POST", 0)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
 

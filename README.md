@@ -5,7 +5,8 @@
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
 当前仓库版本为 `0.6.0`。从旧版升级时，请先阅读
-[0.6 迁移指南](docs/MIGRATING-0.6.md)。
+[0.6 迁移指南](docs/MIGRATING-0.6.md)；评估当前尚未发布的加固改动时，还应阅读
+[安全加固迁移说明](docs/HARDENING_MIGRATION.md)。
 
 ## 快速开始
 
@@ -122,7 +123,7 @@ cargo run --example realtime_audio --features realtime
 | `web_search` | 网络搜索 |
 | `batches_create` | 批处理任务创建 |
 | `batches_cancel` | 批处理任务取消 |
-| `agent_invoke` | Agent v1 调用请求构造（wire 契约） |
+| `agent_invoke` | Agent v1 类型安全调用与异步结果轮询 |
 | `assistant` | 助手调用（单条消息） |
 | `application` | LLM 应用调用（文本输入） |
 | `batches_list` / `batches_retrieve` | 批处理任务列表 / 详情检索 |
@@ -251,9 +252,14 @@ client.close().await?;
 可直接显示或通过 `into_text()` 获取内容的 `McpTextResponse`。
 
 完整示例见 `examples/mcp.rs`。中国区可设置 `ZHIPU_API_KEY` 或
-`Z_AI_API_KEY`；国际区设置 `Z_AI_API_KEY`，并将 `Z_AI_MODE=ZAI`。首次使用
-视觉能力时 SDK 会自动启动本地 Vision MCP，因此需要 Node.js 22+。底层使用
-`rmcp 2.2.0`。
+`Z_AI_API_KEY`；国际区设置 `Z_AI_API_KEY`，并将 `Z_AI_MODE=ZAI`。Vision MCP
+默认不会下载或启动外部代码；生产环境应通过 `with_vision_mcp_command` 指定已审计、
+预安装的本地运行时。`with_vision_npx_download` 会显式恢复通过 Node.js 22+ 和
+`npx` 下载固定顶层版本 `@z_ai/mcp-server@0.1.2` 的便利行为，但 npm 的传递依赖不受
+`Cargo.lock`/`cargo-deny` 约束。两种模式下子进程都只继承最小运行环境以及
+`Z_AI_API_KEY`、`Z_AI_MODE` 和可选模型变量，不会继承其他应用令牌。底层使用
+`rmcp 2.2.0`。默认行为变化及工具执行策略迁移见
+[`docs/HARDENING_MIGRATION.md`](docs/HARDENING_MIGRATION.md)。
 
 每个 MCP 都有独立的完整功能示例：
 
@@ -265,8 +271,8 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 ```
 
 `mcp_zread` 会运行全部 3 个 ZRead 工具，`mcp_vision` 会运行全部 8 个 Vision
-工具。Vision 示例允许省略最后一个对比图片参数，此时会使用同一图片测试 UI
-差异检查；完整执行会产生多次视觉模型调用。
+工具，并在示例代码中显式选择 `npx` 下载。Vision 示例允许省略最后一个对比图片
+参数，此时会使用同一图片测试 UI 差异检查；完整执行会产生多次视觉模型调用。
 
 ### API 结构
 

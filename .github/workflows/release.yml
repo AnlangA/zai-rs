@@ -1,5 +1,6 @@
 # Verify and publish an annotated tag whose version matches Cargo.toml. Set
-# SKIP_PUBLISH=true in the release environment to run the checks without upload.
+# SKIP_PUBLISH=true in the release environment to package without crates.io
+# publication or GitHub attestations.
 name: Release
 
 on:
@@ -26,7 +27,10 @@ jobs:
     timeout-minutes: 30
     environment: crates-io
     permissions:
+      artifact-metadata: write
+      attestations: write
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -49,6 +53,7 @@ jobs:
           cache: true
 
       - name: Verify tag matches crate version
+        id: crate
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
@@ -57,9 +62,63 @@ jobs:
             echo "ERROR: tag ${TAG_NAME} does not match zai-rs v${crate_version}"
             exit 1
           fi
+          echo "version=${crate_version}" >> "${GITHUB_OUTPUT}"
 
-      - name: Publish (requires CRATES_IO_TOKEN)
+      - name: Install pinned SBOM generator
+        run: ./scripts/bootstrap-tools.sh cargo-cyclonedx
+
+      - name: Package crate
+        run: cargo package --locked -p zai-rs --all-features
+
+      - name: Generate SBOM and checksums
+        env:
+          CRATE_VERSION: ${{ steps.crate.outputs.version }}
+        run: |
+          package_dir="target/package/zai-rs-${CRATE_VERSION}"
+          sbom_name="zai-rs-${CRATE_VERSION}.cdx.json"
+          cargo cyclonedx \
+            --manifest-path "${package_dir}/Cargo.toml" \
+            --all-features \
+            --target all \
+            --format json \
+            --spec-version 1.5 \
+            --override-filename "zai-rs-${CRATE_VERSION}.cdx"
+          install -m 0644 "${package_dir}/${sbom_name}" "target/package/${sbom_name}"
+          (
+            cd target/package
+            sha256sum "zai-rs-${CRATE_VERSION}.crate" "${sbom_name}" > SHA256SUMS
+          )
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zai-rs-${{ steps.crate.outputs.version }}-release-evidence
+          if-no-files-found: error
+          path: |
+            target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
+            target/package/zai-rs-${{ steps.crate.outputs.version }}.cdx.json
+            target/package/SHA256SUMS
+
+      - name: Attest build provenance
+        if: ${{ vars.SKIP_PUBLISH != 'true' }}
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
+
+      - name: Attest SBOM
+        if: ${{ vars.SKIP_PUBLISH != 'true' }}
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
+          sbom-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.cdx.json
+
+      - name: Authenticate to crates.io
+        id: crates_io_auth
+        if: ${{ vars.SKIP_PUBLISH != 'true' }}
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+
+      - name: Publish
         if: ${{ vars.SKIP_PUBLISH != 'true' }}
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token }}
         run: cargo publish --locked -p zai-rs --all-features

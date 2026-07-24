@@ -103,6 +103,10 @@ let client = ZaiClient::builder(api_key).transport(config).build()?;
 统一传输层默认启用 gzip，并由 `ZaiClient` 持有的单一连接池透明解压响应；请求对象不会各自创建客户端。
 
 ### 设置合适的超时
+
+单次请求默认 60 秒。普通 JSON 调用通常应保持默认或收紧；只有预期的大文件慢速
+传输才应显式提高，配置上限为 24 小时。
+
 ```rust,ignore
 let config = HttpTransportConfig::builder()
     .request_timeout(Duration::from_secs(30))?
