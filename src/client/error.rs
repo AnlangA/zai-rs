@@ -1799,4 +1799,64 @@ mod tests {
             assert!(rendered.contains("[AUTH_REDACTED]"));
         }
     }
+
+    #[test]
+    fn request_metadata_merges_and_delegates_without_leaking_request_ids() {
+        let error = ZaiError::from_unrecognized_business_response(
+            503,
+            "UPSTREAM_BUSY".to_string(),
+            "upstream failed".to_string(),
+        )
+        .with_request_metadata(
+            RequestErrorMetadata::for_attempts(2)
+                .with_request_id(Some("request-42".to_string()))
+                .with_timeout_phase(TimeoutPhase::Attempt)
+                .with_retry_after(Some(Duration::from_secs(3))),
+        )
+        .with_request_metadata(
+            RequestErrorMetadata::for_attempts(1).with_timeout_phase(TimeoutPhase::Overall),
+        )
+        .with_request_metadata(
+            RequestErrorMetadata::for_attempts(4)
+                .with_request_id(Some("request-99".to_string()))
+                .with_retry_after(Some(Duration::from_secs(5))),
+        );
+
+        let metadata = error.request_metadata().unwrap();
+        assert_eq!(metadata.request_id(), Some("request-99"));
+        assert_eq!(metadata.attempts(), 4);
+        assert_eq!(metadata.timeout_phase(), Some(TimeoutPhase::Overall));
+        assert_eq!(metadata.retry_after(), Some(Duration::from_secs(5)));
+        assert_eq!(error.category(), ErrorCategory::Server);
+        assert!(error.is_retryable());
+        assert_eq!(error.code(), Some(503));
+        assert_eq!(error.raw_business_code(), Some("UPSTREAM_BUSY"));
+        assert_eq!(error.message(), "upstream failed");
+        assert_eq!(error.compact(), "HTTP[503]: upstream failed");
+        assert!(matches!(
+            error.source_error(),
+            ZaiError::HttpBusinessError(_)
+        ));
+
+        let metadata_debug = format!("{metadata:?}");
+        assert!(metadata_debug.contains("request_id_present: true"));
+        for rendered in [error.to_string(), format!("{error:?}"), error.compact()] {
+            assert!(!rendered.contains("request-42"));
+            assert!(!rendered.contains("request-99"));
+        }
+
+        let contextual = error.context("file list");
+        assert_eq!(contextual.message(), "file list: upstream failed");
+        assert_eq!(
+            contextual.request_metadata().unwrap().request_id(),
+            Some("request-99")
+        );
+
+        let local = ZaiError::ApiError {
+            code: 1200,
+            message: "local validation".to_string(),
+        };
+        assert_eq!(local.request_metadata(), None);
+        assert!(matches!(local.source_error(), ZaiError::ApiError { .. }));
+    }
 }
