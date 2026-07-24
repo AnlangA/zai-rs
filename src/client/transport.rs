@@ -1,8 +1,10 @@
-//! Buffered HTTP transport used internally by [`ZaiClient`](super::ZaiClient).
+//! HTTP transport used internally by [`ZaiClient`](super::ZaiClient).
 //!
 //! Execution pipeline:
 //! build request → enforce the JSON request limit → send/retry → buffer and cap
 //! the response → let the caller decode bytes or JSON.
+//! File-content downloads use a separate pull-based byte stream so callers can
+//! apply backpressure without buffering an entire file in memory.
 //!
 //! The default client uses a 10-second connect timeout and a 60-second
 //! per-attempt timeout. A configured transport derives its overall deadline as
@@ -43,6 +45,10 @@ use crate::client::transport::retry::{
 
 /// Authenticated response bytes from a successful SSE request.
 pub(crate) type SseByteStream = Pin<Box<dyn Stream<Item = ZaiResult<Bytes>> + Send + 'static>>;
+/// Authenticated, bounded bytes from a successful file-content request.
+pub(crate) type FileByteStream = Pin<Box<dyn Stream<Item = ZaiResult<Bytes>> + Send + 'static>>;
+type ResponseByteStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static>>;
 
 /// Timeout values used by the transport.
 ///
@@ -57,6 +63,15 @@ pub struct TimeoutPolicy {
     pub overall: Duration,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RequestPolicy {
+    attempt: Duration,
+    overall: Duration,
+    sse_handshake: Duration,
+    sse_idle: Duration,
+    max_attempts: u8,
+}
+
 impl Default for TimeoutPolicy {
     fn default() -> Self {
         Self {
@@ -67,6 +82,7 @@ impl Default for TimeoutPolicy {
 }
 
 /// Shared HTTP client and immutable transport policy owned by one `ZaiClient`.
+#[derive(Clone)]
 pub(crate) struct Transport {
     pub(crate) reqwest: reqwest::Client,
     pub(crate) timeouts: TimeoutPolicy,
@@ -181,6 +197,23 @@ enum AttemptStep {
     Final(TransportResponse),
 }
 
+struct FileStreamState {
+    transport: Transport,
+    method: &'static str,
+    url: String,
+    safety: RetrySafety,
+    attempt: u8,
+    max_attempts: u8,
+    redirect_hops: u8,
+    attempt_timeout: Duration,
+    attempt_deadline: tokio::time::Instant,
+    overall_deadline: tokio::time::Instant,
+    body: Option<ResponseByteStream>,
+    delivered: bool,
+    total: u64,
+    terminated: bool,
+}
+
 #[derive(Clone, Copy)]
 struct AttemptContext {
     safety: RetrySafety,
@@ -233,13 +266,17 @@ impl Transport {
             return Err(payload_too_large(JSON_REQUEST_MAX));
         }
 
-        let safety = prepped.retry_safety.effective(prepped.retry_override);
+        let policy =
+            resolve_request_policy(self.timeouts, self.max_attempts, prepped.request_options);
+        let safety = prepped
+            .retry_safety
+            .effective(prepped.request_options.retry_override());
         let started = tokio::time::Instant::now();
-        let deadline = started + self.timeouts.overall;
-        let max_attempts = effective_max_attempts(safety, self.max_attempts);
+        let deadline = started + policy.overall;
+        let max_attempts = effective_max_attempts(safety, policy.max_attempts);
 
         let mut attempt: u8 = 1;
-        let mut attempt_deadline = (started + self.timeouts.attempt).min(deadline);
+        let mut attempt_deadline = (started + policy.attempt).min(deadline);
         let mut url = prepped.url.clone();
         let mut hops: u8 = 0;
         loop {
@@ -289,7 +326,7 @@ impl Transport {
                         tokio::time::sleep(delay).await;
                         attempt += 1;
                         attempt_deadline =
-                            (tokio::time::Instant::now() + self.timeouts.attempt).min(deadline);
+                            (tokio::time::Instant::now() + policy.attempt).min(deadline);
                         continue;
                     }
                     return Ok(TransportResponse {
@@ -311,11 +348,66 @@ impl Transport {
                     }
                     tokio::time::sleep(delay).await;
                     attempt += 1;
-                    attempt_deadline =
-                        (tokio::time::Instant::now() + self.timeouts.attempt).min(deadline);
+                    attempt_deadline = (tokio::time::Instant::now() + policy.attempt).min(deadline);
                 },
             }
         }
+    }
+
+    /// Start a pull-based file response without buffering its successful body.
+    ///
+    /// Authentication, redirects, retry classification, MIME/business-error
+    /// validation and deadlines are completed inside the transport. A
+    /// transient body failure may be retried only until the first byte chunk is
+    /// yielded to the caller.
+    #[tracing::instrument(
+        name = "zai.http.file_stream",
+        skip_all,
+        fields(
+            operation_id = prepped.operation_id,
+            method = prepped.method,
+            route = prepped.route_template.as_str()
+        )
+    )]
+    pub(crate) async fn send_file(
+        &self,
+        prepped: &PreparedRequest<'_>,
+    ) -> ZaiResult<FileByteStream> {
+        if !matches!(&prepped.body, request::BodyKind::None)
+            || prepped.response_mode != ResponseMode::File
+        {
+            return Err(invalid(
+                "file streaming requires a body-less file response request",
+            ));
+        }
+
+        let policy =
+            resolve_request_policy(self.timeouts, self.max_attempts, prepped.request_options);
+        let safety = prepped
+            .retry_safety
+            .effective(prepped.request_options.retry_override());
+        let started = tokio::time::Instant::now();
+        let overall_deadline = started + policy.overall;
+        let mut state = FileStreamState {
+            transport: self.clone(),
+            method: prepped.method,
+            url: prepped.url.clone(),
+            safety,
+            attempt: 1,
+            max_attempts: effective_max_attempts(safety, policy.max_attempts),
+            redirect_hops: 0,
+            attempt_timeout: policy.attempt,
+            attempt_deadline: (started + policy.attempt).min(overall_deadline),
+            overall_deadline,
+            body: None,
+            delivered: false,
+            total: 0,
+            terminated: false,
+        };
+        state.open_response().await?;
+
+        let stream = futures_util::stream::unfold(state, FileStreamState::next_item);
+        Ok(Box::pin(stream))
     }
 
     /// Send one authenticated SSE request and return its response byte stream.
@@ -340,9 +432,11 @@ impl Transport {
             return Err(payload_too_large(JSON_REQUEST_MAX));
         }
 
-        let deadline = tokio::time::Instant::now() + self.timeouts.attempt;
+        let policy =
+            resolve_request_policy(self.timeouts, self.max_attempts, prepped.request_options);
+        let deadline = tokio::time::Instant::now() + policy.sse_handshake;
         let request = tokio::time::timeout(
-            self.timeouts.attempt,
+            policy.sse_handshake,
             self.build_request_with_accept(
                 prepped.method,
                 &prepped.url,
@@ -351,11 +445,11 @@ impl Transport {
             ),
         )
         .await
-        .map_err(|_| timeout_attempt())??;
+        .map_err(|_| timeout_sse_handshake())??;
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         let response = tokio::time::timeout(remaining, request.send())
             .await
-            .map_err(|_| timeout_attempt())?
+            .map_err(|_| timeout_sse_handshake())?
             .map_err(ZaiError::from)?;
 
         let status = response.status().as_u16();
@@ -370,7 +464,7 @@ impl Transport {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             let body = read_body(response, ERROR_BODY_MAX, remaining)
                 .await
-                .map_err(|error| body_read_error(error, ERROR_BODY_MAX, deadline))?;
+                .map_err(|error| sse_handshake_body_read_error(error, ERROR_BODY_MAX))?;
             if let Ok(text) = std::str::from_utf8(&body)
                 && let Some(error) = decode::extract_error_envelope(text)
             {
@@ -387,24 +481,39 @@ impl Transport {
                 .unwrap_or_else(|| invalid("SSE response did not use text/event-stream")));
         }
 
-        let idle_timeout = self.timeouts.attempt;
+        let idle_timeout = policy.sse_idle;
         let byte_stream = response.bytes_stream();
+        let idle_deadline = tokio::time::Instant::now() + idle_timeout;
         let stream = futures_util::stream::unfold(
-            (Box::pin(byte_stream), false),
-            move |(mut inner, terminated)| async move {
+            (Box::pin(byte_stream), false, idle_deadline),
+            move |(mut inner, terminated, idle_deadline)| async move {
                 if terminated {
                     return None;
                 }
-                match tokio::time::timeout(idle_timeout, inner.next()).await {
-                    Ok(Some(Ok(chunk))) if (chunk.len() as u64) <= JSON_RESPONSE_MAX => {
-                        Some((Ok(chunk), (inner, false)))
+                // Prefer an already-buffered network chunk over an elapsed
+                // timer. This keeps a paused consumer from manufacturing an
+                // idle timeout when bytes arrived before the deadline, while
+                // the absolute timer still fires immediately for a silent
+                // server when polling resumes.
+                let next = tokio::select! {
+                    biased;
+                    next = inner.next() => Some(next),
+                    () = tokio::time::sleep_until(idle_deadline) => None,
+                };
+                match next {
+                    Some(Some(Ok(chunk))) if (chunk.len() as u64) <= JSON_RESPONSE_MAX => {
+                        let next_deadline = tokio::time::Instant::now() + idle_timeout;
+                        Some((Ok(chunk), (inner, false, next_deadline)))
                     },
-                    Ok(Some(Ok(_))) => {
-                        Some((Err(response_too_large(JSON_RESPONSE_MAX)), (inner, true)))
+                    Some(Some(Ok(_))) => Some((
+                        Err(response_too_large(JSON_RESPONSE_MAX)),
+                        (inner, true, idle_deadline),
+                    )),
+                    Some(Some(Err(error))) => {
+                        Some((Err(ZaiError::from(error)), (inner, true, idle_deadline)))
                     },
-                    Ok(Some(Err(error))) => Some((Err(ZaiError::from(error)), (inner, true))),
-                    Ok(None) => None,
-                    Err(_) => Some((Err(timeout_attempt()), (inner, true))),
+                    Some(None) => None,
+                    None => Some((Err(timeout_sse_idle()), (inner, true, idle_deadline))),
                 }
             },
         );
@@ -560,10 +669,296 @@ impl Transport {
     }
 }
 
+impl FileStreamState {
+    async fn open_response(&mut self) -> ZaiResult<()> {
+        loop {
+            if tokio::time::Instant::now() >= self.overall_deadline {
+                return Err(timeout_overall());
+            }
+
+            let remaining = self
+                .attempt_deadline
+                .saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                let error = self.current_timeout();
+                self.retry_transient(error).await?;
+                continue;
+            }
+
+            let body = request::BodyKind::None;
+            let request = match tokio::time::timeout(
+                remaining,
+                self.transport
+                    .build_request(self.method, &self.url, &body, ResponseMode::File),
+            )
+            .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    let error = self.current_timeout();
+                    self.retry_transient(error).await?;
+                    continue;
+                },
+            };
+
+            let remaining = self
+                .attempt_deadline
+                .saturating_duration_since(tokio::time::Instant::now());
+            let response = match tokio::time::timeout(remaining, request.send()).await {
+                Ok(Ok(response)) => response,
+                Ok(Err(error)) => {
+                    self.retry_transient(error.into()).await?;
+                    continue;
+                },
+                Err(_) => {
+                    let error = self.current_timeout();
+                    self.retry_transient(error).await?;
+                    continue;
+                },
+            };
+
+            let status = response.status().as_u16();
+            let headers = response.headers().clone();
+            if (300..400).contains(&status) {
+                let location = headers
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default();
+                let current =
+                    url::Url::parse(&self.url).map_err(|_| invalid("current url parse"))?;
+                if let Ok(Some(target)) = follow_redirect(
+                    &current,
+                    status,
+                    location,
+                    self.safety,
+                    self.method,
+                    self.redirect_hops,
+                ) {
+                    self.redirect_hops += 1;
+                    self.url = target.to_string();
+                    continue;
+                }
+            }
+
+            let content_type = headers
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            let content_type_error = ResponseMode::File.validate_content_type(content_type).err();
+            if (200..300).contains(&status) && content_type_error.is_none() {
+                let announced_length = headers
+                    .get(reqwest::header::CONTENT_LENGTH)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<u64>().ok());
+                if announced_length.is_some_and(|length| length > MULTIPART_FILE_BYTES_MAX) {
+                    return Err(response_too_large(MULTIPART_FILE_BYTES_MAX));
+                }
+                self.body = Some(Box::pin(response.bytes_stream()));
+                return Ok(());
+            }
+
+            let remaining = self
+                .attempt_deadline
+                .saturating_duration_since(tokio::time::Instant::now());
+            let response_body = match read_body(response, ERROR_BODY_MAX, remaining).await {
+                Ok(body) => body,
+                Err(BodyReadError::Network(error)) => {
+                    self.retry_transient(error.into()).await?;
+                    continue;
+                },
+                Err(BodyReadError::Timeout) => {
+                    let error = self.current_timeout();
+                    self.retry_transient(error).await?;
+                    continue;
+                },
+                Err(BodyReadError::TooLarge) => {
+                    return Err(response_too_large(ERROR_BODY_MAX));
+                },
+            };
+
+            let should_probe_business_error = !(200..300).contains(&status)
+                || decode::validate_json_content_type(content_type).is_ok();
+            let business_error = should_probe_business_error
+                .then(|| std::str::from_utf8(&response_body).ok())
+                .flatten()
+                .and_then(decode::extract_error_envelope);
+            let business_code = business_error
+                .as_ref()
+                .and_then(|error| error.code.as_ref())
+                .and_then(parse_business_code);
+
+            if self.safety == RetrySafety::Idempotent
+                && is_retryable_outcome(status, business_code)
+                && self.attempt < self.max_attempts
+            {
+                let retry_after = headers
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(parse_retry_after);
+                self.schedule_retry(retry_after).await?;
+                continue;
+            }
+            if let Some(error) = business_error {
+                return Err(api_error(status, error));
+            }
+            if !(200..300).contains(&status) {
+                return Err(ZaiError::from_api_response(
+                    status,
+                    0,
+                    String::from_utf8_lossy(&response_body).into_owned(),
+                ));
+            }
+            return Err(content_type_error
+                .unwrap_or_else(|| invalid("file response did not use application/octet-stream")));
+        }
+    }
+
+    async fn next_item(mut self) -> Option<(ZaiResult<Bytes>, Self)> {
+        if self.terminated {
+            return None;
+        }
+
+        loop {
+            let remaining = self
+                .attempt_deadline
+                .saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                let error = self.current_timeout();
+                if let Err(error) = self.retry_body_failure(error).await {
+                    self.terminated = true;
+                    self.body = None;
+                    return Some((Err(error), self));
+                }
+                continue;
+            }
+
+            let next = match self.body.as_mut() {
+                Some(body) => tokio::time::timeout(remaining, body.next()).await,
+                None => {
+                    self.terminated = true;
+                    return Some((
+                        Err(invalid("file response stream was not initialized")),
+                        self,
+                    ));
+                },
+            };
+            match next {
+                Ok(Some(Ok(chunk))) if chunk.is_empty() => continue,
+                Ok(Some(Ok(chunk))) => {
+                    let next_total = match self.total.checked_add(chunk.len() as u64) {
+                        Some(total) if total <= MULTIPART_FILE_BYTES_MAX => total,
+                        _ => {
+                            self.terminated = true;
+                            self.body = None;
+                            return Some((Err(response_too_large(MULTIPART_FILE_BYTES_MAX)), self));
+                        },
+                    };
+                    self.total = next_total;
+                    self.delivered = true;
+                    return Some((Ok(chunk), self));
+                },
+                Ok(Some(Err(error))) => {
+                    if let Err(error) = self.retry_body_failure(error.into()).await {
+                        self.terminated = true;
+                        self.body = None;
+                        return Some((Err(error), self));
+                    }
+                },
+                Ok(None) => {
+                    self.terminated = true;
+                    self.body = None;
+                    return None;
+                },
+                Err(_) => {
+                    let error = self.current_timeout();
+                    if let Err(error) = self.retry_body_failure(error).await {
+                        self.terminated = true;
+                        self.body = None;
+                        return Some((Err(error), self));
+                    }
+                },
+            }
+        }
+    }
+
+    async fn retry_body_failure(&mut self, error: ZaiError) -> ZaiResult<()> {
+        if self.delivered || self.attempt >= self.max_attempts {
+            return Err(error);
+        }
+        self.body = None;
+        self.schedule_retry(None).await?;
+        self.open_response().await
+    }
+
+    async fn retry_transient(&mut self, error: ZaiError) -> ZaiResult<()> {
+        if self.attempt >= self.max_attempts {
+            return Err(error);
+        }
+        self.schedule_retry(None).await
+    }
+
+    async fn schedule_retry(&mut self, hint: Option<Duration>) -> ZaiResult<()> {
+        let computed = backoff_delay(u32::from(self.attempt) - 1, self.transport.jitter.as_ref());
+        let delay = reconcile_retry_after(hint, computed);
+        if !delay_fits_before(delay, self.overall_deadline) {
+            return Err(timeout_overall());
+        }
+        tokio::time::sleep(delay).await;
+        if tokio::time::Instant::now() >= self.overall_deadline {
+            return Err(timeout_overall());
+        }
+        self.attempt += 1;
+        self.attempt_deadline =
+            (tokio::time::Instant::now() + self.attempt_timeout).min(self.overall_deadline);
+        Ok(())
+    }
+
+    fn current_timeout(&self) -> ZaiError {
+        if tokio::time::Instant::now() >= self.overall_deadline {
+            timeout_overall()
+        } else {
+            timeout_attempt()
+        }
+    }
+}
+
 fn effective_max_attempts(safety: RetrySafety, configured: u8) -> u8 {
     match safety {
         RetrySafety::Idempotent => configured.max(1),
         RetrySafety::NonIdempotent => 1,
+    }
+}
+
+fn resolve_request_policy(
+    defaults: TimeoutPolicy,
+    configured_max_attempts: u8,
+    options: crate::client::RequestOptions,
+) -> RequestPolicy {
+    let attempt = options.attempt_timeout().unwrap_or(defaults.attempt);
+    let max_attempts = options
+        .max_attempts()
+        .unwrap_or(configured_max_attempts)
+        .min(configured_max_attempts)
+        .max(1);
+    let overall = options.overall_timeout().unwrap_or_else(|| {
+        if options.attempt_timeout().is_some() || options.max_attempts().is_some() {
+            attempt.saturating_mul(u32::from(max_attempts))
+        } else {
+            defaults.overall
+        }
+    });
+    let sse_handshake = options
+        .sse_handshake_timeout()
+        .unwrap_or(attempt)
+        .min(overall);
+    let sse_idle = options.sse_idle_timeout().unwrap_or(attempt);
+
+    RequestPolicy {
+        attempt,
+        overall,
+        sse_handshake,
+        sse_idle,
+        max_attempts,
     }
 }
 
@@ -578,12 +973,21 @@ fn response_limit(status: u16, mode: ResponseMode) -> u64 {
 }
 
 fn api_error(status: u16, error: decode::BusinessError) -> ZaiError {
-    let code = error
-        .code
-        .as_ref()
-        .and_then(parse_business_code)
-        .unwrap_or(0);
-    ZaiError::from_api_response(status, code, error.message)
+    let Some(wire_code) = error.code.as_ref() else {
+        return ZaiError::from_api_response(status, 0, error.message);
+    };
+    if let Some(code) = parse_business_code(wire_code) {
+        let mapped = ZaiError::from_api_response(status, code, error.message.clone());
+        if !matches!(&mapped, ZaiError::HttpBusinessError(_)) {
+            return mapped;
+        }
+    }
+
+    ZaiError::from_unrecognized_business_response(
+        status,
+        business_code_diagnostic(wire_code),
+        error.message,
+    )
 }
 
 pub(crate) fn parse_business_code(value: &serde_json::Value) -> Option<u16> {
@@ -593,6 +997,32 @@ pub(crate) fn parse_business_code(value: &serde_json::Value) -> Option<u16> {
             .and_then(|number| u16::try_from(number).ok()),
         serde_json::Value::String(number) => number.parse().ok(),
         _ => None,
+    }
+}
+
+fn business_code_diagnostic(value: &serde_json::Value) -> String {
+    const MAX_CHARS: usize = 128;
+
+    fn bounded(value: &str) -> String {
+        let mut chars = value.chars();
+        let prefix: String = chars.by_ref().take(MAX_CHARS).collect();
+        if chars.next().is_some() {
+            format!("{prefix}…")
+        } else {
+            prefix
+        }
+    }
+
+    match value {
+        serde_json::Value::String(value) => {
+            let value = bounded(&crate::client::error::mask_sensitive_info(value));
+            serde_json::to_string(&value).unwrap_or_else(|_| "\"<text>\"".to_string())
+        },
+        serde_json::Value::Number(value) => bounded(&value.to_string()),
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Array(_) => "<array>".to_string(),
+        serde_json::Value::Object(_) => "<object>".to_string(),
     }
 }
 
@@ -613,6 +1043,14 @@ fn body_read_error(
             timeout_overall()
         },
         BodyReadError::Timeout => timeout_attempt(),
+        BodyReadError::TooLarge => response_too_large(limit),
+    }
+}
+
+fn sse_handshake_body_read_error(error: BodyReadError, limit: u64) -> ZaiError {
+    match error {
+        BodyReadError::Network(error) => error.into(),
+        BodyReadError::Timeout => timeout_sse_handshake(),
         BodyReadError::TooLarge => response_too_large(limit),
     }
 }
@@ -686,6 +1124,20 @@ fn timeout_overall() -> ZaiError {
     }
 }
 
+fn timeout_sse_handshake() -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_TIMEOUT,
+        message: "SSE handshake timeout exceeded".to_string(),
+    }
+}
+
+fn timeout_sse_idle() -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_TIMEOUT,
+        message: "SSE idle timeout exceeded".to_string(),
+    }
+}
+
 fn delay_fits_before(delay: Duration, deadline: tokio::time::Instant) -> bool {
     deadline
         .checked_duration_since(tokio::time::Instant::now())
@@ -718,6 +1170,41 @@ mod tests {
     }
 
     #[test]
+    fn request_options_resolve_against_global_upper_bounds() {
+        let defaults = TimeoutPolicy {
+            attempt: Duration::from_secs(60),
+            overall: Duration::from_secs(180),
+        };
+        let options = crate::client::RequestOptions::default()
+            .with_attempt_timeout(Duration::from_secs(10))
+            .unwrap()
+            .with_sse_handshake_timeout(Duration::from_secs(4))
+            .unwrap()
+            .with_sse_idle_timeout(Duration::from_secs(7))
+            .unwrap()
+            .with_max_attempts(3)
+            .unwrap();
+
+        let policy = resolve_request_policy(defaults, 2, options);
+        assert_eq!(policy.attempt, Duration::from_secs(10));
+        assert_eq!(policy.overall, Duration::from_secs(20));
+        assert_eq!(policy.sse_handshake, Duration::from_secs(4));
+        assert_eq!(policy.sse_idle, Duration::from_secs(7));
+        assert_eq!(policy.max_attempts, 2);
+
+        let options = crate::client::RequestOptions::default()
+            .with_attempt_timeout(Duration::from_secs(10))
+            .unwrap()
+            .with_overall_timeout(Duration::from_secs(3))
+            .unwrap()
+            .with_sse_handshake_timeout(Duration::from_secs(8))
+            .unwrap();
+        let policy = resolve_request_policy(defaults, 2, options);
+        assert_eq!(policy.overall, Duration::from_secs(3));
+        assert_eq!(policy.sse_handshake, Duration::from_secs(3));
+    }
+
+    #[test]
     fn system_jitter_respects_zero_and_upper_bound() {
         let jitter = SystemJitter;
         assert_eq!(jitter.jitter(Duration::ZERO), Duration::ZERO);
@@ -725,5 +1212,26 @@ mod tests {
         for _ in 0..100 {
             assert!(jitter.jitter(upper) <= upper);
         }
+    }
+
+    #[test]
+    fn business_code_diagnostic_is_canonical_bounded_and_redacted() {
+        assert_eq!(
+            business_code_diagnostic(&serde_json::json!("UPSTREAM_BUSY")),
+            r#""UPSTREAM_BUSY""#
+        );
+        assert_eq!(
+            business_code_diagnostic(&serde_json::json!(70_000)),
+            "70000"
+        );
+
+        let secret = "api_key=abc123.abcdefghijklmnopqrstuvwxyz";
+        let diagnostic = business_code_diagnostic(&serde_json::json!(secret));
+        assert!(!diagnostic.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(diagnostic.contains("[FILTERED]"));
+
+        let diagnostic = business_code_diagnostic(&serde_json::json!("x".repeat(200)));
+        assert!(diagnostic.chars().count() <= 131);
+        assert!(diagnostic.ends_with("…\""));
     }
 }

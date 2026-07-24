@@ -84,7 +84,6 @@ macro_rules! route {
 use Segment::{Parameter as P, Static as S};
 
 route!(
-    #[cfg(test)]
     AGENTS_INVOKE,
     "agents.invoke",
     "POST",
@@ -92,7 +91,6 @@ route!(
     [S("agents")]
 );
 route!(
-    #[cfg(test)]
     AGENTS_ASYNC_RESULT,
     "agents.async_result",
     "POST",
@@ -100,7 +98,6 @@ route!(
     [S("agents"), S("async-result")]
 );
 route!(
-    #[cfg(test)]
     AGENTS_CONVERSATION,
     "agents.conversation",
     "POST",

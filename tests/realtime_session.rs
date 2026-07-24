@@ -294,6 +294,36 @@ async fn client_events_and_server_events_round_trip() {
 }
 
 #[tokio::test]
+async fn burst_pings_are_coalesced_without_closing_the_session() {
+    let pings = (0_u8..=8).map(|value| vec![value]).collect();
+    let (server, session) = open_session(vec![
+        ScriptedFrame::PingBurst(pings),
+        ScriptedFrame::json(json!({
+            "type": "response.text.delta",
+            "response_id": "resp_ping",
+            "item_id": "item_ping",
+            "delta": "alive",
+        })),
+    ])
+    .await;
+
+    let mut events = session.events();
+    let event = next_or_timeout(&mut events, "event after Ping burst").await;
+    assert!(
+        matches!(event, ServerEvent::ResponseTextDelta { delta, .. } if delta == "alive"),
+        "session closed while processing a legal Ping burst"
+    );
+    drop(events);
+
+    session.send_text("still alive").await.unwrap();
+    let frames = server.wait_for_frames(2).await;
+    assert_eq!(frame_json(&frames[1])["type"], "conversation.item.create");
+
+    session.close().await.unwrap();
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn server_error_event_maps_to_typed_error_and_session_survives() {
     let (server, session) = open_session(vec![ScriptedFrame::json(json!({
         "type": "error",

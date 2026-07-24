@@ -28,7 +28,8 @@ export ZHIPU_API_KEY="your-api-key-here"
 
 ### 高级配置
 
-使用 `HttpTransportConfig` 配置统一传输层。配置只允许收紧 SDK 的安全上限：
+使用 `HttpTransportConfig` 配置统一传输层。连接超时保持 10 秒上限；单次请求默认
+60 秒，可按慢速大文件传输需要显式提高（最高 24 小时）：
 
 ```rust,ignore
 use zai_rs::client::{HttpTransportConfig, ZaiClient};
@@ -42,6 +43,12 @@ let client = ZaiClient::builder(std::env::var("ZHIPU_API_KEY")?)
     .transport(transport)
     .build()?;
 ```
+
+若只有某一次调用需要不同 deadline，可在不新建连接池的情况下使用
+`client.clone().with_request_options(RequestOptions::default()...)`。可分别设置
+attempt、overall、SSE handshake 与 SSE idle；请求次数只能低于或等于全局
+`max_attempts`，SSE 始终不会自动重放。完整矩阵见
+[高级主题](ADVANCED_TOPICS.md#3-合理设置超时)。
 
 ### 日志配置
 
@@ -201,7 +208,8 @@ async fn main() {
 
 ## API 密钥验证
 
-SDK 自动验证 API 密钥格式：
+`ZaiClient` 构建时会拒绝空值、空白字符和不能安全写入认证 header 的 API key。
+如需额外验证常见的 `id.secret` 形态，请显式调用：
 
 ```rust,ignore
 use zai_rs::client::error::validate_api_key;

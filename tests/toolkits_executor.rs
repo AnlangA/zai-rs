@@ -11,14 +11,21 @@ use std::{
 };
 
 use serde_json::json;
-use tokio::sync::{Notify, Semaphore};
+use tokio::sync::{Barrier, Notify, Semaphore};
 use zai_rs::{
     model::chat_base_response::{ToolCallMessage, ToolFunction},
-    toolkits::{core::FunctionTool, executor::ToolExecutor},
+    toolkits::{
+        core::{CachePolicy, FunctionTool, RetryPolicy, ToolExecutionPolicy},
+        executor::ToolExecutor,
+    },
 };
 
 fn counting_echo(name: &str, calls: Arc<AtomicUsize>, label: &'static str) -> FunctionTool {
     FunctionTool::builder(name, "echo a value")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Pure,
+            RetryPolicy::Never,
+        ))
         .property("value", json!({"type": "integer"}))
         .handler(move |arguments| {
             let calls = Arc::clone(&calls);
@@ -32,10 +39,117 @@ fn counting_echo(name: &str, calls: Arc<AtomicUsize>, label: &'static str) -> Fu
 }
 
 #[tokio::test]
+async fn concurrent_pure_cache_misses_execute_once() {
+    const CALLERS: usize = 16;
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let handler_calls = Arc::clone(&calls);
+    let tool = FunctionTool::builder("singleflight", "singleflight fixture")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Pure,
+            RetryPolicy::Never,
+        ))
+        .handler(move |_| {
+            let calls = Arc::clone(&handler_calls);
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                Ok(json!({"shared": true}))
+            }
+        })
+        .build()
+        .unwrap();
+    let executor = ToolExecutor::builder().enable_cache().build();
+    executor.add_dyn_tool(Box::new(tool)).unwrap();
+    let barrier = Arc::new(Barrier::new(CALLERS));
+
+    let tasks = (0..CALLERS)
+        .map(|_| {
+            let executor = executor.clone();
+            let barrier = Arc::clone(&barrier);
+            tokio::spawn(async move {
+                barrier.wait().await;
+                executor.execute("singleflight", json!({})).await.unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut cache_hits = 0;
+    for task in tasks {
+        let result = task.await.unwrap();
+        assert!(result.success);
+        assert_eq!(result.result, json!({"shared": true}));
+        cache_hits += usize::from(result.cache_hit);
+    }
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(cache_hits, CALLERS - 1);
+    let stats = executor.cache_stats();
+    assert_eq!(stats.total_misses, 1);
+    assert_eq!(stats.total_hits, (CALLERS - 1) as u64);
+}
+
+#[tokio::test]
+async fn cancelled_singleflight_leader_hands_execution_to_waiter() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let started = Arc::new(Notify::new());
+    let tool = FunctionTool::builder("cancelled_leader", "cancellation fixture")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Pure,
+            RetryPolicy::Never,
+        ))
+        .handler({
+            let calls = Arc::clone(&calls);
+            let started = Arc::clone(&started);
+            move |_| {
+                let invocation = calls.fetch_add(1, Ordering::SeqCst);
+                let started = Arc::clone(&started);
+                async move {
+                    if invocation == 0 {
+                        started.notify_one();
+                        std::future::pending::<()>().await;
+                    }
+                    Ok(json!({"invocation": invocation + 1}))
+                }
+            }
+        })
+        .build()
+        .unwrap();
+    let executor = ToolExecutor::builder().enable_cache().build();
+    executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+    let leader = {
+        let executor = executor.clone();
+        tokio::spawn(async move { executor.execute("cancelled_leader", json!({})).await })
+    };
+    started.notified().await;
+    let waiter = {
+        let executor = executor.clone();
+        tokio::spawn(async move { executor.execute("cancelled_leader", json!({})).await })
+    };
+    tokio::task::yield_now().await;
+    leader.abort();
+    assert!(leader.await.unwrap_err().is_cancelled());
+
+    let result = tokio::time::timeout(Duration::from_secs(1), waiter)
+        .await
+        .expect("waiter remained blocked after leader cancellation")
+        .unwrap()
+        .unwrap();
+    assert!(result.success);
+    assert_eq!(result.result, json!({"invocation": 2}));
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
 async fn late_old_result_cannot_pollute_re_registered_tool_cache() {
     let started = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
     let old_tool = FunctionTool::builder("replaceable", "old registration")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Pure,
+            RetryPolicy::Never,
+        ))
         .property("value", json!({"type": "integer"}))
         .handler({
             let started = Arc::clone(&started);
@@ -141,6 +255,10 @@ fn disabled_tools_are_never_advertised_to_the_model() {
 async fn handler_panics_become_non_retryable_failures() {
     let executor = ToolExecutor::builder().retries(3).build();
     let tool = FunctionTool::builder("panics", "panic isolation fixture")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Never,
+            RetryPolicy::Idempotent,
+        ))
         .handler(|_| async { panic!("sensitive panic payload") })
         .build()
         .unwrap();

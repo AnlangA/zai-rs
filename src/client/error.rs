@@ -14,6 +14,7 @@
 //! | [`ZaiError::ContentPolicyError`] | 1301 | API policy / unsafe-content blocks |
 //! | [`ZaiError::RateLimitError`] | 1113, 1302, 1305, 1308–1311, 1313–1321 | Rate-limit, quota, package pressure or fair-use errors |
 //! | [`ZaiError::FileError`] | 1400–1499 | File-processing errors |
+//! | [`ZaiError::HttpBusinessError`] | — | Unrecognized business code; recovery falls back to the HTTP status |
 //! | [`ZaiError::Unknown`] | other | Unrecognized business or HTTP errors |
 //! | [`ZaiError::NetworkError`] | — | Network / timeout errors |
 //! | [`ZaiError::JsonError`] | — | JSON serialization / deserialization errors |
@@ -47,7 +48,7 @@
 //! # }
 //! ```
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use thiserror::Error;
 
@@ -56,6 +57,70 @@ pub mod codes;
 mod redaction;
 
 pub use redaction::{contains_sensitive_info, mask_api_key, mask_sensitive_info, validate_api_key};
+
+/// Context for an unrecognized business code received with an actionable HTTP
+/// error status.
+///
+/// The code is retained separately from the HTTP status so callers can
+/// diagnose provider/proxy changes without allowing an unknown business code
+/// to erase authentication, rate-limit, or server-failure classification.
+/// [`Debug`] and [`Display`](fmt::Display) deliberately omit the business code;
+/// callers must explicitly request its bounded, credential-redacted
+/// representation through [`business_code`](Self::business_code).
+#[derive(Clone)]
+pub struct HttpBusinessErrorContext {
+    status: u16,
+    business_code: String,
+    message: String,
+}
+
+impl HttpBusinessErrorContext {
+    fn new(status: u16, business_code: String, message: String) -> Self {
+        Self {
+            status,
+            business_code: mask_sensitive_info(&business_code),
+            message: mask_sensitive_info(&message),
+        }
+    }
+
+    /// HTTP response status used for classification and retry decisions.
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+
+    /// Bounded canonical representation of the unrecognized wire code.
+    ///
+    /// Recognizable credentials are redacted before this value is stored.
+    pub fn business_code(&self) -> &str {
+        &self.business_code
+    }
+
+    /// Human-readable, credential-redacted service error message.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl fmt::Debug for HttpBusinessErrorContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HttpBusinessErrorContext")
+            .field("status", &self.status)
+            .field("business_code", &"[REDACTED]")
+            .field("message", &self.message)
+            .finish()
+    }
+}
+
+impl fmt::Display for HttpBusinessErrorContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "HTTP error [{}] with unrecognized business code: {}",
+            self.status, self.message
+        )
+    }
+}
 
 /// Main error type for the ZAI-RS SDK
 #[derive(Error, Debug, Clone)]
@@ -69,6 +134,14 @@ pub enum ZaiError {
         /// Human-readable error message returned with the response.
         message: String,
     },
+
+    /// An unrecognized business code accompanied by an HTTP status whose
+    /// authentication, rate-limit, or server semantics must remain visible.
+    ///
+    /// The HTTP status, rather than the unknown code, drives
+    /// [`category`](Self::category) and [`is_retryable`](Self::is_retryable).
+    #[error("{0}")]
+    HttpBusinessError(HttpBusinessErrorContext),
 
     /// Authentication and authorization errors
     #[error("Authentication error [{code}]: {message}")]
@@ -279,6 +352,13 @@ impl ZaiError {
                     code: api_code,
                     message: api_message,
                 },
+                _ if uses_http_fallback(status) => {
+                    ZaiError::HttpBusinessError(HttpBusinessErrorContext::new(
+                        status,
+                        api_code.to_string(),
+                        message_or(api_message, "Unknown error"),
+                    ))
+                },
                 _ => ZaiError::Unknown {
                     code: api_code,
                     message: message_or(api_message, "Unknown error"),
@@ -334,6 +414,22 @@ impl ZaiError {
         }
     }
 
+    pub(crate) fn from_unrecognized_business_response(
+        status: u16,
+        business_code: String,
+        api_message: String,
+    ) -> Self {
+        if uses_http_fallback(status) {
+            Self::HttpBusinessError(HttpBusinessErrorContext::new(
+                status,
+                business_code,
+                message_or(api_message, "Unknown error"),
+            ))
+        } else {
+            Self::from_api_response(status, 0, api_message)
+        }
+    }
+
     /// Check if the error is a rate limit error
     pub fn is_rate_limit(&self) -> bool {
         self.category() == ErrorCategory::RateLimit
@@ -377,6 +473,7 @@ impl ZaiError {
                 RealtimeErrorKind::Closed => ErrorCategory::Other,
             },
             ZaiError::HttpError { status, .. } => classify_status(*status),
+            ZaiError::HttpBusinessError(context) => classify_http_fallback(context.status),
             // `Unknown` mirrors an unmapped HTTP/business code: 5xx is a server
             // error, everything else is uncategorized. It is intentionally *not*
             // classified as client-side or rate-limited even at 4xx/429, matching
@@ -419,6 +516,9 @@ impl ZaiError {
             ZaiError::HttpError { status, .. } => {
                 crate::client::transport::retry::RETRYABLE_STATUSES.contains(status)
             },
+            ZaiError::HttpBusinessError(context) => {
+                crate::client::transport::retry::RETRYABLE_STATUSES.contains(&context.status)
+            },
             ZaiError::RateLimitError { code, .. } => matches!(*code, 429 | 1302 | 1305),
             ZaiError::NetworkError(_) => true,
             ZaiError::ApiError { code, .. } if *code == codes::SDK_TIMEOUT => true,
@@ -453,6 +553,9 @@ impl ZaiError {
         match self {
             ZaiError::HttpError { status, message } => {
                 format!("HTTP[{status}]: {message}")
+            },
+            ZaiError::HttpBusinessError(context) => {
+                format!("HTTP[{}]: {}", context.status, context.message)
             },
             ZaiError::AuthError { code, message } => {
                 format!("AUTH[{code}]: {message}")
@@ -494,6 +597,7 @@ impl ZaiError {
     pub fn code(&self) -> Option<u16> {
         match self {
             ZaiError::HttpError { status, .. } => Some(*status),
+            ZaiError::HttpBusinessError(context) => Some(context.status),
             ZaiError::AuthError { code, .. } => Some(*code),
             ZaiError::AccountError { code, .. } => Some(*code),
             ZaiError::ApiError { code, .. } => Some(*code),
@@ -507,10 +611,24 @@ impl ZaiError {
         }
     }
 
+    /// Return the unrecognized wire business code retained by an HTTP-status
+    /// fallback error.
+    ///
+    /// The returned representation is bounded and canonicalized by the
+    /// transport, with recognizable credentials redacted. Other error variants
+    /// return `None`.
+    pub fn raw_business_code(&self) -> Option<&str> {
+        match self {
+            Self::HttpBusinessError(context) => Some(context.business_code()),
+            _ => None,
+        }
+    }
+
     /// Get error message
     pub fn message(&self) -> String {
         match self {
             ZaiError::HttpError { message, .. } => message.clone(),
+            ZaiError::HttpBusinessError(context) => context.message.clone(),
             ZaiError::AuthError { message, .. } => message.clone(),
             ZaiError::AccountError { message, .. } => message.clone(),
             ZaiError::ApiError { message, .. } => message.clone(),
@@ -529,8 +647,10 @@ impl ZaiError {
     /// category.
     ///
     /// Prepends `"{context}: "` to the human-readable message of every variant
-    /// that carries one. Variants whose payload is a wrapped source error with
-    /// no message slot ([`NetworkError`](Self::NetworkError),
+    /// that carries one. The supplied context and resulting message are
+    /// credential-redacted before they enter the public error value. Variants
+    /// whose payload is a wrapped source error with no message slot
+    /// ([`NetworkError`](Self::NetworkError),
     /// [`JsonError`](Self::JsonError), [`RealtimeError`](Self::RealtimeError))
     /// are returned unchanged — record their context in a `tracing` span
     /// instead.
@@ -549,11 +669,16 @@ impl ZaiError {
     /// assert_eq!(ctx.message(), "file parser create: bad model");
     /// ```
     pub fn context(self, context: &str) -> Self {
-        let with_context = |message: String| format!("{context}: {message}");
+        let context = mask_sensitive_info(context);
+        let with_context = |message: String| mask_sensitive_info(&format!("{context}: {message}"));
         match self {
             Self::HttpError { status, message } => Self::HttpError {
                 status,
                 message: with_context(message),
+            },
+            Self::HttpBusinessError(mut error) => {
+                error.message = with_context(error.message);
+                Self::HttpBusinessError(error)
             },
             Self::AuthError { code, message } => Self::AuthError {
                 code,
@@ -597,6 +722,17 @@ impl ZaiError {
 /// failures even though they share the broad `12xx` API-error namespace.
 const fn is_server_business_code(code: u16) -> bool {
     matches!(code, 1200 | 1230 | 1234)
+}
+
+const fn uses_http_fallback(status: u16) -> bool {
+    matches!(status, 401 | 403 | 429) || (status >= 500 && status < 600)
+}
+
+fn classify_http_fallback(status: u16) -> ErrorCategory {
+    match status {
+        401 | 403 => ErrorCategory::Auth,
+        _ => classify_status(status),
+    }
 }
 
 fn message_or(message: String, fallback: &str) -> String {
@@ -1432,5 +1568,77 @@ mod tests {
             "HTTP 429 should classify as rate limit, got {e:?}"
         );
         assert!(e.is_retryable(), "HTTP 429 should be retryable");
+    }
+
+    #[test]
+    fn unknown_numeric_business_codes_fall_back_to_recovery_http_statuses() {
+        for (status, category, retryable) in [
+            (401, ErrorCategory::Auth, false),
+            (403, ErrorCategory::Auth, false),
+            (429, ErrorCategory::RateLimit, true),
+            (503, ErrorCategory::Server, true),
+        ] {
+            let error = ZaiError::from_api_response(status, 7777, "provider changed".to_string());
+            assert!(
+                matches!(&error, ZaiError::HttpBusinessError(_)),
+                "HTTP {status} should retain its recovery semantics: {error:?}"
+            );
+            assert_eq!(error.code(), Some(status));
+            assert_eq!(error.raw_business_code(), Some("7777"));
+            assert_eq!(error.category(), category);
+            assert_eq!(error.is_retryable(), retryable);
+        }
+    }
+
+    #[test]
+    fn known_business_code_still_takes_precedence_over_http_status() {
+        let error = ZaiError::from_api_response(503, 1210, "invalid parameters".to_string());
+        assert!(matches!(&error, ZaiError::ApiError { code: 1210, .. }));
+        assert_eq!(error.category(), ErrorCategory::Client);
+        assert!(!error.is_retryable());
+        assert_eq!(error.raw_business_code(), None);
+    }
+
+    #[test]
+    fn unrecognized_business_code_is_hidden_from_default_rendering() {
+        let secret = "api_key=abc123.abcdefghijklmnopqrstuvwxyz";
+        let error = ZaiError::from_unrecognized_business_response(
+            503,
+            secret.to_string(),
+            "upstream failed".to_string(),
+        );
+
+        let display = error.to_string();
+        let debug = format!("{error:?}");
+        let compact = error.compact();
+        for rendered in [&display, &debug, &compact] {
+            assert!(!rendered.contains(secret));
+            assert!(!rendered.contains("abcdefghijklmnopqrstuvwxyz"));
+        }
+        let diagnostic = error.raw_business_code().unwrap();
+        assert!(!diagnostic.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(diagnostic.contains("[FILTERED]"));
+    }
+
+    #[test]
+    fn context_cannot_reintroduce_credentials_into_public_errors() {
+        let secret = "abc123.abcdefghijklmnopqrstuvwxyz";
+        let error = ZaiError::from_unrecognized_business_response(
+            503,
+            "UPSTREAM_BUSY".to_string(),
+            "upstream failed".to_string(),
+        )
+        .context(&format!("Authorization: Bearer {secret}"));
+
+        for rendered in [
+            error.to_string(),
+            format!("{error:?}"),
+            error.compact(),
+            error.message(),
+        ] {
+            assert!(!rendered.contains(secret));
+            assert!(!rendered.contains("abcdefghijklmnopqrstuvwxyz"));
+            assert!(rendered.contains("[AUTH_REDACTED]"));
+        }
     }
 }

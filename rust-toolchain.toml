@@ -1,7 +1,8 @@
-# Pin local development to the crate's minimum supported Rust version. CI also
-# tests stable and nightly independently; llvm-tools supports `cargo llvm-cov`.
+# Pin local development to the crate's minimum supported Rust version. CI tests
+# stable and nightly independently and installs llvm-tools in its coverage job.
+# Local coverage runs can add `llvm-tools-preview` to this toolchain explicitly.
 
 [toolchain]
 channel = "1.88.0"
-components = ["rustfmt", "clippy", "llvm-tools-preview"]
+components = ["rustfmt", "clippy"]
 profile = "minimal"

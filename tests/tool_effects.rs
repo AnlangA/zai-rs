@@ -9,10 +9,14 @@ use std::sync::{
 use std::time::Duration;
 
 use serde_json::json;
-use zai_rs::toolkits::{core::FunctionTool, error::error_context, executor::ToolExecutor};
+use zai_rs::toolkits::{
+    core::{CachePolicy, FunctionTool, RetryPolicy, ToolExecutionPolicy},
+    error::error_context,
+    executor::ToolExecutor,
+};
 
 #[tokio::test]
-async fn default_executor_does_not_cache_unknown_tool_effects() {
+async fn global_cache_does_not_cache_unknown_tool_effects() {
     let calls = Arc::new(AtomicU32::new(0));
     let handler_calls = Arc::clone(&calls);
     let tool = FunctionTool::builder("counter", "count executions")
@@ -22,7 +26,7 @@ async fn default_executor_does_not_cache_unknown_tool_effects() {
         })
         .build()
         .unwrap();
-    let executor = ToolExecutor::new();
+    let executor = ToolExecutor::builder().enable_cache().build();
     executor.add_dyn_tool(Box::new(tool)).unwrap();
 
     executor.execute_simple("counter", json!({})).await.unwrap();
@@ -33,10 +37,14 @@ async fn default_executor_does_not_cache_unknown_tool_effects() {
 }
 
 #[tokio::test]
-async fn cache_options_do_not_enable_caching_implicitly() {
+async fn pure_policy_does_not_enable_caching_globally() {
     let calls = Arc::new(AtomicU32::new(0));
     let handler_calls = Arc::clone(&calls);
     let tool = FunctionTool::builder("configured", "cache configuration fixture")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Pure,
+            RetryPolicy::Never,
+        ))
         .handler(move |_| {
             let calls = Arc::clone(&handler_calls);
             async move { Ok(json!({"call": calls.fetch_add(1, Ordering::SeqCst) + 1})) }
@@ -63,7 +71,7 @@ async fn cache_options_do_not_enable_caching_implicitly() {
 }
 
 #[tokio::test]
-async fn default_executor_does_not_retry_unknown_tool_effects() {
+async fn global_retries_do_not_retry_unknown_tool_effects() {
     let calls = Arc::new(AtomicU32::new(0));
     let handler_calls = Arc::clone(&calls);
     let tool = FunctionTool::builder("side_effect", "always fails")
@@ -78,7 +86,7 @@ async fn default_executor_does_not_retry_unknown_tool_effects() {
         })
         .build()
         .unwrap();
-    let executor = ToolExecutor::new();
+    let executor = ToolExecutor::builder().retries(2).build();
     executor.add_dyn_tool(Box::new(tool)).unwrap();
 
     let result = executor.execute("side_effect", json!({})).await.unwrap();
@@ -93,6 +101,10 @@ async fn pure_tool_can_opt_in_to_caching() {
     let calls = Arc::new(AtomicU32::new(0));
     let handler_calls = Arc::clone(&calls);
     let tool = FunctionTool::builder("pure", "deterministic tool")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Pure,
+            RetryPolicy::Never,
+        ))
         .property("n", json!({"type": "integer"}))
         .handler(move |arguments| {
             let calls = Arc::clone(&handler_calls);
@@ -119,6 +131,10 @@ async fn idempotent_tool_can_opt_in_to_retries() {
     let calls = Arc::new(AtomicU32::new(0));
     let handler_calls = Arc::clone(&calls);
     let tool = FunctionTool::builder("flaky", "fails twice")
+        .execution_policy(ToolExecutionPolicy::new(
+            CachePolicy::Never,
+            RetryPolicy::Idempotent,
+        ))
         .handler(move |_| {
             let calls = Arc::clone(&handler_calls);
             async move {

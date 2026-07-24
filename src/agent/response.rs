@@ -1,4 +1,4 @@
-//! Exact Agent v1 response contracts.
+//! Validated Agent v1 response contracts.
 
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
@@ -42,7 +42,6 @@ pub enum AgentResponseContentType {
 
 /// One multimodal part in an Agent invocation response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentResponseContentPart {
     /// Frozen content discriminator.
     #[serde(rename = "type")]
@@ -78,7 +77,6 @@ pub enum AgentResponseContent {
 
 /// One generated message in an invocation choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentResponseMessage {
     /// Response role, usually `assistant`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,7 +88,6 @@ pub struct AgentResponseMessage {
 
 /// One invocation result choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentChoice {
     /// Result index.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,7 +102,6 @@ pub struct AgentChoice {
 
 /// Token usage returned by a completed Agent invocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentUsage {
     /// Number of input tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,7 +155,6 @@ pub enum AgentInvokeResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct AgentInvokeWire {
     id: Option<String>,
     agent_id: Option<String>,
@@ -254,7 +249,6 @@ impl<'de> Deserialize<'de> for AgentInvokeResponse {
 
 /// One content part returned by the async-result endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentAsyncContentPart {
     /// Provider content type; currently documented as `file_url`.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -272,7 +266,6 @@ pub struct AgentAsyncContentPart {
 
 /// One generated message returned by the async-result endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentAsyncMessage {
     /// Response role.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -284,7 +277,6 @@ pub struct AgentAsyncMessage {
 
 /// One async-result choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentAsyncChoice {
     /// Generated response messages.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -293,7 +285,6 @@ pub struct AgentAsyncChoice {
 
 /// Token usage returned by the async-result endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentAsyncUsage {
     /// Total token count.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -345,7 +336,6 @@ pub enum AgentAsyncResult {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct AgentAsyncWire {
     agent_id: Option<String>,
     async_id: Option<String>,
@@ -439,7 +429,6 @@ impl<'de> Deserialize<'de> for AgentAsyncResult {
 
 /// One slide-conversation response content part.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentConversationContentPart {
     /// Provider content type (`file_url` or `image_url`).
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
@@ -460,7 +449,6 @@ pub struct AgentConversationContentPart {
 
 /// One message in a slide-conversation choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentConversationMessage {
     /// Response role.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -472,16 +460,22 @@ pub struct AgentConversationMessage {
 
 /// One slide-conversation response choice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentConversationChoice {
     /// Frozen schema uses singular `message` for this message array.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<Vec<AgentConversationMessage>>,
 }
 
+impl AgentConversationChoice {
+    fn has_non_empty_message(&self) -> bool {
+        self.message
+            .as_ref()
+            .is_some_and(|messages| !messages.is_empty())
+    }
+}
+
 /// Embedded failure detail returned by the conversation schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AgentErrorDetail {
     /// Service error code.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -493,7 +487,13 @@ pub struct AgentErrorDetail {
 
 impl AgentErrorDetail {
     fn has_documented_value(&self) -> bool {
-        self.code.is_some() || self.message.is_some()
+        self.code
+            .as_deref()
+            .is_some_and(|code| !code.trim().is_empty())
+            || self
+                .message
+                .as_deref()
+                .is_some_and(|message| !message.trim().is_empty())
     }
 }
 
@@ -532,7 +532,6 @@ pub enum AgentConversationResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct AgentConversationWire {
     conversation_id: Option<String>,
     agent_id: Option<String>,
@@ -548,9 +547,13 @@ impl AgentConversationResponse {
                 if response.conversation_id.trim().is_empty()
                     || response.agent_id.trim().is_empty()
                     || response.choices.is_empty()
+                    || response
+                        .choices
+                        .iter()
+                        .any(|choice| !choice.has_non_empty_message())
                 {
                     return Err(invalid_response(
-                        "conversation success requires ids and non-empty choices",
+                        "conversation success requires ids and choices with non-empty message arrays",
                     ));
                 }
             },
@@ -606,6 +609,11 @@ impl<'de> Deserialize<'de> for AgentConversationResponse {
         if choices.is_empty() {
             return Err(D::Error::custom(
                 "agent conversation success contained empty choices",
+            ));
+        }
+        if choices.iter().any(|choice| !choice.has_non_empty_message()) {
+            return Err(D::Error::custom(
+                "agent conversation success contained a choice without a non-empty message array",
             ));
         }
         Ok(Self::Success(AgentConversationSuccess {
@@ -782,7 +790,12 @@ mod tests {
                 "conversation_id": "c", "agent_id": "a",
                 "choices": [{"messages": []}]
             }),
+            serde_json::json!({
+                "conversation_id": "c", "agent_id": "a",
+                "choices": [{"message": []}]
+            }),
             serde_json::json!({"error": {}}),
+            serde_json::json!({"error": {"code": "", "message": "  "}}),
             serde_json::json!({
                 "conversation_id": "c", "agent_id": "a", "choices": [{}],
                 "error": {"message": "failed"}

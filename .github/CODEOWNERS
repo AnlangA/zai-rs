@@ -1,0 +1,32 @@
+# Security policy, repository automation, and supply-chain configuration.
+/.github/ @AnlangA
+/SECURITY.md @AnlangA
+/.cargo/ @AnlangA
+/.gitleaks.toml @AnlangA
+/.gitleaksignore @AnlangA
+/Cargo.toml @AnlangA
+/Cargo.lock @AnlangA
+/fuzz/Cargo.toml @AnlangA
+/fuzz/Cargo.lock @AnlangA
+/deny.toml @AnlangA
+/rust-toolchain.toml @AnlangA
+
+# Authentication, secret handling, and the core HTTP transport.
+/src/client.rs @AnlangA
+/src/client/config.rs @AnlangA
+/src/client/endpoint.rs @AnlangA
+/src/client/secret.rs @AnlangA
+/src/client/error/redaction.rs @AnlangA
+/src/client/transport.rs @AnlangA
+/src/client/transport/ @AnlangA
+/src/mcp.rs @AnlangA
+/src/toolkits.rs @AnlangA
+/src/toolkits/ @AnlangA
+
+# Realtime authentication, session setup, and transport.
+/src/realtime.rs @AnlangA
+/src/realtime/client.rs @AnlangA
+/src/realtime/jwt.rs @AnlangA
+/src/realtime/session.rs @AnlangA
+/src/realtime/session/ @AnlangA
+/src/realtime/transport.rs @AnlangA

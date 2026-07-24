@@ -1,6 +1,6 @@
 //! Prepared HTTP requests consumed by the buffered transport.
 
-use crate::client::RetryOverride;
+use crate::client::RequestOptions;
 use crate::client::transport::retry::RetrySafety;
 
 /// A request body kind the Transport knows how to encode and size-limit.
@@ -67,8 +67,8 @@ pub struct PreparedRequest<'a> {
     pub body: BodyKind<'a>,
     /// Retry classification derived from the request method.
     pub retry_safety: RetrySafety,
-    /// Optional caller assertion that the operation is idempotent.
-    pub retry_override: Option<RetryOverride>,
+    /// Transport-only overrides carried by the dispatching client handle.
+    pub request_options: RequestOptions,
     /// Response buffering mode and associated size limit.
     pub response_mode: ResponseMode,
     /// Route template for tracing (never the materialized URL).
@@ -83,7 +83,7 @@ impl<'a> std::fmt::Debug for PreparedRequest<'a> {
             .field("method", &self.method)
             .field("route", &self.route_template)
             .field("retry_safety", &self.retry_safety)
-            .field("retry_override", &self.retry_override.is_some())
+            .field("request_options", &self.request_options)
             .finish_non_exhaustive()
     }
 }

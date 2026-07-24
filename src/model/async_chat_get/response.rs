@@ -39,7 +39,6 @@ pub struct AsyncResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct AsyncResponseWire {
     model: Option<String>,
     id: Option<String>,
@@ -107,7 +106,6 @@ pub type AsyncTaskResponse = AsyncResponse;
 
 /// A completed asynchronous chat-completion result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AsyncChatTaskResult {
     /// Task identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -166,7 +164,6 @@ impl AsyncChatTaskResult {
 
 /// A completed asynchronous video-generation result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AsyncVideoTaskResult {
     /// Model that generated the video.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -203,7 +200,6 @@ impl AsyncVideoTaskResult {
 
 /// One generated image returned by an asynchronous image task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AsyncImageResultItem {
     /// URL of the generated image.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -219,7 +215,6 @@ impl AsyncImageResultItem {
 
 /// A completed asynchronous image-generation result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AsyncImageTaskResult {
     /// Model that generated the image.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -259,7 +254,6 @@ impl AsyncImageTaskResult {
 /// Chat, image, and video tasks share this wire shape, so it cannot be assigned
 /// to one media-specific variant until a result field is present.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct AsyncTaskState {
     /// Task identifier, when supplied by the service.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -386,19 +380,37 @@ impl<'de> Deserialize<'de> for AsyncTaskResult {
             .as_object()
             .ok_or_else(|| D::Error::custom("async task result must be a JSON object"))?;
 
-        let result = if object.contains_key("image_result") {
+        let has_chat_result = ["choices", "usage", "web_search", "content_filter"]
+            .iter()
+            .any(|field| object.contains_key(*field));
+        let has_video_result = object.contains_key("video_result");
+        let has_image_result = object.contains_key("image_result");
+        let result_shape_count = [has_chat_result, has_video_result, has_image_result]
+            .into_iter()
+            .filter(|present| *present)
+            .count();
+
+        // Unknown fields are deliberately ignored for forward compatibility,
+        // so result-family conflicts must be rejected explicitly rather than
+        // relying on each variant's deserializer to reject another family's
+        // discriminator.
+        if result_shape_count > 1 {
+            return Err(D::Error::custom(
+                "async task result mixes mutually exclusive chat, video, or image result fields",
+            ));
+        }
+
+        let result = if has_image_result {
             Self::Image(
                 serde_json::from_value(value)
                     .map_err(|error| D::Error::custom(error.to_string()))?,
             )
-        } else if object.contains_key("video_result") {
+        } else if has_video_result {
             Self::Video(
                 serde_json::from_value(value)
                     .map_err(|error| D::Error::custom(error.to_string()))?,
             )
-        } else if ["choices", "usage", "web_search", "content_filter"]
-            .iter()
-            .any(|field| object.contains_key(*field))
+        } else if has_chat_result
             || (object.contains_key("id")
                 && !object.contains_key("task_status")
                 && !object.contains_key("model")
@@ -452,12 +464,152 @@ mod tests {
     }
 
     #[test]
+    fn responses_accept_additive_provider_fields() {
+        let acknowledgement: AsyncResponse = serde_json::from_value(serde_json::json!({
+            "id": "task-1",
+            "task_status": "PROCESSING",
+            "provider_submission_metadata": {
+                "region": "cn-east"
+            }
+        }))
+        .unwrap();
+        assert_eq!(acknowledgement.id(), Some("task-1"));
+
+        let state: AsyncTaskResult = serde_json::from_value(serde_json::json!({
+            "request_id": "request-1",
+            "task_status": "PROCESSING",
+            "queue_position": 3,
+            "provider_state_metadata": {
+                "worker": "gpu-1"
+            }
+        }))
+        .unwrap();
+        assert!(state.as_state().is_some_and(AsyncTaskState::is_processing));
+
+        let chat: AsyncTaskResult = serde_json::from_value(serde_json::json!({
+            "id": "chat-1",
+            "task_status": "SUCCESS",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "done"
+                }
+            }],
+            "provider_completion_metadata": {
+                "routing_tier": "fast"
+            }
+        }))
+        .unwrap();
+        assert!(chat.as_chat().is_some());
+
+        let video: AsyncTaskResult = serde_json::from_value(serde_json::json!({
+            "task_status": "SUCCESS",
+            "video_result": [{
+                "url": "https://example.com/video.mp4",
+                "provider_asset_id": "asset-video-1"
+            }],
+            "expires_at": 1_800_000_000_u64
+        }))
+        .unwrap();
+        assert_eq!(
+            video
+                .as_video()
+                .and_then(AsyncVideoTaskResult::videos)
+                .map(<[_]>::len),
+            Some(1)
+        );
+
+        let image: AsyncTaskResult = serde_json::from_value(serde_json::json!({
+            "task_status": "SUCCESS",
+            "image_result": [{
+                "url": "https://example.com/image.png",
+                "revised_prompt": "a future additive leaf field"
+            }],
+            "provider_generation_metadata": {
+                "seed": 42
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            image
+                .as_image()
+                .and_then(AsyncImageTaskResult::images)
+                .and_then(|images| images.first())
+                .and_then(AsyncImageResultItem::url),
+            Some("https://example.com/image.png")
+        );
+    }
+
+    #[test]
     fn task_result_rejects_empty_and_unknown_payloads() {
         assert!(serde_json::from_str::<AsyncTaskResult>("{}").is_err());
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"task_id":"legacy"}"#).is_err());
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"choices":null}"#).is_err());
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"video_result":null}"#).is_err());
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"image_result":null}"#).is_err());
+    }
+
+    #[test]
+    fn task_result_rejects_mixed_or_malformed_result_shapes() {
+        let conflicting_payloads = [
+            serde_json::json!({
+                "choices": [],
+                "video_result": []
+            }),
+            serde_json::json!({
+                "usage": {},
+                "image_result": []
+            }),
+            serde_json::json!({
+                "video_result": [],
+                "image_result": []
+            }),
+            serde_json::json!({
+                "choices": null,
+                "video_result": null,
+                "image_result": null,
+                "task_status": "SUCCESS"
+            }),
+        ];
+
+        for payload in conflicting_payloads {
+            let error = serde_json::from_value::<AsyncTaskResult>(payload)
+                .expect_err("mixed result-family discriminators must be rejected");
+            assert!(
+                error.to_string().contains("mutually exclusive"),
+                "unexpected conflict error: {error}"
+            );
+        }
+
+        let error = serde_json::from_value::<AsyncTaskResult>(serde_json::json!({
+            "task_status": "SUCCESS",
+            "video_result": "not-an-array",
+            "provider_extension": true
+        }))
+        .expect_err("a malformed video discriminator must not fall back to State");
+        assert!(
+            error.to_string().contains("invalid type"),
+            "unexpected malformed-shape error: {error}"
+        );
+    }
+
+    #[test]
+    fn unknown_task_status_remains_forward_compatible() {
+        let result = serde_json::from_value::<AsyncTaskResult>(serde_json::json!({
+            "request_id": "request-1",
+            "task_status": "QUEUED",
+            "provider_state_metadata": {
+                "queue_position": 3
+            }
+        }))
+        .expect("a future status must not fail the entire response");
+        assert_eq!(
+            result
+                .as_state()
+                .and_then(|state| state.task_status.as_ref()),
+            Some(&TaskStatus::Unknown)
+        );
     }
 
     #[test]

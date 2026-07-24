@@ -1,10 +1,30 @@
 name: Fuzz
 
-# Scheduled libFuzzer smoke runs. The fuzz workspace is excluded from the main
-# workspace and only lint-checked in CI; this workflow actually executes each
-# target with a bounded time budget so parser/decoder regressions surface
-# without a manual local run.
+# Bounded libFuzzer runs. PRs and pushes get a short regression check while the
+# daily schedule retains a longer search budget for every target.
 on:
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/fuzz.yml"
+      - ".gitignore"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "fuzz/**"
+      - "rust-toolchain.toml"
+      - "scripts/bootstrap-tools.sh"
+      - "src/**"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/fuzz.yml"
+      - ".gitignore"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "fuzz/**"
+      - "rust-toolchain.toml"
+      - "scripts/bootstrap-tools.sh"
+      - "src/**"
   schedule:
     # Daily; the minute is deliberately off the :00/:30 herd marks.
     - cron: "23 3 * * *"
@@ -12,12 +32,17 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Keep PR/push feedback short; scheduled and manually dispatched runs retain
+  # the existing ten-minute per-target budget.
+  FUZZ_MAX_TOTAL_TIME: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '45' || '600' }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: fuzz-${{ github.ref }}
+  # A scheduled long run must not cancel (or be cancelled by) a short push run
+  # on the same branch.
+  group: fuzz-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -52,9 +77,12 @@ jobs:
           rustup toolchain install 1.88.0 --profile minimal
           ./scripts/bootstrap-tools.sh cargo-fuzz
 
-      - name: Run libFuzzer smoke (10 minute budget)
+      - name: Run libFuzzer
         working-directory: fuzz
-        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=600 -timeout=25
+        run: >-
+          cargo +nightly fuzz run "${{ matrix.target }}"
+          "corpus/${{ matrix.target }}" --
+          -max_total_time="${FUZZ_MAX_TOTAL_TIME}" -timeout=25
 
       - name: Upload crash artifacts
         if: failure()

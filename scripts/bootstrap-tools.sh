@@ -9,22 +9,24 @@
 #   ./scripts/bootstrap-tools.sh cargo-audit  # install just one
 #   ./scripts/bootstrap-tools.sh --help
 #
-# Rust tools are installed with `cargo +1.88.0 install --locked --version '=x.y.z'`
-# (rust-toolchain.toml pins the default toolchain to 1.88.0). gitleaks is
-# downloaded as a prebuilt GitHub release binary and SHA-256 verified. On an
-# unsupported OS/arch the script fails rather than guessing.
+# Rust tools are installed with an explicitly pinned bootstrap toolchain and
+# exact package version. Most still build on the repository MSRV; tools whose
+# own MSRV is newer declare that independently below. gitleaks is downloaded
+# as a prebuilt GitHub release binary and SHA-256 verified. On an unsupported
+# OS/arch the script fails rather than guessing.
 set -euo pipefail
 
-# Rust-based tools: name -> exact version.
+# Rust-based tools: name -> exact version -> bootstrap toolchain.
 RUST_TOOLS=(
-  "cargo-audit 0.22.2"
-  "cargo-deny 0.20.2"
-  "cargo-llvm-cov 0.8.7"
-  "cargo-fuzz 0.13.2"
-  "cargo-cyclonedx 0.5.9"
-  "cargo-nextest 0.9.114"
-  "mdbook 0.5.4"
-  "lychee 0.24.2"
+  "cargo-audit 0.22.2 1.88.0"
+  "cargo-deny 0.20.2 1.88.0"
+  "cargo-llvm-cov 0.8.7 1.88.0"
+  "cargo-fuzz 0.13.2 1.88.0"
+  "cargo-cyclonedx 0.5.9 1.88.0"
+  "cargo-nextest 0.9.114 1.88.0"
+  "mdbook 0.5.4 1.88.0"
+  "lychee 0.24.2 1.88.0"
+  "cargo-semver-checks 0.49.0 1.97.1"
 )
 
 # gitleaks is distributed as a prebuilt binary for common Linux/macOS targets.
@@ -120,7 +122,7 @@ tool_version() {
 }
 
 install_rust_tool() {
-  local name="$1" version="$2"
+  local name="$1" version="$2" toolchain="$3"
   local version_pattern="${version//./\\.}"
   # Skip if the exact version is already present.
   if command -v "$name" >/dev/null 2>&1 \
@@ -129,7 +131,12 @@ install_rust_tool() {
     echo "$name $version already installed"
     return 0
   fi
-  cargo +1.88.0 install --locked --version "=$version" "$name"
+  if ! cargo +"$toolchain" --version >/dev/null 2>&1; then
+    echo "$name $version requires the Rust $toolchain toolchain for installation." >&2
+    echo "Install it first with: rustup toolchain install $toolchain" >&2
+    return 1
+  fi
+  cargo +"$toolchain" install --locked --version "=$version" "$name"
 }
 
 usage() {
@@ -137,9 +144,12 @@ usage() {
 Usage: ./scripts/bootstrap-tools.sh [all|TOOL|--help]
 
 Install all pinned quality tools (the default), or one named tool.
+Installation requires each tool's pinned Rust toolchain; missing toolchains
+produce an explicit rustup command instead of silently changing the host.
 
 Tools: cargo-audit, cargo-deny, cargo-llvm-cov, cargo-fuzz,
-       cargo-cyclonedx, cargo-nextest, mdbook, lychee, gitleaks
+       cargo-cyclonedx, cargo-nextest, cargo-semver-checks, mdbook,
+       lychee, gitleaks
 EOF
 }
 
@@ -150,7 +160,7 @@ main() {
   fi
   local requested="${1:-all}"
   local matched=false
-  local entry name version
+  local entry name version toolchain
   if [ "$requested" = "--help" ] || [ "$requested" = "-h" ]; then
     usage
     return 0
@@ -160,10 +170,10 @@ main() {
     return 0
   fi
   for entry in "${RUST_TOOLS[@]}"; do
-    read -r name version <<< "$entry"
+    read -r name version toolchain <<< "$entry"
     if [ "$requested" = "all" ] || [ "$requested" = "$name" ]; then
       matched=true
-      install_rust_tool "$name" "$version"
+      install_rust_tool "$name" "$version" "$toolchain"
     fi
   done
   if [ "$requested" = "all" ]; then

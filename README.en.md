@@ -5,7 +5,9 @@
 A concise, type-safe Rust SDK for Zhipu AI (BigModel / Z.ai). It focuses on developer ergonomics for Rust users: less boilerplate, consistent error handling, readable request/response types, and ready-to-run examples.
 
 The current repository version is `0.6.0`. When upgrading from an older
-release, read the [0.6 migration guide](docs/MIGRATING-0.6.md) first.
+release, read the [0.6 migration guide](docs/MIGRATING-0.6.md) first. When
+evaluating the unreleased hardening worktree, also read the
+[hardening migration notes](docs/HARDENING_MIGRATION.md).
 
 ## Quick start
 
@@ -124,7 +126,7 @@ cargo run --example realtime_audio --features realtime
 | `web_search` | Web search |
 | `batches_create` | Batch task creation |
 | `batches_cancel` | Batch task cancellation |
-| `agent_invoke` | Agent v1 invocation request building (wire contract) |
+| `agent_invoke` | Type-safe Agent v1 invocation and async-result polling |
 | `assistant` | Assistant invocation (single message) |
 | `application` | LLM application invocation (text input) |
 | `batches_list` / `batches_retrieve` | Batch task listing / retrieval |
@@ -256,9 +258,17 @@ directly or unwrapped with `into_text()`.
 
 See `examples/mcp.rs` for a complete example. For the China region set
 `ZHIPU_API_KEY` or `Z_AI_API_KEY`; for the international region set
-`Z_AI_API_KEY` plus `Z_AI_MODE=ZAI`. On first use of the vision capabilities
-the SDK starts a local Vision MCP automatically, which requires Node.js 22+.
-Built on `rmcp 2.2.0`.
+`Z_AI_API_KEY` plus `Z_AI_MODE=ZAI`. The Vision MCP does not download or start
+external code by default. Production applications should use
+`with_vision_mcp_command` with a reviewed, preinstalled local runtime.
+`with_vision_npx_download` explicitly restores the Node.js 22+ / `npx`
+convenience path for the pinned top-level `@z_ai/mcp-server@0.1.2`, but its
+transitive npm dependency graph is outside `Cargo.lock` and `cargo-deny`.
+In either mode, the child receives only a minimal runtime environment plus
+`Z_AI_API_KEY`, `Z_AI_MODE`, and the optional model override—not unrelated
+application tokens. Built on `rmcp 2.2.0`. See
+[`docs/HARDENING_MIGRATION.md`](docs/HARDENING_MIGRATION.md) for the default
+behavior and tool-policy migration.
 
 Each MCP has a dedicated full-feature example:
 
@@ -270,9 +280,9 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 ```
 
 `mcp_zread` runs all 3 ZRead tools and `mcp_vision` runs all 8 Vision tools.
-The vision example allows omitting the last comparison-image argument, in
-which case the same image is used to test UI diffing; a full run performs
-several vision-model calls.
+The vision example explicitly opts into the `npx` download and allows omitting
+the last comparison-image argument, in which case the same image is used to
+test UI diffing; a full run performs several vision-model calls.
 
 ### API structure
 

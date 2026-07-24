@@ -6,7 +6,8 @@
 
 - 类型安全：通过模型 marker trait、`Bounded` 约束和 streaming type-state，尽量在编译期阻止不兼容的模型/消息组合。
 - 统一传输：所有 REST 请求都走 `ZaiClient` 内部传输层，共享鉴权、retry、连接池、重定向、请求/响应大小限制和 typed response 解析；内部传输类型不属于公共 API。
-- 可配置端点：`EndpointConfig` 集中管理 PAAS v4、Coding PAAS v4、知识库、Realtime、Monitor 五类 API base，`ZaiConfig` 作为面向用户的中心配置入口。
+- 可配置端点：`EndpointConfig` 集中管理表中各 API family 的 base；
+  `ZaiClient::builder()` 是面向用户的中心配置入口。
 - 小模块边界：chat、file、knowledge、batches、tool、realtime、usage 等模块独立维护请求/响应类型，再通过 crate root 和模块 root 做选择性 re-export。
 - 离线可测：集成测试使用本地 mock server 捕获真实 SDK HTTP 请求，不依赖外部 API key 或网络。
 
@@ -43,9 +44,10 @@ src/lib.rs
 
 请求模块通常遵循同一形态：
 
-1. `new(...)` 构造默认 endpoint、body、HTTP config。
-2. `with_*` builder 方法覆盖参数、base URL、endpoint config 或 HTTP config。
-3. 请求通过 `send_via(&ZaiClient)` 进入统一 `Transport::send` 管线。
+1. `new(...)` 构造业务请求参数和 body。
+2. `with_*` builder 方法设置该业务请求的可选参数。
+3. 请求通过 `send_via(&ZaiClient)` 进入统一 `Transport::send` 管线；base URL、
+   endpoint config 和 HTTP config 均由共享的 `ZaiClient` 持有。
 4. 非流式 API 解析为 typed response；chat、ASR 和 TTS SSE 由各请求的
    `stream_via` 返回 typed stream。
 

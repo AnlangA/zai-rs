@@ -95,7 +95,7 @@ impl<'client> Operation<'client> {
             url,
             body,
             retry_safety,
-            retry_override: None,
+            request_options: self.client.request_options,
             response_mode,
             route_template: self.route.trace_template(),
         }
@@ -149,8 +149,11 @@ impl<'client> Operation<'client> {
         self.client.inner.sender.send(&request).await?.bytes()
     }
 
-    /// Dispatch a body-less operation and return validated file bytes.
-    pub(crate) async fn send_empty_bytes(self) -> ZaiResult<bytes::Bytes> {
+    /// Dispatch a body-less operation and return a validated, bounded file
+    /// stream.
+    pub(crate) async fn send_empty_file_stream(
+        self,
+    ) -> ZaiResult<crate::client::transport::FileByteStream> {
         let url = self.resolve()?;
         let request = self.prepare(
             url,
@@ -158,7 +161,7 @@ impl<'client> Operation<'client> {
             ResponseMode::File,
             RetrySafety::for_method(self.route.method()),
         );
-        self.client.inner.sender.send(&request).await?.bytes()
+        self.client.inner.sender.send_file(&request).await
     }
 
     /// Dispatch a replayable multipart factory and decode a JSON response.

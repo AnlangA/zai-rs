@@ -1,6 +1,7 @@
 # Rust build and coverage output.
 target/
 *.profraw
+/lcov.info
 
 # Editor and local-agent state.
 .idea/
@@ -14,7 +15,15 @@ target/
 /realtime_out.bin
 /realtime_response.pcm
 /fuzz/artifacts/
-/fuzz/corpus/
+# Keep reviewed `seed-*` inputs while ignoring corpus entries generated during
+# local fuzzing (libFuzzer names those entries by content hash).
+/fuzz/corpus/*
+!/fuzz/corpus/README.md
+!/fuzz/corpus/fuzz_error_handling/
+!/fuzz/corpus/fuzz_sse_decoder/
+!/fuzz/corpus/fuzz_url_segments/
+/fuzz/corpus/*/*
+!/fuzz/corpus/*/seed-*
 *.cdx.json
 
 # Local secrets. Keep a sanitized template when one is added.

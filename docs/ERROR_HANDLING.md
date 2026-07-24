@@ -70,6 +70,7 @@ async fn main() {
 | `RateLimitError` | HTTP 429 或限流、配额类业务错误 |
 | `ContentPolicyError` | 内容安全或策略拦截 |
 | `FileError` | 文件 API 或本地文件校验错误 |
+| `HttpBusinessError` | 未知业务码；按配套 HTTP 401/403/429/5xx 保留恢复语义 |
 | `NetworkError` | HTTP 网络或超时错误 |
 | `JsonError` | JSON 序列化或反序列化错误 |
 | `RealtimeError` | WebSocket 连接、协议、超时或关闭错误 |
@@ -77,6 +78,8 @@ async fn main() {
 | `Unknown` | 未知业务码或未分类状态 |
 
 `error.code()` 返回可用的 HTTP/业务/SDK 错误码，`error.message()` 返回描述。
+对于 `HttpBusinessError`，`code()` 返回用于分类和重试决策的 HTTP 状态，
+`raw_business_code()` 才返回经过限长、规范化和凭据脱敏的未知 wire 业务码。
 SDK 自身使用保留的 `9000..=9999` 错误码；可通过 `is_sdk_error()` 区分它们
 与服务端的 `1000..=1499` 业务码。
 
@@ -86,7 +89,8 @@ SDK 自身使用保留的 `9000..=9999` 错误码；可通过 `is_sdk_error()` �
 不会因为启用了重试策略而被重复提交。可恢复结果包括部分网络错误、HTTP 429、
 部分 5xx 以及对应的限流业务码；认证、参数、账户、内容策略和文件错误不会重试。
 
-重试采用带 full jitter 的指数退避，并尊重正整数秒格式的 `Retry-After`。
+重试采用带 full jitter 的指数退避，并尊重 `Retry-After` 的正整数秒和
+IMF-fixdate 两种 HTTP 标准格式。
 每次尝试和整个请求都有截止时间。可显式收紧策略：
 
 ```rust,ignore
@@ -107,6 +111,28 @@ let client = ZaiClient::builder(api_key)
 
 若要在应用层重试非幂等操作，必须先确认服务端提供幂等键或任务去重语义；不要仅凭
 `is_retryable()` 就重复提交创建类请求。
+
+单个请求可以通过共享连接池的 scoped handle 覆盖 attempt/overall 或 SSE 分阶段
+deadline，并选择更低的尝试次数：
+
+```rust,ignore
+use std::time::Duration;
+use zai_rs::client::{RequestOptions, ZaiClient};
+
+# fn scoped(client: ZaiClient) -> zai_rs::ZaiResult<ZaiClient> {
+let client = client.with_request_options(
+    RequestOptions::default()
+        .with_attempt_timeout(Duration::from_secs(20))?
+        .with_overall_timeout(Duration::from_secs(45))?
+        .with_max_attempts(2)?,
+);
+# Ok(client)
+# }
+```
+
+这些 timeout 可以为已知慢请求放宽全局默认，但仍有公开的绝对上限；请求次数不能
+高于全局 `HttpTransportConfig::max_attempts`。SSE 的 handshake 与 idle timeout
+分别报告，且即使设置 `RetryOverride` 也不会重放 SSE POST。
 
 ## 日志与敏感信息
 
@@ -136,5 +162,7 @@ header、完整请求体、用户文件内容或 Realtime token。
 | `1113`, `1302`, `1305`, `1308..=1311`, `1313..=1321` | `RateLimitError` |
 | `1400..=1499` | `FileError` |
 
-未知业务码保留为 `Unknown`，不会被假定为可重试。完整定义以
+未知业务码通常保留为 `Unknown`。若它与 HTTP 401/403、429 或 5xx 同时出现，
+则使用 `HttpBusinessError` 保留认证、限流或服务端恢复语义；已知业务码仍优先于
+HTTP 状态。完整定义以
 [`src/client/error.rs`](../src/client/error.rs) 和上游 API 文档为准。

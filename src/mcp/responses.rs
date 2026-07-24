@@ -8,8 +8,10 @@ use serde_json::Value;
 
 use crate::{
     ZaiResult,
-    client::error::{ZaiError, codes},
+    client::error::{ZaiError, codes, mask_sensitive_info},
 };
+
+const MCP_ERROR_MESSAGE_CHARS_MAX: usize = 1024;
 
 /// Text returned by repository and vision tools.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,23 +188,93 @@ fn check_tool_error(result: &CallToolResult) -> ZaiResult<()> {
     if result.is_error != Some(true) {
         return Ok(());
     }
-    let message = collect_text(result)
-        .or_else(|_| {
+    let message = collect_bounded_error_text(result)
+        .or_else(|| {
             result
                 .structured_content
                 .as_ref()
-                .map(serde_json::to_string)
-                .transpose()?
-                .ok_or_else(|| ZaiError::Unknown {
-                    code: codes::SDK_EXTERNAL_TOOL,
-                    message: "MCP tool returned an error without content".to_owned(),
-                })
+                .and_then(structured_error_message)
+                .map(safe_tool_error_message)
         })
-        .unwrap_or_else(|error| error.to_string());
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or_else(|| "MCP tool returned an error without safe text content".to_owned());
     Err(ZaiError::Unknown {
         code: codes::SDK_EXTERNAL_TOOL,
-        message: decode_string_layer(message),
+        message,
     })
+}
+
+fn collect_bounded_error_text(result: &CallToolResult) -> Option<String> {
+    // Error content is untrusted and can be much larger than a useful
+    // diagnostic. Collect at most one extra character so truncation is
+    // detectable without first duplicating the complete provider response.
+    let collection_limit = MCP_ERROR_MESSAGE_CHARS_MAX + 1;
+    let mut collected = String::new();
+    let mut collected_chars = 0;
+    let mut found_text = false;
+
+    for text in result
+        .content
+        .iter()
+        .filter_map(|content| content.as_text().map(|text| text.text.as_str()))
+    {
+        if found_text && collected_chars < collection_limit {
+            collected.push('\n');
+            collected_chars += 1;
+        }
+        found_text = true;
+        for character in text.chars() {
+            if collected_chars == collection_limit {
+                break;
+            }
+            collected.push(character);
+            collected_chars += 1;
+        }
+        if collected_chars == collection_limit {
+            break;
+        }
+    }
+
+    if !found_text {
+        return None;
+    }
+    let decoded = if collected_chars <= MCP_ERROR_MESSAGE_CHARS_MAX {
+        decode_string_layer(collected)
+    } else {
+        collected
+    };
+    Some(safe_tool_error_message(&decoded))
+}
+
+fn structured_error_message(value: &Value) -> Option<&str> {
+    match value {
+        Value::String(message) => Some(message),
+        Value::Object(object) => object
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| object.get("error").and_then(Value::as_str))
+            .or_else(|| {
+                object
+                    .get("error")
+                    .and_then(Value::as_object)
+                    .and_then(|error| error.get("message"))
+                    .and_then(Value::as_str)
+            }),
+        _ => None,
+    }
+}
+
+fn safe_tool_error_message(message: &str) -> String {
+    let redacted = mask_sensitive_info(message);
+    let mut characters = redacted.chars();
+    let mut bounded: String = characters
+        .by_ref()
+        .take(MCP_ERROR_MESSAGE_CHARS_MAX)
+        .collect();
+    if characters.next().is_some() {
+        bounded.push('…');
+    }
+    bounded
 }
 
 #[cfg(test)]
@@ -284,6 +356,44 @@ mod tests {
         });
         let error = text_response(result(value)).unwrap_err();
         assert!(error.to_string().contains("quota exhausted"));
+    }
+
+    #[test]
+    fn mcp_error_diagnostics_are_bounded_and_credential_redacted() {
+        let secret = "abc123.abcdefghijklmnopqrstuvwxyz";
+        let value = json!({
+            "content": [{
+                "type": "text",
+                "text": format!("Authorization: Bearer {secret}; {}", "x".repeat(2_000))
+            }],
+            "isError": true
+        });
+        let error = text_response(result(value)).unwrap_err();
+        let message = error.message();
+
+        assert!(!message.contains(secret));
+        assert!(!message.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(message.contains("[AUTH_REDACTED]"));
+        assert!(message.chars().count() <= MCP_ERROR_MESSAGE_CHARS_MAX + 1);
+    }
+
+    #[test]
+    fn structured_mcp_error_uses_only_a_safe_message_field() {
+        let secret = "abc123.abcdefghijklmnopqrstuvwxyz";
+        let value = json!({
+            "structuredContent": {
+                "message": format!("api_key={secret}"),
+                "request": {"prompt": "must not be serialized into the error"}
+            },
+            "isError": true
+        });
+        let error = text_response(result(value)).unwrap_err();
+        let message = error.message();
+
+        assert!(!message.contains(secret));
+        assert!(!message.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(!message.contains("must not be serialized"));
+        assert!(message.contains("[FILTERED]"));
     }
 
     #[test]

@@ -1,14 +1,15 @@
-//! # Agent v1 wire contracts
+//! # Agent v1 API
 //!
-//! Strongly typed request and response values for the three frozen Agent v1
-//! operations:
+//! Strongly typed request/response values and [`ZaiClient`]
+//! dispatch for the three frozen Agent v1 operations:
 //!
 //! - `POST /v1/agents`
 //! - `POST /v1/agents/async-result`
 //! - `POST /v1/agents/conversation`
 //!
-//! This module intentionally contains no network facade. Use these values with
-//! a transport that targets the corresponding Agent v1 routes.
+//! [`AgentInvokeRequest<NonStreaming>`] supports the JSON response path. The
+//! [`Streaming`] type-state intentionally has no `send_via` method until a typed
+//! Agent streaming decoder is available.
 
 mod request;
 mod response;
@@ -20,7 +21,10 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ZaiResult, client::validation::require_non_blank};
+use crate::{
+    ZaiResult,
+    client::{ZaiClient, validation::require_non_blank},
+};
 
 /// Open variables object accepted by the Agent invocation schema.
 ///
@@ -76,6 +80,23 @@ impl From<serde_json::Map<String, serde_json::Value>> for AgentCustomVariables {
 pub struct NonStreaming;
 
 /// Type-state marker for a streaming Agent invocation.
+///
+/// Streaming requests deliberately have no JSON `send_via` path:
+///
+/// ```compile_fail
+/// use zai_rs::{
+///     ZaiClient,
+///     agent::{AgentId, AgentInvokeRequest, AgentMessage, Streaming},
+/// };
+///
+/// async fn send_streaming(client: &ZaiClient) -> zai_rs::ZaiResult<()> {
+///     let request = AgentInvokeRequest::<Streaming>::builder(AgentId::GeneralTranslation)
+///         .message(AgentMessage::user("hello"))
+///         .build()?;
+///     let _ = request.send_via(client).await?;
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Streaming;
 
@@ -214,6 +235,19 @@ impl<N: StreamMode> AgentInvokeRequest<N> {
     }
 }
 
+impl AgentInvokeRequest<NonStreaming> {
+    /// Invoke the selected Agent through `client` and decode either a completed
+    /// result or an accepted asynchronous invocation.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AgentInvokeResponse> {
+        let response = client
+            .operation(crate::client::routes::AGENTS_INVOKE)
+            .send_json::<_, AgentInvokeResponse>(self)
+            .await?;
+        response.validate()?;
+        Ok(response)
+    }
+}
+
 /// Frozen request body for `POST /v1/agents/async-result`.
 #[derive(Clone, Serialize)]
 pub struct AgentAsyncResultRequest {
@@ -249,6 +283,16 @@ impl AgentAsyncResultRequest {
     /// Borrow the asynchronous task identifier.
     pub fn async_id(&self) -> &str {
         &self.async_id
+    }
+
+    /// Poll an asynchronous Agent invocation through `client`.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AgentAsyncResult> {
+        let response = client
+            .operation(crate::client::routes::AGENTS_ASYNC_RESULT)
+            .send_json::<_, AgentAsyncResult>(self)
+            .await?;
+        response.validate()?;
+        Ok(response)
     }
 }
 
@@ -388,6 +432,16 @@ impl AgentConversationRequest {
     /// Borrow the optional custom variables.
     pub const fn custom_variables(&self) -> Option<&AgentConversationVariables> {
         self.custom_variables.as_ref()
+    }
+
+    /// Continue an Agent conversation through `client`.
+    pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<AgentConversationResponse> {
+        let response = client
+            .operation(crate::client::routes::AGENTS_CONVERSATION)
+            .send_json::<_, AgentConversationResponse>(self)
+            .await?;
+        response.validate()?;
+        Ok(response)
     }
 }
 

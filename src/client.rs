@@ -12,8 +12,8 @@ pub(crate) mod validation;
 
 // Re-export the main public types.
 pub use config::{
-    AdditionalHeader, HttpTransportConfig, HttpTransportConfigBuilder, RetryOverride, ZaiClient,
-    ZaiClientBuilder,
+    AdditionalHeader, HttpTransportConfig, HttpTransportConfigBuilder, RequestOptions,
+    RetryOverride, ZaiClient, ZaiClientBuilder,
 };
 pub use endpoint::{ApiFamily, EndpointConfig, EndpointConfigBuilder};
 pub use error::*;

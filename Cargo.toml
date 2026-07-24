@@ -49,6 +49,7 @@ exclude = [
     "/.gitleaks.toml",
     "/book.toml",
     "/deny.toml",
+    "/lychee.toml",
     "/rust-toolchain.toml",
     "/rustfmt.toml",
 ]
@@ -184,9 +185,23 @@ required-features = ["mcp"]
 name = "mcp_vision"
 required-features = ["mcp"]
 
+[[bench]]
+name = "hot_paths"
+harness = false
+required-features = ["realtime", "toolkits"]
+
 [dev-dependencies]
-hyper = { version = "1.10.1", features = ["full"] }
-hyper-util = { version = "0.1.20", features = ["full"] }
+# Criterion is deliberately kept lean: Tokio drives the executor benchmarks,
+# while cargo_bench_support preserves Cargo's standard benchmark integration.
+# Plotting, Rayon, and the other async runtimes are not needed.
+criterion = { version = "0.8.2", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
+# The scripted test server only needs Hyper's server-side request types. The
+# protocol implementation is selected by `hyper-util`'s `server-auto` feature.
+hyper = { version = "1.10.1", default-features = false }
+# `server-auto` supplies the HTTP/1 + HTTP/2 server connection builder; `tokio`
+# supplies `TokioExecutor` and `TokioIo`. Client pools, proxies, graceful
+# shutdown helpers, Tower adapters, and Hyper tracing are not used by tests.
+hyper-util = { version = "0.1.20", default-features = false, features = ["server-auto", "tokio"] }
 http-body-util = "0.1.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Tests generate isolated PNG/WAV/text fixtures instead of relying on repository
