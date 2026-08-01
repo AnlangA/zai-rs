@@ -32,7 +32,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -116,13 +116,13 @@ jobs:
 
       - name: Attest build provenance
         if: ${{ vars.SKIP_PUBLISH != 'true' }}
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
           subject-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
 
       - name: Attest SBOM
         if: ${{ vars.SKIP_PUBLISH != 'true' }}
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
           subject-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
           sbom-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.cdx.json
