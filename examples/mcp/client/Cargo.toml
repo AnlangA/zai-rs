@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 anyhow = "1.0.102"
-rmcp = { version = "2.2.0", features = [
+rmcp = { version = "3.0.0", features = [
     "client",
     "transport-streamable-http-client-reqwest",
 ] }
