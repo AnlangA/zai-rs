@@ -315,6 +315,12 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 请求统一使用 `request.send_via(&client)`；原先没有业务方法的
 `client.services()` 空门面已删除。
 
+冻结的 [`spec/contracts/operations.json`](spec/contracts/operations.json) 中，
+`service_method`、`request_type`、`response_type` 与 `stream_item` 使用外部 crate
+可见的全限定 Rust 路径；`N`/`M` 表示公开泛型参数，` / ` 分隔同一 operation 的
+非流式与流式 type-state。`tests/operation_public_bindings.rs` 会逐条编译并核对全部
+59 个绑定，防止 contract 再次漂移到不存在的 client facade 或类型。
+
 ### 实时 API
 - [x] WebSocket 类型定义
 - [x] 会话管理与强类型事件/音频流（`RealtimeClient` / `SessionBuilder`）

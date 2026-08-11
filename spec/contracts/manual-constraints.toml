@@ -175,8 +175,8 @@ operation_only_operations = [
 operation_only_success = "code == 200; data is not required"
 
 [knowledge.detail_names]
-get_by_id = "KnowledgeGetRequest / client.knowledge().get"
-search = "KnowledgeSearchRequest / client.knowledge().retrieve"
+get_by_id = "zai_rs::knowledge::KnowledgeGetRequest::send_via"
+search = "zai_rs::knowledge::KnowledgeSearchRequest::send_via"
 
 # ---------------------------------------------------------------------------
 # 13.6 Streaming, Realtime & Coding Plan.
