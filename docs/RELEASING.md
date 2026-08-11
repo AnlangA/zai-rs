@@ -55,7 +55,8 @@ than `6.0.1` because the working tree no longer matches `v6.0.1`.
 
 1. Make the intended version explicit in `Cargo.toml`, update `Cargo.lock`, and
    update README, installation, migration, security, and release notes together.
-2. Run the quality gates in `docs/OPTIMIZATION_PLAN.md` from a clean checkout.
+2. Run the repository quality gates mirrored by `.github/workflows/ci.yml`
+   from a clean checkout.
 3. Run `./scripts/verify-package-contents.sh`; it inspects the actual `.crate`
    archive and rejects repository-only paths, non-regular entries, missing
    contract files, and unexpectedly large package growth without freezing an

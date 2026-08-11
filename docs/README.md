@@ -18,11 +18,6 @@
   - 错误码映射和 retry 策略
   - 测试与文档维护规则
 
-- **[全面优化路线图](OPTIMIZATION_PLAN.md)** - 按风险和依赖排序的持续改进计划
-  - 当前构建、测试与安全基线
-  - HTTP、流式 I/O、Realtime 和公共 API 里程碑
-  - 每项工作的验收标准与预估工作量
-
 - **[未发布安全加固迁移说明](HARDENING_MIGRATION.md)** - 从已发布 0.6.0 升级到下一正式版本时的可观察行为变化
 
 - **[发布清单](RELEASING.md)** - OIDC、SBOM、provenance 与发布前外部配置

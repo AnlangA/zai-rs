@@ -649,6 +649,13 @@ only under an explicit logging policy.
   directly into one exactly sized final JSON buffer. The public `ClientEvent`
   wire remains byte-identical, while the intermediate base64 string and JSON
   reallocations are removed.
+- ASR `with_file_base64` keeps its public String-based builder contract but
+  transfers that allocation into immutable `Bytes`. Validation reads standard
+  Base64 to EOF through a fixed 8 KiB scratch buffer, retaining only the first
+  12 decoded bytes and the decoded length, so malformed tails and the 25 MiB
+  limit keep their prior ordering without allocating the decoded payload.
+  Multipart retries share the same encoded allocation and preserve the exact
+  text-field wire metadata and ordering.
 
 ---
 
@@ -941,3 +948,8 @@ Vision MCP 的默认执行行为、工具
   Realtime 音视频现在在 WAV/base64/JSON 扩张前取得单会话准入；栈上 WAV header+PCM、
   raw PCM 或 JPEG 会直接 base64 写入一次精确分配的最终 JSON。公开 `ClientEvent` wire
   逐字节不变，同时移除了中间 base64 String 和 JSON reallocation。
+  ASR `with_file_base64` 的公开 String builder 契约保持不变，内部会零拷贝接管为
+  immutable `Bytes`；标准 Base64 经固定 8 KiB scratch 完整读到 EOF，只保留前 12 字节
+  magic 与 decoded length，因此 malformed tail 和 25 MiB 上限仍保持原错误优先级，且
+  不再分配完整 decoded payload。multipart retry 共享同一 encoded allocation，同时保留
+  旧 text field 的 wire metadata、顺序和正文。
