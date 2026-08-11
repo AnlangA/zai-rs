@@ -22,6 +22,7 @@ static DEFERRED_CLEANUP_BUDGET: CleanupBudget = CleanupBudget::new(DEFERRED_CLEA
 pub(crate) struct AtomicDownload {
     destination: PathBuf,
     partial: PartialFile,
+    #[cfg(unix)]
     directory_sync: DirectorySyncPlan,
     length: usize,
 }
@@ -113,9 +114,12 @@ impl AtomicDownload {
             .parent()
             .ok_or_else(|| invalid("download target has no parent directory"))?
             .to_path_buf();
+        #[cfg(not(unix))]
+        let _ = directory_sync;
         Ok(Self {
             destination,
             partial: PartialFile::new(&parent).await?,
+            #[cfg(unix)]
             directory_sync,
             length: 0,
         })
@@ -143,7 +147,6 @@ impl AtomicDownload {
             let Self {
                 destination,
                 partial,
-                directory_sync: _,
                 length,
             } = self;
             partial.commit(&destination).await?;
@@ -321,12 +324,21 @@ impl CleanupBudget {
     }
 
     fn try_acquire(&'static self) -> Option<CleanupPermit> {
-        self.active
-            .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |active| {
-                (active < self.max).then_some(active + 1)
-            })
-            .ok()
-            .map(|_| CleanupPermit { budget: self })
+        let mut active = self.active.load(Ordering::Relaxed);
+        loop {
+            if active >= self.max {
+                return None;
+            }
+            match self.active.compare_exchange_weak(
+                active,
+                active + 1,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return Some(CleanupPermit { budget: self }),
+                Err(observed) => active = observed,
+            }
+        }
     }
 }
 
