@@ -60,8 +60,8 @@ jobs:
 
       - name: Check shell and browser assets
         run: |
-          bash -n scripts/bootstrap-tools.sh
-          shellcheck scripts/bootstrap-tools.sh
+          bash -n scripts/bootstrap-tools.sh scripts/verify-package-contents.sh
+          shellcheck scripts/bootstrap-tools.sh scripts/verify-package-contents.sh
           node --check examples/web_chat/static/js/app.js
 
   test:
@@ -98,6 +98,18 @@ jobs:
       - name: cargo test (core crate, no optional features)
         run: cargo test -p zai-rs --no-default-features --tests --locked
 
+      # These harness-free targets contain deterministic resource assertions,
+      # not only wall-clock measurements. Run their fast `cargo test` modes on
+      # every PR/release quality gate; the weekly benchmark workflow remains
+      # responsible for full Criterion sampling and trend artifacts.
+      - name: cargo test (deterministic benchmark assertions, all features)
+        if: matrix.rust == 'stable'
+        run: cargo test -p zai-rs --all-features --benches --locked
+
+      - name: cargo test (deterministic benchmark assertions, no optional features)
+        if: matrix.rust == 'stable'
+        run: cargo test -p zai-rs --no-default-features --benches --locked
+
       # Doc-tests are excluded by `--tests`; run them explicitly so runnable
       # doc examples (the `assert_eq!` in src/lib.rs, the client::error docs,
       # …) can't silently rot. Examples are covered by the build step below.
@@ -119,7 +131,7 @@ jobs:
     if: github.event_name != 'schedule'
     name: Platform (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -144,11 +156,28 @@ jobs:
       - name: cargo check (all features + targets)
         run: cargo check -p zai-rs --all-features --all-targets --locked
 
+      # Compile and run feature-gated platform code on the current stable
+      # compiler. Linux owns the broader workspace matrix; these jobs prove
+      # that the core crate's Windows/macOS cfg branches execute as well.
+      - name: cargo test (core crate, all features)
+        run: cargo test -p zai-rs --all-features --lib --tests --locked
+
       # The no-default suite uses only ephemeral loopback listeners. Its
       # symlink-specific cases are already gated with `cfg(unix)`, so the same
       # command is portable without duplicating Linux-only policy/tooling jobs.
       - name: cargo test (core crate, no optional features)
         run: cargo test -p zai-rs --no-default-features --tests --locked
+
+      - name: Install Rust 1.88 for native platform MSRV check
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: "1.88.0"
+          cache: false
+
+      - name: cargo check (native platform MSRV, all features + targets)
+        run: |
+          cargo +1.88.0 check -p zai-rs --all-features --all-targets --locked
+          cargo +1.88.0 check -p zai-rs --no-default-features --all-targets --locked
 
   msrv:
     if: github.event_name != 'schedule'
@@ -168,9 +197,11 @@ jobs:
           cache: true
 
       - name: Verify build on MSRV
-        # `--all-targets` (not just `--lib`) so example/test MSRV regressions are
-        # caught too, not just the library.
+        # Check the production library without dev-dependency feature
+        # unification first, then compile every example/test/benchmark target.
         run: |
+          cargo check --workspace --all-features --lib --locked
+          cargo check -p zai-rs --no-default-features --lib --locked
           cargo check --workspace --all-features --all-targets --locked
           cargo check -p zai-rs --no-default-features --all-targets --locked
 
@@ -179,6 +210,8 @@ jobs:
       - name: Verify each optional feature independently
         run: |
           for feature in mcp realtime toolkits rmcp-kits; do
+            cargo check -p zai-rs --no-default-features \
+              --features "${feature}" --lib --locked
             cargo check -p zai-rs --no-default-features \
               --features "${feature}" --all-targets --locked
           done
@@ -195,6 +228,8 @@ jobs:
             realtime,rmcp-kits \
             toolkits,rmcp-kits
           do
+            cargo check -p zai-rs --no-default-features \
+              --features "${features}" --lib --locked
             cargo check -p zai-rs --no-default-features \
               --features "${features}" --all-targets --locked
           done
@@ -308,6 +343,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       # cargo-semver-checks 0.49.0 requires Rust >=1.91. This toolchain is only
@@ -321,12 +357,42 @@ jobs:
       - name: Install pinned cargo-semver-checks
         run: ./scripts/bootstrap-tools.sh cargo-semver-checks
 
-      # The analyzer selects the latest published registry version and advances
-      # automatically after later releases.
-      # A deliberate breaking release must update the package version and
-      # migration notes rather than hiding lints.
-      - name: Compare public API with latest crates.io release
-        run: cargo +1.97.1 semver-checks --package zai-rs --all-features --color never
+      # Compare against the newest version tag reachable from this revision,
+      # excluding a tag that points at HEAD itself (as happens in release CI).
+      # The registry still contains 0.6.0 while v6.0.1 is the relevant local
+      # compatibility baseline, so relying on registry version ordering would
+      # currently turn this gate into a zero-check false positive.
+      - name: Compare default and all-feature public APIs with the prior tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_oid="$(git rev-parse HEAD)"
+          baseline=""
+          while IFS= read -r tag; do
+            if [[ "$(git rev-list -n 1 "${tag}")" != "${head_oid}" ]]; then
+              baseline="${tag}"
+              break
+            fi
+          done < <(git tag --merged HEAD --list 'v[0-9]*' --sort=-v:refname)
+
+          if [[ -z "${baseline}" ]]; then
+            echo "No prior v* compatibility baseline is reachable from HEAD" >&2
+            exit 1
+          fi
+
+          echo "Using semver baseline ${baseline}"
+          cargo +1.97.1 semver-checks \
+            --package zai-rs \
+            --baseline-rev "${baseline}" \
+            --release-type patch \
+            --default-features \
+            --color never
+          cargo +1.97.1 semver-checks \
+            --package zai-rs \
+            --baseline-rev "${baseline}" \
+            --release-type patch \
+            --all-features \
+            --color never
 
   security:
     name: Security audit (workspace + fuzz)
@@ -420,6 +486,9 @@ jobs:
         with:
           toolchain: stable
           cache: true
+
+      - name: Verify package content policy
+        run: ./scripts/verify-package-contents.sh
 
       # Packages the crate and runs a verification build with all features,
       # catching metadata/exclude mistakes before a real `cargo publish`.

@@ -3,6 +3,64 @@
 use crate::client::RequestOptions;
 use crate::client::transport::retry::RetrySafety;
 
+/// One validated operation-local header whose value is always sensitive.
+///
+/// Unlike [`crate::client::AdditionalHeader`], this type is crate-private and
+/// travels with one prepared operation only. Keeping the parsed header value
+/// here means request construction cannot fail later while attempting to
+/// reinterpret untrusted header text.
+#[derive(Clone)]
+pub(crate) struct SensitiveHeader {
+    name: reqwest::header::HeaderName,
+    value: reqwest::header::HeaderValue,
+}
+
+impl SensitiveHeader {
+    /// Validate and own an operation-local header without retaining its raw
+    /// value in any error message.
+    pub(crate) fn new(name: &'static str, value: &str) -> crate::ZaiResult<Self> {
+        if value.is_empty() || value.len() > 1024 {
+            return Err(invalid_sensitive_header());
+        }
+        if !value.bytes().all(|byte| (0x21..=0x7e).contains(&byte)) {
+            return Err(invalid_sensitive_header());
+        }
+
+        let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| invalid_sensitive_header())?;
+        let mut value = reqwest::header::HeaderValue::from_str(value)
+            .map_err(|_| invalid_sensitive_header())?;
+        value.set_sensitive(true);
+        Ok(Self { name, value })
+    }
+
+    pub(crate) fn name(&self) -> &reqwest::header::HeaderName {
+        &self.name
+    }
+
+    pub(crate) fn value(&self) -> &reqwest::header::HeaderValue {
+        &self.value
+    }
+}
+
+impl std::fmt::Debug for SensitiveHeader {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SensitiveHeader")
+            .field("name", &self.name)
+            .field("value", &"[REDACTED]")
+            .finish()
+    }
+}
+
+fn invalid_sensitive_header() -> crate::ZaiError {
+    crate::ZaiError::ApiError {
+        code: crate::client::error::codes::SDK_VALIDATION,
+        message: "operation header value must be 1..=1024 printable ASCII bytes without whitespace"
+            .to_string(),
+    }
+}
+
 /// A request body kind the Transport knows how to encode and size-limit.
 #[derive(Debug)]
 pub enum BodyKind<'a> {
@@ -69,10 +127,14 @@ pub struct PreparedRequest<'a> {
     pub retry_safety: RetrySafety,
     /// Transport-only overrides carried by the dispatching client handle.
     pub request_options: RequestOptions,
+    /// HTTP statuses declared successful by the canonical operation contract.
+    pub success_statuses: &'static [u16],
     /// Response buffering mode and associated size limit.
     pub response_mode: ResponseMode,
     /// Route template for tracing (never the materialized URL).
     pub route_template: String,
+    /// Validated sensitive headers scoped to this operation only.
+    pub(crate) sensitive_headers: Vec<SensitiveHeader>,
 }
 
 impl<'a> std::fmt::Debug for PreparedRequest<'a> {
@@ -83,7 +145,32 @@ impl<'a> std::fmt::Debug for PreparedRequest<'a> {
             .field("method", &self.method)
             .field("route", &self.route_template)
             .field("retry_safety", &self.retry_safety)
+            .field("success_statuses", &self.success_statuses)
             .field("request_options", &self.request_options)
+            .field("sensitive_header_count", &self.sensitive_headers.len())
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SensitiveHeader;
+
+    #[test]
+    fn sensitive_header_validation_and_debug_never_expose_the_value() {
+        let secret = "private-session-123";
+        let header = SensitiveHeader::new("X-Session-Id", secret).unwrap();
+        assert!(header.value().is_sensitive());
+        let debug = format!("{header:?}");
+        assert!(debug.contains("x-session-id"));
+        assert!(!debug.contains(secret));
+
+        for value in ["", "contains space", "contains\nnewline", "非 ASCII"] {
+            let error = SensitiveHeader::new("X-Session-Id", value).unwrap_err();
+            if !value.is_empty() {
+                assert!(!error.to_string().contains(value));
+            }
+        }
+        assert!(SensitiveHeader::new("X-Session-Id", &"x".repeat(1025)).is_err());
     }
 }

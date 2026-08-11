@@ -1,6 +1,7 @@
 use super::types::DocumentListResponse;
 use crate::ZaiResult;
 use crate::client::ZaiClient;
+use crate::pagination::PagePagination;
 
 /// Query parameters for listing documents under a knowledge base
 #[derive(Clone, serde::Serialize, validator::Validate)]
@@ -54,27 +55,17 @@ impl DocumentListQuery {
         self.size = Some(size);
         self
     }
+    /// Replace the page and size with validated pagination values.
+    pub fn try_with_pagination(mut self, pagination: PagePagination) -> ZaiResult<Self> {
+        let (page, page_size) = pagination.into_parts();
+        self.page = Some(page);
+        self.size = Some(page_size);
+        Ok(self)
+    }
     /// Filter by document name.
     pub fn with_word(mut self, word: impl Into<String>) -> Self {
         self.word = Some(word.into());
         self
-    }
-
-    /// Build the `(&str, String)` query pairs (in stable order) used to form
-    /// the request URL.
-    fn pairs(&self) -> Vec<(&'static str, String)> {
-        let mut params: Vec<(&'static str, String)> = Vec::new();
-        params.push(("knowledge_id", self.knowledge_id.clone()));
-        if let Some(page) = self.page.as_ref() {
-            params.push(("page", page.to_string()));
-        }
-        if let Some(size) = self.size.as_ref() {
-            params.push(("size", size.to_string()));
-        }
-        if let Some(word) = self.word.as_ref() {
-            params.push(("word", word.clone()));
-        }
-        params
     }
 }
 
@@ -98,6 +89,12 @@ impl DocumentListRequest {
     pub fn with_query(mut self, q: DocumentListQuery) -> Self {
         self.query = q;
         self
+    }
+
+    /// Replace the request's page and size with validated pagination.
+    pub fn try_with_pagination(mut self, pagination: PagePagination) -> ZaiResult<Self> {
+        self.query = self.query.try_with_pagination(pagination)?;
+        Ok(self)
     }
 
     /// Set the one-based page index.
@@ -133,11 +130,10 @@ impl DocumentListRequest {
                 "word must not be blank when provided",
             ));
         }
-        let params = self.query.pairs();
         let route = crate::client::routes::DOCUMENTS_LIST;
         client
             .operation(route)
-            .with_query(params)
+            .with_query(&self.query)?
             .send_empty::<DocumentListResponse>()
             .await
     }
@@ -153,5 +149,17 @@ mod tests {
         let debug = format!("{query:?}");
         assert!(!debug.contains("private-knowledge"));
         assert!(!debug.contains("private-document"));
+    }
+
+    #[test]
+    fn validated_pagination_preserves_document_filters() {
+        let query = DocumentListQuery::new("private-knowledge")
+            .with_word("private-document")
+            .try_with_pagination(PagePagination::try_new(4, u32::MAX).unwrap())
+            .unwrap();
+        assert_eq!(query.page, Some(4));
+        assert_eq!(query.size, Some(u32::MAX));
+        assert_eq!(query.knowledge_id, "private-knowledge");
+        assert_eq!(query.word.as_deref(), Some("private-document"));
     }
 }

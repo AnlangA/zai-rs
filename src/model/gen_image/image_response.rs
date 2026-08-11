@@ -1,4 +1,9 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use std::fmt;
+
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{Error as _, Visitor},
+};
 
 /// Image generation response payload
 ///
@@ -56,7 +61,14 @@ pub struct ImageDataItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageContentFilterInfo {
     /// Stage at which the safety filter applied.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    ///
+    /// A future unknown string is exposed as `None` while the generated image
+    /// and the remaining filter metadata stay available.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_filter_role",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub role: Option<ImageContentFilterRole>,
     /// Severity from 0 (most severe) through 3 (least severe).
     #[serde(
@@ -77,6 +89,60 @@ pub enum ImageContentFilterRole {
     User,
     /// Conversation history.
     History,
+}
+
+enum ImageContentFilterRoleWire {
+    Assistant,
+    User,
+    History,
+    Unknown,
+}
+
+impl<'de> Deserialize<'de> for ImageContentFilterRoleWire {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct FilterRoleVisitor;
+
+        impl Visitor<'_> for FilterRoleVisitor {
+            type Value = ImageContentFilterRoleWire;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an image content-filter role string")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(match value {
+                    "assistant" => ImageContentFilterRoleWire::Assistant,
+                    "user" => ImageContentFilterRoleWire::User,
+                    "history" => ImageContentFilterRoleWire::History,
+                    _ => ImageContentFilterRoleWire::Unknown,
+                })
+            }
+        }
+
+        deserializer.deserialize_str(FilterRoleVisitor)
+    }
+}
+
+fn deserialize_optional_filter_role<'de, D>(
+    deserializer: D,
+) -> Result<Option<ImageContentFilterRole>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        match Option::<ImageContentFilterRoleWire>::deserialize(deserializer)? {
+            Some(ImageContentFilterRoleWire::Assistant) => Some(ImageContentFilterRole::Assistant),
+            Some(ImageContentFilterRoleWire::User) => Some(ImageContentFilterRole::User),
+            Some(ImageContentFilterRoleWire::History) => Some(ImageContentFilterRole::History),
+            Some(ImageContentFilterRoleWire::Unknown) | None => None,
+        },
+    )
 }
 
 fn deserialize_optional_filter_level<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
@@ -135,6 +201,70 @@ mod tests {
                 .is_ok()
         );
         assert!(serde_json::from_str::<ImageContentFilterInfo>(r#"{"level":4}"#).is_err());
-        assert!(serde_json::from_str::<ImageContentFilterInfo>(r#"{"role":"future"}"#).is_err());
+    }
+
+    #[test]
+    fn filter_role_is_forward_compatible_only_at_the_response_field() {
+        let response: ImageResponse = serde_json::from_value(serde_json::json!({
+            "created": 1,
+            "data": [{"url": "https://example.com/generated.png"}],
+            "content_filter": [{
+                "role": "future_provider_stage",
+                "level": 2,
+                "provider_category": "future-category"
+            }]
+        }))
+        .expect("an additive role must not hide a generated image");
+
+        assert_eq!(
+            response
+                .data()
+                .and_then(|items| items.first())
+                .map(ImageDataItem::url),
+            Some("https://example.com/generated.png")
+        );
+        let filter = &response.content_filter().unwrap()[0];
+        assert_eq!(filter.role, None);
+        assert_eq!(filter.level, Some(2));
+
+        for (wire, expected) in [
+            ("assistant", ImageContentFilterRole::Assistant),
+            ("user", ImageContentFilterRole::User),
+            ("history", ImageContentFilterRole::History),
+        ] {
+            let filter: ImageContentFilterInfo =
+                serde_json::from_value(serde_json::json!({"role": wire})).unwrap();
+            assert_eq!(filter.role, Some(expected));
+        }
+
+        let missing: ImageContentFilterInfo = serde_json::from_str("{}").unwrap();
+        let null: ImageContentFilterInfo = serde_json::from_str(r#"{"role":null}"#).unwrap();
+        assert_eq!(missing.role, None);
+        assert_eq!(null.role, None);
+
+        for malformed in [
+            serde_json::json!({"role": 1}),
+            serde_json::json!({"role": true}),
+            serde_json::json!({"role": []}),
+            serde_json::json!({"role": {}}),
+        ] {
+            assert!(
+                serde_json::from_value::<ImageContentFilterInfo>(malformed).is_err(),
+                "non-string roles must remain malformed"
+            );
+        }
+
+        assert!(
+            serde_json::from_value::<ImageContentFilterRole>(serde_json::json!(
+                "future_provider_stage"
+            ))
+            .is_err(),
+            "the public enum's direct Serde contract must remain strict"
+        );
+        assert_eq!(
+            serde_json::to_value(ImageContentFilterRole::Assistant).unwrap(),
+            serde_json::json!("assistant"),
+            "known public-enum serialization must remain unchanged"
+        );
     }
 }

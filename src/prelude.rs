@@ -15,7 +15,10 @@
 //! # }
 //! ```
 
-pub use crate::client::{HttpTransportConfig, ZaiClient, ZaiClientBuilder, ZaiError, ZaiResult};
+pub use crate::client::{
+    ApiFamily, HttpConcurrencyConfig, HttpTransportConfig, RequestOptions, RetryOverride,
+    ZaiClient, ZaiClientBuilder, ZaiError, ZaiResult,
+};
 
 // Keep the prelude intentionally small; specialized request/response types stay
 // in their semantic modules.

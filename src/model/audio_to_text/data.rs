@@ -122,9 +122,11 @@ where
 
     /// Submit the multipart request and decode typed transcription SSE events.
     ///
-    /// The streaming POST is never retried or redirected. A missing `[DONE]`,
-    /// malformed event, in-band business error, oversized event, or idle
-    /// timeout is returned once and then terminates the stream.
+    /// The handshake accepts only an unranged `200 OK` with
+    /// `text/event-stream`, and the streaming POST is never retried or
+    /// redirected. A missing `[DONE]`, malformed event, in-band business error,
+    /// oversized event, or idle timeout is returned once and then terminates
+    /// the stream.
     pub async fn stream_via(&self, client: &ZaiClient) -> ZaiResult<SpeechToTextStream> {
         let factory = self.build_multipart().await?;
         let route = crate::client::routes::AUDIO_TRANSCRIBE;

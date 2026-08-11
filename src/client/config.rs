@@ -1,12 +1,13 @@
-//! [`ZaiClient`], [`ZaiClientBuilder`], and [`HttpTransportConfig`].
+//! [`ZaiClient`], [`ZaiClientBuilder`], [`HttpTransportConfig`], and
+//! [`HttpConcurrencyConfig`].
 //!
 //! A `ZaiClient` is the single shared entry point: it owns an `Arc<ClientInner>`
-//! holding the secret, validated endpoints, the one `reqwest::Client`, and the
-//! transport policy. `Clone` is cheap (one `Arc` bump) and does not copy the config,
-//! secret, or connection pool.
+//! holding the secret, validated endpoints, and the shared HTTP transport
+//! policy. `Clone` is cheap (one `Arc` bump) and does not copy the config,
+//! secret, or connection pools.
 //!
-//! The builder only accepts an [`HttpTransportConfig`] and the API key — it
-//! never takes a pre-built `reqwest::Client`. Insecure transport
+//! The builder accepts validated HTTP transport/concurrency policies and the
+//! API key — it never takes a pre-built `reqwest::Client`. Insecure transport
 //! is opt-in via [`ZaiClientBuilder::allow_insecure_transport`]; HTTP/WS bases
 //! must still pass the endpoint validator's local-host check.
 
@@ -34,6 +35,8 @@ pub(crate) struct ClientInner {
     pub(crate) endpoints: EndpointConfig,
     /// Transport policy.
     pub(crate) transport: HttpTransportConfig,
+    /// Shared logical-request admission policy.
+    pub(crate) concurrency: HttpConcurrencyConfig,
     /// Unified request sender, which owns the shared reqwest connection pool.
     pub(crate) sender: crate::client::transport::Transport,
 }
@@ -45,6 +48,7 @@ impl ZaiClient {
             api_key: api_key.into(),
             endpoints: EndpointConfig::builder(),
             transport: HttpTransportConfig::default(),
+            concurrency: HttpConcurrencyConfig::default(),
             allow_insecure: false,
         }
     }
@@ -72,6 +76,11 @@ impl ZaiClient {
     /// Borrow the transport policy.
     pub fn transport(&self) -> &HttpTransportConfig {
         &self.inner.transport
+    }
+
+    /// Borrow the shared logical-request admission policy.
+    pub fn concurrency(&self) -> &HttpConcurrencyConfig {
+        &self.inner.concurrency
     }
 
     /// Return a cheap client handle carrying scoped options for the next
@@ -113,6 +122,7 @@ impl std::fmt::Debug for ZaiClient {
             .field("credentials", &"[REDACTED]")
             .field("endpoints", &self.inner.endpoints)
             .field("transport", &self.inner.transport)
+            .field("concurrency", &self.inner.concurrency)
             .field("request_options", &self.request_options)
             .finish_non_exhaustive()
     }
@@ -123,6 +133,7 @@ pub struct ZaiClientBuilder {
     api_key: String,
     endpoints: crate::client::endpoint::EndpointConfigBuilder,
     transport: HttpTransportConfig,
+    concurrency: HttpConcurrencyConfig,
     allow_insecure: bool,
 }
 
@@ -157,6 +168,16 @@ impl ZaiClientBuilder {
         self
     }
 
+    /// Replace the shared HTTP logical-request admission policy.
+    ///
+    /// The limit is shared by every clone of the resulting [`ZaiClient`]. A
+    /// permit covers all attempts, backoff, and bounded response decoding for
+    /// a buffered request, and the complete lifetime of an SSE or file stream.
+    pub fn concurrency(mut self, concurrency: HttpConcurrencyConfig) -> Self {
+        self.concurrency = concurrency;
+        self
+    }
+
     /// Permit HTTP/WS bases that pass the endpoint validator's local-host check.
     ///
     /// This is a syntactic host check, not a DNS resolution check. Secure
@@ -188,16 +209,29 @@ impl ZaiClientBuilder {
             });
         }
         self.transport.validate()?;
+        self.concurrency.validate()?;
         let endpoints = self.endpoints.build(self.allow_insecure)?;
-        let reqwest = build_reqwest_client(&self.transport)?;
+        let reqwest = build_reqwest_client(&self.transport, ProxyPolicy::System)?;
+        // System proxy configuration is useful for public HTTPS APIs, but it
+        // must never turn an explicitly local endpoint into a remote hop. Keep
+        // a separate direct pool only when a configured HTTP family can use it;
+        // mixed public/local endpoint configs therefore retain proxy behavior
+        // for public traffic without exposing loopback Authorization headers.
+        let direct_reqwest = endpoints
+            .has_loopback_http_base()
+            .then(|| build_reqwest_client(&self.transport, ProxyPolicy::Direct))
+            .transpose()?;
         let sender = crate::client::transport::Transport::new(
             reqwest,
+            direct_reqwest,
             ApiSecret::new(self.api_key),
             &self.transport,
+            &self.concurrency,
         );
         let inner = Arc::new(ClientInner {
             endpoints,
             transport: self.transport,
+            concurrency: self.concurrency,
             sender,
         });
         Ok(ZaiClient {
@@ -207,17 +241,29 @@ impl ZaiClientBuilder {
     }
 }
 
-/// Construct the single `reqwest::Client` for a transport policy.
+/// Construct one `reqwest::Client` for a transport and proxy policy.
 ///
 /// SDK-controlled headers (Authorization, Accept, Content-Type, and User-Agent)
 /// are set per request rather than as client defaults.
-fn build_reqwest_client(transport: &HttpTransportConfig) -> ZaiResult<reqwest::Client> {
+#[derive(Clone, Copy)]
+enum ProxyPolicy {
+    System,
+    Direct,
+}
+
+fn build_reqwest_client(
+    transport: &HttpTransportConfig,
+    proxy_policy: ProxyPolicy,
+) -> ZaiResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .pool_max_idle_per_host(8)
         .pool_idle_timeout(Some(Duration::from_secs(90)))
         .tcp_keepalive(Some(Duration::from_secs(60)))
         .connect_timeout(transport.connect_timeout);
+    if matches!(proxy_policy, ProxyPolicy::Direct) {
+        builder = builder.no_proxy();
+    }
     // The transport applies per-attempt and overall deadlines itself. A
     // reqwest-wide timeout would also cap the lifetime of an SSE response,
     // terminating otherwise healthy long-running streams.
@@ -302,20 +348,27 @@ pub enum RetryOverride {
 /// Transport-only policy overrides carried by a scoped [`ZaiClient`] handle.
 ///
 /// Start with [`Default::default`] and set only the values that differ from the
-/// client's [`HttpTransportConfig`]. A handle created with
+/// client's HTTP transport and concurrency policies. A handle created with
 /// [`ZaiClient::with_request_options`] still shares the same connection pool
 /// and credentials as its source client.
 ///
-/// `max_attempts` is capped by the client's global maximum. Retrying a
-/// non-idempotent operation additionally requires the explicit
+/// `queue_timeout` is capped by the client's [`HttpConcurrencyConfig`], while
+/// `max_attempts` is capped by the client's global transport maximum. For SSE,
+/// a scoped `stream_consumer_timeout` can lower only the configured base:
+/// `base = min(scoped, global)`. The transport then applies the network-idle
+/// floor `effective = max(base, sse_idle + 1s)`, so a smaller override can be a
+/// no-op. Retrying a non-idempotent operation additionally requires the explicit
 /// [`RetryOverride::AssumeIdempotent`] assertion. SSE requests are never
-/// replayed; their handshake and idle deadlines can still be set separately.
+/// replayed; their handshake, idle, and consumer-progress deadlines can still
+/// be set separately.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RequestOptions {
+    queue_timeout: Option<Duration>,
     attempt_timeout: Option<Duration>,
     overall_timeout: Option<Duration>,
     sse_handshake_timeout: Option<Duration>,
     sse_idle_timeout: Option<Duration>,
+    stream_consumer_timeout: Option<Duration>,
     max_attempts: Option<u8>,
     retry_override: Option<RetryOverride>,
 }
@@ -332,6 +385,23 @@ impl RequestOptions {
             });
         }
         Ok(())
+    }
+
+    /// Lower the time this request may wait for the client's shared HTTP
+    /// concurrency permit.
+    ///
+    /// The effective value is capped by [`HttpConcurrencyConfig::queue_timeout`].
+    /// Zero requests fail-fast admission while still succeeding immediately
+    /// when a permit is available.
+    pub fn with_queue_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        if value > HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "queue_timeout must be in 0s..=24h".to_string(),
+            });
+        }
+        self.queue_timeout = Some(value);
+        Ok(self)
     }
 
     /// Override the absolute deadline for each attempt.
@@ -374,6 +444,26 @@ impl RequestOptions {
         Ok(self)
     }
 
+    /// Override the configured base interval for SSE consumer progress.
+    ///
+    /// The transport first computes `base = min(this override, global base)`,
+    /// then `effective = max(base, sse_idle + 1s)`. Thus this can lower the base
+    /// but cannot bypass the idle-derived floor and may have no effect on the
+    /// effective interval. Both base setters accept at most 24 hours; the
+    /// effective interval can therefore be as large as 24 hours plus one
+    /// second. Expiry cancels the whole stream and reports
+    /// [`TimeoutPhase::StreamConsumer`](crate::client::TimeoutPhase::StreamConsumer).
+    /// Finite file streams remain governed by their overall deadline instead.
+    pub fn with_stream_consumer_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        Self::validate_timeout(
+            "stream_consumer_timeout",
+            value,
+            HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT,
+        )?;
+        self.stream_consumer_timeout = Some(value);
+        Ok(self)
+    }
+
     /// Limit this request to between one and three attempts.
     ///
     /// The effective value cannot exceed the client's global
@@ -401,6 +491,11 @@ impl RequestOptions {
         self.attempt_timeout
     }
 
+    /// Admission-queue deadline override, if set.
+    pub const fn queue_timeout(&self) -> Option<Duration> {
+        self.queue_timeout
+    }
+
     /// Overall deadline override, if set.
     pub const fn overall_timeout(&self) -> Option<Duration> {
         self.overall_timeout
@@ -416,6 +511,14 @@ impl RequestOptions {
         self.sse_idle_timeout
     }
 
+    /// Configured SSE consumer-progress base override, if set.
+    ///
+    /// This getter does not include the global-base minimum or the
+    /// `sse_idle + 1s` floor used to derive the effective interval.
+    pub const fn stream_consumer_timeout(&self) -> Option<Duration> {
+        self.stream_consumer_timeout
+    }
+
     /// Requested attempt cap, if set.
     pub const fn max_attempts(&self) -> Option<u8> {
         self.max_attempts
@@ -424,6 +527,152 @@ impl RequestOptions {
     /// Explicit retry-safety assertion, if set.
     pub const fn retry_override(&self) -> Option<RetryOverride> {
         self.retry_override
+    }
+}
+
+// --- HttpConcurrencyConfig ------------------------------------------------
+
+/// Shared admission policy for logical HTTP operations.
+///
+/// One permit covers a buffered request's retry, backoff, body-read and decode
+/// lifecycle, or an SSE/file stream until it terminates or is dropped. This
+/// bounds active sockets, response decoding, multipart work, and long-lived
+/// streams across all clones of one [`ZaiClient`]. Waiting is cancellation-safe
+/// and governed by a separate queue deadline, so it does not consume an HTTP
+/// attempt timeout.
+///
+/// Once an indefinite raw response stream is established, its consumer must
+/// continue advancing it within an effective interval derived in two stages.
+/// The configured base is [`Self::stream_consumer_timeout`] or the smaller
+/// scoped override; the transport then uses `max(base, sse_idle + 1s)` so an
+/// actively pending consumer observes network idle first. Exceeding that
+/// effective interval cancels the entire stream. Finite file streams do not use
+/// this consumer-progress policy; their lifecycle remains bounded by the
+/// overall request deadline.
+///
+/// Fields are private so future policy extensions remain source-compatible;
+/// use the checked `with_*` methods to customize the defaults.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpConcurrencyConfig {
+    max_in_flight: usize,
+    queue_timeout: Duration,
+    stream_consumer_timeout: Duration,
+}
+
+impl HttpConcurrencyConfig {
+    /// Default number of simultaneously active logical HTTP operations.
+    pub const DEFAULT_MAX_IN_FLIGHT: usize = 64;
+    /// Hard upper bound for simultaneously active logical HTTP operations.
+    pub const MAX_IN_FLIGHT: usize = 4096;
+    /// Default wait for a shared concurrency permit.
+    pub const DEFAULT_QUEUE_TIMEOUT: Duration = Duration::from_secs(30);
+    /// Hard upper bound for admission-queue waiting.
+    pub const MAX_QUEUE_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+    /// Default configured base interval for SSE consumer progress (five
+    /// minutes), before applying the `sse_idle + 1s` floor.
+    pub const DEFAULT_STREAM_CONSUMER_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+    /// Hard upper bound for the configurable SSE consumer-progress base (24
+    /// hours). This is not the effective-interval cap; after the idle-derived
+    /// floor, the effective interval can be as large as 24 hours plus one
+    /// second.
+    pub const MAX_STREAM_CONSUMER_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
+
+    /// Set the shared active-operation limit (`1..=4096`).
+    pub fn with_max_in_flight(mut self, value: usize) -> ZaiResult<Self> {
+        if !(1..=Self::MAX_IN_FLIGHT).contains(&value) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "max_in_flight must be in 1..=4096".to_string(),
+            });
+        }
+        self.max_in_flight = value;
+        Ok(self)
+    }
+
+    /// Set how long an operation may wait for admission.
+    ///
+    /// Zero enables deterministic fail-fast behavior when all permits are in
+    /// use. Values above 24 hours are rejected.
+    pub fn with_queue_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        if value > Self::MAX_QUEUE_TIMEOUT {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "queue_timeout must be in 0s..=24h".to_string(),
+            });
+        }
+        self.queue_timeout = value;
+        Ok(self)
+    }
+
+    /// Set the global base interval for SSE consumer progress (`1ns..=24h`).
+    ///
+    /// A scoped override may lower this base. The effective interval is
+    /// `max(base, sse_idle + 1s)`, so the idle-derived floor can make a smaller
+    /// configured base a no-op and can raise the effective interval as high as
+    /// 24 hours plus one second. Expiry cancels the whole stream. Finite file
+    /// streams remain governed by their overall request deadline instead.
+    pub fn with_stream_consumer_timeout(mut self, value: Duration) -> ZaiResult<Self> {
+        if value.is_zero() || value > Self::MAX_STREAM_CONSUMER_TIMEOUT {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "stream_consumer_timeout must be in 1ns..=24h".to_string(),
+            });
+        }
+        self.stream_consumer_timeout = value;
+        Ok(self)
+    }
+
+    /// Validate all admission-policy invariants.
+    pub fn validate(&self) -> ZaiResult<()> {
+        if !(1..=Self::MAX_IN_FLIGHT).contains(&self.max_in_flight) {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "max_in_flight must be in 1..=4096".to_string(),
+            });
+        }
+        if self.queue_timeout > Self::MAX_QUEUE_TIMEOUT {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "queue_timeout must be in 0s..=24h".to_string(),
+            });
+        }
+        if self.stream_consumer_timeout.is_zero()
+            || self.stream_consumer_timeout > Self::MAX_STREAM_CONSUMER_TIMEOUT
+        {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "stream_consumer_timeout must be in 1ns..=24h".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Maximum number of active logical operations.
+    pub const fn max_in_flight(&self) -> usize {
+        self.max_in_flight
+    }
+
+    /// Maximum time an operation waits for admission.
+    pub const fn queue_timeout(&self) -> Duration {
+        self.queue_timeout
+    }
+
+    /// Configured global base interval for SSE consumer progress.
+    ///
+    /// This getter does not include a scoped-base minimum or the
+    /// `sse_idle + 1s` floor used to derive the effective interval.
+    pub const fn stream_consumer_timeout(&self) -> Duration {
+        self.stream_consumer_timeout
+    }
+}
+
+impl Default for HttpConcurrencyConfig {
+    fn default() -> Self {
+        Self {
+            max_in_flight: Self::DEFAULT_MAX_IN_FLIGHT,
+            queue_timeout: Self::DEFAULT_QUEUE_TIMEOUT,
+            stream_consumer_timeout: Self::DEFAULT_STREAM_CONSUMER_TIMEOUT,
+        }
     }
 }
 
@@ -547,6 +796,16 @@ impl HttpTransportConfig {
         Ok(self)
     }
 
+    /// Enable or disable response gzip negotiation.
+    ///
+    /// Compression is enabled by default. Disabling it can be useful when an
+    /// intermediary already handles compression or while diagnosing wire-level
+    /// behavior.
+    pub fn with_compression(mut self, enabled: bool) -> Self {
+        self.enable_compression = enabled;
+        self
+    }
+
     /// Add an allow-listed additional header.
     pub fn with_additional_header(mut self, header: AdditionalHeader) -> Self {
         self.additional_headers.push(header);
@@ -576,6 +835,11 @@ impl HttpTransportConfigBuilder {
         self.config = self.config.with_max_attempts(n)?;
         Ok(self)
     }
+    /// Enable or disable response gzip negotiation.
+    pub fn compression(mut self, enabled: bool) -> Self {
+        self.config.enable_compression = enabled;
+        self
+    }
     /// Add a validated header to every HTTP request.
     pub fn additional_header(mut self, header: AdditionalHeader) -> Self {
         self.config.additional_headers.push(header);
@@ -585,11 +849,34 @@ impl HttpTransportConfigBuilder {
     pub fn build(self) -> HttpTransportConfig {
         self.config
     }
+
+    /// Validate every invariant and finish building the transport policy.
+    ///
+    /// This catches invalid values introduced through the configuration's
+    /// public fields (including duplicate additional headers) before the
+    /// policy is handed to [`ZaiClientBuilder::transport`]. The infallible
+    /// [`Self::build`] remains available for backwards compatibility; the
+    /// client builder validates it again before creating network state.
+    pub fn try_build(self) -> ZaiResult<HttpTransportConfig> {
+        self.config.validate()?;
+        Ok(self.config)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_sdk_config<T>(result: ZaiResult<T>) {
+        let error = result.err().expect("configuration must be rejected");
+        assert!(matches!(
+            error,
+            crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                ..
+            }
+        ));
+    }
 
     #[test]
     fn builder_rejects_blank_key() {
@@ -610,10 +897,108 @@ mod tests {
             .build()
             .unwrap();
         let c2 = c.clone();
+        assert!(Arc::ptr_eq(&c.inner, &c2.inner));
+        assert!(std::ptr::eq(c.concurrency(), c2.concurrency()));
+        assert_eq!(
+            c2.concurrency().max_in_flight(),
+            HttpConcurrencyConfig::DEFAULT_MAX_IN_FLIGHT
+        );
         // Cloning produces a handle to the same inner; Debug stays redacted.
         let dbg = format!("{c2:?}");
         assert!(dbg.contains("[REDACTED]"));
+        assert!(dbg.contains("concurrency"));
+        assert!(dbg.contains("max_in_flight: 64"));
+        assert!(dbg.contains("stream_consumer_timeout"));
         assert!(!dbg.contains("abcdefghij"));
+    }
+
+    #[test]
+    fn concurrency_policy_defaults_bounds_and_getters() {
+        let defaults = HttpConcurrencyConfig::default();
+        assert_eq!(
+            defaults.max_in_flight(),
+            HttpConcurrencyConfig::DEFAULT_MAX_IN_FLIGHT
+        );
+        assert_eq!(
+            defaults.queue_timeout(),
+            HttpConcurrencyConfig::DEFAULT_QUEUE_TIMEOUT
+        );
+        assert_eq!(
+            defaults.stream_consumer_timeout(),
+            HttpConcurrencyConfig::DEFAULT_STREAM_CONSUMER_TIMEOUT
+        );
+        assert!(format!("{defaults:?}").contains("stream_consumer_timeout"));
+        assert!(defaults.validate().is_ok());
+
+        assert!(
+            HttpConcurrencyConfig::default()
+                .with_max_in_flight(0)
+                .is_err()
+        );
+        assert!(
+            HttpConcurrencyConfig::default()
+                .with_max_in_flight(HttpConcurrencyConfig::MAX_IN_FLIGHT + 1)
+                .is_err()
+        );
+        let bounded = HttpConcurrencyConfig::default()
+            .with_max_in_flight(HttpConcurrencyConfig::MAX_IN_FLIGHT)
+            .unwrap()
+            .with_queue_timeout(HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT)
+            .unwrap()
+            .with_stream_consumer_timeout(HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT)
+            .unwrap();
+        assert_eq!(
+            bounded.max_in_flight(),
+            HttpConcurrencyConfig::MAX_IN_FLIGHT
+        );
+        assert_eq!(
+            bounded.queue_timeout(),
+            HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT
+        );
+        assert_eq!(
+            bounded.stream_consumer_timeout(),
+            HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT
+        );
+        assert_eq!(bounded, bounded.clone());
+        assert_ne!(defaults, bounded);
+
+        let minimum_consumer_base = HttpConcurrencyConfig::default()
+            .with_stream_consumer_timeout(Duration::from_nanos(1))
+            .unwrap();
+        assert_eq!(
+            minimum_consumer_base.stream_consumer_timeout(),
+            Duration::from_nanos(1)
+        );
+
+        let fail_fast = HttpConcurrencyConfig::default()
+            .with_queue_timeout(Duration::ZERO)
+            .unwrap();
+        assert_eq!(fail_fast.queue_timeout(), Duration::ZERO);
+        assert!(
+            HttpConcurrencyConfig::default()
+                .with_queue_timeout(
+                    HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT + Duration::from_nanos(1)
+                )
+                .is_err()
+        );
+        assert_sdk_config(
+            HttpConcurrencyConfig::default().with_stream_consumer_timeout(Duration::ZERO),
+        );
+        assert_sdk_config(
+            HttpConcurrencyConfig::default().with_stream_consumer_timeout(
+                HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT + Duration::from_nanos(1),
+            ),
+        );
+        for invalid in [
+            Duration::ZERO,
+            HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT + Duration::from_nanos(1),
+        ] {
+            let config = HttpConcurrencyConfig {
+                stream_consumer_timeout: invalid,
+                ..HttpConcurrencyConfig::default()
+            };
+            assert_sdk_config(config.validate());
+        }
     }
 
     #[test]
@@ -636,6 +1021,27 @@ mod tests {
 
     #[test]
     fn request_options_validate_every_public_bound() {
+        fn assert_copy<T: Copy>() {}
+        assert_copy::<RequestOptions>();
+
+        let fail_fast = RequestOptions::default()
+            .with_queue_timeout(Duration::ZERO)
+            .unwrap();
+        assert_eq!(fail_fast.queue_timeout(), Some(Duration::ZERO));
+        let maximum_queue_wait = RequestOptions::default()
+            .with_queue_timeout(HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT)
+            .unwrap();
+        assert_eq!(
+            maximum_queue_wait.queue_timeout(),
+            Some(HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT)
+        );
+        assert!(
+            RequestOptions::default()
+                .with_queue_timeout(
+                    HttpConcurrencyConfig::MAX_QUEUE_TIMEOUT + Duration::from_nanos(1)
+                )
+                .is_err()
+        );
         assert!(
             RequestOptions::default()
                 .with_attempt_timeout(Duration::ZERO)
@@ -653,6 +1059,29 @@ mod tests {
                 .with_sse_idle_timeout(Duration::from_secs(1))
                 .is_ok()
         );
+        assert_eq!(RequestOptions::default().stream_consumer_timeout(), None);
+        let minimum_consumer_base = RequestOptions::default()
+            .with_stream_consumer_timeout(Duration::from_nanos(1))
+            .unwrap();
+        assert_eq!(
+            minimum_consumer_base.stream_consumer_timeout(),
+            Some(Duration::from_nanos(1))
+        );
+        let maximum_consumer_base = RequestOptions::default()
+            .with_stream_consumer_timeout(HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT)
+            .unwrap();
+        assert_eq!(
+            maximum_consumer_base.stream_consumer_timeout(),
+            Some(HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT)
+        );
+        assert!(format!("{maximum_consumer_base:?}").contains("stream_consumer_timeout"));
+        assert_ne!(RequestOptions::default(), maximum_consumer_base);
+        let copied = maximum_consumer_base;
+        assert_eq!(copied, maximum_consumer_base);
+        assert_sdk_config(RequestOptions::default().with_stream_consumer_timeout(Duration::ZERO));
+        assert_sdk_config(RequestOptions::default().with_stream_consumer_timeout(
+            HttpConcurrencyConfig::MAX_STREAM_CONSUMER_TIMEOUT + Duration::from_nanos(1),
+        ));
         assert!(
             RequestOptions::default()
                 .with_overall_timeout(RequestOptions::MAX_OVERALL_TIMEOUT)
@@ -722,6 +1151,26 @@ mod tests {
                 .with_request_timeout(
                     HttpTransportConfig::MAX_REQUEST_TIMEOUT + Duration::from_nanos(1)
                 )
+                .is_err()
+        );
+        assert!(
+            !HttpTransportConfig::builder()
+                .compression(false)
+                .try_build()
+                .unwrap()
+                .enable_compression
+        );
+    }
+
+    #[test]
+    fn transport_try_build_rejects_duplicate_headers() {
+        let header = AdditionalHeader::new("X-Test-Client", "one").unwrap();
+        let duplicate = AdditionalHeader::new("x-test-client", "two").unwrap();
+        assert!(
+            HttpTransportConfig::builder()
+                .additional_header(header)
+                .additional_header(duplicate)
+                .try_build()
                 .is_err()
         );
     }

@@ -8,6 +8,7 @@ use crate::{
     model::chat_base_response::{
         Choice, ContentFilterInfo, TaskStatus, Usage, VideoResultItem, WebSearchInfo,
     },
+    serde_helpers::UniqueJsonValue,
 };
 
 fn invalid_response(message: impl Into<String>) -> ZaiError {
@@ -375,7 +376,7 @@ impl<'de> Deserialize<'de> for AsyncTaskResult {
     where
         D: Deserializer<'de>,
     {
-        let value = serde_json::Value::deserialize(deserializer)?;
+        let value = UniqueJsonValue::deserialize(deserializer)?.into_inner();
         let object = value
             .as_object()
             .ok_or_else(|| D::Error::custom("async task result must be a JSON object"))?;
@@ -548,6 +549,21 @@ mod tests {
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"choices":null}"#).is_err());
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"video_result":null}"#).is_err());
         assert!(serde_json::from_str::<AsyncTaskResult>(r#"{"image_result":null}"#).is_err());
+    }
+
+    #[test]
+    fn task_result_rejects_top_level_nested_and_false_success_duplicates() {
+        for payload in [
+            r#"{"task_status":"PROCESSING","task_status":"PROCESSING"}"#,
+            r#"{"task_status":"SUCCESS","video_result":[{"url":"private-task-value","url":"private-task-value"}]}"#,
+            r#"{"video_result":null,"video_result":[]}"#,
+        ] {
+            let error = serde_json::from_str::<AsyncTaskResult>(payload)
+                .expect_err("duplicate-key async task response must fail closed");
+            let diagnostic = error.to_string();
+            assert!(diagnostic.contains(crate::serde_helpers::DUPLICATE_JSON_KEY_ERROR));
+            assert!(!diagnostic.contains("private-task-value"));
+        }
     }
 
     #[test]

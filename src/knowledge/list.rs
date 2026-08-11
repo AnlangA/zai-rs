@@ -1,6 +1,7 @@
 use super::types::KnowledgeListResponse;
 use crate::ZaiResult;
 use crate::client::ZaiClient;
+use crate::pagination::PagePagination;
 
 /// Query parameters for knowledge list API
 #[derive(Debug, Clone, serde::Serialize, validator::Validate)]
@@ -34,17 +35,12 @@ impl KnowledgeListQuery {
         self
     }
 
-    /// Build the `(&str, String)` query pairs (in stable order) used to form
-    /// the request URL.
-    fn pairs(&self) -> Vec<(&'static str, String)> {
-        let mut params: Vec<(&'static str, String)> = Vec::new();
-        if let Some(page) = self.page.as_ref() {
-            params.push(("page", page.to_string()));
-        }
-        if let Some(size) = self.size.as_ref() {
-            params.push(("size", size.to_string()));
-        }
-        params
+    /// Replace the page and size with validated pagination values.
+    pub fn try_with_pagination(mut self, pagination: PagePagination) -> ZaiResult<Self> {
+        let (page, page_size) = pagination.into_parts();
+        self.page = Some(page);
+        self.size = Some(page_size);
+        Ok(self)
     }
 }
 
@@ -76,16 +72,21 @@ impl KnowledgeListRequest {
         self
     }
 
+    /// Replace the request's page and size with validated pagination.
+    pub fn try_with_pagination(mut self, pagination: PagePagination) -> ZaiResult<Self> {
+        self.query = self.query.try_with_pagination(pagination)?;
+        Ok(self)
+    }
+
     /// Send via a [`ZaiClient`] and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<KnowledgeListResponse> {
         use validator::Validate;
 
         self.query.validate()?;
-        let params = self.query.pairs();
         let route = crate::client::routes::KNOWLEDGE_LIST;
         client
             .operation(route)
-            .with_query(params)
+            .with_query(&self.query)?
             .send_empty::<KnowledgeListResponse>()
             .await
     }
@@ -94,5 +95,23 @@ impl KnowledgeListRequest {
 impl Default for KnowledgeListRequest {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validated_pagination_replaces_both_default_values() {
+        let query = KnowledgeListQuery::new()
+            .try_with_pagination(PagePagination::try_new(3, u32::MAX).unwrap())
+            .unwrap();
+        assert_eq!(query.page, Some(3));
+        assert_eq!(query.size, Some(u32::MAX));
+
+        let default = KnowledgeListQuery::new();
+        assert_eq!(default.page, Some(1));
+        assert_eq!(default.size, Some(10));
     }
 }

@@ -55,9 +55,13 @@ impl Stream for ChatStream {
 ///     tools::Function,
 /// };
 ///
-/// ChatCompletion::new(GLM4_voice {}, VoiceMessage::new_user()).add_tool(
-///     Function::new("lookup", "Lookup", serde_json::json!({"type": "object"})),
-/// );
+/// ChatCompletion::new(GLM4_voice {}, VoiceMessage::new_user())
+///     .enable_stream()
+///     .add_tool(Function::new(
+///         "lookup",
+///         "Lookup",
+///         serde_json::json!({"type": "object"}),
+///     ));
 /// ```
 ///
 /// ```compile_fail
@@ -135,59 +139,49 @@ where
     pub const fn body(&self) -> &ChatBody<N, M> {
         &self.body
     }
-}
-
-impl<N, M> ChatCompletion<N, M, StreamOff>
-where
-    N: ChatRequestModel + Chat,
-    M: Serialize,
-    (N, M): Bounded,
-    ChatBody<N, M>: Serialize,
-{
-    /// Create a new chat request from a model and the first message batch.
-    pub fn new(model: N, messages: M) -> ChatCompletion<N, M, StreamOff> {
-        let body = ChatBody::new(model, messages);
-        ChatCompletion {
-            body,
-            _stream: PhantomData,
-        }
-    }
 
     /// Append one message to the conversation.
     pub fn add_message(mut self, message: M) -> Self {
         self.body = self.body.add_message(message);
         self
     }
+
     /// Append multiple messages to the conversation.
     pub fn extend_messages(mut self, messages: impl IntoIterator<Item = M>) -> Self {
         self.body = self.body.extend_messages(messages);
         self
     }
+
     /// Set the client-side request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.body = self.body.with_request_id(request_id);
         self
     }
+
     /// Enable/disable sampling (`do_sample`).
     pub fn with_do_sample(mut self, do_sample: bool) -> Self {
         self.body = self.body.with_do_sample(do_sample);
         self
     }
+
     /// Set the sampling temperature.
     pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.body = self.body.with_temperature(temperature);
         self
     }
+
     /// Set the nucleus-sampling probability (`top_p`).
     pub fn with_top_p(mut self, top_p: f64) -> Self {
         self.body = self.body.with_top_p(top_p);
         self
     }
+
     /// Set the maximum number of tokens to generate.
     pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
         self.body = self.body.with_max_tokens(max_tokens);
         self
     }
+
     /// Add a single tool to the request.
     pub fn add_tool(mut self, tool: N::Tool) -> Self
     where
@@ -196,6 +190,7 @@ where
         self.body = self.body.add_tool(tool);
         self
     }
+
     /// Add multiple tools to the request at once.
     pub fn add_tools(mut self, tools: impl IntoIterator<Item = N::Tool>) -> Self
     where
@@ -204,6 +199,7 @@ where
         self.body = self.body.add_tools(tools);
         self
     }
+
     /// Set automatic tool selection.
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self
     where
@@ -212,6 +208,7 @@ where
         self.body = self.body.with_tool_choice(tool_choice);
         self
     }
+
     /// Remove all tools and their selection policy.
     pub fn clear_tools(mut self) -> Self
     where
@@ -220,6 +217,7 @@ where
         self.body = self.body.clear_tools();
         self
     }
+
     /// Set the text response format.
     pub fn with_response_format(mut self, format: ResponseFormat) -> Self
     where
@@ -228,6 +226,7 @@ where
         self.body = self.body.with_response_format(format);
         self
     }
+
     /// Enable or disable audio-output watermarking.
     pub fn with_watermark_enabled(mut self, enabled: bool) -> Self
     where
@@ -236,11 +235,13 @@ where
         self.body = self.body.with_watermark_enabled(enabled);
         self
     }
+
     /// Set the end-user id (used for abuse monitoring).
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.body = self.body.with_user_id(user_id);
         self
     }
+
     /// Add a stop sequence that halts generation when encountered.
     pub fn with_stop(mut self, stop: impl Into<String>) -> Self {
         self.body = self.body.with_stop(stop);
@@ -264,8 +265,38 @@ where
         self.body = self.body.with_reasoning_effort(effort);
         self
     }
+}
+
+impl<N, M> ChatCompletion<N, M, StreamOff>
+where
+    N: ChatRequestModel + Chat,
+    M: Serialize,
+    (N, M): Bounded,
+    ChatBody<N, M>: Serialize,
+{
+    /// Create a new chat request from a model and the first message batch.
+    pub fn new(model: N, messages: M) -> ChatCompletion<N, M, StreamOff> {
+        let body = ChatBody::new(model, messages);
+        ChatCompletion {
+            body,
+            _stream: PhantomData,
+        }
+    }
 
     /// Enables streaming for this chat completion request.
+    ///
+    /// Stream-independent builders remain available after this transition, so
+    /// callers may choose streaming before finishing the rest of the request.
+    ///
+    /// ```
+    /// use zai_rs::model::{ChatCompletion, GLM5_2, TextMessage};
+    ///
+    /// let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("first"))
+    ///     .enable_stream()
+    ///     .with_temperature(0.4)
+    ///     .add_message(TextMessage::assistant("second"));
+    /// assert!(request.validate().is_ok());
+    /// ```
     pub fn enable_stream(mut self) -> ChatCompletion<N, M, StreamOn> {
         self.body.set_stream(Some(true));
         ChatCompletion {
@@ -348,19 +379,32 @@ where
         }
     }
 
+    /// Validate request parameters for streaming chat without network I/O.
+    pub fn validate(&self) -> crate::ZaiResult<()> {
+        self.body
+            .validate()
+            .map_err(crate::client::error::ZaiError::from)?;
+        if !matches!(self.body.stream(), Some(true)) {
+            return Err(crate::client::error::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_VALIDATION,
+                message: "streaming chat requires stream=true".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// Submit the request and yield parsed chat chunks from its SSE response.
     ///
-    /// Authentication, response content-type validation, timeouts, and body
-    /// limits remain inside [`ZaiClient`]; the API secret is never exposed to
-    /// the caller. Streaming POST requests are not retried or redirected.
+    /// Authentication, response validation, timeouts, and body limits remain
+    /// inside [`ZaiClient`]; the API secret is never exposed to the caller. The
+    /// handshake accepts only an unranged `200 OK` with `text/event-stream`.
+    /// Streaming POST requests are not retried or redirected.
     pub async fn stream_via(&self, client: &ZaiClient) -> crate::ZaiResult<ChatStream>
     where
         N: serde::Serialize,
         M: serde::Serialize,
     {
-        self.body
-            .validate()
-            .map_err(crate::client::error::ZaiError::from)?;
+        self.validate()?;
         let raw = client
             .operation(crate::client::routes::CHAT_COMPLETE)
             .send_sse_json(&self.body)
@@ -403,7 +447,10 @@ fn validate_stream_finish_reason(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{chat_message_types::TextMessage, chat_models::GLM5_2};
+    use crate::model::{
+        chat_message_types::{TextMessage, VoiceMessage},
+        chat_models::{GLM4_voice, GLM5_2},
+    };
 
     #[test]
     fn stream_field_is_owned_by_the_type_state() {
@@ -416,5 +463,63 @@ mod tests {
         let json = serde_json::to_value(request.body()).unwrap();
         assert_eq!(json["stream"], true);
         assert_eq!(json["tool_stream"], true);
+    }
+
+    #[test]
+    fn stream_independent_builders_remain_available_after_transition() {
+        let request = ChatCompletion::new(GLM5_2 {}, TextMessage::user("first"))
+            .enable_stream()
+            .with_temperature(0.4)
+            .add_message(TextMessage::assistant("second"))
+            .extend_messages([TextMessage::user("third")])
+            .with_request_id("request-123")
+            .with_do_sample(true)
+            .with_top_p(0.8)
+            .with_max_tokens(256)
+            .add_tool(Tools::Function {
+                function: Function::new(
+                    "first_tool",
+                    "First tool",
+                    serde_json::json!({"type": "object"}),
+                ),
+            })
+            .add_tools([Tools::Function {
+                function: Function::new(
+                    "second_tool",
+                    "Second tool",
+                    serde_json::json!({"type": "object"}),
+                ),
+            }])
+            .with_tool_choice(ToolChoice::auto())
+            .with_response_format(ResponseFormat::JsonObject)
+            .with_user_id("user-123")
+            .with_stop("done")
+            .with_thinking(ThinkingType::enabled())
+            .with_reasoning_effort(ReasoningEffort::Medium)
+            .with_tool_stream(true);
+
+        request.validate().unwrap();
+        let json = serde_json::to_value(request.body()).unwrap();
+        assert_eq!(json["stream"], true);
+        assert_eq!(json["messages"].as_array().unwrap().len(), 3);
+        assert_eq!(json["temperature"], 0.4);
+        assert_eq!(json["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(json["tool_choice"], "auto");
+        assert_eq!(json["response_format"]["type"], "json_object");
+
+        let cleared = request.clear_tools();
+        cleared.validate().unwrap();
+        let json = serde_json::to_value(cleared.body()).unwrap();
+        assert!(json.get("tools").is_none());
+        assert!(json.get("tool_choice").is_none());
+
+        let voice = ChatCompletion::new(GLM4_voice {}, VoiceMessage::new_user())
+            .enable_stream()
+            .with_watermark_enabled(true);
+        voice.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(voice.body()).unwrap()["watermark_enabled"],
+            true
+        );
     }
 }

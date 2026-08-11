@@ -107,9 +107,11 @@ where
 
     /// Submit the request and yield decoded PCM chunks from its SSE response.
     ///
-    /// The streaming POST is never retried or redirected. A missing `[DONE]`,
-    /// malformed encoded chunk, in-band business error, oversized event, or
-    /// idle timeout is returned once and then terminates the stream.
+    /// The handshake accepts only an unranged `200 OK` with
+    /// `text/event-stream`, and the streaming POST is never retried or
+    /// redirected. A missing `[DONE]`, malformed encoded chunk, in-band
+    /// business error, oversized event, or idle timeout is returned once and
+    /// then terminates the stream.
     pub async fn stream_via(&self, client: &ZaiClient) -> ZaiResult<TextToAudioStream> {
         self.validate()?;
         let Some(encoding) = self.body.encode_format else {

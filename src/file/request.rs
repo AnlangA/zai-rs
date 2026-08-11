@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
+use crate::{ZaiResult, pagination::CursorPagination};
+
 /// Query parameters for listing files.
 #[derive(Clone, Serialize, Validate)]
 pub struct FileListQuery {
@@ -58,6 +60,21 @@ impl FileListQuery {
     pub fn with_limit(mut self, limit: u32) -> Self {
         self.limit = Some(limit);
         self
+    }
+
+    /// Replace the cursor and limit with validated pagination values.
+    ///
+    /// File listing accepts at most 100 entries per page.
+    pub fn try_with_pagination(mut self, pagination: CursorPagination) -> ZaiResult<Self> {
+        let (after, limit) = pagination.into_parts();
+        if limit.is_some_and(|limit| limit > 100) {
+            return Err(crate::client::validation::invalid(
+                "file pagination limit must be between 1 and 100",
+            ));
+        }
+        self.after = after;
+        self.limit = limit;
+        Ok(self)
     }
 }
 
@@ -140,6 +157,30 @@ mod tests {
     fn list_query_debug_redacts_the_file_cursor() {
         let query = FileListQuery::new(FileListPurpose::Batch).with_after("private-file-id");
         assert!(!format!("{query:?}").contains("private-file-id"));
+    }
+
+    #[test]
+    fn validated_pagination_maps_without_changing_other_filters() {
+        let pagination = CursorPagination::new()
+            .try_with_after("file-cursor")
+            .unwrap()
+            .try_with_limit(100)
+            .unwrap();
+        let query = FileListQuery::new(FileListPurpose::Agent)
+            .with_order(FileOrder::CreatedAt)
+            .try_with_pagination(pagination)
+            .unwrap();
+        assert_eq!(query.after.as_deref(), Some("file-cursor"));
+        assert_eq!(query.limit, Some(100));
+        assert!(matches!(query.purpose, FileListPurpose::Agent));
+        assert!(matches!(query.order, Some(FileOrder::CreatedAt)));
+
+        let too_large = CursorPagination::new().try_with_limit(101).unwrap();
+        assert!(
+            FileListQuery::new(FileListPurpose::Batch)
+                .try_with_pagination(too_large)
+                .is_err()
+        );
     }
 
     #[test]

@@ -66,7 +66,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
+serde_json = { version = "1.0.150", features = ["raw_value"] }
 tokio = { version = "1.52.3", features = ["rt", "macros", "time", "fs", "sync"] }
 jsonschema = { version = "0.46.5", optional = true, default-features = false }
 validator = { version = "0.20.0", features = ["derive"] }
@@ -126,6 +126,10 @@ tokio-util = { version = "0.7.18", default-features = false, features = ["io"] }
 # (not just the realtime transport/audio paths), so it can't be feature-gated.
 bytes = "1.11.1"
 http = { version = "1.4.2", optional = true }
+# Provides a platform-aware no-clobber publication primitive when a destination
+# filesystem does not support hard links. The ordinary publication path still
+# uses `hard_link`; this is only the safe Unsupported fallback.
+tempfile = { version = "3.27.0", default-features = false }
 
 [lints.rust]
 # The SDK is unsafe-free; enforce that invariant at compile time (and make it
@@ -190,11 +194,23 @@ name = "hot_paths"
 harness = false
 required-features = ["realtime", "toolkits"]
 
+[[bench]]
+name = "sse_allocations"
+harness = false
+
+[[bench]]
+name = "business_error_allocations"
+harness = false
+
 [dev-dependencies]
 # Criterion is deliberately kept lean: Tokio drives the executor benchmarks,
 # while cargo_bench_support preserves Cargo's standard benchmark integration.
 # Plotting, Rayon, and the other async runtimes are not needed.
 criterion = { version = "0.8.2", default-features = false, features = ["async_tokio", "cargo_bench_support"] }
+# Deterministic allocation instrumentation for SSE, business-error, Realtime
+# media, and tool-executor resource gates. Keeping this separate from Criterion
+# avoids global counters being perturbed by benchmark sampling/reporting.
+stats_alloc = "0.1.10"
 # The scripted test server only needs Hyper's server-side request types. The
 # protocol implementation is selected by `hyper-util`'s `server-auto` feature.
 hyper = { version = "1.10.1", default-features = false }
@@ -204,9 +220,6 @@ hyper = { version = "1.10.1", default-features = false }
 hyper-util = { version = "0.1.20", default-features = false, features = ["server-auto", "tokio"] }
 http-body-util = "0.1.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-# Tests generate isolated PNG/WAV/text fixtures instead of relying on repository
-# media files.
-tempfile = "3.27.0"
 # Dev-only networking supports the loopback test server; `test-util` enables
 # deterministic paused-time tests for backoff and deadlines.
 tokio = { version = "1.52.3", features = ["macros", "net", "rt-multi-thread", "test-util"] }

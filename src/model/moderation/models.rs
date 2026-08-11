@@ -316,16 +316,24 @@ pub enum RiskLevel {
     /// No risk detected.
     #[default]
     #[serde(rename = "PASS")]
-    Pass,
+    Pass = 0,
     /// Suspicious content that requires review.
     #[serde(rename = "REVIEW")]
-    Review,
+    Review = 1,
+    /// General policy violation that should be blocked, while the current
+    /// conversation may continue.
+    #[serde(rename = "BLOCK")]
+    Block = 4,
     /// Policy-violating content that should be rejected.
     #[serde(rename = "REJECT")]
-    Reject,
+    Reject = 2,
+    /// High-risk content that should be blocked and whose input should be
+    /// withdrawn from the conversation context.
+    #[serde(rename = "HIGH")]
+    High = 5,
     /// A value introduced by a newer service revision.
     #[serde(other)]
-    Unknown,
+    Unknown = 3,
 }
 
 /// Moderation result for a single content item.
@@ -485,5 +493,36 @@ mod tests {
         assert!(result.content_type.is_none());
         assert!(result.risk_level.is_none());
         assert!(result.risk_types.is_none());
+    }
+
+    #[test]
+    fn risk_levels_preserve_every_current_wire_semantic() {
+        assert_eq!(RiskLevel::Pass as isize, 0);
+        assert_eq!(RiskLevel::Review as isize, 1);
+        assert_eq!(RiskLevel::Reject as isize, 2);
+        assert_eq!(RiskLevel::Unknown as isize, 3);
+        assert_eq!(RiskLevel::Block as isize, 4);
+        assert_eq!(RiskLevel::High as isize, 5);
+
+        let cases = [
+            ("PASS", RiskLevel::Pass),
+            ("REVIEW", RiskLevel::Review),
+            ("BLOCK", RiskLevel::Block),
+            ("REJECT", RiskLevel::Reject),
+            ("HIGH", RiskLevel::High),
+        ];
+
+        for (wire, expected) in cases {
+            let decoded: RiskLevel = serde_json::from_str(&format!(r#""{wire}""#)).unwrap();
+            assert_eq!(
+                std::mem::discriminant(&decoded),
+                std::mem::discriminant(&expected),
+                "wire value {wire} mapped to the wrong semantic variant",
+            );
+            assert_eq!(serde_json::to_value(decoded).unwrap(), wire);
+        }
+
+        let future: RiskLevel = serde_json::from_str(r#""ESCALATE""#).unwrap();
+        assert!(matches!(future, RiskLevel::Unknown));
     }
 }

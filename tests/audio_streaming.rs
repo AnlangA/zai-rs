@@ -185,6 +185,40 @@ async fn asr_stream_reports_missing_done_or_malformed_event_once() {
 }
 
 #[tokio::test]
+async fn asr_in_band_duplicate_code_fails_closed_once_without_payload_leakage() {
+    let payload = r#"{"id":"asr-duplicate-code","model":"glm-asr-2512","type":"transcript.text.delta","delta":"valid","code":1302,"code":200,"message":"private-asr-payload"}"#;
+    assert!(
+        serde_json::from_str::<zai_rs::model::audio_to_text::SpeechToTextEvent>(payload).is_ok(),
+        "the regression payload must remain a valid typed ASR event"
+    );
+
+    let body = format!(
+        "data: {payload}\n\ndata: {{\"type\":\"transcript.text.done\",\"delta\":\"after-error\"}}\n\ndata: [DONE]\n\n"
+    );
+    let server =
+        TestServer::start(vec![ScriptedResponse::raw(200, "text/event-stream", body)]).await;
+    let mut stream = AudioToTextRequest::new(GlmAsr {})
+        .with_file_base64(wav_base64())
+        .enable_stream()
+        .stream_via(&client(&server))
+        .await
+        .unwrap();
+
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.code(), Some(codes::SDK_VALIDATION));
+    assert_eq!(
+        error.message(),
+        "ambiguous JSON business-error envelope (duplicate reserved field)"
+    );
+    for rendered in [error.to_string(), format!("{error:?}"), error.compact()] {
+        assert!(!rendered.contains("private-asr-payload"));
+        assert!(!rendered.contains("1302"));
+    }
+    assert!(stream.next().await.is_none());
+    server.shutdown().await;
+}
+
+#[tokio::test]
 async fn tts_nonstream_has_exact_json_wire_and_audio_accept_contract() {
     let server = TestServer::start(vec![ScriptedResponse::raw(
         200,
@@ -315,6 +349,67 @@ async fn streaming_audio_requires_event_stream_mime() {
     assert_eq!(error.code(), Some(codes::SDK_VALIDATION));
     assert_eq!(server.requests().len(), 1);
     server.shutdown().await;
+}
+
+#[tokio::test]
+async fn audio_sse_handshake_requires_an_unranged_http_200() {
+    let terminal = "data: [DONE]\n\n";
+    let mut ranged_ok = ScriptedResponse::raw(200, "text/event-stream", terminal);
+    ranged_ok
+        .headers
+        .push(("content-range".into(), "bytes 0-13/28".into()));
+
+    for (case, response, expected_error) in [
+        (
+            "partial response with a valid terminal marker",
+            ScriptedResponse::raw(206, "text/event-stream", terminal),
+            Some("HTTP 200 OK"),
+        ),
+        (
+            "no-content response",
+            ScriptedResponse::raw(204, "text/event-stream", ""),
+            Some("HTTP 200 OK"),
+        ),
+        (
+            "ranged-looking 200 response",
+            ranged_ok,
+            Some("Content-Range"),
+        ),
+        (
+            "complete 200 response",
+            ScriptedResponse::raw(200, "text/event-stream", terminal),
+            None,
+        ),
+    ] {
+        let server = TestServer::start(vec![response]).await;
+        let result = TextToAudioRequest::new(GlmTts {})
+            .with_input("hello")
+            .enable_stream()
+            .stream_via(&client(&server))
+            .await;
+
+        if let Some(expected_message) = expected_error {
+            let error = match result {
+                Ok(_) => panic!("{case} must not establish an audio SSE stream"),
+                Err(error) => error,
+            };
+            assert_eq!(error.code(), Some(codes::SDK_VALIDATION), "{case}");
+            assert!(
+                error.message().contains(expected_message),
+                "{case}: {error}"
+            );
+            assert_eq!(
+                error.request_metadata().map(|metadata| metadata.attempts()),
+                Some(1),
+                "{case}"
+            );
+        } else {
+            let mut stream = result.expect("a complete 200 response must establish audio SSE");
+            assert!(stream.next().await.is_none());
+        }
+        assert_eq!(server.requests().len(), 1, "{case}");
+        server.shutdown().await;
+    }
 }
 
 #[tokio::test]

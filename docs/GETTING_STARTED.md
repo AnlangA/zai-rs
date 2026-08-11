@@ -9,12 +9,26 @@
 
 ## 安装
 
-在 `Cargo.toml` 中添加依赖：
+当前文档描述的 API 尚未发布到 crates.io。`Cargo.toml` 中的 `6.0.1` 是
+未发布候选版；其两次 tag workflow 分别因当时 tag 不是 annotated tag，以及
+crates.io 缺少 `AnlangA/zai-rs` Trusted Publisher 配置而失败。使用当前仓库
+API 时，应将依赖绑定到已审计 commit：
 
 ```toml
 [dependencies]
-zai-rs = "6.0.1"
+zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
 ```
+
+经 `cargo search` / `cargo info` 验证的 crates.io 最新版为 `0.6.0`：
+
+```toml
+[dependencies]
+zai-rs = "0.6.0"
+```
+
+`0.6.0` 是 legacy registry 版本，其 API 和行为与本指南描述的当前工作树存在
+差异。工作树已偏离 `v6.0.1` tag，正式发布时必须改用高于 `6.0.1`
+的新版本和新 tag。
 
 ## 配置
 
@@ -28,26 +42,47 @@ export ZHIPU_API_KEY="your-api-key-here"
 
 ### 高级配置
 
-使用 `HttpTransportConfig` 配置统一传输层。连接超时保持 10 秒上限；单次请求默认
-60 秒，可按慢速大文件传输需要显式提高（最高 24 小时）：
+使用 `HttpTransportConfig` 配置统一传输层，并用独立的
+`HttpConcurrencyConfig` 配置逻辑请求准入。后者默认允许 64 个并发操作，permit
+覆盖 buffered 请求的全部 retry/backoff；SSE/文件 stream 则持有到结束、调用方
+Drop 或安全 lease 到期。SSE consumer 的 configured base 默认 5 分钟；lease 只在
+底层 raw-stream poll 实际取得 chunk 时续期，typed decoder 从已缓冲 raw chunk 产出
+item 不保证续期。实际间隔按 `base = min(scoped, global)`，再按
+`effective = max(base, sse_idle + 1s)` 计算。base setter 的范围是 `1ns..=24h`，但
+idle floor 可使 scoped override 不生效，并使 effective 最大达到 24 小时加 1 秒。
+文件流复用其 absolute overall deadline。lease 到期会整体回收 response body 与 permit，
+而不是让仍占 socket 的 body 逃出并发预算。超出预算的请求默认最多排队 30 秒。
+连接超时保持 10 秒上限；单次请求默认 60 秒，可按慢速大文件传输需要显式提高
+（最高 24 小时）：
 
 ```rust,ignore
-use zai_rs::client::{HttpTransportConfig, ZaiClient};
+use zai_rs::client::{HttpConcurrencyConfig, HttpTransportConfig, ZaiClient};
 use std::time::Duration;
 
 let transport = HttpTransportConfig::builder()
     .max_attempts(2)?
     .request_timeout(Duration::from_secs(30))?
     .build();
+let concurrency = HttpConcurrencyConfig::default()
+    .with_max_in_flight(32)?
+    .with_queue_timeout(Duration::from_secs(5))?
+    .with_stream_consumer_timeout(Duration::from_secs(120))?;
 let client = ZaiClient::builder(std::env::var("ZHIPU_API_KEY")?)
     .transport(transport)
+    .concurrency(concurrency)
     .build()?;
 ```
 
 若只有某一次调用需要不同 deadline，可在不新建连接池的情况下使用
 `client.clone().with_request_options(RequestOptions::default()...)`。可分别设置
-attempt、overall、SSE handshake 与 SSE idle；请求次数只能低于或等于全局
-`max_attempts`，SSE 始终不会自动重放。完整矩阵见
+admission queue、attempt、overall、SSE handshake、SSE idle 与 SSE consumer lease；
+per-request queue timeout 只能缩短全局值，设为零可在没有空闲 permit 时立即失败。
+consumer override 只能降低 configured base；若 `sse_idle + 1s` 更大，则不会改变
+effective lease。该 floor 保证 consumer deadline 始终严格晚于 network idle，因此
+“服务端无数据”和“底层 raw stream 未被推进”会分别报告 `SseIdle` 与
+`StreamConsumer`。
+文件流不使用 SSE consumer 配置，始终由 absolute overall deadline 回收。请求次数只能
+低于或等于全局 `max_attempts`，SSE 始终不会自动重放。完整矩阵见
 [高级主题](ADVANCED_TOPICS.md#3-合理设置超时)。
 
 ### 日志配置
@@ -172,7 +207,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 SDK 提供了全面的错误类型：
 
 ```rust,ignore
-use zai_rs::{ZaiClient, client::error::{ZaiError, ZaiResult}, model::*};
+use zai_rs::{ZaiClient, client::error::ZaiResult, model::*};
 
 async fn chat() -> ZaiResult<String> {
     let client = ZaiClient::from_env()?;
@@ -193,14 +228,18 @@ async fn chat() -> ZaiResult<String> {
 async fn main() {
     match chat().await {
         Ok(content) => println!("Response: {}", content),
-        Err(ZaiError::AuthError { code, message }) => {
-            tracing::error!("认证错误 [{}]: {}", code, message);
+        Err(error) if error.is_auth_error() => {
+            tracing::error!(category = ?error.category(), "认证错误");
         }
-        Err(ZaiError::RateLimitError { code, message }) => {
-            tracing::error!("速率限制 [{}]: {}", code, message);
+        Err(error) if error.is_rate_limit() => {
+            tracing::warn!(category = ?error.category(), "请求受到速率限制");
         }
-        Err(e) => {
-            tracing::error!("发生错误: {}", e);
+        Err(error) => {
+            tracing::error!(
+                category = ?error.category(),
+                retryable = error.is_retryable(),
+                "API 请求失败",
+            );
         }
     }
 }
@@ -219,7 +258,7 @@ fn main() {
 
     match validate_api_key(api_key) {
         Ok(()) => println!("API 密钥格式正确"),
-        Err(e) => tracing::error!("API 密钥格式错误: {}", e),
+        Err(_) => tracing::error!("API 密钥格式不符合要求"),
     }
 }
 ```

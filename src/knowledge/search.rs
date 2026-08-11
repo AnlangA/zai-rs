@@ -264,13 +264,18 @@ pub struct KnowledgeSearchResult {
 }
 
 /// Semantic search success response.
+///
+/// The frozen knowledge contract requires business code `200` and a non-null
+/// `data` array. The fields remain optional for source compatibility, while
+/// deserialization rejects partial HTTP-200 envelopes.
 #[derive(Debug, Clone, Serialize)]
 pub struct KnowledgeSearchResponse {
-    /// Retrieved chunk objects, when returned.
+    /// Retrieved chunk objects. Successful deserialization requires this field
+    /// to be present and non-null; an empty array is valid.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Vec<KnowledgeSearchResult>>,
-    /// Business status code, when returned. The shared transport rejects an
-    /// explicitly non-success code before this type is returned.
+    /// Business status code. Successful deserialization requires exactly
+    /// `200`; the shared transport also rejects explicit business failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<i64>,
     /// Human-readable status message.
@@ -295,13 +300,14 @@ impl<'de> Deserialize<'de> for KnowledgeSearchResponse {
         D: Deserializer<'de>,
     {
         let wire = KnowledgeSearchResponseWire::deserialize(deserializer)?;
-        if wire.data.is_none()
-            && wire.code.is_none()
-            && wire.message.is_none()
-            && wire.timestamp.is_none()
-        {
+        if wire.code != Some(200) {
             return Err(D::Error::custom(
-                "knowledge-search response contained no documented non-null fields",
+                "knowledge-search response must contain business code 200",
+            ));
+        }
+        if wire.data.is_none() {
+            return Err(D::Error::custom(
+                "knowledge-search response must contain non-null data",
             ));
         }
         Ok(Self {
@@ -357,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn response_uses_typed_metadata_and_follows_optional_frozen_fields() {
+    fn response_uses_typed_metadata_and_requires_complete_success_envelope() {
         let response: KnowledgeSearchResponse = serde_json::from_value(serde_json::json!({
             "code": 200,
             "data": [{
@@ -386,13 +392,19 @@ mod tests {
         );
 
         assert!(
-            serde_json::from_value::<KnowledgeSearchResponse>(serde_json::json!({"data": []}))
-                .is_ok()
+            serde_json::from_value::<KnowledgeSearchResponse>(
+                serde_json::json!({"code": 200, "data": []})
+            )
+            .is_ok()
         );
-        assert!(
-            serde_json::from_value::<KnowledgeSearchResponse>(serde_json::json!({"code": 200}))
-                .is_ok()
-        );
-        assert!(serde_json::from_value::<KnowledgeSearchResponse>(serde_json::json!({})).is_err());
+        for invalid in [
+            serde_json::json!({"data": []}),
+            serde_json::json!({"code": 200}),
+            serde_json::json!({"code": 0, "data": []}),
+            serde_json::json!({"code": 200, "data": null}),
+            serde_json::json!({}),
+        ] {
+            assert!(serde_json::from_value::<KnowledgeSearchResponse>(invalid).is_err());
+        }
     }
 }

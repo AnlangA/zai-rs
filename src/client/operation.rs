@@ -8,9 +8,10 @@
 use crate::client::ZaiClient;
 use crate::client::routes::Route;
 use crate::client::transport::multipart::MultipartBodyFactory;
-use crate::client::transport::request::{BodyKind, PreparedRequest, ResponseMode};
+use crate::client::transport::request::{BodyKind, PreparedRequest, ResponseMode, SensitiveHeader};
 use crate::client::transport::retry::RetrySafety;
 use crate::{ZaiError, ZaiResult};
+use serde::Serialize;
 
 /// One canonical API operation plus its value-bearing path and query inputs.
 ///
@@ -21,6 +22,7 @@ pub(crate) struct Operation<'client> {
     route: Route,
     parameters: Vec<String>,
     query: Vec<(String, String)>,
+    sensitive_headers: Vec<SensitiveHeader>,
 }
 
 impl ZaiClient {
@@ -37,6 +39,7 @@ impl<'client> Operation<'client> {
             route,
             parameters: Vec::new(),
             query: Vec::new(),
+            sensitive_headers: Vec::new(),
         }
     }
 
@@ -51,19 +54,38 @@ impl<'client> Operation<'client> {
         self
     }
 
-    /// Supply encoded query pairs without exposing them to trace metadata.
-    pub(crate) fn with_query<I, K, V>(mut self, query: I) -> Self
+    /// Serialize a flat scalar query object without exposing values to trace
+    /// metadata.
+    pub(crate) fn with_query<T>(mut self, query: &T) -> ZaiResult<Self>
     where
-        I: IntoIterator<Item = (K, V)>,
-        K: Into<String>,
-        V: Into<String>,
+        T: Serialize + ?Sized,
     {
-        self.query.extend(
-            query
-                .into_iter()
-                .map(|(key, value)| (key.into(), value.into())),
-        );
-        self
+        crate::client::query::extend(&mut self.query, query)?;
+        Ok(self)
+    }
+
+    /// Attach one validated sensitive header to this operation only.
+    ///
+    /// The value is parsed and marked sensitive before request preparation;
+    /// neither diagnostics nor validation errors retain the supplied text.
+    pub(crate) fn with_sensitive_header(
+        mut self,
+        name: &'static str,
+        value: &str,
+    ) -> ZaiResult<Self> {
+        let header = SensitiveHeader::new(name, value)?;
+        if self
+            .sensitive_headers
+            .iter()
+            .any(|existing| existing.name() == header.name())
+        {
+            return Err(ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_VALIDATION,
+                message: "operation header must not be configured more than once".to_string(),
+            });
+        }
+        self.sensitive_headers.push(header);
+        Ok(self)
     }
 
     fn resolve(&self) -> ZaiResult<String> {
@@ -96,8 +118,10 @@ impl<'client> Operation<'client> {
             body,
             retry_safety,
             request_options: self.client.request_options,
+            success_statuses: self.route.success_statuses(),
             response_mode,
             route_template: self.route.trace_template(),
+            sensitive_headers: self.sensitive_headers.clone(),
         }
     }
 
@@ -223,6 +247,7 @@ impl std::fmt::Debug for Operation<'_> {
             .field("route", &self.route.trace_template())
             .field("parameter_count", &self.parameters.len())
             .field("query_count", &self.query.len())
+            .field("sensitive_header_count", &self.sensitive_headers.len())
             .finish()
     }
 }
@@ -233,16 +258,49 @@ mod tests {
 
     #[test]
     fn diagnostics_never_include_path_or_query_values() {
+        #[derive(Serialize)]
+        struct Query<'a> {
+            cursor: &'a str,
+        }
+
         let client = ZaiClient::builder("abc.0123456789abcdef").build().unwrap();
         let operation = client
             .operation(crate::client::routes::FILES_GET_CONTENT)
             .with_parameters(["private-file-id"])
-            .with_query([("cursor", "private-cursor")]);
+            .with_query(&Query {
+                cursor: "private-cursor",
+            })
+            .unwrap();
 
         let debug = format!("{operation:?}");
         assert!(debug.contains("files.content"));
         assert!(debug.contains("/files/{parameter}/content"));
+        assert!(debug.contains("query_count: 1"));
         assert!(!debug.contains("private-file-id"));
         assert!(!debug.contains("private-cursor"));
+    }
+
+    #[test]
+    fn operation_and_prepared_request_redact_sensitive_headers() {
+        let client = ZaiClient::builder("abc.0123456789abcdef").build().unwrap();
+        let secret = "private-session-123";
+        let operation = client
+            .operation(crate::client::routes::ZRAG_CHAT)
+            .with_sensitive_header("X-Session-Id", secret)
+            .unwrap();
+
+        let operation_debug = format!("{operation:?}");
+        assert!(operation_debug.contains("sensitive_header_count: 1"));
+        assert!(!operation_debug.contains(secret));
+
+        let prepared = operation.prepare(
+            "https://open.bigmodel.cn/api/zrag/agent/chat".to_string(),
+            BodyKind::None,
+            ResponseMode::Json,
+            RetrySafety::NonIdempotent,
+        );
+        let prepared_debug = format!("{prepared:?}");
+        assert!(prepared_debug.contains("sensitive_header_count: 1"));
+        assert!(!prepared_debug.contains(secret));
     }
 }

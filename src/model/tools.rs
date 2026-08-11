@@ -219,7 +219,8 @@ pub enum Tools {
     /// A provider-hosted MCP tool attached to a chat request.
     ///
     /// This config asks the chat service to connect to an MCP server. It is
-    /// distinct from [`crate::mcp::McpClient`], which connects from this SDK.
+    /// distinct from `crate::mcp::McpClient`, which connects from this SDK when
+    /// the `mcp` feature is enabled.
     #[serde(rename = "mcp")]
     MCP {
         /// The MCP-tool descriptor.
@@ -607,7 +608,8 @@ impl WebSearch {
 ///
 /// This does not create a local MCP connection. For Zhipu-hosted MCP servers,
 /// put the MCP code in `server_label` and leave `server_url` unset. To call MCP
-/// tools directly from this SDK, use [`crate::mcp::McpClient`].
+/// tools directly from this SDK, use `crate::mcp::McpClient` with the `mcp`
+/// feature enabled.
 #[derive(Clone, Serialize, Validate)]
 #[validate(schema(function = "validate_mcp"))]
 pub struct MCP {

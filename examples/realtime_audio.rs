@@ -8,7 +8,7 @@ use futures_util::{FutureExt as _, StreamExt as _};
 use tokio::io::AsyncWriteExt as _;
 use zai_rs::{
     model::GLM_realtime_flash,
-    realtime::{RealtimeClient, RealtimeModality, ServerEvent},
+    realtime::{RealtimeClient, RealtimeModality, RealtimeTransportConfig, ServerEvent},
 };
 
 #[tokio::main]
@@ -23,7 +23,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("realtime_response.pcm"));
 
+    let transport_config = RealtimeTransportConfig::builder()
+        // Built-in connection attempts and retry waits share this total budget.
+        .connect_timeout(Duration::from_secs(8))
+        .inbound_idle_timeout(Duration::from_secs(120))
+        .try_build()?;
     let session = RealtimeClient::new(key)
+        .with_transport_config(transport_config)
         .session(GLM_realtime_flash {})
         .instructions("你是一个简洁、礼貌的中文语音助手。")
         .modalities([RealtimeModality::Audio])

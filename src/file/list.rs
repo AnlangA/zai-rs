@@ -1,5 +1,5 @@
 use super::request::{FileListPurpose, FileListQuery};
-use crate::{ZaiResult, client::ZaiClient};
+use crate::{ZaiResult, client::ZaiClient, pagination::CursorPagination};
 
 /// Files list request (GET /paas/v4/files)
 ///
@@ -23,6 +23,12 @@ impl FileListRequest {
         self
     }
 
+    /// Replace the request's cursor and limit with validated pagination.
+    pub fn try_with_pagination(mut self, pagination: CursorPagination) -> ZaiResult<Self> {
+        self.query = self.query.try_with_pagination(pagination)?;
+        Ok(self)
+    }
+
     /// Validate the configured query, send it, and parse the typed response.
     pub async fn send_via(
         &self,
@@ -41,22 +47,10 @@ impl FileListRequest {
                 "after cannot be blank when provided",
             ));
         }
-        let mut params: Vec<(&str, String)> = Vec::new();
-        if let Some(after) = self.query.after.as_ref() {
-            params.push(("after", after.clone()));
-        }
-        params.push(("purpose", self.query.purpose.as_str().to_string()));
-        if let Some(order) = self.query.order.as_ref() {
-            params.push(("order", order.as_str().to_string()));
-        }
-        if let Some(limit) = self.query.limit.as_ref() {
-            params.push(("limit", limit.to_string()));
-        }
-        let borrowed: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
         let route = crate::client::routes::FILES_LIST;
         client
             .operation(route)
-            .with_query(borrowed)
+            .with_query(&self.query)?
             .send_empty::<super::response::FileListResponse>()
             .await
     }

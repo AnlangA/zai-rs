@@ -137,6 +137,41 @@ async fn chat_send_via() {
     s.shutdown().await;
 }
 
+#[tokio::test]
+async fn chat_duplicate_business_fields_cannot_false_succeed() {
+    for body in [
+        r#"{"id":"private-chat","model":"glm-5.2","choices":[{"index":0,"message":{"role":"assistant","content":"private answer"},"finish_reason":"stop"}],"code":1302,"code":200}"#,
+        r#"{"id":"private-chat","model":"glm-5.2","choices":[{"index":0,"message":{"role":"assistant","content":"private answer"},"finish_reason":"stop"}],"error":{"code":1302},"error":{"code":200}}"#,
+    ] {
+        let server =
+            TestServer::start(vec![ScriptedResponse::raw(200, "application/json", body)]).await;
+        let client = mock_client(&format!("{}/api/paas/v4", server.base_url));
+
+        use zai_rs::model::*;
+        let error = ChatCompletion::new(GLM5_2 {}, TextMessage::user("hi"))
+            .send_via(&client)
+            .await
+            .expect_err("duplicate business fields became a typed success");
+
+        assert_eq!(
+            error.code(),
+            Some(zai_rs::client::error::codes::SDK_VALIDATION)
+        );
+        assert!(
+            error
+                .message()
+                .contains("ambiguous JSON business-error envelope")
+        );
+        for rendered in [error.to_string(), format!("{error:?}"), error.compact()] {
+            assert!(!rendered.contains("private-chat"));
+            assert!(!rendered.contains("private answer"));
+            assert!(!rendered.contains("1302"));
+        }
+        assert_eq!(server.requests().len(), 1);
+        server.shutdown().await;
+    }
+}
+
 // --- Embeddings ---
 #[tokio::test]
 async fn embeddings_send_via() {
@@ -212,14 +247,16 @@ async fn moderation_send_via() {
     let (s, c) = ok_server(json!({
         "id": "moderation-1",
         "created": 1,
-        "result_list": [{"content_type": "text", "risk_level": "PASS", "risk_type": []}],
+        "result_list": [{"content_type": "text", "risk_level": "HIGH", "risk_type": []}],
         "usage": {"moderation_text": {"call_count": 1}}
     }))
     .await;
     use zai_rs::model::moderation::*;
     let response = Moderation::new_text("hi").send_via(&c).await.unwrap();
     assert_eq!(response.id.as_deref(), Some("moderation-1"));
-    assert_eq!(response.result_list.unwrap().len(), 1);
+    let results = response.result_list.unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(matches!(results[0].risk_level, Some(RiskLevel::High)));
     assert_request(&s, "POST", "/api/paas/v4/moderations");
     s.shutdown().await;
 }
@@ -229,7 +266,8 @@ async fn moderation_send_via() {
 async fn image_gen_send_via() {
     let (s, c) = ok_server(json!({
         "created": 1,
-        "data": [{"url": "https://example.com/a.png"}]
+        "data": [{"url": "https://example.com/a.png"}],
+        "content_filter": [{"role": "future_provider_stage", "level": 2}]
     }))
     .await;
     use zai_rs::model::gen_image::*;
@@ -242,6 +280,9 @@ async fn image_gen_send_via() {
         response.data().unwrap()[0].url(),
         "https://example.com/a.png"
     );
+    let filter = &response.content_filter().unwrap()[0];
+    assert_eq!(filter.role, None);
+    assert_eq!(filter.level, Some(2));
     assert_request(&s, "POST", "/api/paas/v4/images/generations");
     s.shutdown().await;
 }
@@ -328,6 +369,70 @@ async fn voice_list_send_via() {
         Some("voice1")
     );
     assert_request(&s, "GET", "/api/paas/v4/voice/list");
+    assert!(
+        s.requests()[0].query.is_none(),
+        "the default voice query must not emit an empty query string"
+    );
+    assert_empty_body(&s);
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn voice_list_query_uses_upstream_names_and_percent_encoding() {
+    let (s, c) = ok_server(json!({"voice_list": []})).await;
+    use zai_rs::model::voice_list::*;
+    let name = "中文 %&/?=+";
+
+    let response = VoiceListRequest::new()
+        .with_query(
+            VoiceListQuery::new()
+                .with_voice_name(name)
+                .with_voice_type(VoiceType::Private),
+        )
+        .send_via(&c)
+        .await
+        .unwrap();
+    assert!(response.voice_list.unwrap().is_empty());
+    assert_request(&s, "GET", "/api/paas/v4/voice/list");
+    assert_empty_body(&s);
+
+    let requests = s.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("voice filters must be encoded as URL query parameters")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        pairs,
+        vec![
+            ("voiceName".to_string(), name.to_string()),
+            ("voiceType".to_string(), "PRIVATE".to_string()),
+        ]
+    );
+    assert!(!pairs.iter().any(|(key, _)| key.contains('_')));
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn voice_list_rejects_a_blank_name_before_network_io() {
+    let (s, c) = ok_server(json!({"voice_list": []})).await;
+    use zai_rs::model::voice_list::*;
+
+    let error = VoiceListRequest::new()
+        .with_query(VoiceListQuery::new().with_voice_name(" \t\u{2003}"))
+        .send_via(&c)
+        .await
+        .expect_err("a blank voice name must fail validation");
+
+    assert_eq!(
+        error.code(),
+        Some(zai_rs::client::error::codes::SDK_VALIDATION)
+    );
+    assert!(s.requests().is_empty());
     s.shutdown().await;
 }
 
@@ -439,6 +544,122 @@ async fn knowledge_list_send_via() {
     assert_eq!(response.code, Some(200));
     assert_eq!(response.data.as_ref().unwrap().total, Some(0));
     assert_request(&s, "GET", "/api/llm-application/open/knowledge");
+    let requests = s.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("the default knowledge pagination must be present")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        pairs,
+        vec![
+            ("page".to_owned(), "1".to_owned()),
+            ("size".to_owned(), "10".to_owned()),
+        ]
+    );
+    assert_empty_body(&s);
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_data_envelope_rejects_http_200_false_successes() {
+    use zai_rs::knowledge::*;
+
+    for (case, body) in [
+        (
+            "missing business code",
+            json!({"data": {"list": [], "total": 0}}),
+        ),
+        (
+            "non-success business code",
+            json!({"code": 0, "data": {"list": [], "total": 0}}),
+        ),
+        ("missing data", json!({"code": 200, "message": "ok"})),
+        ("null data", json!({"code": 200, "data": null})),
+    ] {
+        let (server, client) = llm_ok_server(body).await;
+        KnowledgeListRequest::new()
+            .send_via(&client)
+            .await
+            .expect_err(case);
+        assert_request(&server, "GET", "/api/llm-application/open/knowledge");
+        server.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn knowledge_operation_envelope_rejects_http_200_false_successes() {
+    use zai_rs::knowledge::*;
+
+    for (case, body) in [
+        ("missing business code", json!({"message": "deleted"})),
+        (
+            "non-success business code",
+            json!({"code": 0, "message": "deleted"}),
+        ),
+    ] {
+        let (server, client) = llm_ok_server(body).await;
+        KnowledgeDeleteRequest::new("kb1")
+            .send_via(&client)
+            .await
+            .expect_err(case);
+        assert_request(&server, "DELETE", "/api/llm-application/open/knowledge/kb1");
+        server.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn knowledge_list_validated_pagination_matches_the_existing_wire_shape() {
+    let (server, client) =
+        llm_ok_server(json!({"code": 200, "data": {"list": [], "total": 0}})).await;
+    use zai_rs::{knowledge::*, pagination::PagePagination};
+    KnowledgeListRequest::new()
+        .try_with_pagination(PagePagination::try_new(2, 7).unwrap())
+        .unwrap()
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    let requests = server.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("validated knowledge pagination must be present")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        pairs,
+        vec![
+            ("page".to_owned(), "2".to_owned()),
+            ("size".to_owned(), "7".to_owned()),
+        ]
+    );
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn knowledge_list_rejects_invalid_pagination_before_network_io() {
+    let (s, c) = llm_ok_server(json!({"code": 200, "data": {"list": [], "total": 0}})).await;
+    use zai_rs::knowledge::*;
+
+    let error = KnowledgeListRequest::new()
+        .with_query(KnowledgeListQuery::new().with_page(0))
+        .send_via(&c)
+        .await
+        .expect_err("page zero must fail validation");
+
+    assert_eq!(
+        error.code(),
+        Some(zai_rs::client::error::codes::SDK_VALIDATION)
+    );
+    assert!(s.requests().is_empty());
     s.shutdown().await;
 }
 
@@ -568,6 +789,25 @@ async fn knowledge_document_list_send_via() {
     let response = DocumentListRequest::new("kb1").send_via(&c).await.unwrap();
     assert_eq!(response.data.as_ref().unwrap().total, Some(0));
     assert_request(&s, "GET", "/api/llm-application/open/document");
+    let requests = s.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("the default document-list query must be present")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        pairs,
+        vec![
+            ("knowledge_id".to_owned(), "kb1".to_owned()),
+            ("page".to_owned(), "1".to_owned()),
+            ("size".to_owned(), "10".to_owned()),
+        ]
+    );
+    assert_empty_body(&s);
     s.shutdown().await;
 }
 
@@ -582,7 +822,73 @@ async fn file_list_send_via() {
         .unwrap();
     assert_eq!(response.has_more, Some(false));
     assert_request(&s, "GET", "/api/paas/v4/files");
+    let requests = s.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("the required purpose must be sent as a query parameter")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(pairs, vec![("purpose".to_string(), "batch".to_string())]);
     s.shutdown().await;
+}
+
+#[tokio::test]
+async fn file_list_query_preserves_enum_values_and_encodes_each_scalar_once() {
+    use zai_rs::{file::*, pagination::CursorPagination};
+
+    const CURSOR: &str = "游标 &/?=+% 空格";
+    for (purpose, expected_purpose) in [
+        (FileListPurpose::Batch, "batch"),
+        (FileListPurpose::CodeInterpreter, "code-interpreter"),
+        (FileListPurpose::Agent, "agent"),
+    ] {
+        let (server, client) =
+            ok_server(json!({"object": "list", "data": [], "has_more": false})).await;
+        let pagination = CursorPagination::new()
+            .try_with_after(CURSOR)
+            .unwrap()
+            .try_with_limit(100)
+            .unwrap();
+        let query = FileListQuery::new(purpose).with_order(FileOrder::CreatedAt);
+        assert!(!format!("{query:?}").contains(CURSOR));
+
+        FileListRequest::new(purpose)
+            .with_query(query)
+            .try_with_pagination(pagination)
+            .unwrap()
+            .send_via(&client)
+            .await
+            .unwrap();
+
+        assert_request(&server, "GET", "/api/paas/v4/files");
+        let requests = server.requests();
+        let pairs = url::form_urlencoded::parse(
+            requests[0]
+                .query
+                .as_deref()
+                .expect("file-list filters must be URL query parameters")
+                .as_bytes(),
+        )
+        .into_owned()
+        .collect::<Vec<_>>();
+        assert_eq!(pairs.len(), 4, "query values must not inject extra pairs");
+        let fields = pairs
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(fields.len(), 4, "query keys must be unique");
+        assert_eq!(fields.get("after").map(String::as_str), Some(CURSOR));
+        assert_eq!(
+            fields.get("purpose").map(String::as_str),
+            Some(expected_purpose)
+        );
+        assert_eq!(fields.get("order").map(String::as_str), Some("created_at"));
+        assert_eq!(fields.get("limit").map(String::as_str), Some("100"));
+        server.shutdown().await;
+    }
 }
 
 #[tokio::test]
@@ -604,7 +910,128 @@ async fn batch_list_send_via() {
     let response = BatchListRequest::new().send_via(&c).await.unwrap();
     assert_eq!(response.has_more, Some(false));
     assert_request(&s, "GET", "/api/paas/v4/batches");
+    assert!(
+        s.requests()[0].query.is_none(),
+        "an empty batch query must not append a trailing query string"
+    );
     s.shutdown().await;
+}
+
+#[tokio::test]
+async fn batch_list_query_round_trips_cursor_and_preserves_zero_limit() {
+    let (server, client) =
+        ok_server(json!({"data": [], "object": "list", "has_more": false})).await;
+    use zai_rs::batches::*;
+
+    const CURSOR: &str = "游标 &/?=+% 空格";
+    let query = BatchListQuery::new().with_after(CURSOR).with_limit(0);
+    assert!(!format!("{query:?}").contains(CURSOR));
+    BatchListRequest::new()
+        .with_query(query)
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    assert_request(&server, "GET", "/api/paas/v4/batches");
+    let requests = server.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("batch pagination must be encoded as URL query parameters")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(pairs.len(), 2, "the cursor must not inject extra pairs");
+    let fields = pairs
+        .into_iter()
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(fields.get("after").map(String::as_str), Some(CURSOR));
+    assert_eq!(fields.get("limit").map(String::as_str), Some("0"));
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn batch_list_validated_pagination_matches_the_existing_wire_shape() {
+    let (server, client) =
+        ok_server(json!({"data": [], "object": "list", "has_more": false})).await;
+    use zai_rs::{batches::*, pagination::CursorPagination};
+
+    const CURSOR: &str = "validated 游标 &/?=+%";
+    let pagination = CursorPagination::new()
+        .try_with_after(CURSOR)
+        .unwrap()
+        .try_with_limit(20)
+        .unwrap();
+    BatchListRequest::new()
+        .try_with_pagination(pagination)
+        .unwrap()
+        .send_via(&client)
+        .await
+        .unwrap();
+
+    let requests = server.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("validated batch pagination must be present")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        pairs,
+        vec![
+            ("after".to_owned(), CURSOR.to_owned()),
+            ("limit".to_owned(), "20".to_owned()),
+        ]
+    );
+    server.shutdown().await;
+}
+
+#[tokio::test]
+async fn list_query_validation_fails_before_network_io() {
+    let (server, client) = ok_server(json!({"data": []})).await;
+
+    for query in [
+        zai_rs::file::FileListQuery::new(zai_rs::file::FileListPurpose::Batch).with_after(""),
+        zai_rs::file::FileListQuery::new(zai_rs::file::FileListPurpose::Batch).with_after(" \t"),
+        zai_rs::file::FileListQuery::new(zai_rs::file::FileListPurpose::Batch).with_limit(0),
+        zai_rs::file::FileListQuery::new(zai_rs::file::FileListPurpose::Batch).with_limit(101),
+    ] {
+        let error = zai_rs::file::FileListRequest::new(zai_rs::file::FileListPurpose::Batch)
+            .with_query(query)
+            .send_via(&client)
+            .await
+            .expect_err("invalid file-list query must fail locally");
+        assert_eq!(
+            error.code(),
+            Some(zai_rs::client::error::codes::SDK_VALIDATION)
+        );
+    }
+
+    for query in [
+        zai_rs::batches::BatchListQuery::new().with_after(""),
+        zai_rs::batches::BatchListQuery::new().with_after(" \t"),
+    ] {
+        let error = zai_rs::batches::BatchListRequest::new()
+            .with_query(query)
+            .send_via(&client)
+            .await
+            .expect_err("invalid batch-list query must fail locally");
+        assert_eq!(
+            error.code(),
+            Some(zai_rs::client::error::codes::SDK_VALIDATION)
+        );
+    }
+
+    assert!(
+        server.requests().is_empty(),
+        "query validation must complete before any network I/O"
+    );
+    server.shutdown().await;
 }
 
 // --- OCR send_via ---
@@ -682,15 +1109,66 @@ async fn knowledge_doc_list_with_query_send_via() {
         "data": {"list": [], "total": 0}
     }))
     .await;
-    use zai_rs::knowledge::*;
-    let query = DocumentListQuery::new("kb1").with_page(2).with_size(5);
-    let response = DocumentListRequest::new("kb1")
-        .with_query(query)
+    use zai_rs::{knowledge::*, pagination::PagePagination};
+    let filter = "中文 %&/?=+";
+    let response = DocumentListRequest::new(filter)
+        .with_word(filter)
+        .try_with_pagination(PagePagination::try_new(2, 5).unwrap())
+        .unwrap()
         .send_via(&c)
         .await
         .unwrap();
     assert!(response.data.unwrap().list.unwrap().is_empty());
     assert_request(&s, "GET", "/api/llm-application/open/document");
+    assert_empty_body(&s);
+
+    let requests = s.requests();
+    let pairs = url::form_urlencoded::parse(
+        requests[0]
+            .query
+            .as_deref()
+            .expect("document filters must be encoded as query parameters")
+            .as_bytes(),
+    )
+    .into_owned()
+    .collect::<Vec<_>>();
+    assert_eq!(
+        pairs,
+        vec![
+            ("knowledge_id".to_owned(), filter.to_owned()),
+            ("page".to_owned(), "2".to_owned()),
+            ("size".to_owned(), "5".to_owned()),
+            ("word".to_owned(), filter.to_owned()),
+        ]
+    );
+    s.shutdown().await;
+}
+
+#[tokio::test]
+async fn document_list_rejects_blank_filters_before_network_io() {
+    let (s, c) = llm_ok_server(json!({
+        "code": 200,
+        "data": {"list": [], "total": 0}
+    }))
+    .await;
+    use zai_rs::knowledge::*;
+
+    for query in [
+        DocumentListQuery::new(" \t\u{2003}"),
+        DocumentListQuery::new("kb1").with_word(" \t\u{2003}"),
+    ] {
+        let error = DocumentListRequest::new("replaced")
+            .with_query(query)
+            .send_via(&c)
+            .await
+            .expect_err("blank document filters must fail validation");
+        assert_eq!(
+            error.code(),
+            Some(zai_rs::client::error::codes::SDK_VALIDATION)
+        );
+    }
+
+    assert!(s.requests().is_empty());
     s.shutdown().await;
 }
 
@@ -847,10 +1325,10 @@ async fn assistant_conversation_list_send_via() {
         }
     }))
     .await;
-    use zai_rs::services::assistants::*;
+    use zai_rs::{pagination::PagePagination, services::assistants::*};
     let response = AssistantConversationListRequest::new(AssistantId::ChatGlm)
-        .with_page(2)
-        .with_page_size(10)
+        .try_with_pagination(PagePagination::try_new(2, 10).unwrap())
+        .unwrap()
         .send_via(&c)
         .await
         .unwrap();

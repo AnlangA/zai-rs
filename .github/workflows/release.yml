@@ -1,6 +1,6 @@
-# Verify and publish an annotated tag whose version matches Cargo.toml. Set
-# SKIP_PUBLISH=true in the release environment to package without crates.io
-# publication or GitHub attestations.
+# Verify and publish an annotated tag whose version matches Cargo.toml. A tag
+# workflow is successful only after attestation and crates.io publication;
+# packaging-only rehearsal belongs in the reusable CI publish dry-run job.
 name: Release
 
 on:
@@ -85,6 +85,11 @@ jobs:
       - name: Package crate
         run: cargo package --locked -p zai-rs --all-features
 
+      - name: Verify package content policy
+        env:
+          CRATE_VERSION: ${{ steps.crate.outputs.version }}
+        run: ./scripts/verify-package-contents.sh "target/package/zai-rs-${CRATE_VERSION}.crate"
+
       - name: Generate SBOM and checksums
         env:
           CRATE_VERSION: ${{ steps.crate.outputs.version }}
@@ -107,7 +112,9 @@ jobs:
       - name: Upload release evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: zai-rs-${{ steps.crate.outputs.version }}-release-evidence
+          # Keep every attempt explicitly identifiable instead of depending on
+          # GitHub's cleanup/same-name semantics when a failed job is rerun.
+          name: zai-rs-${{ steps.crate.outputs.version }}-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: error
           path: |
             target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
@@ -115,13 +122,11 @@ jobs:
             target/package/SHA256SUMS
 
       - name: Attest build provenance
-        if: ${{ vars.SKIP_PUBLISH != 'true' }}
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
 
       - name: Attest SBOM
-        if: ${{ vars.SKIP_PUBLISH != 'true' }}
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
           subject-path: target/package/zai-rs-${{ steps.crate.outputs.version }}.crate
@@ -129,11 +134,9 @@ jobs:
 
       - name: Authenticate to crates.io
         id: crates_io_auth
-        if: ${{ vars.SKIP_PUBLISH != 'true' }}
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
       - name: Publish
-        if: ${{ vars.SKIP_PUBLISH != 'true' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates_io_auth.outputs.token }}
         run: cargo publish --locked -p zai-rs --all-features

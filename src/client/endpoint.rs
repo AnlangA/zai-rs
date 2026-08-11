@@ -164,6 +164,25 @@ impl EndpointConfig {
         }
     }
 
+    /// Return whether any HTTP API family resolves to a loopback host.
+    ///
+    /// Realtime uses its own WebSocket transport, so it is deliberately not
+    /// considered here. The HTTP client uses this signal to provision a
+    /// proxy-free connection pool: a loopback URL must remain local even when
+    /// the downstream process has configured a system proxy.
+    pub(crate) fn has_loopback_http_base(&self) -> bool {
+        [
+            &self.paas_v4,
+            &self.coding_paas_v4,
+            &self.agent_v1,
+            &self.llm_application,
+            &self.zrag,
+            &self.monitor,
+        ]
+        .into_iter()
+        .any(url_is_loopback)
+    }
+
     /// Resolve `path_segments` (applied in order) against the family base,
     /// returning a fully-formed URL string. Each segment is percent-encoded;
     /// empty, `.` and `..` segments are rejected.
@@ -418,12 +437,18 @@ fn parse_family_base(raw: &str, family: ApiFamily, allow_insecure: bool) -> ZaiR
 ///
 /// This function does not resolve DNS. It accepts the exact `localhost` name
 /// and IPv4/IPv6 literals for which [`std::net::IpAddr::is_loopback`] is true.
-fn is_loopback(host: url::Host<&str>) -> bool {
+pub(crate) fn is_loopback(host: url::Host<&str>) -> bool {
     match host {
         url::Host::Domain(domain) => domain.eq_ignore_ascii_case("localhost"),
         url::Host::Ipv4(address) => address.is_loopback(),
         url::Host::Ipv6(address) => address.is_loopback(),
     }
+}
+
+/// Return whether a parsed URL names the syntactically allow-listed loopback
+/// host set used by the endpoint validator.
+pub(crate) fn url_is_loopback(url: &Url) -> bool {
+    url.host().is_some_and(is_loopback)
 }
 
 /// Reject empty, `.` and `..` path segments.

@@ -92,13 +92,50 @@ impl FileContentRequest {
 
     /// Send via a [`ZaiClient`] and write the file content to `path`.
     ///
+    /// A relative path is anchored to the process working directory once, before
+    /// any parent directories are created. This is a lexical absolute-path
+    /// conversion, not symlink canonicalization; a later working-directory change
+    /// therefore cannot split directory creation, the private partial, and final
+    /// publication across different locations.
+    ///
     /// Parent directories are created when missing. Chunks are written directly
-    /// to a private same-directory temporary file, then flushed, synced and
-    /// published with an atomic no-clobber hard link. The destination filesystem
-    /// must support hard links. The file contents are synced before publication,
-    /// but the parent directory is not currently synced, so success does not
-    /// promise directory-entry survival across sudden power loss.
-    /// Transfer failure or future cancellation removes the `.part` file.
+    /// to a private same-directory temporary file (mode `0600` on Unix), then
+    /// flushed, file-synced, closed, and published without replacing an existing
+    /// destination. Publication prefers a hard link. If the filesystem explicitly
+    /// reports hard links as unsupported, a platform-aware no-clobber persistence
+    /// fallback is used; it preserves the no-overwrite guarantee but may leave the
+    /// private temporary name behind if its final cleanup fails. Other hard-link
+    /// errors are returned rather than silently weakening the contract.
+    ///
+    /// On Unix, successful publication is followed by bottom-up directory syncs:
+    /// the destination's immediate parent, every newly created ancestor, and the
+    /// first parent directory that existed before this call. Success therefore
+    /// means the completed file, its destination entry, and any directory entries
+    /// created for this download were synced. This lexical protocol does not
+    /// canonicalize or pin symlinks and cannot protect against another process
+    /// replacing path components while the download runs. Stable Rust has no
+    /// portable directory-sync contract on Windows and other non-Unix targets;
+    /// there the file is synced before publication, but directory-entry crash
+    /// durability is not promised.
+    ///
+    /// A Unix directory-chain sync can fail after publication. In that case this
+    /// method returns an error even though the complete destination already exists
+    /// and is not rolled back; callers should inspect/reconcile that path instead
+    /// of blindly retrying the same destination. Cancellation can race with an
+    /// already-dispatched publication operation, so callers should also reconcile
+    /// the destination after cancellation; if present, it is complete and was
+    /// never produced by overwriting an existing path.
+    ///
+    /// Transfer failure or cancellation makes a best-effort attempt to remove the
+    /// private `.part` file. Drop closes the SDK file handle first. When a Tokio
+    /// runtime is available and one of eight process-wide cleanup slots can be
+    /// acquired, removal is deferred to the blocking pool; the bound covers both
+    /// queued and running cleanup jobs. If no runtime is active, the budget is
+    /// saturated, or the guarded cleanup cannot be armed, removal is attempted
+    /// synchronously instead of creating an unbounded queue. Cleanup errors are not
+    /// returned from Drop, and the SDK does not scan for stale partials at startup;
+    /// a failed cleanup or abrupt process termination may therefore leave a private
+    /// `.part` file for application/operator reconciliation.
     /// Returns the number of bytes written.
     pub async fn send_to_via<P: AsRef<std::path::Path>>(
         &self,
@@ -107,10 +144,26 @@ impl FileContentRequest {
     ) -> crate::ZaiResult<usize> {
         crate::client::validation::require_non_blank(&self.file_id, "file_id")?;
 
-        let p = path.as_ref();
+        let requested_path = path.as_ref();
+        // Keep the established validation result: Path::absolute("") would
+        // otherwise reinterpret an empty target as the current directory.
+        if requested_path.as_os_str().is_empty() {
+            return Err(crate::ZaiError::ApiError {
+                code: crate::client::error::codes::SDK_CONFIG,
+                message: "download target must not be empty".to_string(),
+            });
+        }
+        // Anchor relative destinations before create_dir_all. AtomicDownload
+        // resolves again defensively, but doing it here prevents a concurrent
+        // process-wide CWD change from splitting directory creation and final
+        // publication across different roots.
+        let p = std::path::absolute(requested_path).map_err(crate::ZaiError::from)?;
 
         // Use `tokio::fs` so a slow/networked filesystem or a large file can't
         // stall the async runtime worker (mirrors the upload-path fix).
+        let directory_sync =
+            crate::client::transport::download::DirectorySyncPlan::capture_before_create(&p)
+                .await?;
         if let Some(parent) = p.parent()
             && !parent.as_os_str().is_empty()
         {
@@ -118,7 +171,8 @@ impl FileContentRequest {
         }
         // Reserve the private file before network I/O so an existing target
         // fails fast and cancellation during the handshake is still cleaned.
-        let mut download = crate::client::transport::download::AtomicDownload::new(p).await?;
+        let mut download =
+            crate::client::transport::download::AtomicDownload::new(&p, directory_sync).await?;
         let mut stream = FileContentStream {
             inner: self.fetch_stream_via(client).await?,
         };

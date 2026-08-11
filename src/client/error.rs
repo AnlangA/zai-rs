@@ -9,6 +9,7 @@
 //! | Variant | Code range | Description |
 //! |---------|------------|-------------|
 //! | [`ZaiError::Request`] | — | HTTP-dispatched failure with structured request diagnostics |
+//! | [`ZaiError::Context`] | — | Operational context around a source error that has no message slot |
 //! | [`ZaiError::AuthError`] | 1000, 1001, 1003, 1005, 1220 | Authentication / authorization (invalid API key, etc.) |
 //! | [`ZaiError::AccountError`] | 1110–1121 except 1113 | Account/package-related errors |
 //! | [`ZaiError::ApiError`] | 1200–1234, 1261 | Request validation or upstream execution errors |
@@ -19,6 +20,8 @@
 //! | [`ZaiError::Unknown`] | other | Unrecognized business or HTTP errors |
 //! | [`ZaiError::NetworkError`] | — | Network / timeout errors |
 //! | [`ZaiError::JsonError`] | — | JSON serialization / deserialization errors |
+//! | [`ZaiError::RealtimeError`] | — | Realtime WebSocket transport or protocol errors |
+//! | [`ZaiError::RealtimeAuthError`] | — | Realtime API-key or JWT errors |
 //!
 //! # Sensitive-Data Masking
 //!
@@ -39,12 +42,16 @@
 //! match call_api().await {
 //!     Ok(data) => println!("Success: {}", data),
 //!     Err(error) if error.is_auth_error() => {
-//!         tracing::error!("Auth failed ({:?}): {}", error.code(), error.message());
+//!         tracing::error!(category = ?error.category(), "Authentication failed");
 //!     },
 //!     Err(error) if error.is_rate_limit() => {
-//!         tracing::error!("Rate limited ({:?}): {}", error.code(), error.message());
+//!         tracing::warn!(category = ?error.category(), "Request was rate limited");
 //!     },
-//!     Err(e) => tracing::error!("Error: {}", e),
+//!     Err(error) => tracing::error!(
+//!         category = ?error.category(),
+//!         retryable = error.is_retryable(),
+//!         "API call failed",
+//!     ),
 //! }
 //! # }
 //! ```
@@ -96,7 +103,12 @@ impl HttpBusinessErrorContext {
         &self.business_code
     }
 
-    /// Human-readable, credential-redacted service error message.
+    /// Human-readable service error message with recognizable credentials
+    /// redacted.
+    ///
+    /// Credential filtering is not arbitrary content redaction: provider text
+    /// can still contain prompts, filenames, or other application data. Apply
+    /// an application-specific content policy before logging this value.
     pub fn message(&self) -> &str {
         &self.message
     }
@@ -135,16 +147,28 @@ pub enum TimeoutPhase {
     SseHandshake,
     /// An established SSE response remained silent beyond its idle deadline.
     SseIdle,
+    /// The request was not admitted before its concurrency-queue deadline.
+    /// No HTTP attempt was made.
+    Queue,
+    /// An established indefinite raw response stream was not advanced before
+    /// its consumer-progress deadline, so the entire stream was canceled.
+    /// Finite file streams remain governed by the [`Overall`](Self::Overall)
+    /// deadline and do not use this phase.
+    StreamConsumer,
 }
 
-/// Safe, structured diagnostics for a request dispatched by [`ZaiClient`](crate::client::ZaiClient).
+/// Bounded, structured diagnostics for a request dispatched by
+/// [`ZaiClient`](crate::client::ZaiClient).
 ///
-/// Metadata is attached only after the transport starts dispatching a request.
-/// Local validation and serialization failures therefore have no request
-/// metadata. The request identifier is bounded and restricted to a conservative
-/// ASCII character set before storage. It is intentionally omitted from
+/// Metadata is attached once a request enters transport admission. A queue
+/// timeout has `attempts() == 0`; local validation and serialization failures
+/// occur earlier and therefore have no request metadata. A provider request
+/// identifier is bounded and restricted to a conservative ASCII character set
+/// before storage, but remains provider-controlled application data. It is
+/// intentionally omitted from
 /// [`Debug`] and from the parent error's [`fmt::Display`] output; callers must
-/// explicitly read it through [`request_id`](Self::request_id).
+/// explicitly read it through [`request_id`](Self::request_id) and apply their
+/// own logging policy.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct RequestErrorMetadata {
     request_id: Option<String>,
@@ -185,7 +209,10 @@ impl RequestErrorMetadata {
         }
     }
 
-    /// Provider request identifier, when a safe value was present.
+    /// Provider request identifier, when a bounded ASCII value was present.
+    ///
+    /// This explicit accessor returns the unredacted provider value. Treat it
+    /// as application data rather than a generally safe logging field.
     pub fn request_id(&self) -> Option<&str> {
         self.request_id.as_deref()
     }
@@ -232,8 +259,26 @@ pub enum ZaiError {
         /// Original SDK, HTTP, or provider error.
         #[source]
         source: Arc<ZaiError>,
-        /// Safe transport diagnostics.
+        /// Bounded transport diagnostics. The optional request identifier is
+        /// provider-controlled and available only through an explicit accessor.
         metadata: RequestErrorMetadata,
+    },
+
+    /// Operational context retained around an error whose variant has no
+    /// editable message slot.
+    ///
+    /// Classification, retry, code, and request-diagnostics helpers
+    /// transparently delegate to `source`. Most callers should construct this
+    /// through [`context`](Self::context), which redacts recognizable
+    /// credentials before storing `context`.
+    #[error("{context}: {source}")]
+    #[non_exhaustive]
+    Context {
+        /// Original SDK, transport, or serialization error.
+        #[source]
+        source: Arc<ZaiError>,
+        /// Credential-redacted operation description.
+        context: String,
     },
 
     /// HTTP status errors
@@ -380,17 +425,67 @@ fn classify_status(status: u16) -> ErrorCategory {
     }
 }
 
+/// Safe, structured context for an HTTP response that rejected a Realtime
+/// WebSocket handshake.
+///
+/// The peer-controlled response headers and body are discarded before this
+/// value enters the public error chain. Only the fields needed for diagnostics
+/// and retry classification are retained.
+#[cfg(feature = "realtime")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RealtimeHandshakeHttpContext {
+    status: u16,
+    business_code: Option<u16>,
+    retry_after: Option<Duration>,
+}
+
+#[cfg(feature = "realtime")]
+impl RealtimeHandshakeHttpContext {
+    fn new(status: u16, business_code: Option<u16>, retry_after: Option<Duration>) -> Self {
+        Self {
+            status,
+            business_code,
+            retry_after,
+        }
+    }
+
+    /// HTTP response status returned instead of a WebSocket upgrade.
+    pub const fn status(&self) -> u16 {
+        self.status
+    }
+
+    /// Canonical numeric provider business code recovered from a bounded body
+    /// whose completeness was proven by unambiguous HTTP framing.
+    pub const fn business_code(&self) -> Option<u16> {
+        self.business_code
+    }
+
+    /// Valid `Retry-After` hint supplied by the peer, when present.
+    pub const fn retry_after(&self) -> Option<Duration> {
+        self.retry_after
+    }
+}
+
+#[cfg(feature = "realtime")]
+impl fmt::Display for RealtimeHandshakeHttpContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "HTTP error: {}", self.status)
+    }
+}
+
 /// Concrete error categories for the realtime (WebSocket) transport.
 ///
 /// Kept separate from [`ZaiError`] so callers can introspect the failure mode
 /// without matching on the full enum, and so the realtime module can construct
 /// rich errors without touching HTTP-specific machinery.
-#[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
 #[non_exhaustive]
 pub enum RealtimeErrorKind {
-    /// Low-level WebSocket error (connect/handshake/read/write). The original
+    /// Low-level non-HTTP WebSocket error (connect/read/write). The original
     /// `tungstenite` error is kept as the `#[source]` so the full chain
-    /// survives propagation. Only available with the `realtime` feature.
+    /// survives propagation. HTTP handshake responses use
+    /// [`HandshakeHttp`](Self::HandshakeHttp) instead. Only available with the
+    /// `realtime` feature.
     #[cfg(feature = "realtime")]
     #[error("websocket: {source}")]
     WebSocket {
@@ -398,6 +493,15 @@ pub enum RealtimeErrorKind {
         #[source]
         source: tokio_tungstenite::tungstenite::Error,
     },
+
+    /// An HTTP response rejected the WebSocket handshake.
+    ///
+    /// Raw response headers and body bytes are deliberately omitted from this
+    /// public error. The retained context is sufficient for classification and
+    /// bounded connection-retry policy.
+    #[cfg(feature = "realtime")]
+    #[error("websocket handshake: {0}")]
+    HandshakeHttp(RealtimeHandshakeHttpContext),
 
     /// Protocol violation — unexpected or malformed server event.
     #[error("protocol: {0}")]
@@ -415,12 +519,69 @@ pub enum RealtimeErrorKind {
     Closed,
 }
 
+#[cfg(feature = "realtime")]
+struct DisplayAsDebug<'a, T>(&'a T);
+
+#[cfg(feature = "realtime")]
+impl<T: fmt::Display> fmt::Debug for DisplayAsDebug<'_, T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.0, formatter)
+    }
+}
+
+impl fmt::Debug for RealtimeErrorKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            #[cfg(feature = "realtime")]
+            Self::WebSocket { source } => formatter
+                .debug_struct("WebSocket")
+                .field("source", &DisplayAsDebug(source))
+                .finish(),
+            #[cfg(feature = "realtime")]
+            Self::HandshakeHttp(context) => formatter
+                .debug_tuple("HandshakeHttp")
+                .field(context)
+                .finish(),
+            Self::Protocol(message) => formatter.debug_tuple("Protocol").field(message).finish(),
+            Self::Timeout { operation } => formatter
+                .debug_struct("Timeout")
+                .field("operation", operation)
+                .finish(),
+            Self::Closed => formatter.write_str("Closed"),
+        }
+    }
+}
+
+/// Whether an I/O failure is a known transient WebSocket connection outcome.
+///
+/// This is shared by the public retry projection and the built-in Realtime
+/// connection-attempt policy so their allowlists cannot drift apart.
+#[cfg(feature = "realtime")]
+pub(crate) const fn is_retryable_websocket_io(kind: std::io::ErrorKind) -> bool {
+    use std::io::ErrorKind;
+
+    matches!(
+        kind,
+        ErrorKind::ConnectionRefused
+            | ErrorKind::ConnectionReset
+            | ErrorKind::HostUnreachable
+            | ErrorKind::NetworkUnreachable
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::NotConnected
+            | ErrorKind::NetworkDown
+            | ErrorKind::BrokenPipe
+            | ErrorKind::TimedOut
+            | ErrorKind::Interrupted
+            | ErrorKind::UnexpectedEof
+    )
+}
+
 impl ZaiError {
     /// Convert an HTTP status code and API error response to a [`ZaiError`].
     pub fn from_api_response(status: u16, api_code: u16, api_message: String) -> Self {
         // Provider and proxy error bodies are untrusted and occasionally echo
         // request metadata. Remove recognizable credentials before the text
-        // enters a public, loggable error value.
+        // enters the public error value.
         let api_message = mask_sensitive_info(&api_message);
         if api_code != 0 {
             return match api_code {
@@ -559,7 +720,9 @@ impl ZaiError {
     /// never disagree.
     pub fn category(&self) -> ErrorCategory {
         match self {
-            ZaiError::Request { source, .. } => source.category(),
+            ZaiError::Request { source, .. } | ZaiError::Context { source, .. } => {
+                source.category()
+            },
             ZaiError::RateLimitError { .. } => ErrorCategory::RateLimit,
             ZaiError::NetworkError(_) => ErrorCategory::Network,
             ZaiError::ApiError { code, .. } if *code == codes::SDK_TIMEOUT => {
@@ -576,10 +739,19 @@ impl ZaiError {
             ZaiError::JsonError(_) => ErrorCategory::Serialization,
             ZaiError::RealtimeError(kind) => match kind.as_ref() {
                 // Protocol failures are client-caused; transport timeouts and
-                // WebSocket failures are network-level; closure is neither.
+                // non-HTTP WebSocket failures are network-level. A completed
+                // or already-completed close is neither.
                 RealtimeErrorKind::Protocol(_) => ErrorCategory::Client,
                 #[cfg(feature = "realtime")]
-                RealtimeErrorKind::WebSocket { .. } => ErrorCategory::Network,
+                RealtimeErrorKind::WebSocket { source } => match source {
+                    tokio_tungstenite::tungstenite::Error::ConnectionClosed
+                    | tokio_tungstenite::tungstenite::Error::AlreadyClosed => ErrorCategory::Other,
+                    _ => ErrorCategory::Network,
+                },
+                #[cfg(feature = "realtime")]
+                RealtimeErrorKind::HandshakeHttp(context) => {
+                    classify_realtime_handshake_http(context)
+                },
                 RealtimeErrorKind::Timeout { .. } => ErrorCategory::Network,
                 RealtimeErrorKind::Closed => ErrorCategory::Other,
             },
@@ -624,7 +796,9 @@ impl ZaiError {
     /// additional constraints.
     pub fn is_retryable(&self) -> bool {
         match self {
-            ZaiError::Request { source, .. } => source.is_retryable(),
+            ZaiError::Request { source, .. } | ZaiError::Context { source, .. } => {
+                source.is_retryable()
+            },
             ZaiError::HttpError { status, .. } => {
                 crate::client::transport::retry::RETRYABLE_STATUSES.contains(status)
             },
@@ -635,16 +809,17 @@ impl ZaiError {
             ZaiError::NetworkError(_) => true,
             ZaiError::ApiError { code, .. } if *code == codes::SDK_TIMEOUT => true,
             ZaiError::ApiError { code, .. } if is_server_business_code(*code) => true,
-            ZaiError::RealtimeError(kind)
-                if matches!(kind.as_ref(), RealtimeErrorKind::Timeout { .. }) =>
-            {
-                true
-            },
-            #[cfg(feature = "realtime")]
-            ZaiError::RealtimeError(kind)
-                if matches!(kind.as_ref(), RealtimeErrorKind::WebSocket { .. }) =>
-            {
-                true
+            ZaiError::RealtimeError(kind) => match kind.as_ref() {
+                RealtimeErrorKind::Timeout { .. } => true,
+                #[cfg(feature = "realtime")]
+                RealtimeErrorKind::HandshakeHttp(context) => {
+                    is_retryable_realtime_handshake_http(context)
+                },
+                #[cfg(feature = "realtime")]
+                RealtimeErrorKind::WebSocket {
+                    source: tokio_tungstenite::tungstenite::Error::Io(error),
+                } => is_retryable_websocket_io(error.kind()),
+                _ => false,
             },
             _ => false,
         }
@@ -660,10 +835,22 @@ impl ZaiError {
         self.code().is_some_and(|c| (9000..=9999).contains(&c))
     }
 
-    /// Get a compact representation of error suitable for logging
+    /// Return a compact error representation.
+    ///
+    /// Provider messages remain application data and can contain prompts,
+    /// filenames, or other user content. Do not log this representation
+    /// without an application-specific content policy.
     pub fn compact(&self) -> String {
         match self {
             ZaiError::Request { source, .. } => source.compact(),
+            ZaiError::Context { source, context } => {
+                let compact = source.compact();
+                if let Some((category, detail)) = compact.split_once(": ") {
+                    format!("{category}: {context}: {detail}")
+                } else {
+                    format!("{context}: {compact}")
+                }
+            },
             ZaiError::HttpError { status, message } => {
                 format!("HTTP[{status}]: {message}")
             },
@@ -709,7 +896,7 @@ impl ZaiError {
     /// Get error code if available
     pub fn code(&self) -> Option<u16> {
         match self {
-            ZaiError::Request { source, .. } => source.code(),
+            ZaiError::Request { source, .. } | ZaiError::Context { source, .. } => source.code(),
             ZaiError::HttpError { status, .. } => Some(*status),
             ZaiError::HttpBusinessError(context) => Some(context.status),
             ZaiError::AuthError { code, .. } => Some(*code),
@@ -733,7 +920,9 @@ impl ZaiError {
     /// return `None`.
     pub fn raw_business_code(&self) -> Option<&str> {
         match self {
-            Self::Request { source, .. } => source.raw_business_code(),
+            Self::Request { source, .. } | Self::Context { source, .. } => {
+                source.raw_business_code()
+            },
             Self::HttpBusinessError(context) => Some(context.business_code()),
             _ => None,
         }
@@ -743,20 +932,23 @@ impl ZaiError {
     ///
     /// Returns `None` for local failures that occurred before dispatch. The
     /// request ID is not rendered by `Display`, `Debug`, or [`compact`](Self::compact);
-    /// reading this value is an explicit diagnostics action.
+    /// reading this provider-controlled value is an explicit diagnostics
+    /// action and requires an application-specific logging policy.
     pub fn request_metadata(&self) -> Option<&RequestErrorMetadata> {
         match self {
             Self::Request { metadata, .. } => Some(metadata),
+            Self::Context { source, .. } => source.request_metadata(),
             _ => None,
         }
     }
 
-    /// Original error beneath the request-diagnostics wrapper.
+    /// Original error beneath transparent request-diagnostics and operation-
+    /// context wrappers.
     ///
-    /// Returns `self` when no request metadata is attached.
+    /// Returns `self` when neither wrapper is present.
     pub fn source_error(&self) -> &ZaiError {
         match self {
-            Self::Request { source, .. } => source.source_error(),
+            Self::Request { source, .. } | Self::Context { source, .. } => source.source_error(),
             _ => self,
         }
     }
@@ -777,10 +969,17 @@ impl ZaiError {
         }
     }
 
-    /// Get error message
+    /// Return the human-readable error message.
+    ///
+    /// Recognizable credentials are filtered on provider paths, but provider
+    /// text can still contain prompts, filenames, or other application data.
+    /// Apply an application-specific content policy before logging this value.
     pub fn message(&self) -> String {
         match self {
             ZaiError::Request { source, .. } => source.message(),
+            ZaiError::Context { source, context } => {
+                format!("{context}: {}", source.message())
+            },
             ZaiError::HttpError { message, .. } => message.clone(),
             ZaiError::HttpBusinessError(context) => context.message.clone(),
             ZaiError::AuthError { message, .. } => message.clone(),
@@ -801,13 +1000,13 @@ impl ZaiError {
     /// category.
     ///
     /// Prepends `"{context}: "` to the human-readable message of every variant
-    /// that carries one. The supplied context and resulting message are
-    /// credential-redacted before they enter the public error value. Variants
-    /// whose payload is a wrapped source error with no message slot
-    /// ([`NetworkError`](Self::NetworkError),
+    /// that carries one. Variants whose payload is a wrapped source error with
+    /// no message slot ([`NetworkError`](Self::NetworkError),
     /// [`JsonError`](Self::JsonError), [`RealtimeError`](Self::RealtimeError))
-    /// are returned unchanged — record their context in a `tracing` span
-    /// instead.
+    /// retain the operation through a transparent [`Context`](Self::Context)
+    /// wrapper. The supplied context and editable variant messages are
+    /// credential-redacted before storage; an already wrapped source error is
+    /// retained byte-for-byte so its standard error chain remains available.
     ///
     /// # Example
     ///
@@ -829,6 +1028,13 @@ impl ZaiError {
             Self::Request { source, metadata } => Self::Request {
                 source: Arc::new(source.as_ref().clone().context(&context)),
                 metadata,
+            },
+            Self::Context {
+                source,
+                context: inner,
+            } => Self::Context {
+                source,
+                context: with_context(inner),
             },
             Self::HttpError { status, message } => Self::HttpError {
                 status,
@@ -862,11 +1068,12 @@ impl ZaiError {
                 code,
                 message: with_context(message),
             },
-            // No message slot: keep the wrapped source as-is (context belongs
-            // in a tracing span, not by flattening the source to a string).
-            Self::NetworkError(err) => Self::NetworkError(err),
-            Self::JsonError(err) => Self::JsonError(err),
-            Self::RealtimeError(kind) => Self::RealtimeError(kind),
+            source @ (Self::NetworkError(_) | Self::JsonError(_) | Self::RealtimeError(_)) => {
+                Self::Context {
+                    source: Arc::new(source),
+                    context,
+                }
+            },
             Self::RealtimeAuthError(message) => Self::RealtimeAuthError(with_context(message)),
             Self::Unknown { code, message } => Self::Unknown {
                 code,
@@ -891,6 +1098,27 @@ fn classify_http_fallback(status: u16) -> ErrorCategory {
         401 | 403 => ErrorCategory::Auth,
         _ => classify_status(status),
     }
+}
+
+#[cfg(feature = "realtime")]
+fn classify_realtime_handshake_http(context: &RealtimeHandshakeHttpContext) -> ErrorCategory {
+    let Some(business_code) = context.business_code() else {
+        return classify_http_fallback(context.status());
+    };
+
+    let mapped = ZaiError::from_api_response(context.status(), business_code, String::new());
+    match mapped {
+        // An unknown business code must not erase the HTTP status semantics.
+        ZaiError::HttpBusinessError(_) | ZaiError::Unknown { .. } => {
+            classify_http_fallback(context.status())
+        },
+        known => known.category(),
+    }
+}
+
+#[cfg(feature = "realtime")]
+fn is_retryable_realtime_handshake_http(context: &RealtimeHandshakeHttpContext) -> bool {
+    crate::client::transport::retry::is_retryable_outcome(context.status(), context.business_code())
 }
 
 fn message_or(message: String, fallback: &str) -> String {
@@ -1026,13 +1254,61 @@ impl From<RealtimeErrorKind> for ZaiError {
 }
 
 /// Convert from a low-level WebSocket (`tungstenite`) error into a
-/// [`ZaiError`]. The original error is preserved as the `#[source]` of
-/// [`RealtimeErrorKind::WebSocket`]. Only available with the `realtime`
-/// feature.
+/// [`ZaiError`]. Non-HTTP errors are preserved as the `#[source]` of
+/// [`RealtimeErrorKind::WebSocket`]. An HTTP handshake response is reduced to
+/// [`RealtimeHandshakeHttpContext`] before entering the public error chain, so
+/// peer-controlled headers and body bytes cannot leak through `Debug`.
+/// Only available with the `realtime` feature.
 #[cfg(feature = "realtime")]
 impl From<tokio_tungstenite::tungstenite::Error> for ZaiError {
     fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        ZaiError::RealtimeError(Arc::new(RealtimeErrorKind::WebSocket { source: err }))
+        use crate::client::transport::{
+            business_code_from_complete_json, limits::ERROR_BODY_MAX, retry::parse_retry_after,
+        };
+        use tokio_tungstenite::tungstenite::Error as WebSocketError;
+
+        let kind = match err {
+            WebSocketError::Http(response) => {
+                let status = response.status().as_u16();
+                // Tungstenite stops reading as soon as it has parsed the HTTP
+                // response headers. Its response body is only the tail that
+                // happened to arrive in that same read, not necessarily the
+                // complete HTTP entity. A partial JSON prefix must never
+                // control retry or category. Trust it only when one
+                // Content-Length proves exact completeness and no transfer
+                // coding makes the framing ambiguous.
+                let headers = response.headers();
+                let mut content_lengths = headers.get_all(http::header::CONTENT_LENGTH).iter();
+                let content_length = content_lengths
+                    .next()
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.parse::<usize>().ok());
+                let has_one_content_length = content_length.is_some()
+                    && content_lengths.next().is_none()
+                    && !headers.contains_key(http::header::TRANSFER_ENCODING);
+                let business_code = response
+                    .body()
+                    .as_deref()
+                    .filter(|body| {
+                        has_one_content_length
+                            && content_length == Some(body.len())
+                            && body.len() <= ERROR_BODY_MAX as usize
+                    })
+                    .and_then(business_code_from_complete_json);
+                let retry_after = response
+                    .headers()
+                    .get(http::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(parse_retry_after);
+                RealtimeErrorKind::HandshakeHttp(RealtimeHandshakeHttpContext::new(
+                    status,
+                    business_code,
+                    retry_after,
+                ))
+            },
+            source => RealtimeErrorKind::WebSocket { source },
+        };
+        ZaiError::RealtimeError(Arc::new(kind))
     }
 }
 
@@ -1044,6 +1320,45 @@ mod tests {
     // conversion tests below.
     use std::io::{Error, ErrorKind};
     use validator::Validate;
+
+    #[cfg(feature = "realtime")]
+    fn handshake_http_error(status: u16, body: &[u8], headers: &[(&str, &str)]) -> ZaiError {
+        use tokio_tungstenite::tungstenite::Error as WebSocketError;
+
+        let mut response = http::Response::builder()
+            .status(status)
+            .header(http::header::CONTENT_LENGTH, body.len().to_string());
+        for (name, value) in headers {
+            response = response.header(*name, *value);
+        }
+        WebSocketError::Http(Box::new(response.body(Some(body.to_vec())).unwrap())).into()
+    }
+
+    #[cfg(feature = "realtime")]
+    fn unframed_handshake_http_error(
+        status: u16,
+        body: &[u8],
+        headers: &[(&str, &str)],
+    ) -> ZaiError {
+        use tokio_tungstenite::tungstenite::Error as WebSocketError;
+
+        let mut response = http::Response::builder().status(status);
+        for (name, value) in headers {
+            response = response.header(*name, *value);
+        }
+        WebSocketError::Http(Box::new(response.body(Some(body.to_vec())).unwrap())).into()
+    }
+
+    #[cfg(feature = "realtime")]
+    fn handshake_context(error: &ZaiError) -> &RealtimeHandshakeHttpContext {
+        let ZaiError::RealtimeError(kind) = error.source_error() else {
+            panic!("handshake failure must remain a realtime error");
+        };
+        let RealtimeErrorKind::HandshakeHttp(context) = kind.as_ref() else {
+            panic!("raw HTTP response entered the public error chain");
+        };
+        context
+    }
 
     #[derive(Validate)]
     struct SensitiveValidationInput {
@@ -1370,6 +1685,476 @@ mod tests {
         assert_eq!(err.message(), "read: boom");
     }
 
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_handshake_http_discards_raw_response_from_every_default_rendering() {
+        let header_secret = "header-secret-value";
+        let body_secret = br#"{"code":1001,"message":"body-secret-value"}"#;
+        let body_debug = format!("{body_secret:?}");
+        let error = handshake_http_error(
+            401,
+            body_secret,
+            &[
+                ("set-cookie", "session=private-cookie"),
+                ("www-authenticate", header_secret),
+                ("x-private-diagnostic", "private-diagnostic-value"),
+                ("retry-after", "7"),
+            ],
+        );
+
+        let context = handshake_context(&error);
+        assert_eq!(context.status(), 401);
+        assert_eq!(context.business_code(), Some(1001));
+        assert_eq!(context.retry_after(), Some(Duration::from_secs(7)));
+        let cloned = RealtimeHandshakeHttpContext::clone(context);
+        assert_eq!(&cloned, context);
+
+        let contextual = error.clone().context("open realtime session");
+        let requested = error.with_request_metadata(RequestErrorMetadata::for_attempts(2));
+        for rendered in [
+            contextual.to_string(),
+            contextual.message(),
+            contextual.compact(),
+            format!("{contextual:?}"),
+            format!("{contextual:#?}"),
+            format!("{requested:?}"),
+            format!("{requested:#?}"),
+        ] {
+            for forbidden in [
+                header_secret,
+                "private-cookie",
+                "private-diagnostic-value",
+                "x-private-diagnostic",
+                "body-secret-value",
+                body_debug.as_str(),
+            ] {
+                assert!(
+                    !rendered.contains(forbidden),
+                    "handshake response leaked through `{rendered}`"
+                );
+            }
+        }
+
+        let ZaiError::RealtimeError(kind) = requested.source_error() else {
+            panic!("request wrapper must retain the realtime error");
+        };
+        assert!(matches!(kind.as_ref(), RealtimeErrorKind::HandshakeHttp(_)));
+        assert!(
+            std::error::Error::source(kind.as_ref()).is_none(),
+            "raw tungstenite HTTP response remained in the source chain"
+        );
+    }
+
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_handshake_summary_uses_only_bounded_canonical_inputs() {
+        use crate::client::transport::limits::ERROR_BODY_MAX;
+
+        let mut body = vec![b' '; ERROR_BODY_MAX as usize];
+        body.extend_from_slice(br#"{"code":1302}"#);
+        let error = handshake_http_error(503, &body, &[("retry-after", "invalid-retry-secret")]);
+        let context = handshake_context(&error);
+
+        assert_eq!(context.status(), 503);
+        assert_eq!(
+            context.business_code(),
+            None,
+            "a code beyond the diagnostic cap must not affect policy"
+        );
+        assert_eq!(context.retry_after(), None);
+        assert!(
+            error.is_retryable(),
+            "status-only 503 should remain transient"
+        );
+        assert!(!format!("{error:#?}").contains("invalid-retry-secret"));
+    }
+
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_handshake_rejects_ambiguous_or_malformed_business_codes() {
+        for body in [
+            br#"{"code":1302,"code":1113}"# as &[u8],
+            br#"{"code":1302,"code":1113"#,
+            br#"{"error":{"code":1113,"code":1302}}"#,
+        ] {
+            let error = handshake_http_error(400, body, &[]);
+            let context = handshake_context(&error);
+            assert_eq!(context.business_code(), None);
+            assert_eq!(error.category(), ErrorCategory::Client);
+            assert!(!error.is_retryable());
+        }
+    }
+
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_handshake_business_code_requires_complete_unambiguous_framing() {
+        let body = br#"{"code":1302}"#;
+        let cases: &[(&[(&str, &str)], &str)] = &[
+            (&[], "missing Content-Length"),
+            (&[("content-length", "1")], "mismatched Content-Length"),
+            (
+                &[("content-length", "13"), ("content-length", "13")],
+                "duplicate Content-Length",
+            ),
+            (
+                &[("content-length", "13"), ("transfer-encoding", "chunked")],
+                "transfer coding",
+            ),
+        ];
+
+        for (headers, reason) in cases {
+            let error = unframed_handshake_http_error(400, body, headers);
+            assert_eq!(
+                handshake_context(&error).business_code(),
+                None,
+                "{reason} must not make a Tungstenite tail authoritative"
+            );
+            assert_eq!(error.category(), ErrorCategory::Client);
+            assert!(!error.is_retryable());
+        }
+
+        let complete = handshake_http_error(400, body, &[]);
+        assert_eq!(handshake_context(&complete).business_code(), Some(1302));
+        assert_eq!(complete.category(), ErrorCategory::RateLimit);
+        assert!(complete.is_retryable());
+    }
+
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_websocket_debug_uses_display_even_for_manually_wrapped_payloads() {
+        use tokio_tungstenite::tungstenite::{Error as WebSocketError, Message};
+
+        let header_secret = "manually-wrapped-header-secret";
+        let body_secret = b"manually-wrapped-body-secret";
+        let response = http::Response::builder()
+            .status(418)
+            .header("x-private-response", header_secret)
+            .body(Some(body_secret.to_vec()))
+            .unwrap();
+        let raw_http = ZaiError::from(RealtimeErrorKind::WebSocket {
+            source: WebSocketError::Http(Box::new(response)),
+        })
+        .context("manual transport");
+        let raw_http_debug = format!("{raw_http:#?}");
+        assert!(!raw_http_debug.contains(header_secret));
+        assert!(!raw_http_debug.contains("x-private-response"));
+        assert!(!raw_http_debug.contains(&format!("{body_secret:?}")));
+        assert!(raw_http_debug.contains("HTTP error: 418"));
+
+        let message_secret = "private outbound message";
+        let write_buffer = ZaiError::from(RealtimeErrorKind::WebSocket {
+            source: WebSocketError::WriteBufferFull(Box::new(Message::Text(message_secret.into()))),
+        });
+        let write_buffer_debug = format!("{write_buffer:#?}");
+        assert!(!write_buffer_debug.contains(message_secret));
+        assert!(write_buffer_debug.contains("Write buffer is full"));
+    }
+
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_handshake_http_category_and_retry_match_http_business_policy() {
+        let cases: &[(u16, &[u8], ErrorCategory, bool)] = &[
+            (401, br#"{}"#, ErrorCategory::Auth, false),
+            (400, br#"{}"#, ErrorCategory::Client, false),
+            (429, br#"{}"#, ErrorCategory::RateLimit, true),
+            (
+                429,
+                br#"{"error":{"code":1113}}"#,
+                ErrorCategory::RateLimit,
+                false,
+            ),
+            (503, br#"{}"#, ErrorCategory::Server, true),
+            (503, br#"{"code":1210}"#, ErrorCategory::Client, false),
+            (400, br#"{"code":1302}"#, ErrorCategory::RateLimit, true),
+            (400, br#"{"code":65000}"#, ErrorCategory::Client, false),
+            (501, br#"{}"#, ErrorCategory::Other, false),
+        ];
+
+        for (status, body, category, retryable) in cases {
+            let error = handshake_http_error(*status, body, &[]);
+            assert_eq!(
+                error.category(),
+                *category,
+                "wrong category for HTTP {status} body {}",
+                String::from_utf8_lossy(body)
+            );
+            assert_eq!(
+                error.is_retryable(),
+                *retryable,
+                "wrong retry decision for HTTP {status} body {}",
+                String::from_utf8_lossy(body)
+            );
+            let contextual = error.context("connect");
+            assert_eq!(contextual.category(), *category);
+            assert_eq!(contextual.is_retryable(), *retryable);
+        }
+    }
+
+    #[cfg(feature = "realtime")]
+    #[test]
+    fn realtime_non_http_websocket_retry_is_an_explicit_io_allowlist() {
+        use tokio_tungstenite::tungstenite::{
+            Error as WebSocketError,
+            error::{CapacityError, ProtocolError, TlsError, UrlError},
+        };
+
+        for kind in [
+            ErrorKind::ConnectionRefused,
+            ErrorKind::ConnectionReset,
+            ErrorKind::HostUnreachable,
+            ErrorKind::NetworkUnreachable,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::NotConnected,
+            ErrorKind::NetworkDown,
+            ErrorKind::BrokenPipe,
+            ErrorKind::TimedOut,
+            ErrorKind::Interrupted,
+            ErrorKind::UnexpectedEof,
+        ] {
+            assert!(is_retryable_websocket_io(kind));
+            let error = ZaiError::from(WebSocketError::Io(std::io::Error::new(kind, "test")));
+            assert_eq!(error.category(), ErrorCategory::Network);
+            assert!(error.is_retryable(), "{kind:?} must remain retryable");
+        }
+
+        for kind in [
+            ErrorKind::InvalidData,
+            ErrorKind::InvalidInput,
+            ErrorKind::PermissionDenied,
+            ErrorKind::NotFound,
+            ErrorKind::AddrInUse,
+            ErrorKind::AddrNotAvailable,
+            ErrorKind::WouldBlock,
+            ErrorKind::OutOfMemory,
+            ErrorKind::Other,
+        ] {
+            assert!(!is_retryable_websocket_io(kind));
+            let error = ZaiError::from(WebSocketError::Io(std::io::Error::new(kind, "test")));
+            assert_eq!(error.category(), ErrorCategory::Network);
+            assert!(!error.is_retryable(), "{kind:?} must fail closed");
+        }
+
+        let permanent = [
+            WebSocketError::Protocol(ProtocolError::HandshakeIncomplete),
+            WebSocketError::Url(UrlError::UnsupportedUrlScheme),
+            WebSocketError::Tls(TlsError::InvalidDnsName),
+            WebSocketError::Capacity(CapacityError::MessageTooLong {
+                size: 2,
+                max_size: 1,
+            }),
+            WebSocketError::AttackAttempt,
+            WebSocketError::Utf8("invalid text".to_owned()),
+        ];
+        for source in permanent {
+            let error = ZaiError::from(source);
+            assert_eq!(error.category(), ErrorCategory::Network);
+            assert!(!error.is_retryable());
+        }
+
+        for source in [
+            WebSocketError::ConnectionClosed,
+            WebSocketError::AlreadyClosed,
+        ] {
+            let error = ZaiError::from(source);
+            assert_eq!(error.category(), ErrorCategory::Other);
+            assert!(!error.is_retryable());
+        }
+    }
+
+    #[test]
+    fn context_retains_source_only_error_details_and_semantics() {
+        let json_source = serde_json::from_str::<serde_json::Value>("{")
+            .expect_err("the incomplete object must fail");
+        let json_error = ZaiError::from(json_source).context("decode chat response");
+
+        assert!(matches!(
+            &json_error,
+            ZaiError::Context { source, context }
+                if matches!(source.as_ref(), ZaiError::JsonError(_))
+                    && context == "decode chat response"
+        ));
+        assert_eq!(json_error.category(), ErrorCategory::Serialization);
+        assert_eq!(json_error.code(), None);
+        assert!(!json_error.is_retryable());
+        assert!(json_error.message().starts_with("decode chat response: "));
+        assert!(
+            json_error
+                .compact()
+                .starts_with("JSON: decode chat response: ")
+        );
+        assert!(
+            json_error
+                .to_string()
+                .starts_with("decode chat response: JSON error: ")
+        );
+        assert!(matches!(json_error.source_error(), ZaiError::JsonError(_)));
+        let error_source = std::error::Error::source(&json_error)
+            .expect("the context wrapper must retain a standard error source");
+        assert!(error_source.to_string().starts_with("JSON error: "));
+        assert!(error_source.source().is_some());
+
+        let realtime_error = ZaiError::from(RealtimeErrorKind::Timeout { operation: "write" })
+            .context("send session update");
+        assert_eq!(realtime_error.category(), ErrorCategory::Network);
+        assert!(realtime_error.is_retryable());
+        assert_eq!(realtime_error.code(), None);
+        assert_eq!(
+            realtime_error.message(),
+            "send session update: write timed out"
+        );
+        assert!(matches!(
+            realtime_error.source_error(),
+            ZaiError::RealtimeError(_)
+        ));
+        let realtime_leaf = std::error::Error::source(&realtime_error)
+            .expect("context must link to the realtime SDK error");
+        assert_eq!(realtime_leaf.to_string(), "Realtime error: write timed out");
+        assert_eq!(
+            realtime_leaf
+                .source()
+                .expect("realtime SDK error must link to its concrete kind")
+                .to_string(),
+            "write timed out"
+        );
+
+        let protocol_error = ZaiError::from(RealtimeErrorKind::Protocol("bad frame".to_owned()))
+            .context("decode server event");
+        assert_eq!(protocol_error.category(), ErrorCategory::Client);
+        assert!(!protocol_error.is_retryable());
+        assert!(matches!(
+            protocol_error.source_error(),
+            ZaiError::RealtimeError(_)
+        ));
+
+        let closed_error = ZaiError::from(RealtimeErrorKind::Closed).context("observe session");
+        assert_eq!(closed_error.category(), ErrorCategory::Other);
+        assert!(!closed_error.is_retryable());
+        assert_eq!(closed_error.message(), "observe session: session closed");
+
+        #[cfg(feature = "realtime")]
+        {
+            let websocket_error =
+                ZaiError::from(tokio_tungstenite::tungstenite::Error::ConnectionClosed)
+                    .context("read websocket frame");
+            assert_eq!(websocket_error.category(), ErrorCategory::Other);
+            assert!(!websocket_error.is_retryable());
+            assert!(matches!(
+                websocket_error.source_error(),
+                ZaiError::RealtimeError(_)
+            ));
+            assert!(
+                std::error::Error::source(&websocket_error)
+                    .and_then(std::error::Error::source)
+                    .and_then(std::error::Error::source)
+                    .is_some()
+            );
+        }
+
+        let network_source = reqwest::Client::new()
+            .get("not a valid absolute URL")
+            .build()
+            .expect_err("a relative URL must fail request construction");
+        let network_error = ZaiError::from(network_source).context("list models");
+        assert_eq!(network_error.category(), ErrorCategory::Network);
+        assert!(network_error.is_retryable());
+        assert!(network_error.message().starts_with("list models: "));
+        assert!(matches!(
+            network_error.source_error(),
+            ZaiError::NetworkError(_)
+        ));
+        assert!(
+            std::error::Error::source(&network_error)
+                .and_then(std::error::Error::source)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn source_only_context_composes_with_metadata_and_redaction() {
+        let secret = "abc123.abcdefghijklmnopqrstuvwxyz";
+        let source = serde_json::from_str::<serde_json::Value>("{")
+            .expect_err("the incomplete object must fail");
+        let contextual = ZaiError::from(source)
+            .context(&format!("decode Authorization: Bearer {secret}"))
+            .context("agent invoke");
+        let ZaiError::Context {
+            source: stored_source,
+            context: stored_context,
+            ..
+        } = &contextual
+        else {
+            panic!("source-only errors must use one context wrapper");
+        };
+        assert!(matches!(stored_source.as_ref(), ZaiError::JsonError(_)));
+        assert!(stored_context.starts_with("agent invoke: "));
+        assert!(stored_context.contains("decode"));
+        assert!(stored_context.contains("[AUTH_REDACTED]"));
+        assert!(!stored_context.contains(secret));
+        let error = contextual.with_request_metadata(RequestErrorMetadata::for_attempts(2));
+
+        assert_eq!(error.category(), ErrorCategory::Serialization);
+        assert!(!error.is_retryable());
+        assert_eq!(error.request_metadata().unwrap().attempts(), 2);
+        assert!(matches!(error.source_error(), ZaiError::JsonError(_)));
+        for rendered in [
+            error.to_string(),
+            format!("{error:?}"),
+            error.compact(),
+            error.message(),
+        ] {
+            assert!(rendered.contains("agent invoke"));
+            assert!(rendered.contains("decode"));
+            assert!(rendered.contains("[AUTH_REDACTED]"));
+            assert!(!rendered.contains(secret));
+            assert!(!rendered.contains("abcdefghijklmnopqrstuvwxyz"));
+        }
+    }
+
+    #[test]
+    fn request_metadata_and_source_context_compose_in_either_order() {
+        let source = ZaiError::from(
+            serde_json::from_str::<serde_json::Value>("{")
+                .expect_err("the incomplete object must fail"),
+        );
+        let metadata =
+            RequestErrorMetadata::for_attempts(3).with_request_id(Some("request-42".to_owned()));
+
+        let context_then_metadata = source
+            .clone()
+            .context("decode response")
+            .with_request_metadata(metadata.clone());
+        let metadata_then_context = source
+            .with_request_metadata(metadata)
+            .context("decode response");
+
+        for error in [&context_then_metadata, &metadata_then_context] {
+            assert_eq!(error.category(), ErrorCategory::Serialization);
+            assert_eq!(error.request_metadata().unwrap().attempts(), 3);
+            assert_eq!(
+                error.request_metadata().unwrap().request_id(),
+                Some("request-42")
+            );
+            assert_eq!(error.message(), context_then_metadata.message());
+            assert_eq!(error.compact(), context_then_metadata.compact());
+            assert!(matches!(error.source_error(), ZaiError::JsonError(_)));
+            assert!(!error.to_string().contains("request-42"));
+            assert!(!format!("{error:?}").contains("request-42"));
+        }
+
+        assert!(matches!(
+            &context_then_metadata,
+            ZaiError::Request { source, .. }
+                if matches!(source.as_ref(), ZaiError::Context { source, .. }
+                    if matches!(source.as_ref(), ZaiError::JsonError(_)))
+        ));
+        assert!(matches!(
+            &metadata_then_context,
+            ZaiError::Request { source, .. }
+                if matches!(source.as_ref(), ZaiError::Context { source, .. }
+                    if matches!(source.as_ref(), ZaiError::JsonError(_)))
+        ));
+    }
+
     #[test]
     fn test_sdk_timeout_is_not_rate_limit() {
         // Regression guard: a client-side polling timeout must NOT masquerade
@@ -1486,6 +2271,167 @@ mod tests {
         let filtered = mask_sensitive_info(text);
         assert!(filtered.contains("[FILTERED]"));
         assert!(!filtered.contains("abc123xyz"));
+    }
+
+    #[test]
+    fn quoted_json_credentials_are_fully_redacted() {
+        let cases = [
+            (r#"{"token":"opaque-secret"}"#, "opaque-secret"),
+            (r#"{"password": "two words, still secret"}"#, "two words"),
+            (r#"{"api_key":"opaque\\\"suffix"}"#, "suffix"),
+            (
+                r#"{"authorization":"Bearer opaque-token-value"}"#,
+                "opaque-token-value",
+            ),
+            (
+                r#"{'token':'single-quoted-secret'}"#,
+                "single-quoted-secret",
+            ),
+            (r#"{"token":truncated-secret"#, "truncated-secret"),
+            (
+                r#"{"token":"truncated-quoted-secret"#,
+                "truncated-quoted-secret",
+            ),
+            (
+                r#"{"token":"prefix\"escaped-quote-secret"#,
+                "escaped-quote-secret",
+            ),
+            (
+                r#"{"token":"trailing-backslash-secret\"#,
+                "backslash-secret",
+            ),
+            (
+                r#"{'password':'prefix\'single-quote-secret"#,
+                "single-quote-secret",
+            ),
+            (r#"{"authorization":Bearer opaque-token}"#, "opaque-token"),
+            (r#"{"password":two words still-secret}"#, "still-secret"),
+            (r#"{"token":{"raw":"object-secret"}}"#, "object-secret"),
+            (r#"{"token":["array-secret"]}"#, "array-secret"),
+            (
+                r#"{"to\u006ben":"escaped-key-secret"}"#,
+                "escaped-key-secret",
+            ),
+            (r#"{"api\u005fkey":"escaped-api-key"}"#, "escaped-api-key"),
+            (r#"{"access_token":"opaque-access"}"#, "opaque-access"),
+            (r#"{"client_secret":"opaque-client"}"#, "opaque-client"),
+        ];
+
+        for (input, forbidden) in cases {
+            assert!(
+                contains_sensitive_info(input),
+                "missed JSON credential: {input}"
+            );
+            let filtered = mask_sensitive_info(input);
+            assert!(filtered.contains("[FILTERED]"));
+            assert!(
+                !filtered.contains(forbidden),
+                "credential suffix survived redaction: {filtered}"
+            );
+        }
+    }
+
+    #[test]
+    fn structured_json_redacts_every_sensitive_key_and_embedded_credential() {
+        let input = r#"{
+            "token":"primary-secret",
+            "debug":"abc.abcdefghijklmnop",
+            "message":"Bearer secondary-secret",
+            "items":[
+                {"access_token":"access-secret"},
+                {"client_secret":{"raw":"nested-secret"}}
+            ]
+        }"#;
+
+        let filtered = mask_sensitive_info(input);
+        serde_json::from_str::<serde_json::Value>(&filtered)
+            .expect("redacted structured JSON must remain valid JSON");
+        for forbidden in [
+            "primary-secret",
+            "abcdefghijklmnop",
+            "secondary-secret",
+            "access-secret",
+            "nested-secret",
+        ] {
+            assert!(
+                !filtered.contains(forbidden),
+                "credential survived structured redaction: {filtered}"
+            );
+        }
+        assert!(filtered.matches("[FILTERED]").count() >= 5);
+    }
+
+    #[test]
+    fn contains_and_mask_agree_on_decoded_and_double_encoded_credentials() {
+        let cases = [
+            (
+                r#"{"message":"to\u006ben\u003dencoded-secret"}"#,
+                "encoded-secret",
+            ),
+            (
+                r#"{"message":"Bearer\u0020encoded-bearer"}"#,
+                "encoded-bearer",
+            ),
+            (
+                r#"{"message":"abc\u002eabcdefghijklmnop"}"#,
+                "abcdefghijklmnop",
+            ),
+            (
+                r#"{"message":"{\"token\":\"double-secret\"}"}"#,
+                "double-secret",
+            ),
+            (
+                r#"{"message":"{\"to\\u006ben\":\"double-unicode-secret\"}"}"#,
+                "double-unicode-secret",
+            ),
+            (
+                r#"proxy={\"token\":\"direct-double-secret\"}"#,
+                "direct-double-secret",
+            ),
+        ];
+
+        for (input, forbidden) in cases {
+            assert!(
+                contains_sensitive_info(input),
+                "contains/mask gate missed: {input}"
+            );
+            let filtered = mask_sensitive_info(input);
+            assert!(
+                !filtered.contains(forbidden),
+                "credential survived: {filtered}"
+            );
+        }
+    }
+
+    #[test]
+    fn structured_json_redacts_compound_fields_and_credential_keys() {
+        let input = r#"{
+            "db_password":"db-secret",
+            "userPassword":"user-secret",
+            "secret_key":"secret-key-value",
+            "api_secret_key":"api-secret-key-value",
+            "abc.abcdefghijklmnop":"value",
+            "Bearer opaque-secondary":"value",
+            "token":"primary"
+        }"#;
+        assert!(contains_sensitive_info(input));
+        let filtered = mask_sensitive_info(input);
+        serde_json::from_str::<serde_json::Value>(&filtered)
+            .expect("redacted structured JSON must remain valid JSON");
+        for forbidden in [
+            "db-secret",
+            "user-secret",
+            "secret-key-value",
+            "api-secret-key-value",
+            "abcdefghijklmnop",
+            "opaque-secondary",
+            "primary",
+        ] {
+            assert!(
+                !filtered.contains(forbidden),
+                "credential survived: {filtered}"
+            );
+        }
     }
 
     #[test]
@@ -1858,5 +2804,25 @@ mod tests {
         };
         assert_eq!(local.request_metadata(), None);
         assert!(matches!(local.source_error(), ZaiError::ApiError { .. }));
+    }
+
+    #[test]
+    fn stream_consumer_timeout_phase_is_preserved_in_safe_metadata() {
+        let metadata =
+            RequestErrorMetadata::for_attempts(1).with_timeout_phase(TimeoutPhase::StreamConsumer);
+
+        assert_eq!(metadata.attempts(), 1);
+        assert_eq!(metadata.timeout_phase(), Some(TimeoutPhase::StreamConsumer));
+        assert!(format!("{metadata:?}").contains("StreamConsumer"));
+    }
+
+    #[test]
+    fn timeout_phase_addition_preserves_existing_discriminants() {
+        assert_eq!(TimeoutPhase::Attempt as u8, 0);
+        assert_eq!(TimeoutPhase::Overall as u8, 1);
+        assert_eq!(TimeoutPhase::SseHandshake as u8, 2);
+        assert_eq!(TimeoutPhase::SseIdle as u8, 3);
+        assert_eq!(TimeoutPhase::Queue as u8, 4);
+        assert_eq!(TimeoutPhase::StreamConsumer as u8, 5);
     }
 }

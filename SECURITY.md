@@ -2,15 +2,26 @@
 
 ## Supported versions
 
-Security fixes are currently provided for the latest stable release line.
+Security fixes are currently provided for the latest published stable release
+line. `Cargo.toml`'s `6.0.1` is an unpublished candidate, not the current
+registry release.
 
 | Release line | Security support |
 | --- | --- |
-| `6.x` (current stable) | Supported |
-| Earlier than `6.0.0` | Not supported |
+| `0.6.x` (latest published: `0.6.0`) | Supported |
+| Unpublished `6.0.1` candidate and later working-tree changes | Pre-release; no registry support promise |
+| Earlier than `0.6.0` | Not supported |
 
-This table describes the current policy rather than promising indefinite
-backports. It will be updated when a newer stable release line is published.
+The published-version result above was verified with `cargo search` and
+`cargo info`. Both `v6.0.1` release workflow attempts failed. This audit did
+recover the corresponding step logs: run `30091854390` rejected its
+then-current lightweight tag, while run `30092565276` passed quality,
+packaging, SBOM, checksum, and attestation before crates.io rejected OIDC
+authentication because no matching Trusted Publisher was configured for
+`AnlangA/zai-rs`. Because the working tree has diverged from that tag, a future
+supported release must first configure that external publisher, then use a new
+version greater than `6.0.1` and a new annotated tag. This table describes the
+current policy rather than promising indefinite backports.
 
 ## Reporting a vulnerability
 

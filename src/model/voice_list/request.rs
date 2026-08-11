@@ -7,11 +7,11 @@ use validator::Validate;
 pub struct VoiceListQuery {
     /// Voice-name filter. Pass the unescaped value; the client percent-encodes
     /// query parameters.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "voiceName", skip_serializing_if = "Option::is_none")]
     #[validate(length(min = 1))]
     pub voice_name: Option<String>,
     /// Voice origin (`OFFICIAL` or `PRIVATE` on the wire).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "voiceType", skip_serializing_if = "Option::is_none")]
     pub voice_type: Option<VoiceType>,
 }
 
@@ -72,5 +72,34 @@ impl VoiceType {
             VoiceType::Official => "OFFICIAL",
             VoiceType::Private => "PRIVATE",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_query_serialization_uses_upstream_camel_case_names() {
+        assert_eq!(
+            serde_json::to_value(VoiceListQuery::new()).unwrap(),
+            serde_json::json!({})
+        );
+
+        let value = serde_json::to_value(
+            VoiceListQuery::new()
+                .with_voice_name("中文 &/?=+")
+                .with_voice_type(VoiceType::Private),
+        )
+        .unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "voiceName": "中文 &/?=+",
+                "voiceType": "PRIVATE"
+            })
+        );
+        assert!(value.get("voice_name").is_none());
+        assert!(value.get("voice_type").is_none());
     }
 }

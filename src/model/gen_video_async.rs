@@ -12,6 +12,9 @@ pub use video_model::*;
 pub use video_request::*;
 
 #[cfg(test)]
+pub(crate) use video_model::VIDEO_MODEL_REGISTRY_SNAPSHOT;
+
+#[cfg(test)]
 mod tests {
     use serde_json;
 

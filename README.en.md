@@ -4,10 +4,32 @@
 
 A concise, type-safe Rust SDK for Zhipu AI (BigModel / Z.ai). It focuses on developer ergonomics for Rust users: less boilerplate, consistent error handling, readable request/response types, and ready-to-run examples.
 
-The current repository version is `6.0.1`. When upgrading from an older
-release, read the [0.6 migration guide](docs/MIGRATING-0.6.md) first. When
-upgrading from `0.6.0` to `6.0.1`, also read the
-[6.0.1 hardening migration notes](docs/HARDENING_MIGRATION.md).
+`Cargo.toml` still declares `6.0.1`, but that version is an **unpublished
+candidate**, not an installable crates.io release. Both `v6.0.1` release
+workflow attempts failed on 2026-07-24 (runs
+[`30091854390`](https://github.com/AnlangA/zai-rs/actions/runs/30091854390) and
+[`30092565276`](https://github.com/AnlangA/zai-rs/actions/runs/30092565276)).
+The raw step logs now establish both causes: the first run's then-current
+`v6.0.1` ref was not an annotated tag; the second passed quality, packaging,
+SBOM, checksum, and attestation steps, but crates.io rejected OIDC
+authentication because no Trusted Publishing configuration was found for
+`AnlangA/zai-rs`. `cargo search` and `cargo info` confirm that crates.io still
+serves `0.6.0` as the latest release. The working tree has since diverged from
+the existing `v6.0.1` tag, so the next publication requires the Trusted
+Publisher setup plus a new version greater than `6.0.1` and a new annotated
+tag.
+
+To use the repository API documented here, pin an audited commit:
+
+```toml
+[dependencies]
+zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
+```
+
+Registry users can select `zai-rs = "0.6.0"`, but that legacy release differs
+from the API and behavior described by the current documentation. Before
+migrating from `0.6.0` to the next published version, read the
+[unreleased hardening migration notes](docs/HARDENING_MIGRATION.md).
 
 ## Quick start
 
@@ -84,7 +106,17 @@ Through a sealed model trait, `RealtimeClient::session` accepts only the two
 Realtime models above, so an invalid model is rejected at compile time.
 `GLM4_voice` is an HTTP voice-chat model and cannot be used with the Realtime
 WebSocket; the legacy Realtime markers without usable operations were removed
-in 0.6. A full realtime audio example lives in `examples/realtime_audio.rs`:
+in 0.6. Timeouts, backpressure, and buffers are configured through
+`zai_rs::realtime::RealtimeTransportConfig`. `Default` retains the previous
+primary values but adds a 30-second total outbound-admission deadline and
+tightens the default per-data-frame stall guard from 10 to 5 seconds. Before
+sending `session.update`, a built-in `SessionBuilder` also makes up to three
+connection attempts by default; every connection attempt and retry wait shares the 10-second
+`connect_timeout` budget. A new session builder snapshots the client default,
+and the builder can override it for one session. See
+[Advanced Topics](docs/ADVANCED_TOPICS.md) for the complete contract. A full
+realtime audio example lives in
+`examples/realtime_audio.rs`:
 
 ```bash
 cargo run --example realtime_audio --features realtime
@@ -290,7 +322,8 @@ The public API is organized by capability; the internal file layout is not
 part of the API:
 
 - `zai_rs::model::<capability>`: model requests and responses, e.g. `model::ocr::OcrRequest`
-- `zai_rs::file`, `batches`, `knowledge`, `agent`, `usage`: flat exports of each capability's types
+- `zai_rs::file`, `batches`, `knowledge`, `zrag`, `agent`, `usage`: flat exports of each capability's types
+- `zai_rs::pagination`: validated cursor/page values shared by list requests
 - `zai_rs::tool::<capability>`: web search and file-parsing tools
 - `zai_rs::mcp`: unified MCP client (`mcp` feature)
 - `zai_rs::toolkits`: always-available custom tool-execution framework; the `toolkits` feature additionally enables full JSON Schema validation
@@ -303,5 +336,6 @@ no business methods, has been removed.
 ### Realtime API
 - [x] WebSocket type definitions
 - [x] Session management with strongly typed event/audio streams (`RealtimeClient` / `SessionBuilder`)
+- [x] Validated timeout, backpressure, and buffer policy (`RealtimeTransportConfig`)
 - [x] Bearer / JWT dual authentication
 - [x] Complete client/server events (`ClientEvent` / `ServerEvent`)

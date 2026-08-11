@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ZaiResult, client::ZaiClient};
+use crate::{ZaiResult, client::ZaiClient, pagination::PagePagination};
 
 use super::response::{
     AssistantConversationListResponse, AssistantInvokeResponse, AssistantListResponse,
@@ -601,6 +601,21 @@ impl AssistantConversationListRequest {
         self
     }
 
+    /// Replace the page and page size with validated pagination values.
+    ///
+    /// Assistant conversations accept at most 100 entries per page.
+    pub fn try_with_pagination(mut self, pagination: PagePagination) -> ZaiResult<Self> {
+        let (page, page_size) = pagination.into_parts();
+        if page_size > 100 {
+            return Err(crate::client::validation::invalid(
+                "assistant page_size must be between 1 and 100",
+            ));
+        }
+        self.page = Some(page);
+        self.page_size = Some(page_size);
+        Ok(self)
+    }
+
     /// Validate OpenAPI pagination constraints.
     pub fn validate(&self) -> ZaiResult<()> {
         if self.page == Some(0) {
@@ -670,6 +685,27 @@ mod tests {
         assert_eq!(
             serde_json::to_value(AssistantListRequest::new()).unwrap(),
             serde_json::json!({"assistant_id_list": []})
+        );
+    }
+
+    #[test]
+    fn validated_conversation_pagination_uses_the_body_wire_names() {
+        let request = AssistantConversationListRequest::new(AssistantId::ChatGlm)
+            .try_with_pagination(PagePagination::try_new(2, 100).unwrap())
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "assistant_id": "65940acff94777010aa6b796",
+                "page": 2,
+                "page_size": 100
+            })
+        );
+
+        assert!(
+            AssistantConversationListRequest::new(AssistantId::ChatGlm)
+                .try_with_pagination(PagePagination::try_new(1, 101).unwrap())
+                .is_err()
         );
     }
 

@@ -32,7 +32,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Represents a single streaming chunk from the chat API.
 ///
@@ -164,7 +164,17 @@ pub struct StreamToolCall {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// Tool kind; the frozen streaming schema currently defines only function.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    ///
+    /// A future string discriminator decodes as `None` so one additive tool
+    /// kind cannot terminate the surrounding SSE stream. The remaining call
+    /// id, index, and function fragments are still preserved. Non-string wire
+    /// values remain malformed and fail deserialization.
+    #[serde(
+        rename = "type",
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_stream_tool_call_type"
+    )]
     pub type_: Option<StreamToolCallType>,
     /// Incremental function payload.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -177,6 +187,19 @@ pub struct StreamToolCall {
 pub enum StreamToolCallType {
     /// A function invocation.
     Function,
+}
+
+fn deserialize_stream_tool_call_type<'de, D>(
+    deserializer: D,
+) -> Result<Option<StreamToolCallType>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    Ok(match value.as_deref() {
+        Some("function") => Some(StreamToolCallType::Function),
+        Some(_) | None => None,
+    })
 }
 
 /// Incremental function fields carried by a streaming tool call.
@@ -225,5 +248,41 @@ mod tests {
             Some("lookup")
         );
         assert!(calls[1].function.as_ref().unwrap().name.is_none());
+    }
+
+    #[test]
+    fn tool_call_type_is_forward_compatible_only_for_unknown_strings() {
+        let future: StreamToolCall = serde_json::from_value(serde_json::json!({
+            "index": 7,
+            "id": "call-future",
+            "type": "computer",
+            "function": {"name": "lookup", "arguments": "{}"}
+        }))
+        .unwrap();
+        assert_eq!(future.index, Some(7));
+        assert_eq!(future.id.as_deref(), Some("call-future"));
+        assert!(future.type_.is_none());
+        let function = future.function.as_ref().unwrap();
+        assert_eq!(function.name.as_deref(), Some("lookup"));
+        assert_eq!(function.arguments.as_deref(), Some("{}"));
+
+        let known: StreamToolCall = serde_json::from_value(serde_json::json!({
+            "type": "function"
+        }))
+        .unwrap();
+        assert_eq!(known.type_, Some(StreamToolCallType::Function));
+
+        let omitted: StreamToolCall = serde_json::from_value(serde_json::json!({
+            "index": 0
+        }))
+        .unwrap();
+        assert!(omitted.type_.is_none());
+
+        for invalid in [
+            serde_json::json!({"type": 1}),
+            serde_json::json!({"type": {"kind": "function"}}),
+        ] {
+            assert!(serde_json::from_value::<StreamToolCall>(invalid).is_err());
+        }
     }
 }

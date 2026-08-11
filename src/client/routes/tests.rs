@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::*;
 
 /// Every operation frozen in `spec/contracts/operations.json`.
 ///
 /// Keeping this list explicit makes additions and removals reviewable. Routes
-/// for Coding Plan and realtime are intentionally separate because those
-/// operations are not part of the frozen HTTP operation contract.
+/// for Coding Plan chat and usage monitoring are intentionally separate
+/// because those operations are not part of the frozen HTTP contract.
 const CONTRACT_ROUTES: &[Route] = &[
     AGENTS_INVOKE,
     AGENTS_ASYNC_RESULT,
@@ -71,16 +71,58 @@ const CONTRACT_ROUTES: &[Route] = &[
     ZRAG_RETRIEVE,
 ];
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct FrozenOperation {
+    source: String,
     operation_id: String,
     method: String,
     path: String,
     api_family: String,
+    request_content_type: String,
+    accept: String,
+    success_statuses: Vec<u16>,
+    auth: String,
+    request_schema: FrozenSchema,
+    success_schema: FrozenSchema,
+    error_schema: FrozenSchema,
+    response_mode: String,
+    requires_done: bool,
+    retry_safety: String,
+    success_invariant: String,
+    service_method: String,
+    request_type: String,
+    response_type: String,
+    stream_item: Option<String>,
+    open_map_fields: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct FrozenSchema {
+    #[serde(rename = "type")]
+    schema_type: String,
+    name: String,
 }
 
 #[test]
-fn registry_exactly_matches_frozen_operations_contract() {
+fn frozen_operation_projection_covers_every_contract_field() {
+    let contract_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("spec/contracts/operations.json");
+    let raw = std::fs::read_to_string(&contract_path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", contract_path.display()));
+    let original: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let frozen: Vec<FrozenOperation> = serde_json::from_str(&raw).unwrap();
+
+    assert_eq!(
+        serde_json::to_value(frozen).unwrap(),
+        original,
+        "the typed contract projection must not ignore or synthesize fields"
+    );
+}
+
+#[test]
+fn registry_matches_frozen_routing_projection() {
     let contract_path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("spec/contracts/operations.json");
     let raw = std::fs::read_to_string(&contract_path)
@@ -100,6 +142,7 @@ fn registry_exactly_matches_frozen_operations_contract() {
             .unwrap_or_else(|| panic!("route {} is not frozen", route.operation_id()));
         assert_eq!(route.method(), operation.method);
         assert_eq!(format!("{:?}", route.family()), operation.api_family);
+        assert_eq!(route.success_statuses(), operation.success_statuses);
         assert_eq!(
             normalized_route_path(*route),
             normalize_parameters(&operation.path)
@@ -143,17 +186,24 @@ fn normalized_route_path(route: Route) -> String {
 
 fn normalize_parameters(path: &str) -> String {
     let mut normalized = String::with_capacity(path.len());
-    let mut in_parameter = false;
+    let mut parameter_name = None::<String>;
     for character in path.chars() {
-        match character {
-            '{' => {
-                in_parameter = true;
+        match (character, parameter_name.as_mut()) {
+            ('{', None) => {
+                parameter_name = Some(String::new());
                 normalized.push_str("{}");
             },
-            '}' => in_parameter = false,
-            _ if !in_parameter => normalized.push(character),
-            _ => {},
+            ('{', Some(_)) => panic!("nested path parameter in {path}"),
+            ('}', Some(name)) if !name.is_empty() => parameter_name = None,
+            ('}', Some(_)) => panic!("empty path parameter in {path}"),
+            ('}', None) => panic!("unmatched path-parameter terminator in {path}"),
+            (_, Some(name)) => name.push(character),
+            (_, None) => normalized.push(character),
         }
     }
+    assert!(
+        parameter_name.is_none(),
+        "unterminated path parameter in {path}"
+    );
     normalized
 }

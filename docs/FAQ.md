@@ -19,12 +19,21 @@ A: 请在 [GitHub Issues](https://github.com/AnlangA/zai-rs/issues) 提交 Issue
 ## 安装和配置
 
 ### Q: 如何在项目中添加 zai-rs 依赖？
-A: 在 `Cargo.toml` 中添加：
+A: 当前仓库 API 尚未发布到 crates.io。请把仓库依赖绑定到经审计的
+commit，不要跟踪可变的 branch：
 
 ```toml
 [dependencies]
-zai-rs = "6.0.1"
+zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
 ```
+
+`Cargo.toml` 中的 `6.0.1` 是未发布候选版，两次 `v6.0.1` workflow 运行均
+失败；原始 step 日志证明首次是当时 tag 不是 annotated tag，第二次是
+crates.io 没有找到 `AnlangA/zai-rs` Trusted Publisher 配置。经 `cargo search` /
+`cargo info` 验证，
+crates.io 最新版为 `0.6.0`，但该 legacy 版本与当前文档的 API 存在差异。
+当前工作树也已偏离 `v6.0.1` tag，所以下一次正式发布需要高于
+`6.0.1` 的新版本和新 tag。
 
 ### Q: 如何配置 API 密钥？
 A: 最简单的方式是使用环境变量：
@@ -48,8 +57,8 @@ A: 智谱 AI API 密钥格式为 `<id>.<secret>`，例如 `abc123.abcdefghijklmn
 ```rust,ignore
 use zai_rs::client::error::validate_api_key;
 
-if let Err(e) = validate_api_key(&api_key) {
-    tracing::error!("Invalid API key: {}", e);
+if validate_api_key(&api_key).is_err() {
+    tracing::error!("Invalid API key format");
 }
 ```
 
@@ -90,20 +99,24 @@ while let Some(chunk) = stream.next().await {
 A: 所有 API 调用返回 `ZaiResult<T>`。使用 `?` 操作符或 `match` 处理错误：
 
 ```rust,ignore
-use zai_rs::{model::*, ZaiClient, ZaiError};
+use zai_rs::{model::*, ZaiClient};
 
 let client = ZaiClient::from_env()?;
 let request = ChatCompletion::new(GLM4_5_flash {}, TextMessage::user("你好"));
 
 match request.send_via(&client).await {
     Ok(response) => println!("{:?}", response),
-    Err(ZaiError::AuthError { code, message }) => {
-        tracing::error!("Authentication failed [{}]: {}", code, message);
+    Err(error) if error.is_auth_error() => {
+        tracing::error!(category = ?error.category(), "Authentication failed");
     },
-    Err(ZaiError::RateLimitError { .. }) => {
-        tracing::error!("Rate limit exceeded, please retry later");
+    Err(error) if error.is_rate_limit() => {
+        tracing::warn!(category = ?error.category(), "Rate limit exceeded; retry later");
     },
-    Err(e) => tracing::error!("Error: {}", e),
+    Err(error) => tracing::error!(
+        category = ?error.category(),
+        retryable = error.is_retryable(),
+        "API request failed",
+    ),
 }
 ```
 
@@ -166,6 +179,9 @@ let log_msg = "Request sent with api_key=abc123.xyz456";
 let safe_msg = mask_sensitive_info(log_msg);
 // safe_msg: "Request sent with api_key=[FILTERED]"
 ```
+
+该 helper 只过滤可识别凭据，不会移除任意 prompt、transcript、文件名或 provider
+message。默认生产日志仍应只记录错误分类等 SDK 自有结构化字段。
 
 ---
 
@@ -312,7 +328,7 @@ A: 某些功能可能需要启用 feature：
 
 ```toml
 [dependencies]
-zai-rs = { version = "6.0.1", features = ["rmcp-kits"] }
+zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>", features = ["rmcp-kits"] }
 ```
 
 ### Q: 如何调试请求问题？

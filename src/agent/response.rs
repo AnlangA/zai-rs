@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use crate::{
     ZaiError, ZaiResult,
     client::error::{codes, mask_sensitive_info},
+    serde_helpers::UniqueJsonValue,
 };
 
 fn invalid_response(message: impl Into<String>) -> ZaiError {
@@ -195,7 +196,7 @@ impl<'de> Deserialize<'de> for AgentInvokeResponse {
     where
         D: Deserializer<'de>,
     {
-        let value = serde_json::Value::deserialize(deserializer)?;
+        let value = UniqueJsonValue::deserialize(deserializer)?.into_inner();
         let object = value
             .as_object()
             .ok_or_else(|| D::Error::custom("agent invoke response must be a JSON object"))?;
@@ -386,7 +387,7 @@ impl<'de> Deserialize<'de> for AgentAsyncResult {
     where
         D: Deserializer<'de>,
     {
-        let value = serde_json::Value::deserialize(deserializer)?;
+        let value = UniqueJsonValue::deserialize(deserializer)?.into_inner();
         let object = value
             .as_object()
             .ok_or_else(|| D::Error::custom("agent async result must be a JSON object"))?;
@@ -573,7 +574,7 @@ impl<'de> Deserialize<'de> for AgentConversationResponse {
     where
         D: Deserializer<'de>,
     {
-        let value = serde_json::Value::deserialize(deserializer)?;
+        let value = UniqueJsonValue::deserialize(deserializer)?.into_inner();
         let object = value
             .as_object()
             .ok_or_else(|| D::Error::custom("agent conversation response must be an object"))?;
@@ -629,6 +630,16 @@ impl<'de> Deserialize<'de> for AgentConversationResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_duplicate_rejected<T: serde::de::DeserializeOwned>(payload: &str) {
+        let error = match serde_json::from_str::<T>(payload) {
+            Ok(_) => panic!("duplicate-key agent response unexpectedly decoded"),
+            Err(error) => error,
+        };
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains(crate::serde_helpers::DUPLICATE_JSON_KEY_ERROR));
+        assert!(!diagnostic.contains("private-agent-value"));
+    }
 
     #[test]
     fn invoke_completed_uses_messages_array_without_a_status_tag() {
@@ -803,5 +814,18 @@ mod tests {
         ] {
             assert!(serde_json::from_value::<AgentConversationResponse>(value).is_err());
         }
+    }
+
+    #[test]
+    fn custom_agent_unions_reject_top_level_and_nested_duplicate_keys() {
+        assert_duplicate_rejected::<AgentInvokeResponse>(
+            r#"{"id":"private-agent-value","id":"private-agent-value","agent_id":"agent","choices":[{}]}"#,
+        );
+        assert_duplicate_rejected::<AgentAsyncResult>(
+            r#"{"agent_id":"agent","async_id":"task","status":"pending","status":"pending"}"#,
+        );
+        assert_duplicate_rejected::<AgentConversationResponse>(
+            r#"{"conversation_id":"conversation","agent_id":"agent","choices":[{"message":[{"content":[{"type":"file_url","file_url":"private-agent-value","file_url":"private-agent-value"}]}]}]}"#,
+        );
     }
 }

@@ -21,7 +21,7 @@
 | Coding PAAS v4 | `CodingPaasV4` | `https://open.bigmodel.cn/api/coding/paas/v4` | `ChatCompletion::send_via_coding_plan` |
 | Agent v1 | `AgentV1` | `https://open.bigmodel.cn/api/v1` | `agent` |
 | 知识库 / LLM application | `LlmApplication`、`ApplicationV2`、`ApplicationV3` | `https://open.bigmodel.cn/api/llm-application/open` | `knowledge`, `services` |
-| ZRAG | `Zrag` | `https://open.bigmodel.cn/api/zrag` | 知识库文档接口 |
+| ZRAG | `Zrag` | `https://open.bigmodel.cn/api/zrag` | `zrag` 多模态知识检索与流式 Agent chat |
 | Realtime WebSocket | `Realtime` | `wss://open.bigmodel.cn/api/paas/v4/realtime` | `realtime` |
 | Monitor / usage | `Monitor` | `https://open.bigmodel.cn/api/monitor` | `usage` |
 
@@ -35,6 +35,7 @@ src/lib.rs
   model/         chat / async chat / multimodal / embeddings / moderation / SSE
   file/          upload, list, content, delete, synchronous parsing
   knowledge/     knowledge-base CRUD, document upload/list/retrieve/re-embed
+  zrag/          multimodal knowledge retrieval + streaming agent chat
   batches/       batch job create/list/retrieve/cancel
   tool/          web search and file parser API wrappers
   toolkits/      local dynamic tool execution and optional RMCP bridge
@@ -46,9 +47,9 @@ src/lib.rs
 
 1. `new(...)` 构造业务请求参数和 body。
 2. `with_*` builder 方法设置该业务请求的可选参数。
-3. 请求通过 `send_via(&ZaiClient)` 进入统一 `Transport::send` 管线；base URL、
-   endpoint config 和 HTTP config 均由共享的 `ZaiClient` 持有。
-4. 非流式 API 解析为 typed response；chat、ASR 和 TTS SSE 由各请求的
+3. 请求通过 `send_via(&ZaiClient)` 进入统一 `Transport` 管线；buffered、file 和
+   SSE 分支共享 base URL、endpoint config、HTTP config 与准入策略。
+4. 非流式 API 解析为 typed response；chat、ASR、TTS 和 ZRAG agent chat SSE 由各请求的
    `stream_via` 返回 typed stream。
 
 ## 错误与重试

@@ -21,11 +21,12 @@
 //! | File management | Upload, list, content, delete | [`mod@file`] |
 //! | Batch processing | Create, list, retrieve, cancel | [`batches`] |
 //! | Knowledge base | CRUD, document upload, retrieval | [`knowledge`] |
+//! | ZRAG | Multimodal retrieval and streaming agent chat | [`zrag`] |
 //! | Tool calling | Function calling, web search, file parsing | [`tool`] |
-//! | MCP | Unified search, reader, repository, and vision capabilities | [`mcp`] |
+//! | MCP | Unified search, reader, repository, and vision capabilities | `mcp` (feature-gated) |
 //! | Agent | Agent v1 invocation, async polling, conversation continuation | [`agent`] |
 //! | Tool execution framework | Dynamic registration, execution, caching | [`toolkits`] |
-//! | Real-time | WebSocket audio/video (GLM-Realtime) | [`realtime`] |
+//! | Real-time | WebSocket audio/video (GLM-Realtime) | `realtime` (feature-gated) |
 //! | Coding Plan usage | GLM Coding Plan quota and remaining usage | [`usage`] |
 //!
 //! # Module Structure
@@ -37,14 +38,16 @@
 //! - [`batches`] — Batch processing (create, list, retrieve, cancel)
 //! - [`knowledge`] — Knowledge-base management (CRUD, document upload,
 //!   retrieval)
+//! - [`zrag`] — Multimodal knowledge retrieval and streaming agent chat
+//! - [`pagination`] — Validated cursor and one-based page pagination values
 //! - [`tool`] — Tool implementations (web search, file parsing)
-//! - [`mcp`] — Unified MCP capabilities with automatic backend and transport
+//! - `mcp` — Unified MCP capabilities with automatic backend and transport
 //!   selection (feature `mcp`)
 //! - [`agent`] — Agent v1 invocation, async-result polling, and conversation
 //!   continuation
 //! - [`toolkits`] — Tool execution framework (registration, execution, caching,
 //!   RMCP bridge)
-//! - [`realtime`] — Real-time audio/video communication (WebSocket,
+//! - `realtime` — Real-time audio/video communication (WebSocket,
 //!   experimental)
 //! - [`usage`] — Coding Plan quota and remaining-usage query
 //!
@@ -101,7 +104,7 @@
 //! Enable in `Cargo.toml`:
 //! ```toml
 //! [dependencies]
-//! zai-rs = { version = "6.0.1", features = ["mcp"] }
+//! zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>", features = ["mcp"] }
 //! ```
 //!
 //! # Error Handling
@@ -138,6 +141,8 @@ pub mod client;
 pub use client::{ZaiClient, error::*};
 pub mod file;
 pub mod knowledge;
+/// Validated cursor and one-based page pagination primitives.
+pub mod pagination;
 
 /// Unified MCP capability client.
 #[cfg(feature = "mcp")]
@@ -156,5 +161,7 @@ pub mod services;
 pub mod tool;
 pub mod toolkits;
 pub mod usage;
+/// ZRAG multimodal knowledge retrieval and streaming agent chat APIs.
+pub mod zrag;
 
 pub mod prelude;

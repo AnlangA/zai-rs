@@ -15,6 +15,12 @@ pub const SSE_EVENT_BYTES_MAX: usize = 32 * 1024 * 1024;
 pub const SSE_EVENT_DATA_LINES_MAX: usize = 4_096;
 /// Maximum input slice copied into the incremental SSE parser at once.
 pub const SSE_PARSE_SLICE_BYTES: usize = 64 * 1024;
+/// Maximum parser-owned bytes retained between pushes for one event.
+///
+/// The extra slice accommodates an incomplete `data: ` prefix/terminator and
+/// makes acceptance at the event-byte boundary independent of transport
+/// chunking while keeping memory strictly bounded.
+pub const SSE_PARSER_RETAINED_MAX: usize = SSE_EVENT_BYTES_MAX + SSE_PARSE_SLICE_BYTES;
 /// Multipart: at most 16 file parts per request.
 pub const MULTIPART_MAX_FILE_PARTS: usize = 16;
 /// Multipart: maximum bytes in each individual file part (128 MiB).
