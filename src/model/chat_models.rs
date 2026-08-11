@@ -87,256 +87,309 @@
 //! Synchronous, asynchronous, and request-schema capabilities are sealed to
 //! the model ids listed above. Downstream crates cannot opt an arbitrary
 //! identifier into these operations.
+//!
+//! # Registry maintenance
+//!
+//! Chat, vision, and voice models are declared once in a private registry
+//! below. Each entry emits the public zero-sized type, wire id, message binding,
+//! sealed/public capability traits, and request-schema family. A checked-in
+//! snapshot keeps that declaration reviewable without exposing a runtime
+//! registry as public API.
 
 use super::{
     chat_message_types::{TextMessage, VisionMessage, VoiceMessage},
     tools::{Function, Tools},
-    traits::{define_model_type, impl_message_binding, impl_model_markers, *},
+    traits::{define_model_type, impl_message_binding, *},
 };
 
-define_model_type!(GLM5_2, "glm-5.2");
-impl_message_binding!(GLM5_2, TextMessage);
-impl_model_markers!(GLM5_2: Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable, ToolStreamEnable);
-
-define_model_type!(GLM5_1, "glm-5.1");
-impl_message_binding!(GLM5_1, TextMessage);
-impl_model_markers!(GLM5_1: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM5_1_highspeed,
-    "glm-5.1-highspeed"
-);
-impl_message_binding!(GLM5_1_highspeed, TextMessage);
-impl_model_markers!(GLM5_1_highspeed: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM5_turbo,
-    "glm-5-turbo"
-);
-impl_message_binding!(GLM5_turbo, TextMessage);
-impl_model_markers!(GLM5_turbo: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
-
-define_model_type!(GLM5, "glm-5");
-impl_message_binding!(GLM5, TextMessage);
-impl_model_markers!(GLM5: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM5V_turbo,
-    "glm-5v-turbo"
-);
-impl_message_binding!(GLM5V_turbo, VisionMessage);
-impl_model_markers!(GLM5V_turbo: Chat, AsyncChat, ThinkEnable);
-
-define_model_type!(GLM4_7, "glm-4.7");
-impl_message_binding!(GLM4_7, TextMessage);
-impl_model_markers!(GLM4_7: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_7_flash,
-    "glm-4.7-flash"
-);
-impl_message_binding!(GLM4_7_flash, TextMessage);
-impl_model_markers!(GLM4_7_flash: Chat, ThinkEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_7_flashx,
-    "glm-4.7-flashx"
-);
-impl_message_binding!(GLM4_7_flashx, TextMessage);
-impl_model_markers!(GLM4_7_flashx: Chat, ThinkEnable);
-
-define_model_type!(GLM4_6, "glm-4.6");
-impl_message_binding!(GLM4_6, TextMessage);
-impl_model_markers!(GLM4_6: Chat, AsyncChat, ThinkEnable, ToolStreamEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_5_flash,
-    "glm-4.5-flash"
-);
-impl_message_binding!(GLM4_5_flash, TextMessage);
-impl_model_markers!(GLM4_5_flash: Chat, AsyncChat, ThinkEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_5_air,
-    "glm-4.5-air"
-);
-impl_message_binding!(GLM4_5_air, TextMessage);
-impl_model_markers!(GLM4_5_air: Chat, AsyncChat, ThinkEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_5_airx,
-    "glm-4.5-airx"
-);
-impl_message_binding!(GLM4_5_airx, TextMessage);
-impl_model_markers!(GLM4_5_airx: Chat, AsyncChat, ThinkEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_flash_250414,
-    "glm-4-flash-250414"
-);
-impl_message_binding!(GLM4_flash_250414, TextMessage);
-impl_model_markers!(GLM4_flash_250414: Chat, AsyncChat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_flashx_250414,
-    "glm-4-flashx-250414"
-);
-impl_message_binding!(GLM4_flashx_250414, TextMessage);
-impl_model_markers!(GLM4_flashx_250414: Chat, AsyncChat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    autoglm_phone,
-    "autoglm-phone"
-);
-impl_message_binding!(autoglm_phone, VisionMessage);
-impl_model_markers!(autoglm_phone: Chat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_6v,
-    "glm-4.6v"
-);
-impl_message_binding!(GLM4_6v, VisionMessage);
-impl_model_markers!(GLM4_6v: Chat, AsyncChat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_6v_flash,
-    "glm-4.6v-flash"
-);
-impl_message_binding!(GLM4_6v_flash, VisionMessage);
-impl_model_markers!(GLM4_6v_flash: Chat, AsyncChat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_6v_flashx,
-    "glm-4.6v-flashx"
-);
-impl_message_binding!(GLM4_6v_flashx, VisionMessage);
-impl_model_markers!(GLM4_6v_flashx: Chat, AsyncChat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4v_flash,
-    "glm-4v-flash"
-);
-impl_message_binding!(GLM4v_flash, VisionMessage);
-impl_model_markers!(GLM4v_flash: Chat, AsyncChat);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_1v_thinking_flash,
-    "glm-4.1v-thinking-flash"
-);
-impl_message_binding!(GLM4_1v_thinking_flash, VisionMessage);
-impl_model_markers!(GLM4_1v_thinking_flash: Chat, AsyncChat, ThinkEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_1v_thinking_flashx,
-    "glm-4.1v-thinking-flashx"
-);
-impl_message_binding!(GLM4_1v_thinking_flashx, VisionMessage);
-impl_model_markers!(GLM4_1v_thinking_flashx: Chat, AsyncChat, ThinkEnable);
-
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM4_voice,
-    "glm-4-voice"
-);
-impl_message_binding!(GLM4_voice, VoiceMessage);
-impl_model_markers!(GLM4_voice: Chat, AsyncChat);
-
-macro_rules! impl_text_request_schema {
-    ($($model:ty),+ $(,)?) => {
-        $(
-            impl ChatRequestModel for $model {
-                const MAX_TOKENS: u32 = 131_072;
-            }
-
-            impl ChatToolSupport for $model {
-                type Tool = Tools;
-            }
-
-            impl ResponseFormatEnable for $model {}
-        )+
+macro_rules! impl_registered_capability {
+    ($model:ident, Chat) => {
+        impl super::traits::sealed::Chat for $model {}
+        impl Chat for $model {}
+    };
+    ($model:ident, AsyncChat) => {
+        impl super::traits::sealed::AsyncChat for $model {}
+        impl AsyncChat for $model {}
+    };
+    ($model:ident, $capability:ident) => {
+        impl $capability for $model {}
     };
 }
 
-macro_rules! impl_vision_request_schema {
-    ($($model:ty),+ $(,)?) => {
-        $(
-            impl ChatRequestModel for $model {
-                const MAX_TOKENS: u32 = 131_072;
-            }
-
-            impl ChatToolSupport for $model {
-                type Tool = Function;
-            }
-        )+
+macro_rules! impl_registered_capabilities {
+    ($model:ident: $($capability:ident),+ $(,)?) => {
+        $(impl_registered_capability!($model, $capability);)+
     };
 }
 
-impl_text_request_schema!(
-    GLM5_2,
-    GLM5_1,
-    GLM5_1_highspeed,
-    GLM5_turbo,
-    GLM5,
-    GLM4_7,
-    GLM4_7_flash,
-    GLM4_7_flashx,
-    GLM4_6,
-    GLM4_5_flash,
-    GLM4_5_air,
-    GLM4_5_airx,
-    GLM4_flash_250414,
-    GLM4_flashx_250414,
-);
-
-impl_vision_request_schema!(
-    GLM5V_turbo,
-    autoglm_phone,
-    GLM4_6v,
-    GLM4_6v_flash,
-    GLM4_6v_flashx,
-    GLM4v_flash,
-    GLM4_1v_thinking_flash,
-    GLM4_1v_thinking_flashx,
-);
-
-impl ChatRequestModel for GLM4_voice {
-    const MAX_TOKENS: u32 = 4_096;
+macro_rules! impl_registered_request_schema {
+    ($model:ident, text, $max_tokens:expr) => {
+        impl super::traits::sealed::ChatRequestModel for $model {}
+        impl ChatRequestModel for $model {
+            const MAX_TOKENS: u32 = $max_tokens;
+        }
+        impl ChatToolSupport for $model {
+            type Tool = Tools;
+        }
+        impl ResponseFormatEnable for $model {}
+    };
+    ($model:ident, vision, $max_tokens:expr) => {
+        impl super::traits::sealed::ChatRequestModel for $model {}
+        impl ChatRequestModel for $model {
+            const MAX_TOKENS: u32 = $max_tokens;
+        }
+        impl ChatToolSupport for $model {
+            type Tool = Function;
+        }
+    };
+    ($model:ident, voice, $max_tokens:expr) => {
+        impl super::traits::sealed::ChatRequestModel for $model {}
+        impl ChatRequestModel for $model {
+            const MAX_TOKENS: u32 = $max_tokens;
+        }
+        impl WatermarkEnable for $model {}
+    };
 }
 
-impl WatermarkEnable for GLM4_voice {}
+#[cfg(test)]
+struct ChatModelSnapshot {
+    type_name: &'static str,
+    model_id: &'static str,
+    message: &'static str,
+    request_schema: &'static str,
+    max_tokens: u32,
+    capabilities: &'static [&'static str],
+}
 
-define_model_type!(
-    #[allow(non_camel_case_types)]
-    GLM_realtime_flash,
-    "glm-realtime-flash"
-);
+macro_rules! chat_model_registry {
+    (
+        $(
+            $(#[$meta:meta])*
+            $model:ident => {
+                id: $model_id:literal,
+                message: $message:ty,
+                request: $request_schema:ident($max_tokens:expr),
+                capabilities: [$($capability:ident),+ $(,)?],
+            };
+        )+
+    ) => {
+        $(
+            define_model_type!($(#[$meta])* $model, $model_id);
+            impl_message_binding!($model, $message);
+            impl_registered_capabilities!($model: $($capability),+);
+            impl_registered_request_schema!($model, $request_schema, $max_tokens);
+        )+
 
-define_model_type!(
+        #[cfg(test)]
+        const CHAT_MODEL_REGISTRY_SNAPSHOT: &[ChatModelSnapshot] = &[
+            $(
+                ChatModelSnapshot {
+                    type_name: stringify!($model),
+                    model_id: $model_id,
+                    message: stringify!($message),
+                    request_schema: stringify!($request_schema),
+                    max_tokens: $max_tokens,
+                    capabilities: &[$(stringify!($capability)),+],
+                },
+            )+
+        ];
+    };
+}
+
+chat_model_registry! {
+    GLM5_2 => {
+        id: "glm-5.2",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable, ToolStreamEnable],
+    };
+    GLM5_1 => {
+        id: "glm-5.1",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ToolStreamEnable],
+    };
     #[allow(non_camel_case_types)]
-    GLM_realtime_air,
-    "glm-realtime-air"
-);
+    GLM5_1_highspeed => {
+        id: "glm-5.1-highspeed",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ToolStreamEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM5_turbo => {
+        id: "glm-5-turbo",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ToolStreamEnable],
+    };
+    GLM5 => {
+        id: "glm-5",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ToolStreamEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM5V_turbo => {
+        id: "glm-5v-turbo",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable],
+    };
+    GLM4_7 => {
+        id: "glm-4.7",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ToolStreamEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_7_flash => {
+        id: "glm-4.7-flash",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, ThinkEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_7_flashx => {
+        id: "glm-4.7-flashx",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, ThinkEnable],
+    };
+    GLM4_6 => {
+        id: "glm-4.6",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ToolStreamEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_5_flash => {
+        id: "glm-4.5-flash",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_5_air => {
+        id: "glm-4.5-air",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_5_airx => {
+        id: "glm-4.5-airx",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_flash_250414 => {
+        id: "glm-4-flash-250414",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_flashx_250414 => {
+        id: "glm-4-flashx-250414",
+        message: TextMessage,
+        request: text(131_072),
+        capabilities: [Chat, AsyncChat],
+    };
+    #[allow(non_camel_case_types)]
+    autoglm_phone => {
+        id: "autoglm-phone",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_6v => {
+        id: "glm-4.6v",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_6v_flash => {
+        id: "glm-4.6v-flash",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_6v_flashx => {
+        id: "glm-4.6v-flashx",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4v_flash => {
+        id: "glm-4v-flash",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_1v_thinking_flash => {
+        id: "glm-4.1v-thinking-flash",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_1v_thinking_flashx => {
+        id: "glm-4.1v-thinking-flashx",
+        message: VisionMessage,
+        request: vision(131_072),
+        capabilities: [Chat, AsyncChat, ThinkEnable],
+    };
+    #[allow(non_camel_case_types)]
+    GLM4_voice => {
+        id: "glm-4-voice",
+        message: VoiceMessage,
+        request: voice(4_096),
+        capabilities: [Chat, AsyncChat],
+    };
+}
+
+// The wire markers remain available without the optional `realtime` feature,
+// while their WebSocket capability trait lives in the feature-gated module.
+// A callback registry lets both projections consume one private type/id list
+// without introducing a public runtime registry or coupling model ids to
+// transport configuration.
+macro_rules! realtime_model_registry {
+    ($consumer:ident) => {
+        $consumer! {
+            #[allow(non_camel_case_types)]
+            GLM_realtime_flash => "glm-realtime-flash";
+            #[allow(non_camel_case_types)]
+            GLM_realtime_air => "glm-realtime-air";
+        }
+    };
+}
+#[cfg(feature = "realtime")]
+pub(crate) use realtime_model_registry;
+
+macro_rules! define_realtime_wire_models {
+    (
+        $(
+            $(#[$meta:meta])*
+            $model:ident => $model_id:literal;
+        )+
+    ) => {
+        $(define_model_type!($(#[$meta])* $model, $model_id);)+
+    };
+}
+
+realtime_model_registry!(define_realtime_wire_models);
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
 
     fn assert_sync_model<N, M>()
     where
@@ -368,6 +421,26 @@ mod tests {
     where
         N: ChatRequestModel + WatermarkEnable,
     {
+    }
+
+    #[test]
+    fn private_registry_matches_reviewed_snapshot() {
+        let mut actual = String::new();
+        for model in CHAT_MODEL_REGISTRY_SNAPSHOT {
+            writeln!(
+                actual,
+                "{}|{}|{}|{}|{}|{}",
+                model.type_name,
+                model.model_id,
+                model.message,
+                model.request_schema,
+                model.max_tokens,
+                model.capabilities.join(",")
+            )
+            .expect("writing to a String cannot fail");
+        }
+
+        assert_eq!(actual, include_str!("snapshots/chat_models.txt"));
     }
 
     #[test]
@@ -466,12 +539,6 @@ mod tests {
                 "glm-4.1v-thinking-flash",
             ]
         );
-    }
-
-    #[test]
-    fn official_realtime_model_names_match_asyncapi() {
-        assert_eq!(String::from(GLM_realtime_flash {}), "glm-realtime-flash");
-        assert_eq!(String::from(GLM_realtime_air {}), "glm-realtime-air");
     }
 
     #[test]

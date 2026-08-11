@@ -427,8 +427,23 @@ impl ToolExecutor {
             .as_ref()
             .map(|_| self.current_cache_epoch(&tool_cache_epoch));
 
+        // Keep the original value only while a later attempt may need it. The
+        // final (or only) attempt consumes it, avoiding a payload-sized clone
+        // for the safe default `RetryPolicy::Never` path.
+        let mut input = Some(input);
         loop {
-            match self.execute_once(&tool, tool_name, &input).await {
+            let can_retry_after_attempt =
+                execution_policy.allows_retry() && retries < retry_config.max_retries;
+            let attempt_input = if can_retry_after_attempt {
+                input
+                    .as_ref()
+                    .expect("retry input remains available")
+                    .clone()
+            } else {
+                input.take().expect("final attempt consumes retry input")
+            };
+
+            match self.execute_once(&tool, tool_name, attempt_input).await {
                 Ok(result) => {
                     let duration = start_time.elapsed();
                     if let Some(key) = cache_key {
@@ -453,17 +468,7 @@ impl ToolExecutor {
                     // Both gates are required: the error must be transient and
                     // the tool author must have declared the complete call
                     // idempotent.
-                    if !execution_policy.allows_retry() || !error.is_retryable() {
-                        let duration = start_time.elapsed();
-                        return Ok(ExecutionResult::failure(
-                            tool_name.to_string(),
-                            error.to_string(),
-                            duration,
-                            retries,
-                        ));
-                    }
-
-                    if retries >= retry_config.max_retries {
+                    if !can_retry_after_attempt || !error.is_retryable() {
                         let duration = start_time.elapsed();
                         return Ok(ExecutionResult::failure(
                             tool_name.to_string(),
@@ -818,9 +823,9 @@ impl ToolExecutor {
         &self,
         tool: &Arc<dyn DynTool>,
         tool_name: &str,
-        input: &serde_json::Value,
+        input: serde_json::Value,
     ) -> ToolResult<serde_json::Value> {
-        let execution_future = AssertUnwindSafe(tool.execute_json(input.clone())).catch_unwind();
+        let execution_future = AssertUnwindSafe(tool.execute_json(input)).catch_unwind();
 
         let outcome = match self.config.timeout {
             Some(timeout_duration) => match timeout(timeout_duration, execution_future).await {
@@ -850,6 +855,11 @@ impl ToolExecutor {
         &self.config
     }
 }
+
+#[cfg(all(test, not(feature = "realtime")))]
+#[global_allocator]
+static TOOL_EXECUTOR_TEST_ALLOCATOR: &stats_alloc::StatsAlloc<std::alloc::System> =
+    &stats_alloc::INSTRUMENTED_SYSTEM;
 
 fn saturating_increment_epoch(epoch: &AtomicU64) {
     let mut current = epoch.load(Ordering::Acquire);
@@ -1264,6 +1274,147 @@ mod tests {
 
         assert!(result.success);
         assert_eq!(result.retries, 2);
+    }
+
+    #[tokio::test]
+    async fn idempotent_retries_preserve_input_and_move_original_on_final_attempt() {
+        let mut executor = ToolExecutor::builder().retries(2).build();
+        executor.config.retry_config.initial_delay = Duration::ZERO;
+        executor.config.retry_config.max_delay = Duration::ZERO;
+
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let tool = FunctionTool::builder("retry_input", "retry input ownership fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Never,
+                RetryPolicy::Idempotent,
+            ))
+            .property("payload", serde_json::json!({"type": "string"}))
+            .required("payload")
+            .handler({
+                let attempts = Arc::clone(&attempts);
+                let seen = Arc::clone(&seen);
+                move |args| {
+                    let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    let payload_pointer = args["payload"]
+                        .as_str()
+                        .expect("validated payload is a string")
+                        .as_ptr() as usize;
+                    seen.lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push((payload_pointer, args.clone()));
+                    async move {
+                        if attempt < 3 {
+                            Err(error_context()
+                                .with_tool("retry_input")
+                                .execution_failed("transient failure"))
+                        } else {
+                            Ok(args)
+                        }
+                    }
+                }
+            })
+            .build()
+            .unwrap();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        let input = serde_json::json!({"payload": "retry-payload".repeat(1024)});
+        let original_payload_pointer = input["payload"]
+            .as_str()
+            .expect("fixture payload is a string")
+            .as_ptr() as usize;
+        let oracle = input.clone();
+
+        let result = executor.execute("retry_input", input).await.unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.retries, 2);
+        assert_eq!(result.result, oracle);
+        let seen = seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(seen.len(), 3);
+        assert!(seen.iter().all(|(_, value)| value == &oracle));
+        assert_ne!(seen[0].0, original_payload_pointer);
+        assert_ne!(seen[1].0, original_payload_pointer);
+        assert_eq!(seen[2].0, original_payload_pointer);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn never_retry_large_input_allocation_gate() {
+        use std::hint::black_box;
+
+        use stats_alloc::Region;
+
+        const CHILD_ENV: &str = "ZAI_TOOL_EXECUTOR_ALLOC_CHILD";
+        const EXACT_TEST_NAME: &str =
+            "toolkits::executor::tests::never_retry_large_input_allocation_gate";
+        const PAYLOAD_SIZE: usize = 65_536;
+        const MAX_ALLOCATIONS: usize = 16;
+        const MAX_ALLOCATED_BYTES: usize = 4 * 1024;
+
+        // stats_alloc counters are process-global. Keep this in the ordinary
+        // test matrix, but run the measured region in a dedicated one-test
+        // child so unrelated harness threads cannot perturb the census.
+        if std::env::var_os(CHILD_ENV).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([EXACT_TEST_NAME, "--exact", "--test-threads=1"])
+                .env(CHILD_ENV, "1")
+                .status()
+                .unwrap();
+            assert!(status.success(), "isolated allocation census failed");
+            return;
+        }
+
+        let executor = ToolExecutor::new();
+        let tool = FunctionTool::builder("allocation_echo", "allocation ownership fixture")
+            .execution_policy(ToolExecutionPolicy::new(
+                CachePolicy::Never,
+                RetryPolicy::Never,
+            ))
+            .property("payload", serde_json::json!({"type": "string"}))
+            .required("payload")
+            .handler(|args| async move { Ok(args) })
+            .build()
+            .unwrap();
+        executor.add_dyn_tool(Box::new(tool)).unwrap();
+
+        // Warm the async/tool path and build both the input and its oracle
+        // before opening the measured region.
+        let warmup = executor
+            .execute("allocation_echo", serde_json::json!({"payload": "warmup"}))
+            .await
+            .unwrap();
+        assert!(warmup.success);
+
+        let input = serde_json::json!({"payload": "x".repeat(PAYLOAD_SIZE)});
+        let expected_payload_pointer = input["payload"]
+            .as_str()
+            .expect("fixture payload is a string")
+            .as_ptr();
+        let region = Region::new(&stats_alloc::INSTRUMENTED_SYSTEM);
+        let result = black_box(
+            executor
+                .execute("allocation_echo", black_box(input))
+                .await
+                .unwrap(),
+        );
+        let stats = region.change();
+
+        assert!(result.success);
+        let payload = result.result["payload"]
+            .as_str()
+            .expect("echo result preserves the payload");
+        assert_eq!(payload.len(), PAYLOAD_SIZE);
+        assert_eq!(payload.as_ptr(), expected_payload_pointer);
+        assert!(
+            stats.allocations <= MAX_ALLOCATIONS,
+            "never-retry execution allocated too often: {stats:?}"
+        );
+        assert!(
+            stats.bytes_allocated <= MAX_ALLOCATED_BYTES,
+            "never-retry execution allocated payload-sized storage: {stats:?}"
+        );
     }
 
     #[test]

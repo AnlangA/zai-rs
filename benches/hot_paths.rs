@@ -58,6 +58,17 @@ fn make_redaction_input(target_len: usize) -> String {
     input
 }
 
+fn make_clean_redaction_input(target_len: usize) -> String {
+    const LINE: &str =
+        "request completed successfully after validation and response decoding; diagnostics clean ";
+    let mut input = String::with_capacity(target_len);
+    while input.len() < target_len {
+        input.push_str(LINE);
+    }
+    input.truncate(target_len);
+    input
+}
+
 fn redaction(c: &mut Criterion) {
     let mut group = c.benchmark_group("sensitive_redaction");
     for size in [1024usize, 64 * 1024] {
@@ -68,6 +79,16 @@ fn redaction(c: &mut Criterion) {
         });
     }
     group.finish();
+
+    let mut clean_group = c.benchmark_group("clean_redaction");
+    for size in [1024usize, 64 * 1024] {
+        let input = make_clean_redaction_input(size);
+        clean_group.throughput(Throughput::Bytes(input.len() as u64));
+        clean_group.bench_with_input(BenchmarkId::from_parameter(size), &input, |b, input| {
+            b.iter(|| mask_sensitive_info(black_box(input.as_str())));
+        });
+    }
+    clean_group.finish();
 }
 
 fn endpoint_resolution(c: &mut Criterion) {

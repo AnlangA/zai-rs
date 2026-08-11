@@ -1,5 +1,8 @@
-use super::super::traits::{AudioToText, define_model_type, impl_model_markers};
+use super::super::traits::endpoint_model_registry;
 
-// GLM ASR model identifier
-define_model_type!(GlmAsr, "glm-asr-2512");
-impl_model_markers!(GlmAsr: AudioToText);
+endpoint_model_registry! {
+    snapshot: ASR_MODEL_REGISTRY_SNAPSHOT,
+    family: "asr",
+    capability: AudioToText;
+    GlmAsr => "glm-asr-2512";
+}

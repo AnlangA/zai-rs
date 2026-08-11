@@ -18,6 +18,7 @@ pub(crate) struct Route {
     operation_id: &'static str,
     method: &'static str,
     family: ApiFamily,
+    success_statuses: &'static [u16],
     segments: &'static [Segment],
 }
 
@@ -26,12 +27,14 @@ impl Route {
         operation_id: &'static str,
         method: &'static str,
         family: ApiFamily,
+        success_statuses: &'static [u16],
         segments: &'static [Segment],
     ) -> Self {
         Self {
             operation_id,
             method,
             family,
+            success_statuses,
             segments,
         }
     }
@@ -46,6 +49,10 @@ impl Route {
 
     pub(crate) const fn family(self) -> ApiFamily {
         self.family
+    }
+
+    pub(crate) const fn success_statuses(self) -> &'static [u16] {
+        self.success_statuses
     }
 
     pub(crate) const fn segments(self) -> &'static [Segment] {
@@ -76,6 +83,7 @@ macro_rules! route {
             $operation_id,
             $method,
             ApiFamily::$family,
+            &[200],
             &[$($segment),*],
         );
     };
@@ -472,7 +480,6 @@ route!(
     [S("web_search")]
 );
 route!(
-    #[cfg(test)]
     ZRAG_CHAT,
     "zrag.chat",
     "POST",
@@ -480,7 +487,6 @@ route!(
     [S("agent"), S("chat")]
 );
 route!(
-    #[cfg(test)]
     ZRAG_RETRIEVE,
     "zrag.retrieve",
     "POST",

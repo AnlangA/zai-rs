@@ -3,16 +3,19 @@ use validator::Validate;
 
 /// Standard knowledge API success envelope.
 ///
-/// The frozen schemas make every top-level field optional. Deserialization
-/// nevertheless rejects `{}` and all-null payloads so an unrelated success
-/// body cannot be mistaken for a valid knowledge response.
+/// The upstream OpenAPI marks every top-level field optional, but the frozen
+/// knowledge contract requires a non-null `data` payload and business code
+/// `200`. Deserialization enforces that invariant so a partial HTTP-200 body
+/// cannot be mistaken for success. Public fields remain optional for source
+/// compatibility and caller-constructed/serialized values.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct KnowledgeResponse<T> {
-    /// Endpoint-specific response payload.
+    /// Endpoint-specific response payload. Successful deserialization requires
+    /// this field to be present and non-null.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
-    /// Business status code, when returned. The shared transport rejects an
-    /// explicitly non-success code before this type is returned.
+    /// Business status code. Successful deserialization requires exactly
+    /// `200`; the shared transport also rejects explicit business failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<i64>,
     /// Human-readable status message.
@@ -40,13 +43,14 @@ where
         D: Deserializer<'de>,
     {
         let wire = KnowledgeResponseWire::deserialize(deserializer)?;
-        if wire.data.is_none()
-            && wire.code.is_none()
-            && wire.message.is_none()
-            && wire.timestamp.is_none()
-        {
+        if wire.code != Some(200) {
             return Err(D::Error::custom(
-                "knowledge response contained no documented non-null fields",
+                "knowledge response must contain business code 200",
+            ));
+        }
+        if wire.data.is_none() {
+            return Err(D::Error::custom(
+                "knowledge response must contain non-null data",
             ));
         }
         Ok(Self {
@@ -61,9 +65,8 @@ where
 /// Standard knowledge API response envelope for operations without a payload.
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct KnowledgeOperationResponse {
-    /// Business status code, when the endpoint includes it. The shared
-    /// transport rejects an explicitly non-success value before this type is
-    /// returned.
+    /// Business status code. Successful deserialization requires exactly
+    /// `200`; the shared transport also rejects explicit business failures.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<i64>,
     /// Human-readable status message.
@@ -87,9 +90,9 @@ impl<'de> Deserialize<'de> for KnowledgeOperationResponse {
         D: Deserializer<'de>,
     {
         let wire = KnowledgeOperationResponseWire::deserialize(deserializer)?;
-        if wire.code.is_none() && wire.message.is_none() && wire.timestamp.is_none() {
+        if wire.code != Some(200) {
             return Err(D::Error::custom(
-                "knowledge operation response contained no documented non-null fields",
+                "knowledge operation response must contain business code 200",
             ));
         }
         Ok(Self {
@@ -339,29 +342,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn success_envelopes_follow_optional_schema_and_reject_empty_success() {
-        assert!(
-            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
-                serde_json::json!({"code": 200})
-            )
-            .is_ok()
-        );
-        assert!(
-            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
-                serde_json::json!({"data": {}})
-            )
-            .is_ok()
-        );
-        assert!(
-            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(serde_json::json!({}))
-                .is_err()
-        );
-        assert!(
-            serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
-                serde_json::json!({"data": null, "code": null})
-            )
-            .is_err()
-        );
+    fn data_envelopes_require_code_200_and_non_null_data() {
+        let valid = serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(
+            serde_json::json!({"code": 200, "data": {}}),
+        )
+        .unwrap();
+        assert_eq!(valid.code, Some(200));
+        assert_eq!(valid.data, Some(serde_json::json!({})));
+
+        for invalid in [
+            serde_json::json!({"code": 200}),
+            serde_json::json!({"data": {}}),
+            serde_json::json!({"code": 0, "data": {}}),
+            serde_json::json!({"code": 201, "data": {}}),
+            serde_json::json!({"code": 200, "data": null}),
+            serde_json::json!({}),
+            serde_json::json!({"data": null, "code": null}),
+        ] {
+            assert!(
+                serde_json::from_value::<KnowledgeResponse<serde_json::Value>>(invalid).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn operation_envelopes_require_code_200_without_inventing_data() {
         assert!(
             serde_json::from_value::<KnowledgeOperationResponse>(serde_json::json!({
                 "unknown": "value"
@@ -372,7 +377,21 @@ mod tests {
             serde_json::from_value::<KnowledgeOperationResponse>(serde_json::json!({
                 "message": "ok"
             }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeOperationResponse>(serde_json::json!({
+                "code": 200,
+                "message": "ok"
+            }))
             .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<KnowledgeOperationResponse>(serde_json::json!({
+                "code": 0,
+                "message": "ok"
+            }))
+            .is_err()
         );
     }
 }

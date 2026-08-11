@@ -1,5 +1,8 @@
-use super::super::traits::{TextToAudio, define_model_type, impl_model_markers};
+use super::super::traits::endpoint_model_registry;
 
-// CogTTS model identifier
-define_model_type!(GlmTts, "glm-tts");
-impl_model_markers!(GlmTts: TextToAudio);
+endpoint_model_registry! {
+    snapshot: TTS_MODEL_REGISTRY_SNAPSHOT,
+    family: "tts",
+    capability: TextToAudio;
+    GlmTts => "glm-tts";
+}

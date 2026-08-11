@@ -4,9 +4,28 @@
 
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
-当前仓库版本为 `6.0.1`。从旧版升级时，请先阅读
-[0.6 迁移指南](docs/MIGRATING-0.6.md)；从 `0.6.0` 升级到 `6.0.1` 时还必须阅读
-[6.0.1 安全加固迁移说明](docs/HARDENING_MIGRATION.md)。
+`Cargo.toml` 当前仍声明 `6.0.1`，但这是**未发布候选版**，不是可从
+crates.io 安装的稳定版。`v6.0.1` 的两次发布 workflow 均于 2026-07-24
+失败（runs
+[`30091854390`](https://github.com/AnlangA/zai-rs/actions/runs/30091854390) 和
+[`30092565276`](https://github.com/AnlangA/zai-rs/actions/runs/30092565276)）。原始 step 日志已确认：
+首次运行的当时 `v6.0.1` ref 不是 annotated tag；第二次已通过质量、打包、
+SBOM、校验和 attestation，但 crates.io 拒绝 OIDC 鉴权，因为没有找到仓库
+`AnlangA/zai-rs` 的 Trusted Publishing 配置。经 `cargo search` / `cargo info`
+核验，crates.io 最新版仍为 `0.6.0`。当前工作树又已偏离既有
+`v6.0.1` tag，因此下一次正式发布必须先配置 Trusted Publisher，再使用
+高于 `6.0.1` 的新版本和新 annotated tag。
+
+使用本文档所述的当前仓库 API 时，应绑定经审计的具体 commit：
+
+```toml
+[dependencies]
+zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
+```
+
+registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当前文档存在
+差异。从 `0.6.0` 迁移到下一个正式版本前，请阅读
+[未发布安全加固迁移说明](docs/HARDENING_MIGRATION.md)。
 
 ## 快速开始
 
@@ -81,7 +100,14 @@
 `RealtimeClient::session` 通过密封的模型 trait 只接受上述两个 Realtime
 模型，因此错误模型会在编译期被拒绝。`GLM4_voice` 是 HTTP 语音聊天模型，
 不能用于 Realtime WebSocket；无可用操作能力的旧 Realtime marker 已在 0.6
-删除。实时音频完整示例见 `examples/realtime_audio.rs`：
+删除。超时、背压和 buffer 策略通过
+`zai_rs::realtime::RealtimeTransportConfig` 配置；`Default` 沿用旧的主要数值，但新增
+30 秒 outbound admission 总期限，并把单个 data frame 的默认 stall guard 从 10 秒
+收紧到 5 秒。内建 `SessionBuilder` 还会在发送 `session.update` 前默认最多尝试建连
+3 次；所有建连尝试及其退避等待共享 10 秒 `connect_timeout` 总预算。client 级默认会由新
+session builder 快照，builder 可按单会话覆盖。完整说明见
+[高级主题](docs/ADVANCED_TOPICS.md)。实时音频完整示例见
+`examples/realtime_audio.rs`：
 
 ```bash
 cargo run --example realtime_audio --features realtime
@@ -279,7 +305,8 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 公开 API 按能力组织，内部文件布局不属于 API：
 
 - `zai_rs::model::<capability>`：模型请求与响应，例如 `model::ocr::OcrRequest`
-- `zai_rs::file`、`batches`、`knowledge`、`agent`、`usage`：扁平导出各能力类型
+- `zai_rs::file`、`batches`、`knowledge`、`zrag`、`agent`、`usage`：扁平导出各能力类型
+- `zai_rs::pagination`：跨列表请求复用的已校验 cursor/page 分页值
 - `zai_rs::tool::<capability>`：Web 搜索与文件解析工具
 - `zai_rs::mcp`：统一 MCP 客户端（`mcp` feature）
 - `zai_rs::toolkits`：始终可用的自定义工具执行框架；`toolkits` feature 额外启用完整 JSON Schema 校验
@@ -288,8 +315,15 @@ cargo run --example mcp_vision --features mcp -- source.png video.mp4 actual.png
 请求统一使用 `request.send_via(&client)`；原先没有业务方法的
 `client.services()` 空门面已删除。
 
+冻结的 [`spec/contracts/operations.json`](spec/contracts/operations.json) 中，
+`service_method`、`request_type`、`response_type` 与 `stream_item` 使用外部 crate
+可见的全限定 Rust 路径；`N`/`M` 表示公开泛型参数，` / ` 分隔同一 operation 的
+非流式与流式 type-state。`tests/operation_public_bindings.rs` 会逐条编译并核对全部
+59 个绑定，防止 contract 再次漂移到不存在的 client facade 或类型。
+
 ### 实时 API
 - [x] WebSocket 类型定义
 - [x] 会话管理与强类型事件/音频流（`RealtimeClient` / `SessionBuilder`）
+- [x] 可校验的超时、背压与 buffer 策略（`RealtimeTransportConfig`）
 - [x] Bearer / JWT 双鉴权
 - [x] 完整 client/server 事件（`ClientEvent` / `ServerEvent`）

@@ -13,14 +13,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: benchmarks-${{ github.ref }}
+  # A manual diagnostic run must not cancel the scheduled long-pressure run
+  # for the same branch (or vice versa).
+  group: benchmarks-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   hot-paths:
-    name: Criterion hot paths
+    name: Resource and hot-path evidence
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -33,6 +35,205 @@ jobs:
           toolchain: "1.88.0"
           cache: true
 
+      - name: Gate 100 MiB file-download RSS
+        run: |
+          set -o pipefail
+          : > file-download-rss.jsonl
+          set +e
+          cargo test --locked -p zai-rs --release \
+            --test file_download_rss -- --ignored --exact \
+            linux_file_download_100_mib_rss_gate --nocapture \
+            2>&1 | tee file-download-rss.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          grep -o 'ZAI_FILE_DOWNLOAD_RSS_METRIC={.*}' file-download-rss.log \
+            | sed 's/^ZAI_FILE_DOWNLOAD_RSS_METRIC=//' > file-download-rss.jsonl || true
+          if (( test_status != 0 )); then
+            exit "$test_status"
+          fi
+          test "$(wc -l < file-download-rss.jsonl)" -eq 1
+          jq -e '
+            .schema == "zai-rs.file-download-rss.v1" and
+            .bytes == 104857600 and
+            (.baseline_vm_hwm_kib | type == "number") and
+            (.final_vm_hwm_kib | type == "number") and
+            (.delta_vm_hwm_kib | type == "number") and
+            (.ceiling_vm_hwm_kib | type == "number") and
+            .delta_vm_hwm_kib <= .ceiling_vm_hwm_kib and
+            (.elapsed_seconds | type == "number") and
+            (.throughput_mib_s | type == "number")
+          ' file-download-rss.jsonl >/dev/null
+
+      - name: Upload file-download RSS evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: file-download-rss-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            file-download-rss.jsonl
+            file-download-rss.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Gate and record SSE allocations
+        run: |
+          set -o pipefail
+          : > sse-allocations.jsonl
+          set +e
+          cargo bench --locked -p zai-rs --bench sse_allocations \
+            2>&1 | tee sse-allocations.log
+          bench_status=${PIPESTATUS[0]}
+          set -e
+          grep '^\{"benchmark":"sse_allocations"' sse-allocations.log \
+            > sse-allocations.jsonl || true
+          if (( bench_status != 0 )); then
+            exit "$bench_status"
+          fi
+          test "$(wc -l < sse-allocations.jsonl)" -eq 7
+          jq -e -s '
+            length == 7 and
+            all(.[];
+              .benchmark == "sse_allocations" and
+              (.scenario | type == "string") and
+              (.payload_bytes | type == "number") and
+              (.chunk_bytes | type == "number") and
+              (.data_lines | type == "number") and
+              (.allocations | type == "number") and
+              (.reallocations | type == "number") and
+              (.bytes_allocated | type == "number") and
+              (.bytes_reallocated | type == "number")) and
+            ([.[] | select(.scenario == "single_line")] | length) == 6 and
+            all(.[] | select(.scenario == "single_line"); .data_lines == 1) and
+            ([.[] | select(.scenario == "single_line") | .payload_bytes] | unique | sort) == [65536, 8388608] and
+            ([.[] | select(.scenario == "single_line") | .chunk_bytes] | unique | sort) == [64, 1024, 65536] and
+            ([.[] | select(.scenario == "single_line") | "\(.payload_bytes):\(.chunk_bytes)"] | unique | length) == 6 and
+            ([.[] | select(.scenario == "many_line_json")] | length) == 1 and
+            all(.[] | select(.scenario == "many_line_json"); .data_lines == 4096)
+          ' sse-allocations.jsonl >/dev/null
+
+      - name: Upload SSE allocation census
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sse-allocations-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            sse-allocations.jsonl
+            sse-allocations.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Gate and record business-error probe allocations
+        if: ${{ always() }}
+        run: |
+          set -o pipefail
+          : > business-error-allocations.jsonl
+          set +e
+          cargo bench --locked -p zai-rs --bench business_error_allocations \
+            2>&1 | tee business-error-allocations.log
+          bench_status=${PIPESTATUS[0]}
+          set -e
+          grep '^\{"benchmark":"business_error_allocations"' \
+            business-error-allocations.log > business-error-allocations.jsonl || true
+          if (( bench_status != 0 )); then
+            exit "$bench_status"
+          fi
+          test "$(wc -l < business-error-allocations.jsonl)" -eq 6
+          jq -e -s '
+            length == 6 and
+            ([.[].scenario] | unique | sort) == [
+              "nested_numeric_code_array",
+              "top_level_deeply_nested_code",
+              "top_level_long_code_string",
+              "top_level_long_escaped_code_string",
+              "top_level_long_numeric_code",
+              "top_level_numeric_code_array"
+            ] and
+            all(.[];
+              .benchmark == "business_error_allocations" and
+              (.payload_bytes | type == "number") and
+              (.numeric_values | type == "number") and
+              (.code_string_bytes | type == "number") and
+              (.allocations | type == "number") and
+              (.reallocations | type == "number") and
+              (.bytes_allocated | type == "number") and
+              (.bytes_reallocated | type == "number") and
+              .allocations <= 4 and
+              .reallocations <= 4 and
+              .bytes_allocated <= 1024 and
+              .bytes_reallocated <= 1024) and
+            all(.[] | select(.scenario | endswith("numeric_code_array"));
+              .numeric_values == 1048576 and
+              .code_string_bytes == 0 and
+              .payload_bytes >= 2097152) and
+            all(.[] | select(.scenario | startswith("top_level_long_") and endswith("code_string"));
+              .numeric_values == 0 and
+              .code_string_bytes == 33554432 and
+              .payload_bytes >= 33554432) and
+            all(.[] | select(.scenario == "top_level_long_numeric_code");
+              .numeric_values == 0 and
+              .code_string_bytes == 0 and
+              .payload_bytes >= 33554432) and
+            all(.[] | select(.scenario == "top_level_deeply_nested_code");
+              .numeric_values == 0 and
+              .code_string_bytes == 0 and
+              .payload_bytes >= 33554432)
+          ' business-error-allocations.jsonl >/dev/null
+
+      - name: Upload business-error allocation census
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: business-error-allocations-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            business-error-allocations.jsonl
+            business-error-allocations.log
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record 20 ms Realtime slow-peer soak
+        if: ${{ always() }}
+        env:
+          ZAI_REALTIME_SOAK_SECONDS: "300"
+        run: |
+          set -o pipefail
+          : > realtime-soak.jsonl
+          set +e
+          cargo test --locked --release -p zai-rs --features realtime \
+            --test realtime_soak -- --ignored --exact \
+            realtime_20ms_slow_peer_soak_evidence --nocapture --test-threads=1 \
+            2>&1 | tee realtime-soak.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          grep -o 'ZAI_REALTIME_SOAK_JSON={.*}' realtime-soak.log \
+            | sed 's/^ZAI_REALTIME_SOAK_JSON=//' > realtime-soak.jsonl || true
+          if (( test_status != 0 )); then
+            exit "$test_status"
+          fi
+          test "$(wc -l < realtime-soak.jsonl)" -eq 1
+          jq -e '
+            .benchmark == "realtime_20ms_slow_peer_soak" and
+            .schema_version == 1 and
+            .bounded_backpressure.next_message_rejected == true and
+            .bounded_backpressure.expanded_byte_budget_rejected_second_4mib_frame == true and
+            .bounded_backpressure.byte_budget_reclaimed_after_drain == true and
+            .transport_evidence.ordered_audio_commit_create_cancel == true and
+            .transport_evidence.background_failure_observed == true and
+            .feedback_ping.duplicate_pongs == 0 and
+            (.feedback_ping.pong_samples | type == "number") and
+            (.rss.gate == "record_only")
+          ' realtime-soak.jsonl >/dev/null
+
+      - name: Upload Realtime soak evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: realtime-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            realtime-soak.jsonl
+            realtime-soak.log
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Measure public hot paths
         run: >-
           cargo bench --locked -p zai-rs
@@ -42,9 +243,10 @@ jobs:
       # Reports are evidence for manual trend review. Deliberately do not gate
       # on wall-clock values from a shared GitHub-hosted runner.
       - name: Upload Criterion report
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: criterion-hot-paths-${{ github.run_id }}
+          name: criterion-hot-paths-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/criterion/
           if-no-files-found: error
           retention-days: 30

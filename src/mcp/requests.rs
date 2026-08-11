@@ -699,6 +699,37 @@ impl McpRequest for AnalyzeVisualizationRequest {
     }
 }
 
+macro_rules! impl_public_validation {
+    ($($request:ty),+ $(,)?) => {
+        $(
+            impl $request {
+                /// Validate this request locally without starting or calling an MCP server.
+                ///
+                /// The same validation runs automatically before dispatch.
+                pub fn validate(&self) -> ZaiResult<()> {
+                    <Self as McpRequest>::validate(self)
+                }
+            }
+        )+
+    };
+}
+
+impl_public_validation!(
+    WebSearchRequest,
+    WebReaderRequest,
+    SearchDocRequest,
+    RepoStructureRequest,
+    ReadRepoFileRequest,
+    UiToArtifactRequest,
+    ExtractTextRequest,
+    DiagnoseErrorRequest,
+    UnderstandDiagramRequest,
+    AnalyzeVisualizationRequest,
+    UiDiffRequest,
+    AnalyzeImageRequest,
+    AnalyzeVideoRequest,
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -133,3 +133,29 @@ pub use chat_stream_response::ChatStreamResponse;
 pub use gen_video_async::*;
 pub use moderation::Moderation;
 pub use tools::*;
+
+#[cfg(test)]
+mod endpoint_model_registry_tests {
+    use std::fmt::Write as _;
+
+    #[test]
+    fn private_http_endpoint_registry_matches_reviewed_snapshot() {
+        let registries = [
+            super::gen_image::IMAGE_MODEL_REGISTRY_SNAPSHOT,
+            super::gen_video_async::VIDEO_MODEL_REGISTRY_SNAPSHOT,
+            super::audio_to_text::ASR_MODEL_REGISTRY_SNAPSHOT,
+            super::text_to_audio::TTS_MODEL_REGISTRY_SNAPSHOT,
+            super::voice_clone::VOICE_CLONE_MODEL_REGISTRY_SNAPSHOT,
+        ];
+        let mut actual = String::new();
+        for (family, type_name, model_id, capability) in registries.into_iter().flatten() {
+            writeln!(actual, "{family}|{type_name}|{model_id}|{capability}")
+                .expect("writing to a String cannot fail");
+        }
+
+        assert_eq!(
+            actual,
+            include_str!("model/snapshots/http_endpoint_models.txt")
+        );
+    }
+}

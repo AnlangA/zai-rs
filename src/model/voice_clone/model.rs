@@ -1,5 +1,8 @@
-use super::super::traits::{VoiceClone, define_model_type, impl_model_markers};
+use super::super::traits::endpoint_model_registry;
 
-// GLM-TTS voice clone model identifier
-define_model_type!(GlmTtsClone, "glm-tts-clone");
-impl_model_markers!(GlmTtsClone: VoiceClone);
+endpoint_model_registry! {
+    snapshot: VOICE_CLONE_MODEL_REGISTRY_SNAPSHOT,
+    family: "voice_clone",
+    capability: VoiceClone;
+    GlmTtsClone => "glm-tts-clone";
+}

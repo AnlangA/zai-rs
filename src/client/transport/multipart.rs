@@ -144,7 +144,7 @@ impl FilePart {
 pub struct MultipartBodyFactory {
     parts: Vec<(String, FilePart)>,
     memory_parts: Vec<(String, String, String, bytes::Bytes)>,
-    fields: Vec<(String, String)>,
+    fields: Vec<(String, bytes::Bytes)>,
 }
 
 impl std::fmt::Debug for MultipartBodyFactory {
@@ -191,16 +191,32 @@ impl MultipartBodyFactory {
     /// This is crate-private for protocols such as ASR whose documented
     /// base64 audio field is larger than the normal metadata budget.
     pub(crate) fn field_with_total_limit(
-        mut self,
+        self,
         name: impl Into<String>,
         value: impl Into<String>,
+        total_limit: u64,
+    ) -> ZaiResult<Self> {
+        let value = bytes::Bytes::from(value.into());
+        self.field_bytes_with_total_limit(name, value, total_limit)
+    }
+
+    /// Add a byte-backed text field using a caller-specific aggregate limit.
+    ///
+    /// Keeping the payload in `Bytes` lets every retry share the immutable
+    /// allocation while still constructing a fresh multipart body.
+    pub(crate) fn field_bytes_with_total_limit(
+        mut self,
+        name: impl Into<String>,
+        value: impl Into<bytes::Bytes>,
         total_limit: u64,
     ) -> ZaiResult<Self> {
         let name = name.into();
         let value = value.into();
         validate_field_name(&name)?;
         let added = name.len().saturating_add(value.len());
-        let current: usize = self.fields.iter().map(|(k, v)| k.len() + v.len()).sum();
+        let current = self.fields.iter().fold(0usize, |total, (key, value)| {
+            total.saturating_add(key.len()).saturating_add(value.len())
+        });
         if current.saturating_add(added) as u64 > total_limit {
             return Err(payload_too_large(total_limit));
         }
@@ -249,7 +265,9 @@ impl MultipartBodyFactory {
     pub async fn build(&self) -> ZaiResult<reqwest::multipart::Form> {
         let mut form = reqwest::multipart::Form::new();
         for (name, value) in &self.fields {
-            form = form.text(name.clone(), value.clone());
+            let part =
+                reqwest::multipart::Part::stream_with_length(value.clone(), value.len() as u64);
+            form = form.part(name.clone(), part);
         }
         for (field_name, part) in &self.parts {
             validate_basename(&part.filename)?;
@@ -404,7 +422,23 @@ fn invalid(msg: &str) -> ZaiError {
 
 #[cfg(test)]
 mod tests {
+    use futures_util::StreamExt;
+
     use super::*;
+
+    async fn normalized_wire(form: reqwest::multipart::Form) -> Vec<u8> {
+        let boundary = form.boundary().as_bytes().to_vec();
+        let mut stream = Box::pin(form.into_stream());
+        let mut body = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            body.extend_from_slice(&chunk.unwrap());
+        }
+
+        String::from_utf8(body)
+            .unwrap()
+            .replace(std::str::from_utf8(&boundary).unwrap(), "TEST_BOUNDARY")
+            .into_bytes()
+    }
 
     #[tokio::test]
     async fn rejects_symlink_and_nonregular() {
@@ -497,6 +531,71 @@ mod tests {
                 .field_with_total_limit("audio", large_value, MULTIPART_FIELD_BYTES_MAX + 16,)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn byte_backed_fields_enforce_the_aggregate_limit() {
+        let factory = MultipartBodyFactory::new()
+            .field_bytes_with_total_limit("a", bytes::Bytes::from_static(b"1234"), 10)
+            .unwrap()
+            .field_bytes_with_total_limit("bb", bytes::Bytes::from_static(b"567"), 10)
+            .unwrap();
+
+        assert_eq!(factory.fields[0].1, bytes::Bytes::from_static(b"1234"));
+        assert_eq!(factory.fields[1].1, bytes::Bytes::from_static(b"567"));
+        assert!(
+            factory
+                .clone()
+                .field_bytes_with_total_limit("c", bytes::Bytes::new(), 10)
+                .is_err()
+        );
+        assert!(factory.field_with_total_limit("c", "", 10).is_err());
+    }
+
+    #[tokio::test]
+    async fn byte_backed_fields_rebuild_identically_for_retries() {
+        let factory = MultipartBodyFactory::new()
+            .field("first", "one")
+            .unwrap()
+            .field_bytes_with_total_limit(
+                "second",
+                bytes::Bytes::from_static(b"two"),
+                MULTIPART_FIELD_BYTES_MAX,
+            )
+            .unwrap();
+
+        let first_attempt = normalized_wire(factory.build().await.unwrap()).await;
+        let retry_attempt = normalized_wire(factory.build().await.unwrap()).await;
+
+        assert_eq!(first_attempt, retry_attempt);
+    }
+
+    #[tokio::test]
+    async fn byte_backed_text_fields_preserve_wire_metadata_and_order() {
+        let actual = MultipartBodyFactory::new()
+            .field("first", "hello")
+            .unwrap()
+            .field_bytes_with_total_limit(
+                "second",
+                bytes::Bytes::from_static("世界".as_bytes()),
+                MULTIPART_FIELD_BYTES_MAX,
+            )
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+        let legacy = reqwest::multipart::Form::new()
+            .text("first", "hello")
+            .text("second", "世界");
+
+        let actual = normalized_wire(actual).await;
+        let legacy = normalized_wire(legacy).await;
+
+        assert_eq!(actual, legacy);
+        let wire = String::from_utf8(actual).unwrap();
+        let first = wire.find("name=\"first\"").unwrap();
+        let second = wire.find("name=\"second\"").unwrap();
+        assert!(first < second);
     }
 
     #[test]

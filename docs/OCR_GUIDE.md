@@ -101,14 +101,13 @@ if let Some(items) = response.words_result {
 SDK 的统一错误类型：
 
 ```rust,ignore
-use zai_rs::client::error::ZaiError;
-
 match request.send_via(&client).await {
     Ok(response) => println!("识别到 {:?} 个文字块", response.words_result_num),
-    Err(ZaiError::FileError { code, message }) => {
-        tracing::warn!(code, %message, "OCR 文件不可用");
-    },
-    Err(error) => tracing::error!(error = %error, "OCR 请求失败"),
+    Err(error) => tracing::error!(
+        category = ?error.category(),
+        retryable = error.is_retryable(),
+        "OCR 请求失败",
+    ),
 }
 ```
 

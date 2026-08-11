@@ -74,9 +74,12 @@ match result {
     Err(ZaiError::NetworkError(_)) => {
         // 网络错误，可能需要检查连接
     },
-    Err(e) => {
-        // 其他错误
-        tracing::error!("Unexpected error: {}", e);
+    Err(error) => {
+        tracing::error!(
+            category = ?error.category(),
+            retryable = error.is_retryable(),
+            "Unexpected API error",
+        );
     },
 }
 ```
@@ -174,9 +177,13 @@ async fn process_request(client: &ZaiClient, user_id: &str) -> ZaiResult<()> {
             );
             Ok(())
         },
-        Err(e) => {
-            error!(error = %e, user_id, "Request failed");
-            Err(e)
+        Err(error) => {
+            error!(
+                category = ?error.category(),
+                retryable = error.is_retryable(),
+                "Request failed",
+            );
+            Err(error)
         },
     }
 }
@@ -211,7 +218,11 @@ for prompt in prompts {
 while let Some(result) = tasks.join_next().await {
     match result? {
         Ok(content) => println!("{content}"),
-        Err(error) => tracing::error!(%error, "chat failed"),
+        Err(error) => tracing::error!(
+            category = ?error.category(),
+            retryable = error.is_retryable(),
+            "chat failed",
+        ),
     }
 }
 ```

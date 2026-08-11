@@ -18,12 +18,7 @@
   - 错误码映射和 retry 策略
   - 测试与文档维护规则
 
-- **[全面优化路线图](OPTIMIZATION_PLAN.md)** - 按风险和依赖排序的持续改进计划
-  - 当前构建、测试与安全基线
-  - HTTP、流式 I/O、Realtime 和公共 API 里程碑
-  - 每项工作的验收标准与预估工作量
-
-- **[6.0.1 安全加固迁移说明](HARDENING_MIGRATION.md)** - 从 0.6.0 升级时的可观察行为变化
+- **[未发布安全加固迁移说明](HARDENING_MIGRATION.md)** - 从已发布 0.6.0 升级到下一正式版本时的可观察行为变化
 
 - **[发布清单](RELEASING.md)** - OIDC、SBOM、provenance 与发布前外部配置
 
@@ -89,9 +84,15 @@
 
 ## 版本说明
 
-当前 Cargo 版本为 `6.0.1`。从较早版本升级前请阅读
-[0.6 迁移指南](MIGRATING-0.6.md)；从 `0.6.0` 升级时还必须阅读
-[6.0.1 安全加固迁移说明](HARDENING_MIGRATION.md)。
+Cargo 当前声明的 `6.0.1` 是未发布候选版。两次 `v6.0.1` tag workflow
+均失败；原始 step 日志已确认首次是当时 tag 不是 annotated tag，第二次是
+crates.io 缺少 `AnlangA/zai-rs` Trusted Publisher 配置。经 `cargo search` / `cargo info`
+验证的 crates.io 最新版仍为 `0.6.0`。当前工作树已偏离既有
+`v6.0.1` tag，所以下一次发布必须使用高于 `6.0.1` 的新版本和新 tag。
+
+使用当前文档的 API 时，按[快速入门指南](GETTING_STARTED.md)将 git 依赖绑定到
+经审计 commit。registry `0.6.0` 的 API 与当前文档存在差异。升级前请阅读
+[未发布安全加固迁移说明](HARDENING_MIGRATION.md)。
 
 ## 维护注记
 

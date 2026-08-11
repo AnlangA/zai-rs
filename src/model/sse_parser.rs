@@ -24,8 +24,10 @@ pub struct SseEventParser {
     // This is distinct from `scan_from`, which remains the start of the
     // current line so its full payload can be sliced once a terminator arrives.
     search_from: usize,
-    event_data: Vec<Vec<u8>>,
-    event_bytes: usize,
+    // Joined event payload. Keeping one contiguous buffer avoids one owned
+    // allocation per `data:` line and the full-event copy at dispatch.
+    event_data: Vec<u8>,
+    event_data_lines: usize,
     bom_checked: bool,
 }
 
@@ -40,26 +42,57 @@ impl SseEventParser {
         self.buf
             .len()
             .saturating_sub(self.scan_from)
-            .saturating_add(self.event_bytes)
+            .saturating_add(self.event_data.len())
     }
 
     /// Push a transport byte chunk and return completed SSE event payloads.
+    ///
+    /// This compatibility method enforces the same 32 MiB / 4096-line limits as
+    /// production streams. If a limit is exceeded it resets the parser and
+    /// returns no events because its historical return type cannot carry an
+    /// error. New code should use [`Self::try_push`] to observe that failure.
     pub fn push(&mut self, new_bytes: &[u8]) -> Vec<Vec<u8>> {
-        self.feed(new_bytes);
-        let mut events = Vec::with_capacity(4);
-        while let Ok(Some(event)) = self.next_event_with_limits(usize::MAX, usize::MAX, false) {
-            events.push(event);
+        self.try_push(new_bytes).unwrap_or_default()
+    }
+
+    /// Push a transport byte chunk with bounded memory and explicit errors.
+    ///
+    /// Input is processed in small slices so one unusually large transport
+    /// chunk cannot be copied wholesale into parser-owned memory. Each event is
+    /// limited to 32 MiB and 4096 `data:` lines; on failure all retained bytes
+    /// are released and the parser can be reused.
+    pub fn try_push(&mut self, new_bytes: &[u8]) -> ZaiResult<Vec<Vec<u8>>> {
+        let result = self.try_push_inner(new_bytes);
+        if result.is_err() {
+            self.reset();
         }
-        events
+        result
+    }
+
+    fn try_push_inner(&mut self, new_bytes: &[u8]) -> ZaiResult<Vec<Vec<u8>>> {
+        // Most transport chunks end in the middle of an event. Avoid eagerly
+        // allocating return storage on that overwhelmingly common empty path;
+        // `Vec` will allocate only when this call actually completes an event.
+        let mut events = Vec::new();
+        for bytes in new_bytes.chunks(crate::client::transport::limits::SSE_PARSE_SLICE_BYTES) {
+            self.feed(bytes);
+            while let Some(event) = self.next_bounded()? {
+                events.push(event);
+            }
+            if self.buffered_len() > crate::client::transport::limits::SSE_PARSER_RETAINED_MAX {
+                return Err(event_too_large());
+            }
+        }
+        Ok(events)
     }
 
     /// Append bytes without eagerly collecting all completed events.
-    fn feed(&mut self, new_bytes: &[u8]) {
+    pub(crate) fn feed(&mut self, new_bytes: &[u8]) {
         self.buf.extend_from_slice(new_bytes);
     }
 
     /// Return at most one event while enforcing the production stream limits.
-    fn next_bounded(&mut self) -> ZaiResult<Option<Vec<u8>>> {
+    pub(crate) fn next_bounded(&mut self) -> ZaiResult<Option<Vec<u8>>> {
         self.next_event_with_limits(
             crate::client::transport::limits::SSE_EVENT_BYTES_MAX,
             crate::client::transport::limits::SSE_EVENT_DATA_LINES_MAX,
@@ -68,7 +101,7 @@ impl SseEventParser {
     }
 
     /// Finish the input and return at most one remaining event.
-    fn finish_next_bounded(&mut self) -> ZaiResult<Option<Vec<u8>>> {
+    pub(crate) fn finish_next_bounded(&mut self) -> ZaiResult<Option<Vec<u8>>> {
         if let Some(event) = self.next_event_with_limits(
             crate::client::transport::limits::SSE_EVENT_BYTES_MAX,
             crate::client::transport::limits::SSE_EVENT_DATA_LINES_MAX,
@@ -76,7 +109,7 @@ impl SseEventParser {
         )? {
             return Ok(Some(event));
         }
-        if self.event_data.is_empty() {
+        if self.event_data_lines == 0 {
             self.buf.clear();
             self.scan_from = 0;
             self.search_from = 0;
@@ -115,7 +148,7 @@ impl SseEventParser {
             self.scan_from = next_line;
 
             if is_empty {
-                if self.event_data.is_empty() {
+                if self.event_data_lines == 0 {
                     self.maybe_compact();
                     continue;
                 }
@@ -125,20 +158,24 @@ impl SseEventParser {
             }
 
             if let Some(data) = data {
-                if self.event_data.len() >= max_data_lines {
+                if self.event_data_lines >= max_data_lines {
                     return Err(event_has_too_many_lines(max_data_lines));
                 }
-                let separator = usize::from(!self.event_data.is_empty());
+                let separator = usize::from(self.event_data_lines != 0);
                 let next_bytes = self
-                    .event_bytes
+                    .event_data
+                    .len()
                     .checked_add(separator)
                     .and_then(|bytes| bytes.checked_add(data.len()))
                     .ok_or_else(event_too_large)?;
                 if next_bytes > max_event_bytes {
                     return Err(event_too_large());
                 }
-                self.event_data.push(data.to_vec());
-                self.event_bytes = next_bytes;
+                if separator != 0 {
+                    self.event_data.push(b'\n');
+                }
+                self.event_data.extend_from_slice(data);
+                self.event_data_lines += 1;
             }
 
             self.maybe_compact();
@@ -200,29 +237,42 @@ impl SseEventParser {
     }
 
     fn take_event(&mut self) -> Vec<u8> {
-        self.event_bytes = 0;
-        match self.event_data.len() {
-            0 => Vec::new(),
-            1 => self.event_data.swap_remove(0),
-            _ => {
-                let lines = std::mem::take(&mut self.event_data);
-                join_event_data(&lines)
-            },
-        }
+        self.event_data_lines = 0;
+        std::mem::take(&mut self.event_data)
     }
 
     fn maybe_compact(&mut self) {
         const COMPACT_THRESHOLD: usize = 64 * 1024;
+        // Normal transport parsing feeds at most one parse slice at a time.
+        // A syntactically valid multi-megabyte comment or unknown SSE field
+        // can nevertheless grow `buf` close to the full event limit before
+        // its newline arrives. Once fully consumed, do not let that attacker-
+        // sized scratch allocation remain pinned for the rest of a long-lived
+        // stream.
+        const RETAINED_SCRATCH_MAX: usize =
+            crate::client::transport::limits::SSE_PARSE_SLICE_BYTES * 2;
         if self.scan_from == 0 {
             return;
         }
         if self.scan_from == self.buf.len() {
-            self.buf.clear();
+            if self.buf.capacity() > RETAINED_SCRATCH_MAX {
+                self.buf = Vec::new();
+            } else {
+                self.buf.clear();
+            }
             self.scan_from = 0;
             self.search_from = 0;
         } else if self.scan_from >= COMPACT_THRESHOLD && self.scan_from >= self.buf.len() / 2 {
             let drained = self.scan_from;
-            self.buf.drain(..drained);
+            if self.buf.capacity() > RETAINED_SCRATCH_MAX {
+                // Preserve an incomplete following line without preserving the
+                // oversized allocation that preceded it. `to_vec` performs the
+                // same unavoidable byte move as `drain`, but right-sizes the
+                // replacement buffer.
+                self.buf = self.buf[drained..].to_vec();
+            } else {
+                self.buf.drain(..drained);
+            }
             self.scan_from = 0;
             self.search_from = self.search_from.saturating_sub(drained);
         }
@@ -244,22 +294,50 @@ impl SseEventParser {
     /// still in `buf` (a `data:` line with no trailing newline) is intentionally
     /// NOT emitted — it is not a complete SSE line.
     pub fn finish(&mut self) -> Vec<Vec<u8>> {
+        self.try_finish().unwrap_or_default()
+    }
+
+    /// Finish the input with the production event limits and explicit errors.
+    ///
+    /// Like [`Self::try_push`], a failure releases all parser-owned buffers.
+    pub fn try_finish(&mut self) -> ZaiResult<Vec<Vec<u8>>> {
+        let result = self.try_finish_inner();
+        if result.is_err() {
+            self.reset();
+        }
+        result
+    }
+
+    fn try_finish_inner(&mut self) -> ZaiResult<Vec<Vec<u8>>> {
         let mut events = Vec::new();
-        while let Ok(Some(event)) = self.next_event_with_limits(usize::MAX, usize::MAX, true) {
+        while let Some(event) = self.next_event_with_limits(
+            crate::client::transport::limits::SSE_EVENT_BYTES_MAX,
+            crate::client::transport::limits::SSE_EVENT_DATA_LINES_MAX,
+            true,
+        )? {
             events.push(event);
         }
-        if !self.event_data.is_empty() {
+        if self.event_data_lines != 0 {
             events.push(self.take_event());
         }
-        self.buf.clear();
+        self.reset();
+        Ok(events)
+    }
+
+    fn reset(&mut self) {
+        // Assignment, rather than `clear`, releases a potentially attacker-
+        // sized allocation immediately after a rejected public parse.
+        self.buf = Vec::new();
         self.scan_from = 0;
         self.search_from = 0;
-        events
+        self.event_data = Vec::new();
+        self.event_data_lines = 0;
+        self.bom_checked = false;
     }
 }
 
 struct RequiredDoneState {
-    raw: crate::client::transport::SseByteStream,
+    raw: Option<crate::client::transport::SseByteStream>,
     parser: SseEventParser,
     current_chunk: Option<bytes::Bytes>,
     chunk_offset: usize,
@@ -282,14 +360,20 @@ where
 {
     let payloads = required_done_payloads(raw);
     let stream = futures_util::stream::unfold(
-        (payloads, decode, false),
+        (Some(payloads), decode, false),
         |(mut payloads, decode, terminated)| async move {
             if terminated {
                 return None;
             }
-            let item = payloads.next().await?;
+            let item = payloads.as_mut()?.next().await?;
             let item = item.and_then(|payload| decode(&payload));
             let terminated = item.is_err();
+            if terminated {
+                // A terminal decode error must release the authenticated raw
+                // response immediately, even if the caller keeps this stream
+                // without polling it again.
+                payloads = None;
+            }
             Some((item, (payloads, decode, terminated)))
         },
     );
@@ -300,7 +384,7 @@ fn required_done_payloads(
     raw: crate::client::transport::SseByteStream,
 ) -> Pin<Box<dyn Stream<Item = ZaiResult<Vec<u8>>> + Send + 'static>> {
     let state = RequiredDoneState {
-        raw,
+        raw: Some(raw),
         parser: SseEventParser::new(),
         current_chunk: None,
         chunk_offset: 0,
@@ -321,7 +405,7 @@ fn required_done_payloads(
             let payload = match next_payload {
                 Ok(payload) => payload,
                 Err(error) => {
-                    state.terminated = true;
+                    state.terminate();
                     return Some((Err(error), state));
                 },
             };
@@ -330,23 +414,32 @@ fn required_done_payloads(
                 if payload == b"[DONE]" {
                     return None;
                 }
-                if let Some(error) = std::str::from_utf8(&payload)
-                    .ok()
-                    .and_then(crate::client::transport::decode::extract_error_envelope)
-                {
-                    state.terminated = true;
-                    return Some((Err(business_error(error)), state));
+                if let Ok(payload_text) = std::str::from_utf8(&payload) {
+                    match crate::client::transport::decode::probe_error_envelope(payload_text) {
+                        crate::client::transport::decode::ProbeOutcome::Error(error) => {
+                            state.terminate();
+                            return Some((Err(business_error(error)), state));
+                        },
+                        crate::client::transport::decode::ProbeOutcome::Ambiguous => {
+                            state.terminate();
+                            return Some((Err(ambiguous_business_error()), state));
+                        },
+                        crate::client::transport::decode::ProbeOutcome::Clean
+                        | crate::client::transport::decode::ProbeOutcome::Malformed => {},
+                    }
                 }
                 return Some((Ok(payload), state));
             }
 
             if state.input_finished {
-                state.terminated = true;
+                state.terminate();
                 return Some((Err(ended_without_done()), state));
             }
 
-            if state.parser.buffered_len() > crate::client::transport::limits::SSE_EVENT_BYTES_MAX {
-                state.terminated = true;
+            if state.parser.buffered_len()
+                > crate::client::transport::limits::SSE_PARSER_RETAINED_MAX
+            {
+                state.terminate();
                 return Some((Err(event_too_large()), state));
             }
 
@@ -365,11 +458,15 @@ fn required_done_payloads(
                 continue;
             }
 
-            match state.raw.next().await {
+            let Some(raw) = state.raw.as_mut() else {
+                state.terminate();
+                return Some((Err(ended_without_done()), state));
+            };
+            match raw.next().await {
                 Some(Ok(chunk)) if chunk.is_empty() => {},
                 Some(Ok(chunk)) => state.current_chunk = Some(chunk),
                 Some(Err(error)) => {
-                    state.terminated = true;
+                    state.terminate();
                     return Some((Err(error), state));
                 },
                 None => state.input_finished = true,
@@ -377,6 +474,15 @@ fn required_done_payloads(
         }
     });
     Box::pin(stream)
+}
+
+impl RequiredDoneState {
+    fn terminate(&mut self) {
+        self.terminated = true;
+        self.raw = None;
+        self.current_chunk = None;
+        self.parser.reset();
+    }
 }
 
 fn event_too_large() -> ZaiError {
@@ -412,20 +518,15 @@ fn business_error(error: crate::client::transport::decode::BusinessError) -> Zai
     ZaiError::from_api_response(200, code, error.message)
 }
 
-fn trim_one_leading_space(bytes: &[u8]) -> &[u8] {
-    bytes.strip_prefix(b" ").unwrap_or(bytes)
+fn ambiguous_business_error() -> ZaiError {
+    ZaiError::ApiError {
+        code: codes::SDK_VALIDATION,
+        message: "ambiguous JSON business-error envelope (duplicate reserved field)".to_string(),
+    }
 }
 
-fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
-    let total = lines.iter().map(std::vec::Vec::len).sum::<usize>() + lines.len().saturating_sub(1);
-    let mut event = Vec::with_capacity(total);
-    for (idx, line) in lines.iter().enumerate() {
-        if idx > 0 {
-            event.push(b'\n');
-        }
-        event.extend_from_slice(line);
-    }
-    event
+fn trim_one_leading_space(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b" ").unwrap_or(bytes)
 }
 
 /// Process a new chunk of bytes, extract completed SSE data lines.
@@ -445,7 +546,8 @@ fn join_event_data(lines: &[Vec<u8>]) -> Vec<u8> {
 /// `buf` must be the incomplete-line buffer preserved from the previous call
 /// to this helper; after every call it contains no `\n`. This low-level
 /// compatibility helper does not impose a size limit. For untrusted streams,
-/// prefer [`SseEventParser`], which enforces bounded incremental parsing.
+/// prefer [`SseEventParser::try_push`], which enforces bounded incremental
+/// parsing and reports violations.
 pub fn extract_sse_data_lines(buf: &mut Vec<u8>, new_bytes: &[u8]) -> Vec<Vec<u8>> {
     // A completed prior call leaves no newline in `buf`, so only the new chunk
     // can establish the last completed line. Searching just that chunk avoids
@@ -485,6 +587,10 @@ pub fn extract_sse_data_lines(buf: &mut Vec<u8>, new_bytes: &[u8]) -> Vec<Vec<u8
 mod tests {
     use super::*;
     use bytes::Bytes;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     #[test]
     fn test_single_complete_line() {
@@ -523,6 +629,29 @@ mod tests {
             vec![b"fragmented".to_vec()]
         );
         assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn consumed_large_comment_releases_scratch_capacity_before_reuse() {
+        const LARGE_COMMENT_BYTES: usize = 4 * 1024 * 1024;
+        const RETAINED_SCRATCH_MAX: usize =
+            crate::client::transport::limits::SSE_PARSE_SLICE_BYTES * 2;
+
+        let mut input = Vec::with_capacity(LARGE_COMMENT_BYTES + 3);
+        input.push(b':');
+        input.resize(LARGE_COMMENT_BYTES + 1, b'x');
+        input.extend_from_slice(b"\ndata: pending");
+
+        let mut parser = SseEventParser::new();
+        assert!(parser.try_push(&input).unwrap().is_empty());
+        assert_eq!(parser.buffered_len(), b"data: pending".len());
+        assert!(
+            parser.buf.capacity() <= RETAINED_SCRATCH_MAX,
+            "consumed comment retained {} bytes of scratch capacity",
+            parser.buf.capacity(),
+        );
+
+        assert_eq!(parser.try_push(b"\n\n").unwrap(), vec![b"pending".to_vec()],);
     }
 
     #[test]
@@ -578,6 +707,29 @@ mod tests {
         let mut parser = SseEventParser::new();
         let events = parser.push(b"data: {\"a\":\ndata: 1}\n\n");
         assert_eq!(events, vec![b"{\"a\":\n1}".to_vec()]);
+    }
+
+    #[test]
+    fn event_parser_preserves_fragmented_empty_data_lines_and_mixed_endings() {
+        let mut parser = SseEventParser::new();
+        let fragments: [&[u8]; 8] = [
+            b"da",
+            b"ta:\r",
+            b"\nda",
+            b"ta: {\"a\":\r",
+            b"data: 1}\n",
+            b"data:\r",
+            b"\n\r",
+            b"\n",
+        ];
+
+        for fragment in &fragments[..fragments.len() - 1] {
+            assert!(parser.try_push(fragment).unwrap().is_empty());
+        }
+        assert_eq!(
+            parser.try_push(fragments[fragments.len() - 1]).unwrap(),
+            vec![b"\n{\"a\":\n1}\n".to_vec()]
+        );
     }
 
     #[test]
@@ -643,6 +795,80 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.code(), Some(codes::SDK_VALIDATION));
         assert!(error.message().contains("data-line limit"));
+    }
+
+    #[test]
+    fn bounded_parser_counts_inserted_newlines_in_the_byte_limit() {
+        let mut exact = SseEventParser::new();
+        exact.feed(b"data: a\ndata: b\n\n");
+        assert_eq!(
+            exact.next_event_with_limits(3, 2, false).unwrap(),
+            Some(b"a\nb".to_vec())
+        );
+
+        let mut oversized = SseEventParser::new();
+        oversized.feed(b"data: a\ndata: b\n\n");
+        let error = oversized.next_event_with_limits(2, 2, false).unwrap_err();
+        assert_eq!(error.code(), Some(codes::SDK_VALIDATION));
+        assert!(error.message().contains("exceeded limit"));
+    }
+
+    #[test]
+    fn public_parser_accepts_exact_data_line_limit_with_empty_payloads() {
+        let line_limit = crate::client::transport::limits::SSE_EVENT_DATA_LINES_MAX;
+        let mut input = b"data:\n".repeat(line_limit);
+        input.push(b'\n');
+
+        let mut parser = SseEventParser::new();
+        let events = parser.try_push(&input).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].len(), line_limit - 1);
+        assert!(events[0].iter().all(|byte| *byte == b'\n'));
+    }
+
+    #[test]
+    fn public_parser_limits_line_count_and_releases_failed_event() {
+        let mut input = Vec::new();
+        for _ in 0..=crate::client::transport::limits::SSE_EVENT_DATA_LINES_MAX {
+            input.extend_from_slice(b"data: x\n");
+        }
+
+        let mut parser = SseEventParser::new();
+        let error = parser.try_push(&input).unwrap_err();
+        assert_eq!(error.code(), Some(codes::SDK_VALIDATION));
+        assert!(error.message().contains("data-line limit"));
+        assert_eq!(parser.buffered_len(), 0);
+        assert_eq!(parser.buf.capacity(), 0);
+        assert_eq!(parser.event_data.capacity(), 0);
+
+        // The compatibility API also fails closed instead of retaining an
+        // attacker-controlled event indefinitely.
+        assert!(parser.push(&input).is_empty());
+        assert_eq!(parser.buffered_len(), 0);
+
+        // A reset parser remains useful after the caller handles the failure.
+        assert_eq!(
+            parser.try_push(b"data: recovered\n\n").unwrap(),
+            vec![b"recovered".to_vec()]
+        );
+    }
+
+    #[test]
+    fn exact_byte_limit_is_independent_of_transport_terminator_chunk() {
+        let payload_len = crate::client::transport::limits::SSE_EVENT_BYTES_MAX;
+        let mut input = Vec::with_capacity(payload_len + 6);
+        input.extend_from_slice(b"data: ");
+        input.resize(payload_len + 6, b'x');
+
+        let mut parser = SseEventParser::new();
+        assert!(parser.try_push(&input).unwrap().is_empty());
+        drop(input);
+
+        let events = parser.try_push(b"\n\n").unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].len(), payload_len);
+        assert_eq!(events[0].first(), Some(&b'x'));
+        assert_eq!(events[0].last(), Some(&b'x'));
     }
 
     #[test]
@@ -737,6 +963,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn required_done_stream_accepts_exact_limit_before_later_terminator() {
+        let payload_len = crate::client::transport::limits::SSE_EVENT_BYTES_MAX;
+        let mut first_chunk = Vec::with_capacity(payload_len + 6);
+        first_chunk.extend_from_slice(b"data: ");
+        first_chunk.resize(payload_len + 6, b'x');
+
+        let raw: crate::client::transport::SseByteStream = Box::pin(futures_util::stream::iter([
+            Ok(Bytes::from(first_chunk)),
+            Ok(Bytes::from_static(b"\n\ndata: [DONE]\n\n")),
+        ]));
+        let mut stream = decode_required_done_stream(raw, |payload| Ok(payload.len()));
+
+        assert_eq!(stream.next().await.unwrap().unwrap(), payload_len);
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
     async fn required_done_stream_accepts_bom_and_lone_cr_events() {
         let raw: crate::client::transport::SseByteStream =
             Box::pin(futures_util::stream::iter([Ok(Bytes::from_static(
@@ -780,6 +1023,103 @@ mod tests {
             });
             assert!(stream.next().await.unwrap().is_err());
             assert!(stream.next().await.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn terminal_decode_errors_drop_the_raw_stream_before_being_yielded() {
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        for body in [
+            Bytes::from_static(b"data: not-json\n\n"),
+            Bytes::from_static(b"data: {\"error\":{\"code\":1302,\"message\":\"limited\"}}\n\n"),
+        ] {
+            let dropped = Arc::new(AtomicBool::new(false));
+            let guard = DropFlag(Arc::clone(&dropped));
+            let mut body = Some(body);
+            let raw: crate::client::transport::SseByteStream =
+                Box::pin(futures_util::stream::poll_fn(move |_| {
+                    let _keep_guard_alive = &guard;
+                    match body.take() {
+                        Some(body) => std::task::Poll::Ready(Some(Ok(body))),
+                        None => std::task::Poll::Pending,
+                    }
+                }));
+            let mut stream = decode_required_done_stream(raw, |payload| {
+                serde_json::from_slice::<serde_json::Value>(payload).map_err(ZaiError::from)
+            });
+
+            assert!(stream.next().await.unwrap().is_err());
+            assert!(
+                dropped.load(Ordering::SeqCst),
+                "terminal errors must release the raw response before the caller polls again"
+            );
+            // Keep `stream` alive through the assertion: release must not rely
+            // on Drop or a follow-up poll.
+            assert!(stream.next().await.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn ambiguous_in_band_envelopes_error_once_drop_raw_and_do_not_leak() {
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        for (case, payload, secret) in [
+            (
+                "top-level code",
+                r#"{"id":"valid-chat-like","choices":[],"code":1302,"code":200,"message":"private-parser-top-level"}"#,
+                "private-parser-top-level",
+            ),
+            (
+                "nested error code",
+                r#"{"id":"valid-asr-like","type":"transcript.text.delta","delta":"valid","error":{"code":1302,"code":200,"message":"private-parser-nested"}}"#,
+                "private-parser-nested",
+            ),
+        ] {
+            let body = Bytes::from(format!(
+                "data: {payload}\n\ndata: {{\"id\":\"after-error\"}}\n\ndata: [DONE]\n\n"
+            ));
+            let dropped = Arc::new(AtomicBool::new(false));
+            let guard = DropFlag(Arc::clone(&dropped));
+            let mut body = Some(body);
+            let raw: crate::client::transport::SseByteStream =
+                Box::pin(futures_util::stream::poll_fn(move |_| {
+                    let _keep_guard_alive = &guard;
+                    match body.take() {
+                        Some(body) => std::task::Poll::Ready(Some(Ok(body))),
+                        None => std::task::Poll::Pending,
+                    }
+                }));
+            let mut stream = decode_required_done_stream(raw, |payload| {
+                serde_json::from_slice::<serde_json::Value>(payload).map_err(ZaiError::from)
+            });
+
+            let error = stream.next().await.unwrap().unwrap_err();
+            assert_eq!(error.code(), Some(codes::SDK_VALIDATION), "{case}");
+            assert_eq!(
+                error.message(),
+                "ambiguous JSON business-error envelope (duplicate reserved field)",
+                "{case}"
+            );
+            assert!(
+                dropped.load(Ordering::SeqCst),
+                "{case}: ambiguous error did not immediately release raw response"
+            );
+            for rendered in [error.to_string(), format!("{error:?}"), error.compact()] {
+                assert!(!rendered.contains(secret), "{case}: {rendered}");
+                assert!(!rendered.contains("1302"), "{case}: {rendered}");
+            }
+            assert!(stream.next().await.is_none(), "{case}");
         }
     }
 }

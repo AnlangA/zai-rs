@@ -151,11 +151,32 @@ contextual_enum = [0, 1]
 code_must_equal = 200
 code_missing = "Err"
 code_not_200 = "Err"
-data_missing = "Err"
+data_bearing_operations = [
+    "knowledge.list_documents",
+    "knowledge.list_document_images",
+    "knowledge.upload_document",
+    "knowledge.upload_document_url",
+    "knowledge.get_document",
+    "knowledge.list",
+    "knowledge.create",
+    "knowledge.capacity",
+    "knowledge.retrieve",
+    "knowledge.get",
+]
+data_bearing_success = "code == 200 and data is present and non-null"
+data_missing_for_data_bearing = "Err"
+data_null_for_data_bearing = "Err"
+operation_only_operations = [
+    "knowledge.reembed_document",
+    "knowledge.delete_document",
+    "knowledge.delete",
+    "knowledge.update",
+]
+operation_only_success = "code == 200; data is not required"
 
 [knowledge.detail_names]
-get_by_id = "KnowledgeGetRequest / client.knowledge().get"
-search = "KnowledgeSearchRequest / client.knowledge().retrieve"
+get_by_id = "zai_rs::knowledge::KnowledgeGetRequest::send_via"
+search = "zai_rs::knowledge::KnowledgeSearchRequest::send_via"
 
 # ---------------------------------------------------------------------------
 # 13.6 Streaming, Realtime & Coding Plan.

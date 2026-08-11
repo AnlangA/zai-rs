@@ -12,7 +12,9 @@ fuzz_target!(|data: &[u8]| {
     let chunk_size = usize::from(chunk_seed % 64) + 1;
     let mut parser = SseEventParser::new();
     for chunk in payload.chunks(chunk_size) {
-        let _ = parser.push(chunk);
+        if parser.try_push(chunk).is_err() {
+            return;
+        }
     }
-    let _ = parser.finish();
+    let _ = parser.try_finish();
 });

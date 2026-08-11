@@ -13,3 +13,6 @@ pub use data::*;
 pub use image_model::*;
 pub use image_request::*;
 pub use image_response::*;
+
+#[cfg(test)]
+pub(crate) use image_model::IMAGE_MODEL_REGISTRY_SNAPSHOT;

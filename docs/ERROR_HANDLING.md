@@ -44,19 +44,29 @@ async fn main() {
     match result {
         Ok(()) => {},
         Err(error) if error.is_auth_error() => {
-            tracing::error!(
-                code = error.code(),
-                message = %error.message(),
-                "认证失败",
-            );
+            tracing::error!(category = ?error.category(), "认证失败");
         },
         Err(error) if error.is_rate_limit() => {
-            tracing::warn!(error = %error.compact(), "请求受到限流");
+            tracing::warn!(category = ?error.category(), "请求受到限流");
         },
-        Err(error) => tracing::error!(error = %error, "请求失败"),
+        Err(error) => tracing::error!(
+            category = ?error.category(),
+            retryable = error.is_retryable(),
+            attempts = error
+                .request_metadata()
+                .map(|metadata| metadata.attempts())
+                .unwrap_or_default(),
+            "请求失败",
+        ),
     }
 }
 ```
+
+默认生产日志应只记录 `category`、`retryable`、attempt 次数等 SDK 自有结构化字段。
+`message()`、`compact()`、`Display`、`Debug`、provider request ID，以及前向兼容事件的
+`raw()` 都可能包含 prompt、transcript、工具参数、文件名或其他应用正文。SDK 的 credential
+masking 只处理可识别凭据和明确标记的 operation secret，不是任意正文脱敏器；只有在
+应用自己的内容分级与日志策略允许时，才应显式记录这些值。
 
 应用代码通常不需要匹配所有变体。`category()`、`is_auth_error()`、
 `is_rate_limit()`、`is_client_error()`、`is_server_error()` 和
@@ -82,6 +92,17 @@ async fn main() {
 | `RealtimeAuthError` | Realtime API key/JWT 错误 |
 | `Unknown` | 未知业务码或未分类状态 |
 
+Realtime HTTP 握手拒绝会以
+`RealtimeErrorKind::HandshakeHttp(RealtimeHandshakeHttpContext)` 出现在
+`RealtimeError` 内。context 只公开 `status()`、`business_code()` 和
+`retry_after()`；服务端或代理返回的原始 headers/body 在错误构造时即被丢弃，不会进入
+`Debug` 或 `Error::source()`。其 `category()` / `is_retryable()` 与普通 HTTP
+transport 使用同一套 status + business-code 优先规则。由于 Tungstenite 只保留解析响应头时
+同一次读取附带的 body tail，只有唯一 `Content-Length` 与该 tail 精确相等且没有
+`Transfer-Encoding` 时，SDK 才把限长、完整 JSON 中的业务码用于分类；否则只信 HTTP status。
+其他 WebSocket 错误只有明确的
+瞬时 I/O kind 可重试，TLS、URL、协议、容量和格式错误默认不重试。
+
 `error.code()` 返回可用的 HTTP/业务/SDK 错误码，`error.message()` 返回描述。
 对于 `HttpBusinessError`，`code()` 返回用于分类和重试决策的 HTTP 状态，
 `raw_business_code()` 才返回经过限长、规范化和凭据脱敏的未知 wire 业务码。
@@ -101,7 +122,6 @@ fn report(error: &ZaiError) {
     if let Some(metadata) = error.request_metadata() {
         tracing::warn!(
             attempts = metadata.attempts(),
-            request_id = metadata.request_id(),
             retry_after_ms = metadata.retry_after().map(|value| value.as_millis()),
             timeout_phase = ?metadata.timeout_phase(),
             category = ?error.category(),
@@ -110,6 +130,9 @@ fn report(error: &ZaiError) {
 
         if metadata.timeout_phase() == Some(TimeoutPhase::Overall) {
             tracing::warn!("请求的整体 deadline 已耗尽");
+        }
+        if metadata.timeout_phase() == Some(TimeoutPhase::StreamConsumer) {
+            tracing::warn!("SSE raw stream 的 consumer lease 已耗尽");
         }
     }
 
@@ -120,10 +143,17 @@ fn report(error: &ZaiError) {
 }
 ```
 
-`attempts` 包含首次请求。`timeout_phase` 区分普通 attempt、overall、SSE
-handshake 和 SSE idle；`retry_after` 是最后一个通过校验的服务端提示。
-`request_id` 只有在值满足长度和保守 ASCII 字符约束时才保留。为避免日志意外
-泄露，默认 `Display`、`Debug` 和 `compact()` 都不会输出它。
+`attempts` 包含首次请求（admission queue timeout 为 0）。`timeout_phase` 区分普通
+attempt、overall、SSE handshake、SSE idle、admission queue 和 stream consumer。
+`SseIdle` 表示已建立 SSE 的网络侧静默；`StreamConsumer` 表示底层 SSE raw stream
+未在 consumer lease 内被推进。consumer 先取 `base = min(scoped, global)`，再取
+`effective = max(base, sse_idle + 1s)`；因此 scoped override 只能降低 base，idle floor
+可能使它不改变 effective。base setter 最大接受 24 小时，effective 最大可达 24 小时
+加 1 秒。lease 只在 raw-stream poll 实际取得 chunk 时续期，typed decoder 从已缓冲
+raw chunk 产出 item 不一定触发续期。文件流不使用 `StreamConsumer`，未被推进时仍由
+absolute overall deadline 回收并报告 `Overall`。`retry_after` 是最后一个通过校验的
+服务端提示。`request_id` 只有在值满足长度和保守 ASCII 字符约束时才保留。为避免日志
+意外泄露，默认 `Display`、`Debug` 和 `compact()` 都不会输出它。
 
 ## 自动重试
 
@@ -166,15 +196,18 @@ let client = client.with_request_options(
     RequestOptions::default()
         .with_attempt_timeout(Duration::from_secs(20))?
         .with_overall_timeout(Duration::from_secs(45))?
+        .with_stream_consumer_timeout(Duration::from_secs(120))?
         .with_max_attempts(2)?,
 );
 # Ok(client)
 # }
 ```
 
-这些 timeout 可以为已知慢请求放宽全局默认，但仍有公开的绝对上限；请求次数不能
-高于全局 `HttpTransportConfig::max_attempts`。SSE 的 handshake 与 idle timeout
-分别报告，且即使设置 `RetryOverride` 也不会重放 SSE POST。
+attempt/overall 等请求 timeout 可以为已知慢请求覆盖默认值，但仍有公开的绝对上限；
+stream-consumer override 只能降低 client 的 configured base，且可能被
+`sse_idle + 1s` floor 抵消。请求次数不能高于全局 `HttpTransportConfig::max_attempts`。
+SSE 的 handshake、idle 与 consumer timeout 分别报告，且即使设置 `RetryOverride`
+也不会重放 SSE POST。
 
 ## 日志与敏感信息
 
@@ -190,8 +223,11 @@ let safe = mask_sensitive_info(line);
 assert!(!safe.contains("abcdefghijklmnop"));
 ```
 
-推荐记录 endpoint 模板、HTTP 状态、错误分类和请求 ID；不要记录 Authorization
-header、完整请求体、用户文件内容或 Realtime token。
+推荐默认记录 endpoint 模板、HTTP 状态和错误分类；不要记录 Authorization header、
+完整请求体、用户文件内容或 Realtime token。provider request ID 虽有限长和字符集校验，
+仍可能是应用数据，只应在自身日志策略允许时通过显式 accessor 读取。
+`ServerEvent::UnsupportedKnown::raw` 同样可能包含 transcript、tool argument 或媒体相关
+元数据，应按不可信应用 payload 处理。
 
 ## 业务码映射
 

@@ -19,3 +19,6 @@ pub use data::*;
 pub use model::*;
 pub use request::*;
 pub use response::*;
+
+#[cfg(test)]
+pub(crate) use model::ASR_MODEL_REGISTRY_SNAPSHOT;

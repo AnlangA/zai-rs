@@ -57,7 +57,7 @@ pub trait ModelName: Into<String> + serde::Serialize {
 /// preventing invalid API calls at compile time.
 pub trait Bounded {}
 
-mod sealed {
+pub(crate) mod sealed {
     pub trait Chat {}
     pub trait AsyncChat {}
     pub trait ChatRequestModel {}
@@ -66,15 +66,6 @@ mod sealed {
     pub trait VideoGen {}
     pub trait ImageGen {}
     pub trait VoiceClone {}
-
-    impl AudioToText for crate::model::audio_to_text::GlmAsr {}
-    impl TextToAudio for crate::model::text_to_audio::GlmTts {}
-    impl VideoGen for crate::model::gen_video_async::CogVideoX3 {}
-    impl ImageGen for crate::model::gen_image::GlmImage {}
-    impl ImageGen for crate::model::gen_image::CogView4_250304 {}
-    impl ImageGen for crate::model::gen_image::CogView4 {}
-    impl ImageGen for crate::model::gen_image::CogView3Flash {}
-    impl VoiceClone for crate::model::voice_clone::GlmTtsClone {}
 }
 
 /// Indicates that a model supports synchronous chat completion.
@@ -138,87 +129,6 @@ pub trait ResponseFormatEnable: ChatRequestModel {}
 
 /// Indicates that an audio chat model accepts `watermark_enabled`.
 pub trait WatermarkEnable: ChatRequestModel {}
-
-macro_rules! seal_chat_capability {
-    ($capability:ident: $($model:path),+ $(,)?) => {
-        $(impl sealed::$capability for $model {})+
-    };
-}
-
-seal_chat_capability!(Chat:
-    super::chat_models::GLM5_2,
-    super::chat_models::GLM5_1,
-    super::chat_models::GLM5_1_highspeed,
-    super::chat_models::GLM5_turbo,
-    super::chat_models::GLM5,
-    super::chat_models::GLM4_7,
-    super::chat_models::GLM4_7_flash,
-    super::chat_models::GLM4_7_flashx,
-    super::chat_models::GLM4_6,
-    super::chat_models::GLM4_5_flash,
-    super::chat_models::GLM4_5_air,
-    super::chat_models::GLM4_5_airx,
-    super::chat_models::GLM4_flash_250414,
-    super::chat_models::GLM4_flashx_250414,
-    super::chat_models::GLM5V_turbo,
-    super::chat_models::autoglm_phone,
-    super::chat_models::GLM4_6v,
-    super::chat_models::GLM4_6v_flash,
-    super::chat_models::GLM4_6v_flashx,
-    super::chat_models::GLM4v_flash,
-    super::chat_models::GLM4_1v_thinking_flash,
-    super::chat_models::GLM4_1v_thinking_flashx,
-    super::chat_models::GLM4_voice,
-);
-
-seal_chat_capability!(AsyncChat:
-    super::chat_models::GLM5_2,
-    super::chat_models::GLM5_1,
-    super::chat_models::GLM5_1_highspeed,
-    super::chat_models::GLM5_turbo,
-    super::chat_models::GLM5,
-    super::chat_models::GLM4_7,
-    super::chat_models::GLM4_6,
-    super::chat_models::GLM4_5_flash,
-    super::chat_models::GLM4_5_air,
-    super::chat_models::GLM4_5_airx,
-    super::chat_models::GLM4_flash_250414,
-    super::chat_models::GLM4_flashx_250414,
-    super::chat_models::GLM5V_turbo,
-    super::chat_models::GLM4_6v,
-    super::chat_models::GLM4_6v_flash,
-    super::chat_models::GLM4_6v_flashx,
-    super::chat_models::GLM4v_flash,
-    super::chat_models::GLM4_1v_thinking_flash,
-    super::chat_models::GLM4_1v_thinking_flashx,
-    super::chat_models::GLM4_voice,
-);
-
-seal_chat_capability!(ChatRequestModel:
-    super::chat_models::GLM5_2,
-    super::chat_models::GLM5_1,
-    super::chat_models::GLM5_1_highspeed,
-    super::chat_models::GLM5_turbo,
-    super::chat_models::GLM5,
-    super::chat_models::GLM4_7,
-    super::chat_models::GLM4_7_flash,
-    super::chat_models::GLM4_7_flashx,
-    super::chat_models::GLM4_6,
-    super::chat_models::GLM4_5_flash,
-    super::chat_models::GLM4_5_air,
-    super::chat_models::GLM4_5_airx,
-    super::chat_models::GLM4_flash_250414,
-    super::chat_models::GLM4_flashx_250414,
-    super::chat_models::GLM5V_turbo,
-    super::chat_models::autoglm_phone,
-    super::chat_models::GLM4_6v,
-    super::chat_models::GLM4_6v_flash,
-    super::chat_models::GLM4_6v_flashx,
-    super::chat_models::GLM4v_flash,
-    super::chat_models::GLM4_1v_thinking_flash,
-    super::chat_models::GLM4_1v_thinking_flashx,
-    super::chat_models::GLM4_voice,
-);
 
 /// Indicates that a model supports thinking/reasoning capabilities.
 ///
@@ -361,10 +271,68 @@ macro_rules! impl_message_binding {
 }
 pub(crate) use impl_message_binding;
 
-// Applies capability traits to one or more built-in model identifiers.
-macro_rules! impl_model_markers {
-    ($model:ident : $($marker:path),+ $(,)?) => {
-        $( impl $marker for $model {} )+
+// Declares the frozen model ids accepted by one non-chat HTTP request schema.
+//
+// Keeping the wire id and both halves of the sealed capability implementation
+// in one invocation prevents a model from accidentally being serializable but
+// unusable (or request-compatible under the wrong endpoint). The generated
+// metadata and contract test only exist in unit-test builds; this is not a
+// public runtime registry.
+macro_rules! endpoint_model_registry {
+    (
+        snapshot: $snapshot:ident,
+        family: $family:literal,
+        capability: $capability:ident;
+        $(
+            $(#[$meta:meta])*
+            $model:ident => $model_id:literal;
+        )+
+    ) => {
+        $(
+            $crate::model::traits::define_model_type!(
+                $(#[$meta])*
+                $model,
+                $model_id
+            );
+            impl $crate::model::traits::sealed::$capability for $model {}
+            impl $crate::model::traits::$capability for $model {}
+        )+
+
+        #[cfg(test)]
+        pub(crate) const $snapshot: &[(&str, &str, &str, &str)] = &[
+            $(
+                (
+                    $family,
+                    stringify!($model),
+                    $model_id,
+                    stringify!($capability),
+                ),
+            )+
+        ];
+
+        #[cfg(test)]
+        mod registry_contract_tests {
+            use super::*;
+
+            fn assert_registration<N>(expected_id: &str)
+            where
+                N: $crate::model::traits::ModelName
+                    + $crate::model::traits::$capability
+                    + Default,
+            {
+                assert_eq!(N::NAME, expected_id);
+                assert_eq!(Into::<String>::into(N::default()), expected_id);
+                assert_eq!(
+                    serde_json::to_value(N::default()).expect("model id must serialize"),
+                    serde_json::Value::String(expected_id.to_owned()),
+                );
+            }
+
+            #[test]
+            fn generated_wire_and_request_capability_contracts_hold() {
+                $(assert_registration::<$model>($model_id);)+
+            }
+        }
     };
 }
-pub(crate) use impl_model_markers;
+pub(crate) use endpoint_model_registry;

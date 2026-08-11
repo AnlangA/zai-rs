@@ -1,0 +1,8 @@
+image|GlmImage|glm-image|ImageGen
+image|CogView4_250304|cogview-4-250304|ImageGen
+image|CogView4|cogview-4|ImageGen
+image|CogView3Flash|cogview-3-flash|ImageGen
+video|CogVideoX3|cogvideox-3|VideoGen
+asr|GlmAsr|glm-asr-2512|AudioToText
+tts|GlmTts|glm-tts|TextToAudio
+voice_clone|GlmTtsClone|glm-tts-clone|VoiceClone

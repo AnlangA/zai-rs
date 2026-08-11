@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use validator::Validate;
 
 use super::types::BatchItem;
-use crate::{ZaiResult, client::ZaiClient};
+use crate::{ZaiResult, client::ZaiClient, pagination::CursorPagination};
 
 /// Query parameters for listing batch processing tasks
 #[derive(Clone, Serialize, Deserialize, Validate)]
@@ -53,6 +53,17 @@ impl BatchListQuery {
         self.limit = Some(limit);
         self
     }
+
+    /// Replace the cursor and limit with validated pagination values.
+    ///
+    /// This safe path requires a non-zero limit. The existing
+    /// [`with_limit`](Self::with_limit) method retains its legacy behavior.
+    pub fn try_with_pagination(mut self, pagination: CursorPagination) -> ZaiResult<Self> {
+        let (after, limit) = pagination.into_parts();
+        self.after = after;
+        self.limit = limit;
+        Ok(self)
+    }
 }
 
 /// Batches list request (GET /paas/v4/batches)
@@ -74,6 +85,12 @@ impl BatchListRequest {
         self
     }
 
+    /// Replace the request's cursor and limit with validated pagination.
+    pub fn try_with_pagination(mut self, pagination: CursorPagination) -> ZaiResult<Self> {
+        self.query = self.query.try_with_pagination(pagination)?;
+        Ok(self)
+    }
+
     /// Validate the query, send the request, and parse the typed response.
     pub async fn send_via(&self, client: &ZaiClient) -> ZaiResult<BatchListResponse> {
         self.query.validate()?;
@@ -87,18 +104,10 @@ impl BatchListRequest {
                 "after cannot be blank when provided",
             ));
         }
-        let mut params: Vec<(&str, String)> = Vec::new();
-        if let Some(after) = self.query.after.as_ref() {
-            params.push(("after", after.clone()));
-        }
-        if let Some(limit) = self.query.limit.as_ref() {
-            params.push(("limit", limit.to_string()));
-        }
-        let borrowed: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
         let route = crate::client::routes::BATCHES_LIST;
         client
             .operation(route)
-            .with_query(borrowed)
+            .with_query(&self.query)?
             .send_empty::<BatchListResponse>()
             .await
     }
@@ -113,7 +122,8 @@ impl Default for BatchListRequest {
 /// Response for listing batch processing tasks
 #[derive(Debug, Clone, Serialize, Validate)]
 pub struct BatchListResponse {
-    /// Response type ("list")
+    /// Response type ("list"). An unknown string marker maps to `None` while
+    /// the remaining documented payload is preserved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object: Option<BatchListObject>,
 
@@ -134,13 +144,74 @@ pub struct BatchListResponse {
     pub has_more: Option<bool>,
 }
 
+impl BatchListResponse {
+    /// Return the cursor for the next page when the response explicitly says
+    /// more data is available and supplies a non-blank last ID.
+    pub fn next_after(&self) -> Option<&str> {
+        if self.has_more != Some(true) {
+            return None;
+        }
+        self.last_id
+            .as_deref()
+            .filter(|last_id| !last_id.trim().is_empty())
+    }
+}
+
 #[derive(Deserialize)]
 struct BatchListResponseWire {
+    #[serde(default, deserialize_with = "deserialize_optional_batch_list_object")]
     object: Option<BatchListObject>,
     data: Option<Vec<BatchItem>>,
     first_id: Option<String>,
     last_id: Option<String>,
     has_more: Option<bool>,
+}
+
+enum BatchListObjectWire {
+    List,
+    Unknown,
+}
+
+impl<'de> Deserialize<'de> for BatchListObjectWire {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MarkerVisitor;
+
+        impl serde::de::Visitor<'_> for MarkerVisitor {
+            type Value = BatchListObjectWire;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a batch-list object marker string")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(match value {
+                    "list" => BatchListObjectWire::List,
+                    _ => BatchListObjectWire::Unknown,
+                })
+            }
+        }
+
+        deserializer.deserialize_str(MarkerVisitor)
+    }
+}
+
+fn deserialize_optional_batch_list_object<'de, D>(
+    deserializer: D,
+) -> Result<Option<BatchListObject>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let marker = Option::<BatchListObjectWire>::deserialize(deserializer)?;
+    Ok(match marker {
+        Some(BatchListObjectWire::List) => Some(BatchListObject::List),
+        Some(BatchListObjectWire::Unknown) | None => None,
+    })
 }
 
 impl<'de> Deserialize<'de> for BatchListResponse {
@@ -169,7 +240,7 @@ impl<'de> Deserialize<'de> for BatchListResponse {
     }
 }
 
-/// Object type for list responses
+/// Known object type for list responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BatchListObject {
@@ -187,6 +258,48 @@ mod tests {
         assert!(serde_json::from_str::<BatchListResponse>(r#"{"data":null}"#).is_err());
         assert!(serde_json::from_str::<BatchListResponse>(r#"{"data":[]}"#).is_ok());
         assert!(serde_json::from_str::<BatchListResponse>(r#"{"object":"future"}"#).is_err());
+        assert!(
+            serde_json::from_str::<BatchListResponse>(
+                r#"{"object":"future","data":null,"has_more":null}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn list_object_marker_is_forward_compatible_only_at_the_wire_field() {
+        let future: BatchListResponse = serde_json::from_str(
+            r#"{"object":"future_list","first_id":"batch-1","has_more":false}"#,
+        )
+        .unwrap();
+        assert!(future.object.is_none());
+        assert_eq!(future.first_id.as_deref(), Some("batch-1"));
+        assert_eq!(future.has_more, Some(false));
+
+        let known: BatchListResponse = serde_json::from_str(r#"{"object":"list"}"#).unwrap();
+        assert!(matches!(known.object, Some(BatchListObject::List)));
+        let missing: BatchListResponse = serde_json::from_str(r#"{"last_id":"batch-2"}"#).unwrap();
+        assert!(missing.object.is_none());
+        assert_eq!(missing.last_id.as_deref(), Some("batch-2"));
+        let null: BatchListResponse = serde_json::from_str(r#"{"object":null,"data":[]}"#).unwrap();
+        assert!(null.object.is_none());
+        assert!(null.data.as_ref().is_some_and(Vec::is_empty));
+
+        for marker in ["1", "true", "[]", "{}", r#"{"future-list":null}"#] {
+            let text = format!(r#"{{"object":{marker},"has_more":false}}"#);
+            assert!(serde_json::from_str::<BatchListResponse>(&text).is_err());
+        }
+        assert!(serde_json::from_str::<BatchListObject>(r#""future_list""#).is_err());
+
+        let encoded = serde_json::to_value(BatchListResponse {
+            object: Some(BatchListObject::List),
+            data: None,
+            first_id: None,
+            last_id: None,
+            has_more: None,
+        })
+        .unwrap();
+        assert_eq!(encoded["object"], "list");
     }
 
     #[test]
@@ -198,5 +311,50 @@ mod tests {
     #[test]
     fn limit_does_not_invent_an_upstream_range() {
         assert!(BatchListQuery::new().with_limit(0).validate().is_ok());
+    }
+
+    #[test]
+    fn validated_pagination_maps_without_changing_legacy_limit_behavior() {
+        let pagination = CursorPagination::new()
+            .try_with_after("batch-cursor")
+            .unwrap()
+            .try_with_limit(u32::MAX)
+            .unwrap();
+        let query = BatchListQuery::new()
+            .try_with_pagination(pagination)
+            .unwrap();
+        assert_eq!(query.after.as_deref(), Some("batch-cursor"));
+        assert_eq!(query.limit, Some(u32::MAX));
+
+        assert!(BatchListQuery::new().with_limit(0).validate().is_ok());
+    }
+
+    #[test]
+    fn next_after_requires_explicit_more_data_and_a_non_blank_last_id() {
+        fn response(has_more: Option<bool>, last_id: Option<&str>) -> BatchListResponse {
+            BatchListResponse {
+                object: None,
+                data: None,
+                first_id: None,
+                last_id: last_id.map(str::to_owned),
+                has_more,
+            }
+        }
+
+        assert_eq!(
+            response(Some(true), Some("batch-2")).next_after(),
+            Some("batch-2")
+        );
+        assert_eq!(response(Some(false), Some("batch-2")).next_after(), None);
+        assert_eq!(response(None, Some("batch-2")).next_after(), None);
+
+        for last_id in [None, Some(""), Some(" \t\u{2003}")] {
+            assert_eq!(response(Some(true), last_id).next_after(), None);
+        }
+
+        assert_eq!(
+            response(Some(true), Some(" batch-2 ")).next_after(),
+            Some(" batch-2 ")
+        );
     }
 }

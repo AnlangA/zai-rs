@@ -13,6 +13,7 @@ use zai_rs::model::{
     audio_to_text::GlmAsr,
     gen_image::{CogView3Flash, CogView4, CogView4_250304, GlmImage},
     text_to_audio::GlmTts,
+    traits::ModelName,
     voice_clone::GlmTtsClone,
     *,
 };
@@ -191,4 +192,22 @@ fn asr_and_tts_match_manual_constraints() {
             "{category}: id `{actual}` does not match manual-constraint pin `{expected}`"
         );
     }
+}
+
+fn assert_public_realtime_wire_type<M>(expected_id: &str)
+where
+    M: ModelName + Default,
+{
+    assert_eq!(M::NAME, expected_id);
+    assert_eq!(Into::<String>::into(M::default()), expected_id);
+    assert_eq!(
+        serde_json::to_value(M::default()).expect("model id must serialize"),
+        serde_json::Value::String(expected_id.to_owned()),
+    );
+}
+
+#[test]
+fn realtime_wire_types_remain_public_without_the_realtime_feature() {
+    assert_public_realtime_wire_type::<GLM_realtime_flash>("glm-realtime-flash");
+    assert_public_realtime_wire_type::<GLM_realtime_air>("glm-realtime-air");
 }

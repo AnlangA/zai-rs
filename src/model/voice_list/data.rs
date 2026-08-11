@@ -35,17 +35,10 @@ impl VoiceListRequest {
         client: &ZaiClient,
     ) -> ZaiResult<super::response::VoiceListResponse> {
         self.validate()?;
-        let mut query = Vec::with_capacity(2);
-        if let Some(name) = self.query.voice_name.as_deref() {
-            query.push(("voiceName", name));
-        }
-        if let Some(voice_type) = self.query.voice_type.as_ref() {
-            query.push(("voiceType", voice_type.as_str()));
-        }
         let route = crate::client::routes::AUDIO_LIST_VOICES;
         client
             .operation(route)
-            .with_query(query)
+            .with_query(&self.query)?
             .send_empty::<super::response::VoiceListResponse>()
             .await
     }

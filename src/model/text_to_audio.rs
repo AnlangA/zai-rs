@@ -17,3 +17,6 @@ mod request;
 pub use data::*;
 pub use model::*;
 pub use request::*;
+
+#[cfg(test)]
+pub(crate) use model::TTS_MODEL_REGISTRY_SNAPSHOT;

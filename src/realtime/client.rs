@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::session::SessionBuilder;
+use super::{config::RealtimeTransportConfig, session::SessionBuilder};
 use crate::{
     ZaiResult,
     client::{ApiFamily, endpoint::EndpointConfig, secret::ApiSecret},
@@ -26,8 +26,9 @@ pub enum AuthMode {
 /// Entry point for the realtime API.
 ///
 /// Construct with [`RealtimeClient::new`], optionally switch to JWT auth via
-/// [`RealtimeClient::with_jwt`], then start a session with
-/// [`RealtimeClient::session`].
+/// [`RealtimeClient::with_jwt`], optionally set a validated
+/// [`RealtimeTransportConfig`], then start a
+/// session with [`RealtimeClient::session`].
 ///
 /// ```rust,no_run
 /// use zai_rs::{model::GLM_realtime_flash, realtime::RealtimeClient};
@@ -45,6 +46,7 @@ pub struct RealtimeClient {
     api_key: Arc<ApiSecret>,
     auth: AuthMode,
     endpoint_config: EndpointConfig,
+    transport_config: RealtimeTransportConfig,
 }
 
 impl RealtimeClient {
@@ -55,6 +57,7 @@ impl RealtimeClient {
             auth: AuthMode::Bearer,
             endpoint_config: EndpointConfig::defaults()
                 .expect("built-in realtime endpoint must be valid"),
+            transport_config: RealtimeTransportConfig::default(),
         }
     }
 
@@ -76,6 +79,17 @@ impl RealtimeClient {
     /// Override the full endpoint config (base URLs).
     pub fn with_endpoint_config(mut self, config: EndpointConfig) -> Self {
         self.endpoint_config = config;
+        self
+    }
+
+    /// Use `config` as the default transport/session policy for subsequently
+    /// created session builders.
+    ///
+    /// A builder snapshots this value when [`Self::session`] is called. An
+    /// override applied directly to that builder takes precedence and does not
+    /// affect this client or any other session.
+    pub fn with_transport_config(mut self, config: RealtimeTransportConfig) -> Self {
+        self.transport_config = config;
         self
     }
 
@@ -101,6 +115,7 @@ impl RealtimeClient {
             self.auth,
             realtime_url,
             model_name,
+            self.transport_config.clone(),
         )
     }
 
@@ -113,6 +128,11 @@ impl RealtimeClient {
     pub fn auth(&self) -> &AuthMode {
         &self.auth
     }
+
+    /// Default transport/session policy snapshotted by new session builders.
+    pub fn transport_config(&self) -> &RealtimeTransportConfig {
+        &self.transport_config
+    }
 }
 
 impl std::fmt::Debug for RealtimeClient {
@@ -122,6 +142,7 @@ impl std::fmt::Debug for RealtimeClient {
             .field("api_key", &self.api_key)
             .field("auth", &self.auth)
             .field("endpoint_config", &self.endpoint_config)
+            .field("transport_config", &self.transport_config)
             .finish()
     }
 }
