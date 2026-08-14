@@ -3,13 +3,13 @@
 ## Supported versions
 
 Security fixes are currently provided for the latest published stable release
-line. `Cargo.toml`'s `6.0.1` is an unpublished candidate, not the current
+line. `Cargo.toml`'s `6.1.0` is an unpublished candidate, not the current
 registry release.
 
 | Release line | Security support |
 | --- | --- |
 | `0.6.x` (latest published: `0.6.0`) | Supported |
-| Unpublished `6.0.1` candidate and later working-tree changes | Pre-release; no registry support promise |
+| Unpublished `6.1.0` candidate and later working-tree changes | Pre-release; no registry support promise |
 | Earlier than `0.6.0` | Not supported |
 
 The published-version result above was verified with `cargo search` and
@@ -18,10 +18,10 @@ recover the corresponding step logs: run `30091854390` rejected its
 then-current lightweight tag, while run `30092565276` passed quality,
 packaging, SBOM, checksum, and attestation before crates.io rejected OIDC
 authentication because no matching Trusted Publisher was configured for
-`AnlangA/zai-rs`. Because the working tree has diverged from that tag, a future
-supported release must first configure that external publisher, then use a new
-version greater than `6.0.1` and a new annotated tag. This table describes the
-current policy rather than promising indefinite backports.
+`AnlangA/zai-rs`. The `6.1.0` candidate supersedes that failed tag with a
+version greater than `6.0.1`; a future supported release must still configure
+that external publisher before its annotated tag can publish. This table
+describes the current policy rather than promising indefinite backports.
 
 ## Reporting a vulnerability
 

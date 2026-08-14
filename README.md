@@ -4,17 +4,18 @@
 
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
-`Cargo.toml` 当前仍声明 `6.0.1`，但这是**未发布候选版**，不是可从
-crates.io 安装的稳定版。`v6.0.1` 的两次发布 workflow 均于 2026-07-24
-失败（runs
+`Cargo.toml` 当前声明 `6.1.0`，这是取代从未发布的 `6.0.1` 的发布候选版，
+包含 API 传输层加固与 GLM-5.3 支持。`v6.0.1` 的两次发布 workflow 均于
+2026-07-24 失败（runs
 [`30091854390`](https://github.com/AnlangA/zai-rs/actions/runs/30091854390) 和
 [`30092565276`](https://github.com/AnlangA/zai-rs/actions/runs/30092565276)）。原始 step 日志已确认：
 首次运行的当时 `v6.0.1` ref 不是 annotated tag；第二次已通过质量、打包、
 SBOM、校验和 attestation，但 crates.io 拒绝 OIDC 鉴权，因为没有找到仓库
 `AnlangA/zai-rs` 的 Trusted Publishing 配置。经 `cargo search` / `cargo info`
-核验，crates.io 最新版仍为 `0.6.0`。当前工作树又已偏离既有
-`v6.0.1` tag，因此下一次正式发布必须先配置 Trusted Publisher，再使用
-高于 `6.0.1` 的新版本和新 annotated tag。
+（2026-08-14 复核）核验，crates.io 最新版仍为 `0.6.0`。因此 `v6.1.0`
+的发布还要求先在 crates.io 完成 `AnlangA/zai-rs` 的 Trusted Publisher
+配置，再推送 annotated tag；在该 tag workflow 成功之前，本文档描述的是
+未发布 API。
 
 使用本文档所述的当前仓库 API 时，应绑定经审计的具体 commit：
 
@@ -24,8 +25,8 @@ zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
 ```
 
 registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当前文档存在
-差异。从 `0.6.0` 迁移到下一个正式版本前，请阅读
-[未发布安全加固迁移说明](docs/HARDENING_MIGRATION.md)。
+差异。从 `0.6.0` 迁移到 `6.1.0` 前，请阅读
+[安全加固迁移说明](docs/HARDENING_MIGRATION.md)。
 
 ## 快速开始
 
@@ -45,6 +46,7 @@ registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当�
 
 | 模型 | 结构体 | Thinking | ReasoningEffort | Async | ToolStream |
 |------|--------|----------|-----------------|-------|------------|
+| glm-5.3 | `GLM5_3` | ✓ | ✓ | ✓ | ✓ |
 | glm-5.2 | `GLM5_2` | ✓ | ✓ | ✓ | ✓ |
 | glm-5.1 | `GLM5_1` | ✓ | ✗ | ✓ | ✓ |
 | glm-5.1-highspeed | `GLM5_1_highspeed` | ✓ | ✗ | ✓ | ✓ |
@@ -59,6 +61,8 @@ registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当�
 | glm-4.5-flash | `GLM4_5_flash` | ✓ | ✗ | ✓ | ✗ |
 | glm-4-flash-250414 | `GLM4_flash_250414` | ✗ | ✗ | ✓ | ✗ |
 | glm-4-flashx-250414 | `GLM4_flashx_250414` | ✗ | ✗ | ✓ | ✗ |
+
+> glm-5.3 思考始终开启（不可禁用，校验会以 `thinking_cannot_be_disabled` 拦截），`reasoning_effort` 仅支持 low/high/max（默认 max）；仅支持文本输入，上下文窗口 1M，最大输出 128K。
 
 ### 文本视觉模型
 
@@ -128,6 +132,7 @@ cargo run --example realtime_audio --features realtime
 | `async_chat_text` | 异步对话任务提交与轮询 |
 | `glm45_thinking_mode` | 深度思考模式 |
 | `glm52_reasoning_effort` | GLM-5.2 推理深度控制（reasoning_effort） |
+| `glm53_thinking` | GLM-5.3 始终开启思考 + 三档推理深度（low/high/max） |
 | `function_call` | 函数调用 |
 | `function_call_with_toolkits` | 工具集调用 |
 | `mcp` | 统一 MCP 搜索、阅读、仓库与视觉能力 |
@@ -181,9 +186,9 @@ cargo run --example chat_loop
 
 ### 模型 API
 - [x] POST 对话补全（同步/异步）
-- [x] GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
-- [x] 思考模式（Thinking Mode），支持 clear_thinking 保留式思考
-- [x] 推理深度控制（Reasoning Effort，GLM-5.2+：max/xhigh/high/medium/low/minimal/none）
+- [x] GLM-5.3 / GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
+- [x] 思考模式（Thinking Mode），支持 clear_thinking 保留式思考（GLM-5.3 思考始终开启，不可禁用）
+- [x] 推理深度控制（Reasoning Effort，GLM-5.2：max/xhigh/high/medium/low/minimal/none；GLM-5.3 仅 low/high/max，默认 max）
 - [x] 类型安全的 SSE 聊天流（`enable_stream().stream_via(&client)`）
 - [x] 图像生成
 - [x] 视频生成（异步）

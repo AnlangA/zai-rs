@@ -27,13 +27,12 @@ commit，不要跟踪可变的 branch：
 zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
 ```
 
-`Cargo.toml` 中的 `6.0.1` 是未发布候选版，两次 `v6.0.1` workflow 运行均
-失败；原始 step 日志证明首次是当时 tag 不是 annotated tag，第二次是
-crates.io 没有找到 `AnlangA/zai-rs` Trusted Publisher 配置。经 `cargo search` /
-`cargo info` 验证，
-crates.io 最新版为 `0.6.0`，但该 legacy 版本与当前文档的 API 存在差异。
-当前工作树也已偏离 `v6.0.1` tag，所以下一次正式发布需要高于
-`6.0.1` 的新版本和新 tag。
+`Cargo.toml` 中的 `6.1.0` 是未发布候选版（取代同样未发布的 `6.0.1`），
+两次 `v6.0.1` workflow 运行均失败；原始 step 日志证明首次是当时 tag 不是
+annotated tag，第二次是 crates.io 没有找到 `AnlangA/zai-rs` Trusted
+Publisher 配置。经 `cargo search` / `cargo info` 验证，crates.io 最新版为
+`0.6.0`，但该 legacy 版本与当前文档的 API 存在差异。`6.1.0` 候选版高于
+`6.0.1` 并使用新 tag；正式发布前仍需先完成 Trusted Publisher 配置。
 
 ### Q: 如何配置 API 密钥？
 A: 最简单的方式是使用环境变量：

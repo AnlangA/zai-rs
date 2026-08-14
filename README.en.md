@@ -4,20 +4,21 @@
 
 A concise, type-safe Rust SDK for Zhipu AI (BigModel / Z.ai). It focuses on developer ergonomics for Rust users: less boilerplate, consistent error handling, readable request/response types, and ready-to-run examples.
 
-`Cargo.toml` still declares `6.0.1`, but that version is an **unpublished
-candidate**, not an installable crates.io release. Both `v6.0.1` release
-workflow attempts failed on 2026-07-24 (runs
+`Cargo.toml` now declares `6.1.0`, a release candidate that supersedes the
+never-published `6.0.1` and carries the API-transport hardening plus GLM-5.3
+support. The two `v6.0.1` workflow attempts failed on 2026-07-24 (runs
 [`30091854390`](https://github.com/AnlangA/zai-rs/actions/runs/30091854390) and
 [`30092565276`](https://github.com/AnlangA/zai-rs/actions/runs/30092565276)).
-The raw step logs now establish both causes: the first run's then-current
+The raw step logs established both causes: the first run's then-current
 `v6.0.1` ref was not an annotated tag; the second passed quality, packaging,
 SBOM, checksum, and attestation steps, but crates.io rejected OIDC
 authentication because no Trusted Publishing configuration was found for
-`AnlangA/zai-rs`. `cargo search` and `cargo info` confirm that crates.io still
-serves `0.6.0` as the latest release. The working tree has since diverged from
-the existing `v6.0.1` tag, so the next publication requires the Trusted
-Publisher setup plus a new version greater than `6.0.1` and a new annotated
-tag.
+`AnlangA/zai-rs`. `cargo search` and `cargo info` (rechecked 2026-08-14)
+confirm that crates.io still serves `0.6.0` as the latest release. The
+`v6.1.0` publication therefore additionally requires the crates.io Trusted
+Publisher for `AnlangA/zai-rs` to be configured before its annotated tag is
+pushed; until that tag workflow succeeds, this README describes an
+unpublished API.
 
 To use the repository API documented here, pin an audited commit:
 
@@ -28,8 +29,8 @@ zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
 
 Registry users can select `zai-rs = "0.6.0"`, but that legacy release differs
 from the API and behavior described by the current documentation. Before
-migrating from `0.6.0` to the next published version, read the
-[unreleased hardening migration notes](docs/HARDENING_MIGRATION.md).
+migrating from `0.6.0` to `6.1.0`, read the
+[hardening migration notes](docs/HARDENING_MIGRATION.md).
 
 ## Quick start
 
@@ -50,6 +51,7 @@ See [Architecture](docs/ARCHITECTURE.md) for design and maintenance notes, and
 
 | Model | Struct | Thinking | ReasoningEffort | Async | ToolStream |
 |-------|--------|----------|-----------------|-------|------------|
+| glm-5.3 | `GLM5_3` | ✓ | ✓ | ✓ | ✓ |
 | glm-5.2 | `GLM5_2` | ✓ | ✓ | ✓ | ✓ |
 | glm-5.1 | `GLM5_1` | ✓ | ✗ | ✓ | ✓ |
 | glm-5.1-highspeed | `GLM5_1_highspeed` | ✓ | ✗ | ✓ | ✓ |
@@ -64,6 +66,8 @@ See [Architecture](docs/ARCHITECTURE.md) for design and maintenance notes, and
 | glm-4.5-flash | `GLM4_5_flash` | ✓ | ✗ | ✓ | ✗ |
 | glm-4-flash-250414 | `GLM4_flash_250414` | ✗ | ✗ | ✓ | ✗ |
 | glm-4-flashx-250414 | `GLM4_flashx_250414` | ✗ | ✗ | ✓ | ✗ |
+
+> glm-5.3 always thinks (disabling is rejected by validation with `thinking_cannot_be_disabled`), its `reasoning_effort` accepts only low/high/max (default max); text-only input, 1M context window, 128K max output.
 
 ### Text & vision models
 
@@ -137,6 +141,7 @@ cargo run --example realtime_audio --features realtime
 | `async_chat_text` | Async chat task submission and polling |
 | `glm45_thinking_mode` | Deep thinking mode |
 | `glm52_reasoning_effort` | GLM-5.2 reasoning depth control (`reasoning_effort`) |
+| `glm53_thinking` | GLM-5.3 always-on thinking + three effort levels (low/high/max) |
 | `function_call` | Function calling |
 | `function_call_with_toolkits` | Tool calling with the toolkits framework |
 | `mcp` | Unified MCP search, reader, repository, and vision capabilities |
@@ -190,9 +195,9 @@ cargo run --example chat_loop
 
 ### Model APIs
 - [x] POST chat completions (sync/async)
-- [x] GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 series support
-- [x] Thinking Mode, with `clear_thinking` preserved-thinking support
-- [x] Reasoning depth control (Reasoning Effort, GLM-5.2+: max/xhigh/high/medium/low/minimal/none)
+- [x] GLM-5.3 / GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 series support
+- [x] Thinking Mode, with `clear_thinking` preserved-thinking support (GLM-5.3 always thinks; it cannot be disabled)
+- [x] Reasoning depth control (Reasoning Effort, GLM-5.2: max/xhigh/high/medium/low/minimal/none; GLM-5.3: low/high/max only, default max)
 - [x] Type-safe SSE chat streaming (`enable_stream().stream_via(&client)`)
 - [x] Image generation
 - [x] Video generation (async)
