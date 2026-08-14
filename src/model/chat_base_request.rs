@@ -62,8 +62,8 @@ where
     /// available for GLM-5.2 and above (models that implement
     /// `ReasoningEffortEnable`). See [`ReasoningEffort`] for the available
     /// levels; each model accepts its own subset, frozen in
-    /// [`ChatRequestModel::REASONING_EFFORTS`](crate::model::traits::ChatRequestModel::REASONING_EFFORTS)
-    /// — GLM-5.3 accepts only `low`, `high`, and `max`.
+    /// [`ChatRequestModel::REASONING_EFFORTS`] — GLM-5.3 accepts only `low`,
+    /// `high`, and `max`.
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<ReasoningEffort>,
 

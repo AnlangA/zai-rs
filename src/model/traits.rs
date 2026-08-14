@@ -119,7 +119,7 @@ pub trait ChatRequestModel: ModelName + sealed::ChatRequestModel {
     /// request validation fails fast with `thinking_cannot_be_disabled`
     /// instead of surfacing a server error. Legacy requests that used
     /// `disabled` should migrate to `enabled` plus a light
-    /// [`ReasoningEffort::Low`](super::tools::ReasoningEffort::Low).
+    /// `ReasoningEffort::Low`.
     const THINKING_DISABLE_SUPPORTED: bool;
 
     /// `reasoning_effort` levels accepted by this model's request schema.

@@ -113,7 +113,7 @@ impl ThinkingType {
 /// [`ReasoningEffortEnable`](super::traits::ReasoningEffortEnable)).
 ///
 /// Each model accepts its own subset, frozen in
-/// [`ChatRequestModel::REASONING_EFFORTS`](super::traits::ChatRequestModel::REASONING_EFFORTS):
+/// `ChatRequestModel::REASONING_EFFORTS`:
 /// GLM-5.3 accepts only [`Low`](Self::Low), [`High`](Self::High), and
 /// [`Max`](Self::Max) (its default); setting any other level fails validation
 /// with `reasoning_effort_not_supported`. GLM-5.2 accepts every variant.

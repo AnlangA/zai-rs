@@ -41,7 +41,7 @@
 //! validation (`thinking_cannot_be_disabled`), and its `reasoning_effort` is
 //! frozen to `low` / `high` / `max`. All other thinking-capable models accept
 //! both thinking modes, and GLM-5.2 accepts every
-//! [`ReasoningEffort`](crate::model::tools::ReasoningEffort) level.
+//! `ReasoningEffort` level.
 //!
 //! ## Vision Models
 //!
@@ -245,9 +245,8 @@ macro_rules! chat_model_registry {
 chat_model_registry! {
     /// GLM-5.3 keeps thinking always on: `thinking.type` accepts only
     /// `enabled`, and `reasoning_effort` accepts `low` / `high` / `max`
-    /// (default `max`). Request validation rejects
-    /// [`ThinkingType::disabled()`](super::tools::ThinkingType::disabled) and
-    /// effort levels outside that set before the request is sent.
+    /// (default `max`). Request validation rejects `ThinkingType::disabled()`
+    /// and effort levels outside that set before the request is sent.
     GLM5_3 => {
         id: "glm-5.3",
         message: TextMessage,
