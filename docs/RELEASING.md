@@ -24,6 +24,16 @@ Publisher named in the one-time setup below to be configured before the
 `v6.1.0` annotated tag is pushed; the existing `v6.0.1` tag must not be moved
 or reused.
 
+The `v6.1.0` tag was pushed on 2026-08-14 (run `31818272628`). Attempt 1
+failed when the macOS quality job hit an accept-vs-read race in the
+`proxy_isolation` test helper; attempt 2 passed every internal gate — quality,
+annotated-tag verification, packaging, SBOM, checksum, and both attestations —
+and then failed only at the crates.io authentication step with the same
+`No Trusted Publishing config found for repository AnlangA/zai-rs` rejection.
+The tag itself is valid and must not be moved; once the Trusted Publisher is
+configured, rerun the failed `publish` job of run `31818272628` to complete
+the release.
+
 ## One-time repository setup
 
 1. Confirm the copyright holder in `LICENSE` with the project owner. The
