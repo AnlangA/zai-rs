@@ -43,6 +43,12 @@ fn spawn_http_endpoint(
         while !stop.load(Ordering::Acquire) {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    // The listener is non-blocking and accepted sockets can
+                    // inherit that flag. A blocking stream with a read
+                    // timeout waits for the request bytes instead of
+                    // mistaking "not arrived yet" for end-of-request, which
+                    // used to race the child's connect-then-write on macOS.
+                    stream.set_nonblocking(false).unwrap();
                     stream
                         .set_read_timeout(Some(Duration::from_secs(2)))
                         .unwrap();
