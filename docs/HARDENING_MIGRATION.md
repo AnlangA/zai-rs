@@ -2,25 +2,40 @@
 
 ## Release status
 
-The version `6.0.1` declared by `Cargo.toml` is an unpublished candidate. The
-two `v6.0.1` release workflow runs (`30091854390` and `30092565276`) both
-failed. The recovered step logs show that the first run's then-current tag was
-not annotated. The second run passed quality, packaging, SBOM, checksum, and
-attestation steps, but crates.io rejected OIDC authentication because it found
-no Trusted Publishing configuration for `AnlangA/zai-rs`. `cargo search` and
+The version `6.1.0` declared by `Cargo.toml` is an unpublished release
+candidate prepared on 2026-08-14. It supersedes the never-published `6.0.1`
+candidate and carries everything in this document. The two `v6.0.1` release
+workflow runs (`30091854390` and `30092565276`) both failed. The recovered
+step logs show that the first run's then-current tag was not annotated. The
+second run passed quality, packaging, SBOM, checksum, and attestation steps,
+but crates.io rejected OIDC authentication because it found no Trusted
+Publishing configuration for `AnlangA/zai-rs`. `cargo search` and
 `cargo info` confirm `0.6.0` as the latest crates.io release.
 
-The current working tree has also diverged from the existing `v6.0.1` tag.
 Consequently, everything in this document remains unreleased relative to
-registry `0.6.0`, and the next publication must use a new version greater than
-`6.0.1` and a new tag. Consumers evaluating this migration should pin an
-audited repository commit rather than request `6.0.1` from crates.io.
+registry `0.6.0` until the annotated `v6.1.0` tag workflow succeeds, which
+additionally requires the crates.io Trusted Publisher to be configured.
+Consumers evaluating this migration should pin an audited repository commit
+rather than request `6.1.0` from crates.io before that succeeds.
 
-## Unreleased hardening added after the v6.0.1 candidate tag
+## Hardening and features added after the v6.0.1 candidate tag (ship in 6.1.0)
 
-The changes in this section are present in the working tree but are not part of
-the existing `v6.0.1` candidate tag. They must ship under a version newer than
-`6.0.1`.
+The changes in this section are present in the `6.1.0` candidate but are not
+part of the existing `v6.0.1` candidate tag.
+
+### GLM-5.3 model support
+
+The new `GLM5_3` model type (wire id `glm-5.3`) is a text model with a 1M
+context window and 128K max output. Unlike earlier GLM-5 releases it always
+thinks, so request validation rejects `thinking.type = "disabled"` with
+`thinking_cannot_be_disabled`, and its `reasoning_effort` is frozen to
+`low` / `high` / `max` — other levels fail validation with
+`reasoning_effort_not_supported`. Both checks run before any network I/O and
+only affect `GLM5_3` requests; migrate legacy disabled-thinking requests to
+`enabled` plus `reasoning_effort = "low"`. The per-model contract is exposed
+through the new `ChatRequestModel::THINKING_DISABLE_SUPPORTED` and
+`ChatRequestModel::REASONING_EFFORTS` associated constants, recorded in the
+frozen chat-model registry snapshot.
 
 ### Loopback HTTP endpoints bypass system proxies
 

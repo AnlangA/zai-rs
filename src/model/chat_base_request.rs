@@ -51,13 +51,19 @@ where
     request_id: Option<String>,
 
     /// Thinking-mode configuration for models that support extended reasoning.
+    ///
+    /// GLM-5.3 always thinks: setting `type = "disabled"` fails validation
+    /// with `thinking_cannot_be_disabled`. Migrate legacy requests to
+    /// `enabled` plus `reasoning_effort = "low"` for the lightest behaviour.
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ThinkingType>,
 
     /// Controls the depth of reasoning when thinking mode is enabled. Only
     /// available for GLM-5.2 and above (models that implement
     /// `ReasoningEffortEnable`). See [`ReasoningEffort`] for the available
-    /// levels.
+    /// levels; each model accepts its own subset, frozen in
+    /// [`ChatRequestModel::REASONING_EFFORTS`] — GLM-5.3 accepts only `low`,
+    /// `high`, and `max`.
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<ReasoningEffort>,
 
@@ -73,8 +79,8 @@ where
     stream: Option<bool>,
 
     /// Whether to enable streaming of tool calls (streaming function call
-    /// parameters). Supported by GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo, GLM-4.7,
-    /// and GLM-4.6 models. Defaults to false when omitted.
+    /// parameters). Supported by GLM-5.3, GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo,
+    /// GLM-4.7, and GLM-4.6 models. Defaults to false when omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_stream: Option<bool>,
 
@@ -177,6 +183,20 @@ where
     }
     if body.top_p.is_some_and(|top_p| !top_p.is_finite()) {
         return Err(ValidationError::new("top_p_must_be_finite"));
+    }
+    if !N::THINKING_DISABLE_SUPPORTED
+        && body
+            .thinking
+            .as_ref()
+            .is_some_and(|thinking| thinking.mode == ThinkingMode::Disabled)
+    {
+        return Err(ValidationError::new("thinking_cannot_be_disabled"));
+    }
+    if body
+        .reasoning_effort
+        .is_some_and(|effort| !N::REASONING_EFFORTS.contains(&effort))
+    {
+        return Err(ValidationError::new("reasoning_effort_not_supported"));
     }
     if body
         .max_tokens
@@ -474,6 +494,9 @@ where
     /// Available only for models implementing [`ReasoningEffortEnable`].
     /// Typically combined with
     /// [`with_thinking`](Self::with_thinking) to enable thinking first.
+    /// GLM-5.3 accepts only [`ReasoningEffort::Low`], [`ReasoningEffort::High`],
+    /// and [`ReasoningEffort::Max`]; other levels fail validation with
+    /// `reasoning_effort_not_supported`.
     ///
     /// # Examples
     ///
@@ -515,7 +538,7 @@ mod tests {
     use super::*;
     use crate::model::{
         chat_message_types::{TextMessage, VisionMessage, VoiceMessage},
-        chat_models::{GLM4_5_air, GLM4_6, GLM4_6v, GLM4_voice, GLM5_2},
+        chat_models::{GLM4_5_air, GLM4_6, GLM4_6v, GLM4_voice, GLM5_2, GLM5_3},
     };
     use validator::Validate;
 
@@ -666,6 +689,101 @@ mod tests {
         assert!(body.clone().with_top_p(0.0).validate().is_err());
         assert!(body.clone().with_temperature(f64::NAN).validate().is_err());
         assert!(body.with_request_id("short").validate().is_err());
+    }
+
+    #[test]
+    fn glm53_rejects_disabling_thinking() {
+        let body = ChatBody::new(GLM5_3 {}, TextMessage::user("hi"));
+        assert!(body.clone().validate().is_ok());
+        assert!(
+            body.clone()
+                .with_thinking(ThinkingType::enabled())
+                .validate()
+                .is_ok()
+        );
+
+        // GLM-5.3 dropped thinking.type = "disabled"; validation must fail
+        // before the request leaves the client.
+        let disabled = body.with_thinking(ThinkingType::disabled());
+        let errors = disabled
+            .validate()
+            .expect_err("disabled thinking must fail validation");
+        assert!(format!("{errors:?}").contains("thinking_cannot_be_disabled"));
+
+        // Disabling thinking stays valid on models that support it.
+        let glm46 = ChatBody::new(GLM4_6 {}, TextMessage::user("hi"))
+            .with_thinking(ThinkingType::disabled());
+        assert!(glm46.validate().is_ok());
+    }
+
+    #[test]
+    fn glm53_accepts_only_low_high_max_reasoning_efforts() {
+        for effort in [
+            ReasoningEffort::Low,
+            ReasoningEffort::High,
+            ReasoningEffort::Max,
+        ] {
+            let body = ChatBody::new(GLM5_3 {}, TextMessage::user("hi"))
+                .with_thinking(ThinkingType::enabled())
+                .with_reasoning_effort(effort);
+            assert!(body.validate().is_ok(), "{effort:?} must be accepted");
+        }
+
+        for effort in [
+            ReasoningEffort::Xhigh,
+            ReasoningEffort::Medium,
+            ReasoningEffort::Minimal,
+            ReasoningEffort::None,
+        ] {
+            let body =
+                ChatBody::new(GLM5_3 {}, TextMessage::user("hi")).with_reasoning_effort(effort);
+            let errors = body
+                .validate()
+                .expect_err("unsupported effort must fail validation");
+            assert!(
+                format!("{errors:?}").contains("reasoning_effort_not_supported"),
+                "{effort:?} must be rejected with reasoning_effort_not_supported"
+            );
+        }
+    }
+
+    #[test]
+    fn glm52_keeps_every_reasoning_effort_level() {
+        for effort in [
+            ReasoningEffort::Max,
+            ReasoningEffort::Xhigh,
+            ReasoningEffort::High,
+            ReasoningEffort::Medium,
+            ReasoningEffort::Low,
+            ReasoningEffort::Minimal,
+            ReasoningEffort::None,
+        ] {
+            let body = ChatBody::new(GLM5_2 {}, TextMessage::user("hi"))
+                .with_thinking(ThinkingType::enabled())
+                .with_reasoning_effort(effort);
+            assert!(body.validate().is_ok(), "{effort:?} must be accepted");
+        }
+    }
+
+    #[test]
+    fn glm53_migration_shape_serializes_the_recommended_request() {
+        // Official migration guidance: replace thinking.type = "disabled"
+        // with enabled + reasoning_effort = low; the recommended shape for
+        // coding tasks is enabled + reasoning_effort = max.
+        let light = ChatBody::new(GLM5_3 {}, TextMessage::user("hi"))
+            .with_thinking(ThinkingType::enabled())
+            .with_reasoning_effort(ReasoningEffort::Low);
+        assert!(light.validate().is_ok());
+
+        let deep = ChatBody::new(GLM5_3 {}, TextMessage::user("Refactor this module"))
+            .with_thinking(ThinkingType::enabled())
+            .with_reasoning_effort(ReasoningEffort::Max);
+        assert!(deep.validate().is_ok());
+
+        let json = serde_json::to_value(&deep).unwrap();
+        assert_eq!(json["model"], "glm-5.3");
+        assert_eq!(json["thinking"]["type"], "enabled");
+        assert_eq!(json["reasoning_effort"], "max");
     }
 
     #[test]

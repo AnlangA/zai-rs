@@ -9,10 +9,11 @@
 
 ## 安装
 
-当前文档描述的 API 尚未发布到 crates.io。`Cargo.toml` 中的 `6.0.1` 是
-未发布候选版；其两次 tag workflow 分别因当时 tag 不是 annotated tag，以及
-crates.io 缺少 `AnlangA/zai-rs` Trusted Publisher 配置而失败。使用当前仓库
-API 时，应将依赖绑定到已审计 commit：
+当前文档描述的 API 尚未发布到 crates.io。`Cargo.toml` 中的 `6.1.0` 是
+未发布候选版（取代同样未发布的 `6.0.1`）；`6.0.1` 的两次 tag workflow
+分别因当时 tag 不是 annotated tag，以及 crates.io 缺少 `AnlangA/zai-rs`
+Trusted Publisher 配置而失败。使用当前仓库 API 时，应将依赖绑定到已审计
+commit：
 
 ```toml
 [dependencies]
@@ -27,8 +28,8 @@ zai-rs = "0.6.0"
 ```
 
 `0.6.0` 是 legacy registry 版本，其 API 和行为与本指南描述的当前工作树存在
-差异。工作树已偏离 `v6.0.1` tag，正式发布时必须改用高于 `6.0.1`
-的新版本和新 tag。
+差异。工作树已偏离 `v6.0.1` tag，正式发布使用高于 `6.0.1` 的 `6.1.0`
+候选版和新 tag，且需先完成 Trusted Publisher 配置。
 
 ## 配置
 

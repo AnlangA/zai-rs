@@ -8,19 +8,21 @@ short-lived crates.io token obtained through GitHub OIDC.
 
 ## Current release state
 
-`Cargo.toml` still declares `6.0.1`, but that version is an unpublished
-candidate. The two `v6.0.1` workflow attempts, runs `30091854390` and
-`30092565276`, both concluded with `failure`. Their step logs are now
-available: the first run's then-current `v6.0.1` ref failed the annotated-tag
-check; the second passed quality, tag verification, packaging, SBOM, checksum,
-and both attestation steps, then crates.io rejected OIDC authentication with
-`No Trusted Publishing config found for repository AnlangA/zai-rs`.
+`Cargo.toml` declares `6.1.0`, a release candidate prepared on 2026-08-14 that
+supersedes the never-published `6.0.1`. It carries the API-transport hardening
+from PR #57 and GLM-5.3 model support. The two `v6.0.1` workflow attempts,
+runs `30091854390` and `30092565276`, both concluded with `failure`. Their
+step logs are available: the first run's then-current `v6.0.1` ref failed the
+annotated-tag check; the second passed quality, tag verification, packaging,
+SBOM, checksum, and both attestation steps, then crates.io rejected OIDC
+authentication with `No Trusted Publishing config found for repository
+AnlangA/zai-rs`.
 
-`cargo search` and `cargo info` confirm `0.6.0` as the latest crates.io release.
-The current working tree has diverged from the existing `v6.0.1` tag. Recovery
-therefore requires configuring the crates.io Trusted Publisher, a new version
-greater than `6.0.1`, and a new annotated tag; the existing tag must not be
-moved or reused.
+`cargo search` and `cargo info` confirm `0.6.0` as the latest crates.io
+release. Publishing `6.1.0` therefore still requires the crates.io Trusted
+Publisher named in the one-time setup below to be configured before the
+`v6.1.0` annotated tag is pushed; the existing `v6.0.1` tag must not be moved
+or reused.
 
 ## One-time repository setup
 
@@ -50,8 +52,8 @@ action is maintained by
 Published crates.io versions are immutable and cannot be reused. Confirm that
 the version in `Cargo.toml` is still available before creating a tag; the
 observable behavior changes listed in `HARDENING_MIGRATION.md` must inform that
-version decision. For the current recovery, the chosen version must be greater
-than `6.0.1` because the working tree no longer matches `v6.0.1`.
+version decision. The current `6.1.0` candidate already satisfies the recovery
+requirement of a version greater than the unpublished `6.0.1`.
 
 1. Make the intended version explicit in `Cargo.toml`, update `Cargo.lock`, and
    update README, installation, migration, security, and release notes together.
@@ -64,7 +66,7 @@ than `6.0.1` because the working tree no longer matches `v6.0.1`.
    `cargo package --locked -p zai-rs --all-features --list` as a human
    cross-check.
 4. Create an **annotated** tag whose name exactly matches the crate version,
-   for example `git tag -a v6.0.2 -m "zai-rs 6.0.2"`, then push that new tag.
+   for example `git tag -a v6.1.0 -m "zai-rs 6.1.0"`, then push that new tag.
 5. Wait for the reusable CI job to succeed. If the `crates-io` environment
    requires approval, approve it only after that point.
 6. Do not call the release complete merely because the tag exists or the

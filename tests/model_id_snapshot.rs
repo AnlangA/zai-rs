@@ -23,6 +23,7 @@ use zai_rs::model::{
 fn all_model_ids() -> Vec<(&'static str, &'static str, String, &'static str)> {
     vec![
         // chat (text)
+        ("chat", "GLM5_3", GLM5_3 {}.into(), "glm-5.3"),
         ("chat", "GLM5_2", GLM5_2 {}.into(), "glm-5.2"),
         ("chat", "GLM5_1", GLM5_1 {}.into(), "glm-5.1"),
         (
