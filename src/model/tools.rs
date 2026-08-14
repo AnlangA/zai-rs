@@ -44,8 +44,13 @@ use crate::tool::web_search::{ContentSize, SearchEngine, SearchRecencyFilter};
 /// # Model compatibility
 ///
 /// Thinking capabilities are available only on models that implement the
-/// `ThinkEnable` trait, such as GLM-5.2, GLM-5.1, GLM-5, GLM-4.7, and GLM-4.5
-/// series models.
+/// `ThinkEnable` trait, such as GLM-5.3, GLM-5.2, GLM-5.1, GLM-5, GLM-4.7,
+/// and GLM-4.5 series models.
+///
+/// GLM-5.3 always thinks: [`ThinkingType::disabled()`] is rejected by request
+/// validation for `GLM5_3` with `thinking_cannot_be_disabled`. Migrate
+/// legacy requests that disabled thinking to `enabled()` combined with
+/// [`ReasoningEffort::Low`] for the lightest behaviour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct ThinkingType {
     /// Whether thinking is enabled or disabled.
@@ -106,6 +111,12 @@ impl ThinkingType {
 /// token usage; lower levels are faster and cheaper. Available only on
 /// GLM-5.2 and above (models implementing
 /// [`ReasoningEffortEnable`](super::traits::ReasoningEffortEnable)).
+///
+/// Each model accepts its own subset, frozen in
+/// [`ChatRequestModel::REASONING_EFFORTS`](super::traits::ChatRequestModel::REASONING_EFFORTS):
+/// GLM-5.3 accepts only [`Low`](Self::Low), [`High`](Self::High), and
+/// [`Max`](Self::Max) (its default); setting any other level fails validation
+/// with `reasoning_effort_not_supported`. GLM-5.2 accepts every variant.
 ///
 /// Levels, from highest to lowest reasoning depth:
 ///

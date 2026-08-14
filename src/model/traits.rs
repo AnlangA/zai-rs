@@ -111,6 +111,24 @@ pub trait AsyncChat: sealed::AsyncChat {}
 pub trait ChatRequestModel: ModelName + sealed::ChatRequestModel {
     /// Largest `max_tokens` value accepted by this model's request schema.
     const MAX_TOKENS: u32;
+
+    /// Whether the upstream accepts `thinking.type = "disabled"` for this
+    /// model.
+    ///
+    /// GLM-5.3 always thinks: disabling thinking is rejected upstream, so
+    /// request validation fails fast with `thinking_cannot_be_disabled`
+    /// instead of surfacing a server error. Legacy requests that used
+    /// `disabled` should migrate to `enabled` plus a light
+    /// [`ReasoningEffort::Low`](super::tools::ReasoningEffort::Low).
+    const THINKING_DISABLE_SUPPORTED: bool;
+
+    /// `reasoning_effort` levels accepted by this model's request schema.
+    ///
+    /// Empty for models without [`ReasoningEffortEnable`]. GLM-5.3 accepts
+    /// only `low`, `high`, and `max`, while GLM-5.2 accepts every
+    /// [`ReasoningEffort`](super::tools::ReasoningEffort) variant. Setting an
+    /// unsupported level fails validation with `reasoning_effort_not_supported`.
+    const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort];
 }
 
 /// Indicates that a chat model accepts tools and defines their public input
@@ -134,13 +152,18 @@ pub trait WatermarkEnable: ChatRequestModel {}
 ///
 /// Models implementing this trait can enable the provider's extended reasoning
 /// mode. Whether reasoning text is returned is model- and endpoint-dependent.
+/// GLM-5.3 keeps thinking always on: `ThinkingType::disabled()` is rejected
+/// for `GLM5_3` requests (see
+/// [`ChatRequestModel::THINKING_DISABLE_SUPPORTED`]).
 pub trait ThinkEnable: ChatRequestModel {}
 
 /// Indicates that a model supports the `reasoning_effort` parameter, which
 /// controls the depth of reasoning when thinking mode is enabled.
 ///
-/// Currently supported only by GLM-5.2 and above. See
-/// [`ReasoningEffort`](super::tools::ReasoningEffort) for the available levels.
+/// Supported by GLM-5.2 and above. Each model accepts its own subset of
+/// [`ReasoningEffort`](super::tools::ReasoningEffort) levels, frozen in
+/// [`ChatRequestModel::REASONING_EFFORTS`]: GLM-5.2 accepts every level,
+/// while GLM-5.3 accepts only `low`, `high`, and `max` (its default).
 pub trait ReasoningEffortEnable: ChatRequestModel {}
 
 /// Indicates that a model supports streaming tool calls (tool_stream

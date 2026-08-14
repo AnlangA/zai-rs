@@ -19,6 +19,7 @@
 //!
 //! | Model | Struct | Thinking | ReasoningEffort | Async | ToolStream |
 //! |-------|--------|----------|-----------------|-------|------------|
+//! | glm-5.3 | [`GLM5_3`] | yes | yes | yes | yes |
 //! | glm-5.2 | [`GLM5_2`] | yes | yes | yes | yes |
 //! | glm-5.1 | [`GLM5_1`] | yes | no | yes | yes |
 //! | glm-5.1-highspeed | [`GLM5_1_highspeed`] | yes | no | yes | yes |
@@ -35,6 +36,12 @@
 //! | glm-4-flashx-250414 | [`GLM4_flashx_250414`] | no | no | yes | no |
 //!
 //! Text models accept the complete chat tool union and `response_format`.
+//!
+//! GLM-5.3 always thinks: `thinking.type = "disabled"` is rejected by request
+//! validation (`thinking_cannot_be_disabled`), and its `reasoning_effort` is
+//! frozen to `low` / `high` / `max`. All other thinking-capable models accept
+//! both thinking modes, and GLM-5.2 accepts every
+//! [`ReasoningEffort`](crate::model::tools::ReasoningEffort) level.
 //!
 //! ## Vision Models
 //!
@@ -123,10 +130,30 @@ macro_rules! impl_registered_capabilities {
 }
 
 macro_rules! impl_registered_request_schema {
+    // Text schema with a per-model thinking / reasoning-effort contract.
+    // `thinking` is `toggleable` or `always_on`; `efforts` lists the accepted
+    // `ReasoningEffort` levels (at least one).
+    ($model:ident, text, $max_tokens:expr,
+        constraints: { thinking: $thinking:ident, efforts: [$($effort:ident),+ $(,)?] }) => {
+        impl super::traits::sealed::ChatRequestModel for $model {}
+        impl ChatRequestModel for $model {
+            const MAX_TOKENS: u32 = $max_tokens;
+            const THINKING_DISABLE_SUPPORTED: bool =
+                impl_registered_request_schema!(@thinking_disable $thinking);
+            const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort] =
+                &[$(super::tools::ReasoningEffort::$effort),+];
+        }
+        impl ChatToolSupport for $model {
+            type Tool = Tools;
+        }
+        impl ResponseFormatEnable for $model {}
+    };
     ($model:ident, text, $max_tokens:expr) => {
         impl super::traits::sealed::ChatRequestModel for $model {}
         impl ChatRequestModel for $model {
             const MAX_TOKENS: u32 = $max_tokens;
+            const THINKING_DISABLE_SUPPORTED: bool = true;
+            const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort] = &[];
         }
         impl ChatToolSupport for $model {
             type Tool = Tools;
@@ -137,6 +164,8 @@ macro_rules! impl_registered_request_schema {
         impl super::traits::sealed::ChatRequestModel for $model {}
         impl ChatRequestModel for $model {
             const MAX_TOKENS: u32 = $max_tokens;
+            const THINKING_DISABLE_SUPPORTED: bool = true;
+            const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort] = &[];
         }
         impl ChatToolSupport for $model {
             type Tool = Function;
@@ -146,9 +175,13 @@ macro_rules! impl_registered_request_schema {
         impl super::traits::sealed::ChatRequestModel for $model {}
         impl ChatRequestModel for $model {
             const MAX_TOKENS: u32 = $max_tokens;
+            const THINKING_DISABLE_SUPPORTED: bool = true;
+            const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort] = &[];
         }
         impl WatermarkEnable for $model {}
     };
+    (@thinking_disable toggleable) => { true };
+    (@thinking_disable always_on) => { false };
 }
 
 #[cfg(test)]
@@ -159,6 +192,8 @@ struct ChatModelSnapshot {
     request_schema: &'static str,
     max_tokens: u32,
     capabilities: &'static [&'static str],
+    thinking: &'static str,
+    reasoning_efforts: &'static [&'static str],
 }
 
 macro_rules! chat_model_registry {
@@ -168,7 +203,11 @@ macro_rules! chat_model_registry {
             $model:ident => {
                 id: $model_id:literal,
                 message: $message:ty,
-                request: $request_schema:ident($max_tokens:expr),
+                request: $request_schema:ident(
+                    $max_tokens:expr
+                    $(, constraints: { thinking: $thinking:ident, efforts: [$($effort:ident),* $(,)?] })?
+                    $(,)?
+                ),
                 capabilities: [$($capability:ident),+ $(,)?],
             };
         )+
@@ -177,7 +216,10 @@ macro_rules! chat_model_registry {
             define_model_type!($(#[$meta])* $model, $model_id);
             impl_message_binding!($model, $message);
             impl_registered_capabilities!($model: $($capability),+);
-            impl_registered_request_schema!($model, $request_schema, $max_tokens);
+            impl_registered_request_schema!(
+                $model, $request_schema, $max_tokens
+                $(, constraints: { thinking: $thinking, efforts: [$($effort),*] })?
+            );
         )+
 
         #[cfg(test)]
@@ -190,17 +232,35 @@ macro_rules! chat_model_registry {
                     request_schema: stringify!($request_schema),
                     max_tokens: $max_tokens,
                     capabilities: &[$(stringify!($capability)),+],
+                    thinking: chat_model_registry!(@thinking_label $($thinking)?),
+                    reasoning_efforts: &[$($(stringify!($effort)),*)?],
                 },
             )+
         ];
     };
+    (@thinking_label) => { "toggleable" };
+    (@thinking_label $kind:ident) => { stringify!($kind) };
 }
 
 chat_model_registry! {
+    /// GLM-5.3 keeps thinking always on: `thinking.type` accepts only
+    /// `enabled`, and `reasoning_effort` accepts `low` / `high` / `max`
+    /// (default `max`). Request validation rejects
+    /// [`ThinkingType::disabled()`](super::tools::ThinkingType::disabled) and
+    /// effort levels outside that set before the request is sent.
+    GLM5_3 => {
+        id: "glm-5.3",
+        message: TextMessage,
+        request: text(131_072, constraints: { thinking: always_on, efforts: [Low, High, Max] }),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable, ToolStreamEnable],
+    };
     GLM5_2 => {
         id: "glm-5.2",
         message: TextMessage,
-        request: text(131_072),
+        request: text(
+            131_072,
+            constraints: { thinking: toggleable, efforts: [Max, Xhigh, High, Medium, Low, Minimal, None] },
+        ),
         capabilities: [Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable, ToolStreamEnable],
     };
     GLM5_1 => {
@@ -429,13 +489,15 @@ mod tests {
         for model in CHAT_MODEL_REGISTRY_SNAPSHOT {
             writeln!(
                 actual,
-                "{}|{}|{}|{}|{}|{}",
+                "{}|{}|{}|{}|{}|{}|{}|{}",
                 model.type_name,
                 model.model_id,
                 model.message,
                 model.request_schema,
                 model.max_tokens,
-                model.capabilities.join(",")
+                model.capabilities.join(","),
+                model.thinking,
+                model.reasoning_efforts.join(",")
             )
             .expect("writing to a String cannot fail");
         }
@@ -445,6 +507,7 @@ mod tests {
 
     #[test]
     fn request_schema_capabilities_are_typed_by_model_family() {
+        assert_text_request_schema::<GLM5_3>();
         assert_text_request_schema::<GLM5_2>();
         assert_text_request_schema::<GLM5_1>();
         assert_text_request_schema::<GLM5_1_highspeed>();
@@ -470,13 +533,59 @@ mod tests {
         assert_vision_request_schema::<GLM4_1v_thinking_flashx>();
 
         assert_audio_request_schema::<GLM4_voice>();
+        assert_eq!(GLM5_3::MAX_TOKENS, 131_072);
         assert_eq!(GLM5_2::MAX_TOKENS, 131_072);
         assert_eq!(GLM4_voice::MAX_TOKENS, 4_096);
     }
 
     #[test]
+    fn thinking_and_effort_constraints_match_the_frozen_contract() {
+        use super::super::tools::ReasoningEffort;
+
+        // Compared as values (not `assert!`) so the frozen contract stays a
+        // reviewable expectation rather than a foldable constant assertion.
+        assert_eq!(
+            (
+                GLM5_3::THINKING_DISABLE_SUPPORTED,
+                GLM5_2::THINKING_DISABLE_SUPPORTED,
+                GLM5_1::THINKING_DISABLE_SUPPORTED,
+                GLM4_1v_thinking_flash::THINKING_DISABLE_SUPPORTED,
+            ),
+            (false, true, true, true)
+        );
+
+        // GLM-5.3 always thinks and only accepts low / high / max.
+        assert_eq!(
+            GLM5_3::REASONING_EFFORTS,
+            [
+                ReasoningEffort::Low,
+                ReasoningEffort::High,
+                ReasoningEffort::Max
+            ]
+        );
+
+        // GLM-5.2 keeps both thinking modes and every effort level.
+        assert_eq!(
+            GLM5_2::REASONING_EFFORTS,
+            [
+                ReasoningEffort::Max,
+                ReasoningEffort::Xhigh,
+                ReasoningEffort::High,
+                ReasoningEffort::Medium,
+                ReasoningEffort::Low,
+                ReasoningEffort::Minimal,
+                ReasoningEffort::None,
+            ]
+        );
+
+        // Models without ReasoningEffortEnable declare no levels.
+        assert_eq!(GLM5_1::REASONING_EFFORTS, []);
+    }
+
+    #[test]
     fn official_chat_model_names_match_snapshot() {
         let models = [
+            String::from(GLM5_3 {}),
             String::from(GLM5_2 {}),
             String::from(GLM5_1 {}),
             String::from(GLM5_1_highspeed {}),
@@ -496,6 +605,7 @@ mod tests {
         assert_eq!(
             models,
             [
+                "glm-5.3",
                 "glm-5.2",
                 "glm-5.1",
                 "glm-5.1-highspeed",
@@ -543,6 +653,7 @@ mod tests {
 
     #[test]
     fn capability_markers_cover_the_frozen_sync_and_async_enums() {
+        assert_sync_model::<GLM5_3, TextMessage>();
         assert_sync_model::<GLM5_2, TextMessage>();
         assert_sync_model::<GLM5_1, TextMessage>();
         assert_sync_model::<GLM5_1_highspeed, TextMessage>();
@@ -558,6 +669,7 @@ mod tests {
         assert_sync_model::<GLM4_flash_250414, TextMessage>();
         assert_sync_model::<GLM4_flashx_250414, TextMessage>();
 
+        assert_async_model::<GLM5_3, TextMessage>();
         assert_async_model::<GLM5_2, TextMessage>();
         assert_async_model::<GLM5_1, TextMessage>();
         assert_async_model::<GLM5_1_highspeed, TextMessage>();
