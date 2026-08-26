@@ -1,4 +1,4 @@
-//! Ask a vision model about an image.
+//! Ask GLM-5.3-Flash about an image.
 //!
 //! Defaults to the local `data/短发女.jpeg` (sent as a base64 data URL);
 //! pass an HTTPS image URL to use a remote image instead.
@@ -7,8 +7,8 @@ use base64::Engine;
 use zai_rs::{
     client::ZaiClient,
     model::{
-        GLM4_6v, VisionMessage, VisionRichContent, chat::ChatCompletion,
-        chat_base_response::ChatCompletionResponse,
+        GLM5_3_flash, ReasoningEffort, ThinkingType, VisionMessage, VisionRichContent,
+        chat::ChatCompletion, chat_base_response::ChatCompletionResponse,
     },
 };
 
@@ -27,7 +27,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vision_message = VisionMessage::new_user()
         .add_content(VisionRichContent::image(image_url))
         .add_content(VisionRichContent::text("请用中文描述这张图像。"));
-    let request = ChatCompletion::new(GLM4_6v {}, vision_message);
+    let request = ChatCompletion::new(GLM5_3_flash {}, vision_message)
+        .with_thinking(ThinkingType::enabled().with_clear_thinking(false))
+        .with_reasoning_effort(ReasoningEffort::Max);
 
     let body: ChatCompletionResponse = request.send_via(&client).await?;
     println!("{body:#?}");

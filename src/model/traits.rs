@@ -19,10 +19,10 @@
 //! - `AsyncChat` — Asynchronous (queued) chat completion
 //! - `ChatRequestModel` — Frozen request limits shared by a chat model family
 //! - `ChatToolSupport` — Tool input accepted by a text or vision chat model
-//! - `ResponseFormatEnable` — Text-only structured response formatting
+//! - `ResponseFormatEnable` — Structured response formatting
 //! - `WatermarkEnable` — Audio-chat watermark control
 //! - `ThinkEnable` — Thinking / reasoning mode
-//! - `ReasoningEffortEnable` — `reasoning_effort` depth control (GLM-5.2+)
+//! - `ReasoningEffortEnable` — model-specific `reasoning_effort` depth control
 //! - `ToolStreamEnable` — Streaming tool-call output
 //! - `VideoGen` — Video generation
 //! - `ImageGen` — Image generation
@@ -115,19 +115,20 @@ pub trait ChatRequestModel: ModelName + sealed::ChatRequestModel {
     /// Whether the upstream accepts `thinking.type = "disabled"` for this
     /// model.
     ///
-    /// GLM-5.3 always thinks: disabling thinking is rejected upstream, so
-    /// request validation fails fast with `thinking_cannot_be_disabled`
-    /// instead of surfacing a server error. Legacy requests that used
-    /// `disabled` should migrate to `enabled` plus a light
-    /// `ReasoningEffort::Low`.
+    /// GLM-5.3 and GLM-5.3-Flash always think: disabling thinking is rejected
+    /// upstream, so request validation fails fast with
+    /// `thinking_cannot_be_disabled` instead of surfacing a server error.
+    /// Legacy requests that used `disabled` should migrate to `enabled` plus a
+    /// light `ReasoningEffort::Low`.
     const THINKING_DISABLE_SUPPORTED: bool;
 
     /// `reasoning_effort` levels accepted by this model's request schema.
     ///
-    /// Empty for models without [`ReasoningEffortEnable`]. GLM-5.3 accepts
-    /// only `low`, `high`, and `max`, while GLM-5.2 accepts every
-    /// [`ReasoningEffort`](super::tools::ReasoningEffort) variant. Setting an
-    /// unsupported level fails validation with `reasoning_effort_not_supported`.
+    /// Empty for models without [`ReasoningEffortEnable`]. GLM-5.3 and
+    /// GLM-5.3-Flash accept only `low`, `high`, and `max`, while GLM-5.2
+    /// accepts every [`ReasoningEffort`](super::tools::ReasoningEffort)
+    /// variant. Setting an unsupported level fails validation with
+    /// `reasoning_effort_not_supported`.
     const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort];
 }
 
@@ -142,7 +143,7 @@ pub trait ChatToolSupport: ChatRequestModel {
     type Tool: Into<super::tools::Tools>;
 }
 
-/// Indicates that a text chat model accepts `response_format`.
+/// Indicates that a chat model accepts `response_format`.
 pub trait ResponseFormatEnable: ChatRequestModel {}
 
 /// Indicates that an audio chat model accepts `watermark_enabled`.
@@ -152,18 +153,19 @@ pub trait WatermarkEnable: ChatRequestModel {}
 ///
 /// Models implementing this trait can enable the provider's extended reasoning
 /// mode. Whether reasoning text is returned is model- and endpoint-dependent.
-/// GLM-5.3 keeps thinking always on: `ThinkingType::disabled()` is rejected
-/// for `GLM5_3` requests (see
+/// GLM-5.3 and GLM-5.3-Flash keep thinking always on:
+/// `ThinkingType::disabled()` is rejected for their requests (see
 /// [`ChatRequestModel::THINKING_DISABLE_SUPPORTED`]).
 pub trait ThinkEnable: ChatRequestModel {}
 
 /// Indicates that a model supports the `reasoning_effort` parameter, which
 /// controls the depth of reasoning when thinking mode is enabled.
 ///
-/// Supported by GLM-5.2 and above. Each model accepts its own subset of
+/// Each model accepts its own subset of
 /// [`ReasoningEffort`](super::tools::ReasoningEffort) levels, frozen in
 /// [`ChatRequestModel::REASONING_EFFORTS`]: GLM-5.2 accepts every level,
-/// while GLM-5.3 accepts only `low`, `high`, and `max` (its default).
+/// while GLM-5.3 and GLM-5.3-Flash accept only `low`, `high`, and `max` (their
+/// default).
 pub trait ReasoningEffortEnable: ChatRequestModel {}
 
 /// Indicates that a model supports streaming tool calls (tool_stream

@@ -52,18 +52,18 @@ where
 
     /// Thinking-mode configuration for models that support extended reasoning.
     ///
-    /// GLM-5.3 always thinks: setting `type = "disabled"` fails validation
-    /// with `thinking_cannot_be_disabled`. Migrate legacy requests to
-    /// `enabled` plus `reasoning_effort = "low"` for the lightest behaviour.
+    /// GLM-5.3 and GLM-5.3-Flash always think: setting `type = "disabled"`
+    /// fails validation with `thinking_cannot_be_disabled`. Migrate legacy
+    /// requests to `enabled` plus `reasoning_effort = "low"` for the lightest
+    /// behaviour.
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ThinkingType>,
 
     /// Controls the depth of reasoning when thinking mode is enabled. Only
-    /// available for GLM-5.2 and above (models that implement
-    /// `ReasoningEffortEnable`). See [`ReasoningEffort`] for the available
-    /// levels; each model accepts its own subset, frozen in
-    /// [`ChatRequestModel::REASONING_EFFORTS`] — GLM-5.3 accepts only `low`,
-    /// `high`, and `max`.
+    /// available for models that implement `ReasoningEffortEnable`. See
+    /// [`ReasoningEffort`] for the available levels; each model accepts its own
+    /// subset, frozen in [`ChatRequestModel::REASONING_EFFORTS`] — GLM-5.3 and
+    /// GLM-5.3-Flash accept only `low`, `high`, and `max`.
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<ReasoningEffort>,
 
@@ -79,8 +79,9 @@ where
     stream: Option<bool>,
 
     /// Whether to enable streaming of tool calls (streaming function call
-    /// parameters). Supported by GLM-5.3, GLM-5.2, GLM-5.1, GLM-5, GLM-5-Turbo,
-    /// GLM-4.7, and GLM-4.6 models. Defaults to false when omitted.
+    /// parameters). Supported by GLM-5.3, GLM-5.3-Flash, GLM-5.2, GLM-5.1,
+    /// GLM-5, GLM-5-Turbo, GLM-4.7, and GLM-4.6 models. Defaults to false when
+    /// omitted.
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_stream: Option<bool>,
 
@@ -375,7 +376,7 @@ where
         self.stop.as_deref()
     }
 
-    /// Text response format, when supported and configured.
+    /// Response format, when supported and configured.
     pub const fn response_format(&self) -> Option<ResponseFormat> {
         self.response_format
     }
@@ -434,7 +435,7 @@ where
     M: Serialize,
     (N, M): Bounded,
 {
-    /// Set the response format for a text chat model.
+    /// Set the response format for a compatible chat model.
     pub fn with_response_format(mut self, format: ResponseFormat) -> Self {
         self.response_format = Some(format);
         self
@@ -494,9 +495,9 @@ where
     /// Available only for models implementing [`ReasoningEffortEnable`].
     /// Typically combined with
     /// [`with_thinking`](Self::with_thinking) to enable thinking first.
-    /// GLM-5.3 accepts only [`ReasoningEffort::Low`], [`ReasoningEffort::High`],
-    /// and [`ReasoningEffort::Max`]; other levels fail validation with
-    /// `reasoning_effort_not_supported`.
+    /// GLM-5.3 and GLM-5.3-Flash accept only [`ReasoningEffort::Low`],
+    /// [`ReasoningEffort::High`], and [`ReasoningEffort::Max`]; other levels
+    /// fail validation with `reasoning_effort_not_supported`.
     ///
     /// # Examples
     ///
@@ -537,8 +538,8 @@ where
 mod tests {
     use super::*;
     use crate::model::{
-        chat_message_types::{TextMessage, VisionMessage, VoiceMessage},
-        chat_models::{GLM4_5_air, GLM4_6, GLM4_6v, GLM4_voice, GLM5_2, GLM5_3},
+        chat_message_types::{TextMessage, VisionMessage, VisionRichContent, VoiceMessage},
+        chat_models::{GLM4_5_air, GLM4_6, GLM4_6v, GLM4_voice, GLM5_2, GLM5_3, GLM5_3_flash},
     };
     use validator::Validate;
 
@@ -784,6 +785,110 @@ mod tests {
         assert_eq!(json["model"], "glm-5.3");
         assert_eq!(json["thinking"]["type"], "enabled");
         assert_eq!(json["reasoning_effort"], "max");
+    }
+
+    #[test]
+    fn glm53_flash_serializes_unified_multimodal_capabilities() {
+        let media_message = VisionMessage::new_user()
+            .add_content(VisionRichContent::image("https://example.test/one.png"))
+            .add_content(VisionRichContent::image(
+                "data:image/png;base64,iVBORw0KGgo=",
+            ))
+            .add_content(VisionRichContent::video("https://example.test/demo.mp4"))
+            .add_content(VisionRichContent::text("Analyze all inputs"));
+        let body = ChatBody::new(GLM5_3_flash {}, media_message)
+            .with_thinking(ThinkingType::enabled().with_clear_thinking(false))
+            .with_reasoning_effort(ReasoningEffort::Max)
+            .with_temperature(1.0)
+            .with_top_p(0.95)
+            .with_response_format(ResponseFormat::JsonObject)
+            .add_tool(Function::new(
+                "inspect",
+                "Inspect the supplied media",
+                serde_json::json!({"type": "object"}),
+            ))
+            .with_tool_choice(ToolChoice::auto())
+            .with_tool_stream(true);
+
+        assert!(body.validate().is_ok());
+        let json = serde_json::to_value(body).unwrap();
+        assert_eq!(json["model"], "glm-5.3-flash");
+        assert_eq!(json["thinking"]["type"], "enabled");
+        assert_eq!(json["thinking"]["clear_thinking"], false);
+        assert_eq!(json["reasoning_effort"], "max");
+        assert_eq!(json["temperature"], 1.0);
+        assert_eq!(json["top_p"], 0.95);
+        assert_eq!(json["stream"], true);
+        assert_eq!(json["tool_stream"], true);
+        assert_eq!(json["tools"][0]["type"], "function");
+        assert_eq!(json["tool_choice"], "auto");
+        assert_eq!(json["response_format"]["type"], "json_object");
+        assert_eq!(json["messages"][0]["content"][0]["type"], "image_url");
+        assert_eq!(json["messages"][0]["content"][1]["type"], "image_url");
+        assert_eq!(json["messages"][0]["content"][2]["type"], "video_url");
+        assert_eq!(json["messages"][0]["content"][3]["type"], "text");
+        assert!(json.get("watermark_enabled").is_none());
+
+        // File input cannot be mixed with image or video input, so exercise it
+        // in a separate valid request.
+        let file_body = ChatBody::new(
+            GLM5_3_flash {},
+            VisionMessage::new_user()
+                .add_content(VisionRichContent::file("https://example.test/report.pdf"))
+                .add_content(VisionRichContent::text("Summarize this file")),
+        );
+        assert!(file_body.validate().is_ok());
+        let file_json = serde_json::to_value(file_body).unwrap();
+        assert_eq!(file_json["messages"][0]["content"][0]["type"], "file_url");
+        assert_eq!(file_json["messages"][0]["content"][1]["type"], "text");
+    }
+
+    #[test]
+    fn glm53_flash_enforces_always_on_thinking_and_effort_subset() {
+        let base = ChatBody::new(GLM5_3_flash {}, VisionMessage::new_user());
+
+        assert!(
+            base.clone()
+                .with_thinking(ThinkingType::enabled())
+                .validate()
+                .is_ok()
+        );
+        let errors = base
+            .clone()
+            .with_thinking(ThinkingType::disabled())
+            .validate()
+            .expect_err("disabled thinking must fail validation");
+        assert!(format!("{errors:?}").contains("thinking_cannot_be_disabled"));
+
+        for effort in [
+            ReasoningEffort::Low,
+            ReasoningEffort::High,
+            ReasoningEffort::Max,
+        ] {
+            assert!(
+                base.clone()
+                    .with_reasoning_effort(effort)
+                    .validate()
+                    .is_ok(),
+                "expected {effort:?} to be supported"
+            );
+        }
+        for effort in [
+            ReasoningEffort::Xhigh,
+            ReasoningEffort::Medium,
+            ReasoningEffort::Minimal,
+            ReasoningEffort::None,
+        ] {
+            let errors = base
+                .clone()
+                .with_reasoning_effort(effort)
+                .validate()
+                .expect_err("unsupported effort must fail validation");
+            assert!(
+                format!("{errors:?}").contains("reasoning_effort_not_supported"),
+                "expected {effort:?} to be rejected"
+            );
+        }
     }
 
     #[test]

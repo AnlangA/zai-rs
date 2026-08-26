@@ -37,16 +37,17 @@
 //!
 //! Text models accept the complete chat tool union and `response_format`.
 //!
-//! GLM-5.3 always thinks: `thinking.type = "disabled"` is rejected by request
-//! validation (`thinking_cannot_be_disabled`), and its `reasoning_effort` is
-//! frozen to `low` / `high` / `max`. All other thinking-capable models accept
-//! both thinking modes, and GLM-5.2 accepts every
-//! `ReasoningEffort` level.
+//! GLM-5.3 and GLM-5.3-Flash always think: `thinking.type = "disabled"` is
+//! rejected by request validation (`thinking_cannot_be_disabled`), and their
+//! `reasoning_effort` is frozen to `low` / `high` / `max`. Other
+//! thinking-capable models accept both thinking modes, and GLM-5.2 accepts
+//! every `ReasoningEffort` level.
 //!
 //! ## Vision Models
 //!
 //! | Model | Struct | Thinking | Message Type |
 //! |-------|--------|----------|--------------|
+//! | glm-5.3-flash | [`GLM5_3_flash`] | required | [`VisionMessage`] |
 //! | autoglm-phone | [`autoglm_phone`] | no | [`VisionMessage`] |
 //! | glm-4.6v | [`GLM4_6v`] | no | [`VisionMessage`] |
 //! | glm-4.6v-flash | [`GLM4_6v_flash`] | no | [`VisionMessage`] |
@@ -56,8 +57,9 @@
 //! | glm-4.1v-thinking-flashx | [`GLM4_1v_thinking_flashx`] | yes | [`VisionMessage`] |
 //! | glm-5v-turbo | [`GLM5V_turbo`] | yes | [`VisionMessage`] |
 //!
-//! Vision models accept function tools only and do not expose
-//! `response_format`.
+//! Vision models accept function tools only. `GLM5_3_flash` additionally
+//! exposes `reasoning_effort`, streaming tool calls, and `response_format` as
+//! documented by its model-specific API guide.
 //!
 //! ## Voice Models
 //!
@@ -171,6 +173,24 @@ macro_rules! impl_registered_request_schema {
             type Tool = Function;
         }
     };
+    // GLM-5.3-Flash uses the VisionRequest message/tool schema while sharing
+    // GLM-5.3's always-on thinking, effort subset, and structured-output
+    // controls.
+    ($model:ident, vision, $max_tokens:expr,
+        constraints: { thinking: $thinking:ident, efforts: [$($effort:ident),+ $(,)?] }) => {
+        impl super::traits::sealed::ChatRequestModel for $model {}
+        impl ChatRequestModel for $model {
+            const MAX_TOKENS: u32 = $max_tokens;
+            const THINKING_DISABLE_SUPPORTED: bool =
+                impl_registered_request_schema!(@thinking_disable $thinking);
+            const REASONING_EFFORTS: &'static [super::tools::ReasoningEffort] =
+                &[$(super::tools::ReasoningEffort::$effort),+];
+        }
+        impl ChatToolSupport for $model {
+            type Tool = Function;
+        }
+        impl ResponseFormatEnable for $model {}
+    };
     ($model:ident, voice, $max_tokens:expr) => {
         impl super::traits::sealed::ChatRequestModel for $model {}
         impl ChatRequestModel for $model {
@@ -251,6 +271,28 @@ chat_model_registry! {
         id: "glm-5.3",
         message: TextMessage,
         request: text(131_072, constraints: { thinking: always_on, efforts: [Low, High, Max] }),
+        capabilities: [Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable, ToolStreamEnable],
+    };
+    /// GLM-5.3-Flash, the GLM-5 series' first native multimodal model.
+    ///
+    /// See the [official model guide](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash).
+    /// Text-only prompts still use [`VisionMessage`], because the model is
+    /// listed only in the provider's VisionRequest schema.
+    ///
+    /// ```compile_fail
+    /// use zai_rs::model::{
+    ///     chat::ChatCompletion,
+    ///     chat_message_types::TextMessage,
+    ///     chat_models::GLM5_3_flash,
+    /// };
+    ///
+    /// let _ = ChatCompletion::new(GLM5_3_flash {}, TextMessage::user("Hello"));
+    /// ```
+    #[allow(non_camel_case_types)]
+    GLM5_3_flash => {
+        id: "glm-5.3-flash",
+        message: VisionMessage,
+        request: vision(131_072, constraints: { thinking: always_on, efforts: [Low, High, Max] }),
         capabilities: [Chat, AsyncChat, ThinkEnable, ReasoningEffortEnable, ToolStreamEnable],
     };
     GLM5_2 => {
@@ -476,6 +518,17 @@ mod tests {
     {
     }
 
+    fn assert_unified_vision_request_schema<N>()
+    where
+        N: ChatRequestModel
+            + ChatToolSupport<Tool = Function>
+            + ResponseFormatEnable
+            + ThinkEnable
+            + ReasoningEffortEnable
+            + ToolStreamEnable,
+    {
+    }
+
     fn assert_audio_request_schema<N>()
     where
         N: ChatRequestModel + WatermarkEnable,
@@ -522,6 +575,7 @@ mod tests {
         assert_text_request_schema::<GLM4_flash_250414>();
         assert_text_request_schema::<GLM4_flashx_250414>();
 
+        assert_unified_vision_request_schema::<GLM5_3_flash>();
         assert_vision_request_schema::<GLM5V_turbo>();
         assert_vision_request_schema::<autoglm_phone>();
         assert_vision_request_schema::<GLM4_6v>();
@@ -533,6 +587,7 @@ mod tests {
 
         assert_audio_request_schema::<GLM4_voice>();
         assert_eq!(GLM5_3::MAX_TOKENS, 131_072);
+        assert_eq!(GLM5_3_flash::MAX_TOKENS, 131_072);
         assert_eq!(GLM5_2::MAX_TOKENS, 131_072);
         assert_eq!(GLM4_voice::MAX_TOKENS, 4_096);
     }
@@ -546,11 +601,12 @@ mod tests {
         assert_eq!(
             (
                 GLM5_3::THINKING_DISABLE_SUPPORTED,
+                GLM5_3_flash::THINKING_DISABLE_SUPPORTED,
                 GLM5_2::THINKING_DISABLE_SUPPORTED,
                 GLM5_1::THINKING_DISABLE_SUPPORTED,
                 GLM4_1v_thinking_flash::THINKING_DISABLE_SUPPORTED,
             ),
-            (false, true, true, true)
+            (false, false, true, true, true)
         );
 
         // GLM-5.3 always thinks and only accepts low / high / max.
@@ -562,6 +618,7 @@ mod tests {
                 ReasoningEffort::Max
             ]
         );
+        assert_eq!(GLM5_3_flash::REASONING_EFFORTS, GLM5_3::REASONING_EFFORTS);
 
         // GLM-5.2 keeps both thinking modes and every effort level.
         assert_eq!(
@@ -626,6 +683,7 @@ mod tests {
     #[test]
     fn official_vision_model_names_match_snapshot() {
         let models = [
+            String::from(GLM5_3_flash {}),
             String::from(GLM5V_turbo {}),
             String::from(GLM4_6v {}),
             String::from(autoglm_phone {}),
@@ -638,6 +696,7 @@ mod tests {
         assert_eq!(
             models,
             [
+                "glm-5.3-flash",
                 "glm-5v-turbo",
                 "glm-4.6v",
                 "autoglm-phone",
@@ -682,6 +741,7 @@ mod tests {
         assert_async_model::<GLM4_flash_250414, TextMessage>();
         assert_async_model::<GLM4_flashx_250414, TextMessage>();
 
+        assert_sync_model::<GLM5_3_flash, VisionMessage>();
         assert_sync_model::<GLM5V_turbo, VisionMessage>();
         assert_sync_model::<GLM4_6v, VisionMessage>();
         assert_sync_model::<autoglm_phone, VisionMessage>();
@@ -691,6 +751,7 @@ mod tests {
         assert_sync_model::<GLM4_1v_thinking_flash, VisionMessage>();
         assert_sync_model::<GLM4_1v_thinking_flashx, VisionMessage>();
 
+        assert_async_model::<GLM5_3_flash, VisionMessage>();
         assert_async_model::<GLM5V_turbo, VisionMessage>();
         assert_async_model::<GLM4_6v, VisionMessage>();
         assert_async_model::<GLM4_6v_flash, VisionMessage>();
