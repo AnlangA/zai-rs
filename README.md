@@ -68,6 +68,7 @@ registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当�
 
 | 模型 | 结构体 |
 |------|--------|
+| glm-5.3-flash | `GLM5_3_flash` |
 | autoglm-phone | `autoglm_phone` |
 | glm-5v-turbo | `GLM5V_turbo` |
 | glm-4.6v | `GLM4_6v` |
@@ -76,6 +77,13 @@ registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当�
 | glm-4v-flash | `GLM4v_flash` |
 | glm-4.1v-thinking-flash | `GLM4_1v_thinking_flash` |
 | glm-4.1v-thinking-flashx | `GLM4_1v_thinking_flashx` |
+
+> `GLM5_3_flash` 是 GLM-5 系列首个原生多模态模型，支持 1M 上下文、
+> 128K 最大输出，以及文本、图片（HTTPS URL / Base64 Data URL）、视频和文件
+> 输入。SDK 同时开放同步/异步对话、Function Calling、
+> 结构化输出和流式工具调用；思考不可关闭，`reasoning_effort` 仅接受
+> `low`、`high`、`max`。文件不能与图片或视频同传。详见
+> [GLM-5.3-Flash 官方文档](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash)。
 
 ### 语音处理模型
 
@@ -127,7 +135,8 @@ cargo run --example realtime_audio --features realtime
 | `chat_loop` | 多轮对话循环 |
 | `chat_coding_plan` | 编程辅助对话（coding 专属端点） |
 | `coding_plan_usage` | Coding Plan 余量 / 额度查询 |
-| `chat_vision` | 视觉模型对话（图片/视频） |
+| `chat_vision` | GLM-5.3-Flash 图片理解（默认使用 `data/短发女.jpeg`） |
+| `chat_video` | GLM-5.3-Flash 视频理解（默认使用 `data/长发女听歌.mp4`） |
 | `chat_voice` | 语音模型对话 |
 | `async_chat_text` | 异步对话任务提交与轮询 |
 | `glm45_thinking_mode` | 深度思考模式 |
@@ -170,6 +179,16 @@ cargo run --example realtime_audio --features realtime
 | `voice_list` / `voice_delete` | 音色列表 / 删除 |
 | `realtime_audio` | 实时音频会话（`realtime` feature） |
 
+### 内置媒体资源
+
+| 路径 | 用途 |
+|------|------|
+| `data/短发女.jpeg` | `chat_vision`、`mcp_vision` 默认图片 |
+| `data/长发女听歌.mp4` | `chat_video` 默认视频，通过 Base64 直接发送 |
+| `data/你好.wav` | `audio_to_text`、`chat_voice` 默认音频 |
+| `data/春.wav` | 备用 WAV 音频样例 |
+| `data/ocr_example.png` | `ocr` 默认图片 |
+
 ### 运行方式
 
 ```bash
@@ -186,9 +205,9 @@ cargo run --example chat_loop
 
 ### 模型 API
 - [x] POST 对话补全（同步/异步）
-- [x] GLM-5.3 / GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
-- [x] 思考模式（Thinking Mode），支持 clear_thinking 保留式思考（GLM-5.3 思考始终开启，不可禁用）
-- [x] 推理深度控制（Reasoning Effort，GLM-5.2：max/xhigh/high/medium/low/minimal/none；GLM-5.3 仅 low/high/max，默认 max）
+- [x] GLM-5.3 / GLM-5.3-Flash / GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 系列支持
+- [x] 思考模式（Thinking Mode），支持 clear_thinking 保留式思考（GLM-5.3 与 GLM-5.3-Flash 始终开启，不可禁用）
+- [x] 推理深度控制（GLM-5.2：max/xhigh/high/medium/low/minimal/none；GLM-5.3 与 GLM-5.3-Flash：low/high/max，默认 max）
 - [x] 类型安全的 SSE 聊天流（`enable_stream().stream_via(&client)`）
 - [x] 图像生成
 - [x] 视频生成（异步）

@@ -3050,7 +3050,7 @@ mod run_loop_tests {
         {
             let frames = written.lock().unwrap();
             assert_eq!(frames.len(), COMMANDS);
-            for (cycle, group) in frames.chunks_exact(4).enumerate() {
+            for (cycle, group) in frames.as_slice().as_chunks::<4>().0.iter().enumerate() {
                 let values = group
                     .iter()
                     .map(|frame| serde_json::from_str::<serde_json::Value>(frame).unwrap())

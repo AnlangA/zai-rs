@@ -71,6 +71,12 @@ fn all_model_ids() -> Vec<(&'static str, &'static str, String, &'static str)> {
         // vision
         (
             "vision",
+            "GLM5_3_flash",
+            GLM5_3_flash {}.into(),
+            "glm-5.3-flash",
+        ),
+        (
+            "vision",
             "GLM5V_turbo",
             GLM5V_turbo {}.into(),
             "glm-5v-turbo",

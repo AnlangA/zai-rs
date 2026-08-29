@@ -103,7 +103,7 @@ where
         self.body = self.body.clear_tools();
         self
     }
-    /// Set the response format for a text model.
+    /// Set the response format for a compatible model.
     pub fn with_response_format(mut self, format: ResponseFormat) -> Self
     where
         N: ResponseFormatEnable,

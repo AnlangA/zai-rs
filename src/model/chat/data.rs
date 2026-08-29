@@ -218,7 +218,7 @@ where
         self
     }
 
-    /// Set the text response format.
+    /// Set the response format for a compatible model.
     pub fn with_response_format(mut self, format: ResponseFormat) -> Self
     where
         N: ResponseFormatEnable,

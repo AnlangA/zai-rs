@@ -7,7 +7,7 @@
 //! # Key Types
 //!
 //! - [`ThinkingType`] — Controls reasoning mode for thinking-capable models
-//! - [`ReasoningEffort`] — Controls reasoning depth for GLM-5.2+ models
+//! - [`ReasoningEffort`] — Controls reasoning depth for supported models
 //! - `Function` — Defines a callable function with JSON-schema parameters
 //! - `WebSearch` — Enables live web search within chat
 //! - [`Retrieval`] — Enables knowledge-base retrieval
@@ -44,11 +44,11 @@ use crate::tool::web_search::{ContentSize, SearchEngine, SearchRecencyFilter};
 /// # Model compatibility
 ///
 /// Thinking capabilities are available only on models that implement the
-/// `ThinkEnable` trait, such as GLM-5.3, GLM-5.2, GLM-5.1, GLM-5, GLM-4.7,
-/// and GLM-4.5 series models.
+/// `ThinkEnable` trait, such as GLM-5.3, GLM-5.3-Flash, GLM-5.2, GLM-5.1,
+/// GLM-5, GLM-4.7, and GLM-4.5 series models.
 ///
-/// GLM-5.3 always thinks: [`ThinkingType::disabled()`] is rejected by request
-/// validation for `GLM5_3` with `thinking_cannot_be_disabled`. Migrate
+/// GLM-5.3 and GLM-5.3-Flash always think: [`ThinkingType::disabled()`] is
+/// rejected by request validation with `thinking_cannot_be_disabled`. Migrate
 /// legacy requests that disabled thinking to `enabled()` combined with
 /// [`ReasoningEffort::Low`] for the lightest behaviour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -104,19 +104,19 @@ impl ThinkingType {
     }
 }
 
-/// Reasoning depth level for the `reasoning_effort` parameter (GLM-5.2+).
+/// Reasoning depth level for the `reasoning_effort` parameter.
 ///
 /// Controls how much reasoning the model invests when thinking mode is
 /// enabled. Higher levels yield deeper reasoning at the cost of latency and
-/// token usage; lower levels are faster and cheaper. Available only on
-/// GLM-5.2 and above (models implementing
-/// [`ReasoningEffortEnable`](super::traits::ReasoningEffortEnable)).
+/// token usage; lower levels are faster and cheaper. Available only on models
+/// implementing [`ReasoningEffortEnable`](super::traits::ReasoningEffortEnable).
 ///
 /// Each model accepts its own subset, frozen in
 /// `ChatRequestModel::REASONING_EFFORTS`:
-/// GLM-5.3 accepts only [`Low`](Self::Low), [`High`](Self::High), and
-/// [`Max`](Self::Max) (its default); setting any other level fails validation
-/// with `reasoning_effort_not_supported`. GLM-5.2 accepts every variant.
+/// GLM-5.3 and GLM-5.3-Flash accept only [`Low`](Self::Low),
+/// [`High`](Self::High), and [`Max`](Self::Max) (their default); setting any
+/// other level fails validation with `reasoning_effort_not_supported`.
+/// GLM-5.2 accepts every variant.
 ///
 /// Levels, from highest to lowest reasoning depth:
 ///

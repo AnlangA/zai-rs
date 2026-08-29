@@ -194,10 +194,10 @@ pub enum VisionMessage {
     },
 }
 
-/// URL descriptor nested inside a `video_url` content part.
+/// URL or Base64 descriptor nested inside a `video_url` content part.
 #[derive(Debug, Clone, Serialize)]
 pub struct VideoUrlInfo {
-    /// The URL of the video file.
+    /// The URL or Base64-encoded bytes of the video file.
     pub url: String,
 }
 
@@ -238,9 +238,10 @@ pub enum VisionRichContent {
         /// Image URL / base64 descriptor.
         image_url: ImageUrlInfo,
     },
-    /// Video URL. Supported formats and size limits vary by model.
+    /// Video URL or Base64-encoded video. Supported formats and size limits
+    /// vary by model.
     VideoUrl {
-        /// Video URL descriptor.
+        /// Video URL / Base64 descriptor.
         video_url: VideoUrlInfo,
     },
     /// Document URL; this variant does not accept base64 data.
@@ -278,13 +279,14 @@ impl VisionRichContent {
         }
     }
 
-    /// Create a video content part from a URL.
+    /// Create a video content part from a URL or Base64-encoded video.
     ///
     /// # Examples
     ///
     /// ```rust
     /// # use zai_rs::model::*;
     /// let video = VisionRichContent::video("https://example.com/video.mp4");
+    /// let base64_video = VisionRichContent::video("AAAAIGZ0eXBpc29t...");
     /// ```
     pub fn video(url: impl Into<String>) -> Self {
         VisionRichContent::VideoUrl {
@@ -852,6 +854,10 @@ mod tests {
         let content = VisionRichContent::video("https://example.com/video.mp4");
         let json = serde_json::to_string(&content).unwrap();
         assert!(json.contains("\"type\":\"video_url\""));
+
+        let base64_content = VisionRichContent::video("AAAAIGZ0eXBpc29t");
+        let base64_json = serde_json::to_string(&base64_content).unwrap();
+        assert!(base64_json.contains("AAAAIGZ0eXBpc29t"));
     }
 
     #[test]

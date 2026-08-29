@@ -1,4 +1,5 @@
 GLM5_3|glm-5.3|TextMessage|text|131072|Chat,AsyncChat,ThinkEnable,ReasoningEffortEnable,ToolStreamEnable|always_on|Low,High,Max
+GLM5_3_flash|glm-5.3-flash|VisionMessage|vision|131072|Chat,AsyncChat,ThinkEnable,ReasoningEffortEnable,ToolStreamEnable|always_on|Low,High,Max
 GLM5_2|glm-5.2|TextMessage|text|131072|Chat,AsyncChat,ThinkEnable,ReasoningEffortEnable,ToolStreamEnable|toggleable|Max,Xhigh,High,Medium,Low,Minimal,None
 GLM5_1|glm-5.1|TextMessage|text|131072|Chat,AsyncChat,ThinkEnable,ToolStreamEnable|toggleable|
 GLM5_1_highspeed|glm-5.1-highspeed|TextMessage|text|131072|Chat,AsyncChat,ThinkEnable,ToolStreamEnable|toggleable|

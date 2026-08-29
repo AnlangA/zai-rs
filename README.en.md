@@ -73,6 +73,7 @@ See [Architecture](docs/ARCHITECTURE.md) for design and maintenance notes, and
 
 | Model | Struct |
 |-------|--------|
+| glm-5.3-flash | `GLM5_3_flash` |
 | autoglm-phone | `autoglm_phone` |
 | glm-5v-turbo | `GLM5V_turbo` |
 | glm-4.6v | `GLM4_6v` |
@@ -81,6 +82,14 @@ See [Architecture](docs/ARCHITECTURE.md) for design and maintenance notes, and
 | glm-4v-flash | `GLM4v_flash` |
 | glm-4.1v-thinking-flash | `GLM4_1v_thinking_flash` |
 | glm-4.1v-thinking-flashx | `GLM4_1v_thinking_flashx` |
+
+> `GLM5_3_flash` is the GLM-5 family's first native multimodal model. It
+> supports a 1M context window, 128K max output, and text, image (HTTPS URL or
+> Base64 data URL), video, and file input. The SDK exposes
+> sync/async chat, function calling, structured output, and streamed tool
+> calls. Thinking cannot be disabled; `reasoning_effort` accepts only `low`,
+> `high`, and `max`. File input cannot be mixed with image or video input. See
+> the [official GLM-5.3-Flash guide](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash).
 
 ### Audio models
 
@@ -136,7 +145,8 @@ cargo run --example realtime_audio --features realtime
 | `chat_loop` | Multi-turn conversation loop |
 | `chat_coding_plan` | Coding assistant chat (dedicated coding endpoint) |
 | `coding_plan_usage` | Coding Plan quota / remaining-quota query |
-| `chat_vision` | Vision model chat (images / video) |
+| `chat_vision` | GLM-5.3-Flash image understanding (defaults to `data/短发女.jpeg`) |
+| `chat_video` | GLM-5.3-Flash video understanding (defaults to `data/长发女听歌.mp4`) |
 | `chat_voice` | Voice model chat |
 | `async_chat_text` | Async chat task submission and polling |
 | `glm45_thinking_mode` | Deep thinking mode |
@@ -179,6 +189,16 @@ cargo run --example realtime_audio --features realtime
 | `voice_list` / `voice_delete` | Voice listing / deletion |
 | `realtime_audio` | Realtime audio session (`realtime` feature) |
 
+### Bundled media
+
+| Path | Use |
+|------|-----|
+| `data/短发女.jpeg` | Default image for `chat_vision` and `mcp_vision` |
+| `data/长发女听歌.mp4` | Default video for `chat_video`, sent directly as Base64 |
+| `data/你好.wav` | Default audio for `audio_to_text` and `chat_voice` |
+| `data/春.wav` | Alternate WAV audio sample |
+| `data/ocr_example.png` | Default image for `ocr` |
+
 ### How to run
 
 ```bash
@@ -195,9 +215,9 @@ cargo run --example chat_loop
 
 ### Model APIs
 - [x] POST chat completions (sync/async)
-- [x] GLM-5.3 / GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 series support
-- [x] Thinking Mode, with `clear_thinking` preserved-thinking support (GLM-5.3 always thinks; it cannot be disabled)
-- [x] Reasoning depth control (Reasoning Effort, GLM-5.2: max/xhigh/high/medium/low/minimal/none; GLM-5.3: low/high/max only, default max)
+- [x] GLM-5.3 / GLM-5.3-Flash / GLM-5.2 / GLM-5.1 / GLM-5 / GLM-4.7 / GLM-4.6 / GLM-4.5 series support
+- [x] Thinking Mode, with `clear_thinking` preserved-thinking support (GLM-5.3 and GLM-5.3-Flash always think; they cannot be disabled)
+- [x] Reasoning depth control (GLM-5.2: max/xhigh/high/medium/low/minimal/none; GLM-5.3 and GLM-5.3-Flash: low/high/max only, default max)
 - [x] Type-safe SSE chat streaming (`enable_stream().stream_via(&client)`)
 - [x] Image generation
 - [x] Video generation (async)
