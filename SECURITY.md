@@ -3,25 +3,26 @@
 ## Supported versions
 
 Security fixes are currently provided for the latest published stable release
-line. `Cargo.toml`'s `6.1.0` is an unpublished candidate, not the current
-registry release.
+line.
 
 | Release line | Security support |
 | --- | --- |
-| `0.6.x` (latest published: `0.6.0`) | Supported |
-| Unpublished `6.1.0` candidate and later working-tree changes | Pre-release; no registry support promise |
-| Earlier than `0.6.0` | Not supported |
+| `6.2.x` (latest: `6.2.0`) | Supported |
+| Earlier than `6.2.0` | Not supported |
 
-The published-version result above was verified with `cargo search` and
-`cargo info`. Both `v6.0.1` release workflow attempts failed. This audit did
+Both `v6.0.1` release workflow attempts failed. This audit did
 recover the corresponding step logs: run `30091854390` rejected its
 then-current lightweight tag, while run `30092565276` passed quality,
 packaging, SBOM, checksum, and attestation before crates.io rejected OIDC
 authentication because no matching Trusted Publisher was configured for
-`AnlangA/zai-rs`. The `6.1.0` candidate supersedes that failed tag with a
-version greater than `6.0.1`; a future supported release must still configure
-that external publisher before its annotated tag can publish. This table
-describes the current policy rather than promising indefinite backports.
+`AnlangA/zai-rs`. The annotated `v6.1.0` tag then triggered run `31818272628`:
+attempt 1 failed in the macOS quality job because of an accept-vs-read test
+race, and attempt 2 passed the internal release gates before the same missing
+Trusted Publisher configuration rejected OIDC authentication. Version `6.1.0`
+was published afterward, but those failed workflow attempts remain part of the
+release record. Version `6.2.0` uses a new annotated tag and a matching
+crates.io Trusted Publisher. This table describes the current policy rather
+than promising indefinite backports.
 
 ## Reporting a vulnerability
 

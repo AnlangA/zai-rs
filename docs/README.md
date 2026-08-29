@@ -18,7 +18,7 @@
   - 错误码映射和 retry 策略
   - 测试与文档维护规则
 
-- **[未发布安全加固迁移说明](HARDENING_MIGRATION.md)** - 从已发布 0.6.0 升级到下一正式版本时的可观察行为变化
+- **[安全加固迁移说明](HARDENING_MIGRATION.md)** - 6.x 传输层安全加固带来的可观察行为变化
 
 - **[发布清单](RELEASING.md)** - OIDC、SBOM、provenance 与发布前外部配置
 
@@ -84,15 +84,8 @@
 
 ## 版本说明
 
-Cargo 当前声明的 `6.1.0` 是未发布候选版（取代同样未发布的 `6.0.1`）。
-两次 `v6.0.1` tag workflow 均失败；原始 step 日志已确认首次是当时 tag
-不是 annotated tag，第二次是 crates.io 缺少 `AnlangA/zai-rs` Trusted
-Publisher 配置。经 `cargo search` / `cargo info` 验证的 crates.io 最新版仍为
-`0.6.0`。`6.1.0` 候选版高于 `6.0.1` 并使用新 tag；正式发布前仍需先完成
-Trusted Publisher 配置。
-
-使用当前文档的 API 时，按[快速入门指南](GETTING_STARTED.md)将 git 依赖绑定到
-经审计 commit。registry `0.6.0` 的 API 与当前文档存在差异。升级前请阅读
+当前发布版本为 `6.2.0`，依赖写为 `zai-rs = "6.2.0"`。安装步骤见
+[快速入门指南](GETTING_STARTED.md)，从较早版本升级前请阅读
 [安全加固迁移说明](HARDENING_MIGRATION.md)。
 
 ## 维护注记

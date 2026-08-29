@@ -359,10 +359,10 @@ jobs:
 
       # Compare against the newest version tag reachable from this revision,
       # excluding a tag that points at HEAD itself (as happens in release CI).
-      # The registry can lag behind unpublished local release candidates (it
-      # still serves 0.6.0 while v6.1.0 is the current candidate), so relying
-      # on registry version ordering would currently turn this gate into a
-      # zero-check false positive.
+      # Registry publication can lag a freshly prepared or tagged release, and
+      # failed candidates remain part of the immutable tag history. Relying on
+      # registry version ordering could therefore compare against the wrong
+      # revision or turn this gate into a zero-check false positive.
       - name: Compare default and all-feature public APIs with the prior tag
         shell: bash
         run: |

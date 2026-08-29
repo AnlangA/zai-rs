@@ -19,20 +19,16 @@ A: 请在 [GitHub Issues](https://github.com/AnlangA/zai-rs/issues) 提交 Issue
 ## 安装和配置
 
 ### Q: 如何在项目中添加 zai-rs 依赖？
-A: 当前仓库 API 尚未发布到 crates.io。请把仓库依赖绑定到经审计的
-commit，不要跟踪可变的 branch：
+A: 使用 crates.io 依赖：
 
 ```toml
 [dependencies]
-zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
+zai-rs = "6.2.0"
 ```
 
-`Cargo.toml` 中的 `6.1.0` 是未发布候选版（取代同样未发布的 `6.0.1`），
-两次 `v6.0.1` workflow 运行均失败；原始 step 日志证明首次是当时 tag 不是
-annotated tag，第二次是 crates.io 没有找到 `AnlangA/zai-rs` Trusted
-Publisher 配置。经 `cargo search` / `cargo info` 验证，crates.io 最新版为
-`0.6.0`，但该 legacy 版本与当前文档的 API 存在差异。`6.1.0` 候选版高于
-`6.0.1` 并使用新 tag；正式发布前仍需先完成 Trusted Publisher 配置。
+从 `6.1.0` 或更早版本升级时，请同时阅读
+[安全加固迁移说明](HARDENING_MIGRATION.md)。如需测试尚未发布的仓库提交，
+请绑定经审计的 commit，不要跟踪可变 branch。
 
 ### Q: 如何配置 API 密钥？
 A: 最简单的方式是使用环境变量：

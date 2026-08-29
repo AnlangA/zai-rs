@@ -8,21 +8,17 @@ short-lived crates.io token obtained through GitHub OIDC.
 
 ## Current release state
 
-`Cargo.toml` declares `6.1.0`, a release candidate prepared on 2026-08-14 that
-supersedes the never-published `6.0.1`. It carries the API-transport hardening
-from PR #57 and GLM-5.3 model support. The two `v6.0.1` workflow attempts,
-runs `30091854390` and `30092565276`, both concluded with `failure`. Their
-step logs are available: the first run's then-current `v6.0.1` ref failed the
-annotated-tag check; the second passed quality, tag verification, packaging,
-SBOM, checksum, and both attestation steps, then crates.io rejected OIDC
-authentication with `No Trusted Publishing config found for repository
-AnlangA/zai-rs`.
+`Cargo.toml` declares `6.2.0`, the next release after crates.io `6.1.0`. It
+adds GLM-5.3-Flash native multimodal support and keeps the public API compatible
+with `6.1.0`. Exact registry lookup on 2026-08-29 confirmed that `6.2.0` was
+still available before this release was prepared.
 
-`cargo search` and `cargo info` confirm `0.6.0` as the latest crates.io
-release. Publishing `6.1.0` therefore still requires the crates.io Trusted
-Publisher named in the one-time setup below to be configured before the
-`v6.1.0` annotated tag is pushed; the existing `v6.0.1` tag must not be moved
-or reused.
+The two `v6.0.1` workflow attempts, runs `30091854390` and `30092565276`, both
+concluded with `failure`. Their step logs are available: the first run's
+then-current `v6.0.1` ref failed the annotated-tag check; the second passed
+quality, tag verification, packaging, SBOM, checksum, and both attestation
+steps, then crates.io rejected OIDC authentication with `No Trusted Publishing
+config found for repository AnlangA/zai-rs`.
 
 The `v6.1.0` tag was pushed on 2026-08-14 (run `31818272628`). Attempt 1
 failed when the macOS quality job hit an accept-vs-read race in the
@@ -30,9 +26,12 @@ failed when the macOS quality job hit an accept-vs-read race in the
 annotated-tag verification, packaging, SBOM, checksum, and both attestations —
 and then failed only at the crates.io authentication step with the same
 `No Trusted Publishing config found for repository AnlangA/zai-rs` rejection.
-The tag itself is valid and must not be moved; once the Trusted Publisher is
-configured, rerun the failed `publish` job of run `31818272628` to complete
-the release.
+The tag itself is valid and must not be moved. `6.1.0` was subsequently
+published from main commit `376c2c1`, outside that failed tag workflow, so its
+registry archive does not match the workflow's attested tag artifact. Preserve
+that history. For `6.2.0`, configure the Trusted Publisher before pushing the
+new annotated tag so the registry archive, release evidence, and attestations
+all come from the same successful workflow.
 
 ## One-time repository setup
 
@@ -62,8 +61,8 @@ action is maintained by
 Published crates.io versions are immutable and cannot be reused. Confirm that
 the version in `Cargo.toml` is still available before creating a tag; the
 observable behavior changes listed in `HARDENING_MIGRATION.md` must inform that
-version decision. The current `6.1.0` candidate already satisfies the recovery
-requirement of a version greater than the unpublished `6.0.1`.
+version decision. The current `6.2.0` release satisfies the recovery requirement
+of using an immutable version greater than the already-published `6.1.0`.
 
 1. Make the intended version explicit in `Cargo.toml`, update `Cargo.lock`, and
    update README, installation, migration, security, and release notes together.
@@ -76,7 +75,7 @@ requirement of a version greater than the unpublished `6.0.1`.
    `cargo package --locked -p zai-rs --all-features --list` as a human
    cross-check.
 4. Create an **annotated** tag whose name exactly matches the crate version,
-   for example `git tag -a v6.1.0 -m "zai-rs 6.1.0"`, then push that new tag.
+   for example `git tag -a v6.2.0 -m "zai-rs 6.2.0"`, then push that new tag.
 5. Wait for the reusable CI job to succeed. If the `crates-io` environment
    requires approval, approve it only after that point.
 6. Do not call the release complete merely because the tag exists or the
@@ -129,6 +128,8 @@ After the publish step reports success:
    SBOM, and checksums named for the published version. Record the registry
    version, docs.rs URL, workflow run, evidence artifact, and attestation result
    in the release notes.
+6. Create a GitHub Release for the immutable tag, link the successful workflow,
+   and summarize user-visible changes and migration notes.
 
 Use the reusable CI `publish-dry-run` job to rehearse packaging. A tag-triggered
 Release intentionally has no skip-publication mode: it can only turn green

@@ -4,32 +4,20 @@
 
 A concise, type-safe Rust SDK for Zhipu AI (BigModel / Z.ai). It focuses on developer ergonomics for Rust users: less boilerplate, consistent error handling, readable request/response types, and ready-to-run examples.
 
-`Cargo.toml` now declares `6.1.0`, a release candidate that supersedes the
-never-published `6.0.1` and carries the API-transport hardening plus GLM-5.3
-support. The two `v6.0.1` workflow attempts failed on 2026-07-24 (runs
-[`30091854390`](https://github.com/AnlangA/zai-rs/actions/runs/30091854390) and
-[`30092565276`](https://github.com/AnlangA/zai-rs/actions/runs/30092565276)).
-The raw step logs established both causes: the first run's then-current
-`v6.0.1` ref was not an annotated tag; the second passed quality, packaging,
-SBOM, checksum, and attestation steps, but crates.io rejected OIDC
-authentication because no Trusted Publishing configuration was found for
-`AnlangA/zai-rs`. `cargo search` and `cargo info` (rechecked 2026-08-14)
-confirm that crates.io still serves `0.6.0` as the latest release. The
-`v6.1.0` publication therefore additionally requires the crates.io Trusted
-Publisher for `AnlangA/zai-rs` to be configured before its annotated tag is
-pushed; until that tag workflow succeeds, this README describes an
-unpublished API.
+The current version is `6.2.0`. This release adds native GLM-5.3-Flash
+multimodal support for text, image, video, and file input, including sync and
+async chat, function calling, structured output, and streamed tool calls. It
+also includes Clippy 1.98 compatibility fixes and refreshed release-validation
+lockfiles.
 
-To use the repository API documented here, pin an audited commit:
+Install from crates.io:
 
 ```toml
 [dependencies]
-zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
+zai-rs = "6.2.0"
 ```
 
-Registry users can select `zai-rs = "0.6.0"`, but that legacy release differs
-from the API and behavior described by the current documentation. Before
-migrating from `0.6.0` to `6.1.0`, read the
+Before upgrading from `6.1.0` or an earlier release, read the
 [hardening migration notes](docs/HARDENING_MIGRATION.md).
 
 ## Quick start
@@ -189,7 +177,11 @@ cargo run --example realtime_audio --features realtime
 | `voice_list` / `voice_delete` | Voice listing / deletion |
 | `realtime_audio` | Realtime audio session (`realtime` feature) |
 
-### Bundled media
+### Repository example media
+
+The following files are available only in a Git checkout and are excluded from
+the crates.io package. Registry users should supply their own media URL/file or
+place test media at the same paths before running the corresponding examples.
 
 | Path | Use |
 |------|-----|
