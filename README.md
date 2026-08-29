@@ -4,28 +4,18 @@
 
 一个简洁、类型安全的 Zhipu AI Rust SDK。专注提升 Rust 开发者的接入效率：更少样板代码、更一致的错误处理、可读的请求/响应类型，以及开箱即用的示例。
 
-`Cargo.toml` 当前声明 `6.1.0`，这是取代从未发布的 `6.0.1` 的发布候选版，
-包含 API 传输层加固与 GLM-5.3 支持。`v6.0.1` 的两次发布 workflow 均于
-2026-07-24 失败（runs
-[`30091854390`](https://github.com/AnlangA/zai-rs/actions/runs/30091854390) 和
-[`30092565276`](https://github.com/AnlangA/zai-rs/actions/runs/30092565276)）。原始 step 日志已确认：
-首次运行的当时 `v6.0.1` ref 不是 annotated tag；第二次已通过质量、打包、
-SBOM、校验和 attestation，但 crates.io 拒绝 OIDC 鉴权，因为没有找到仓库
-`AnlangA/zai-rs` 的 Trusted Publishing 配置。经 `cargo search` / `cargo info`
-（2026-08-14 复核）核验，crates.io 最新版仍为 `0.6.0`。因此 `v6.1.0`
-的发布还要求先在 crates.io 完成 `AnlangA/zai-rs` 的 Trusted Publisher
-配置，再推送 annotated tag；在该 tag workflow 成功之前，本文档描述的是
-未发布 API。
+当前版本为 `6.2.0`。本次发布新增 GLM-5.3-Flash 原生多模态支持，覆盖文本、
+图片、视频与文件输入，以及同步/异步对话、Function Calling、结构化输出和
+流式工具调用；同时包含 Clippy 1.98 兼容性修复与更新后的发布验证锁文件。
 
-使用本文档所述的当前仓库 API 时，应绑定经审计的具体 commit：
+从 crates.io 安装：
 
 ```toml
 [dependencies]
-zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
+zai-rs = "6.2.0"
 ```
 
-registry 用户可使用 `zai-rs = "0.6.0"`，但其公开 API 和行为与当前文档存在
-差异。从 `0.6.0` 迁移到 `6.1.0` 前，请阅读
+从 `6.1.0` 或更早版本升级前，请阅读
 [安全加固迁移说明](docs/HARDENING_MIGRATION.md)。
 
 ## 快速开始
@@ -179,7 +169,11 @@ cargo run --example realtime_audio --features realtime
 | `voice_list` / `voice_delete` | 音色列表 / 删除 |
 | `realtime_audio` | 实时音频会话（`realtime` feature） |
 
-### 内置媒体资源
+### 仓库示例媒体
+
+以下文件只随 Git checkout 提供，已从 crates.io 包中排除。通过 registry
+安装的用户运行相关示例时，需要提供自己的媒体 URL/文件，或在相同路径放置
+测试媒体。
 
 | 路径 | 用途 |
 |------|------|

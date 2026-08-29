@@ -2,26 +2,48 @@
 
 ## Release status
 
-The version `6.1.0` declared by `Cargo.toml` is an unpublished release
-candidate prepared on 2026-08-14. It supersedes the never-published `6.0.1`
-candidate and carries everything in this document. The two `v6.0.1` release
-workflow runs (`30091854390` and `30092565276`) both failed. The recovered
-step logs show that the first run's then-current tag was not annotated. The
-second run passed quality, packaging, SBOM, checksum, and attestation steps,
-but crates.io rejected OIDC authentication because it found no Trusted
-Publishing configuration for `AnlangA/zai-rs`. `cargo search` and
-`cargo info` confirm `0.6.0` as the latest crates.io release.
+The version `6.2.0` declared by `Cargo.toml` is the current release, prepared
+on 2026-08-29. The previous `6.1.0` release carries the hardening and GLM-5.3
+support documented below. Its `v6.1.0` tag workflow (run
+`31818272628`) did not publish on its first attempts: one attempt hit the
+macOS proxy-isolation test race, and the next passed quality, packaging, SBOM,
+checksum, and attestation before crates.io rejected OIDC authentication
+because no matching Trusted Publisher was configured. `6.1.0` was subsequently
+published outside that tag workflow from main commit `376c2c1`; its registry
+archive therefore does not match the workflow's attested tag artifact. The
+failed attempts and immutable tag remain part of the release history.
 
-Consequently, everything in this document remains unreleased relative to
-registry `0.6.0` until the annotated `v6.1.0` tag workflow succeeds, which
-additionally requires the crates.io Trusted Publisher to be configured.
-Consumers evaluating this migration should pin an audited repository commit
-rather than request `6.1.0` from crates.io before that succeeds.
+The earlier `v6.0.1` workflow runs (`30091854390` and `30092565276`) also
+remain historical evidence. The recovered step logs show that the first run's
+then-current tag was not annotated. The second passed quality, packaging,
+SBOM, checksum, and attestation, but failed at the same missing Trusted
+Publisher boundary. `6.0.1` was never published and its tag must not be moved
+or reused.
 
-## Hardening and features added after the v6.0.1 candidate tag (ship in 6.1.0)
+`6.2.0` adds GLM-5.3-Flash multimodal support on top of the published `6.1.0`
+API.
 
-The changes in this section are present in the `6.1.0` candidate but are not
-part of the existing `v6.0.1` candidate tag.
+## Additions after published 6.1.0 (ship in 6.2.0)
+
+### GLM-5.3-Flash multimodal support
+
+The new `GLM5_3_flash` model type (wire id `glm-5.3-flash`) supports text,
+image, video, and file input through `VisionMessage`. It exposes synchronous
+and asynchronous chat, function calling, structured output, and streamed tool
+calls. Like `GLM5_3`, thinking cannot be disabled and `reasoning_effort`
+accepts only `low`, `high`, and `max`; request validation enforces those
+constraints before network I/O. File input cannot be mixed with image or video
+input in one request.
+
+The change is additive, so existing `6.1.0` consumers need no source changes.
+Code adopting `GLM5_3_flash` must use `VisionMessage` even for a text-only
+prompt and should use `enabled` plus `reasoning_effort = "low"` when it needs
+the lightest available reasoning mode.
+
+## Hardening and features added after the v6.0.1 candidate tag (released in 6.1.0)
+
+The changes in this section were published in `6.1.0`; they were not part of
+the existing `v6.0.1` candidate tag.
 
 ### GLM-5.3 model support
 
@@ -499,8 +521,8 @@ their FIFO order without interleaving.
 
 This section records behavior changes prepared for the unpublished
 `zai-rs 6.0.1` candidate. Because the first four changes below alter observable
-runtime behavior, they must ship in the next version greater than `6.0.1`
-rather than being presented as an ordinary `0.6.x` patch release.
+runtime behavior, they ultimately shipped in `6.1.0`, a version greater than
+`6.0.1`, rather than being presented as an ordinary `0.6.x` patch release.
 
 ## Vision MCP now requires explicit runtime consent
 
@@ -676,22 +698,39 @@ only under an explicit logging policy.
 
 ## 发布状态
 
-`Cargo.toml` 声明的 `6.0.1` 是未发布候选版。两次 `v6.0.1` 发布
-workflow（`30091854390` 和 `30092565276`）均失败。已取回的 step 日志证明：
-首次运行的当时 tag 不是 annotated tag；第二次已通过质量、打包、SBOM、
-校验和 attestation，但 crates.io 因没有找到 `AnlangA/zai-rs` Trusted Publishing
-配置而拒绝 OIDC 鉴权。经 `cargo search` / `cargo info` 验证，crates.io
-最新版仍为 `0.6.0`。
+`Cargo.toml` 声明的 `6.2.0` 是 2026-08-29 准备的当前发布版。此前的
+`6.1.0` 包含下文记录的安全加固与 GLM-5.3 支持。
+`v6.1.0` tag workflow（run `31818272628`）最初没有完成发布：一次运行在
+macOS 的 proxy-isolation 测试竞态处失败，下一次已通过质量、打包、SBOM、
+校验和与 attestation，但 crates.io 因缺少匹配的 Trusted Publisher 配置而拒绝
+OIDC 鉴权。随后 `6.1.0` 从 main commit `376c2c1` 在该 tag workflow 之外发布；
+因此 registry archive 与 workflow 已证明的 tag 制品并不一致。失败尝试与不可移动的
+tag 仍作为发布历史保留。
 
-当前工作树已偏离既有 `v6.0.1` tag，因此本文所有内容相对 registry
-`0.6.0` 都仍是未发布变更。下一次正式发布必须使用高于 `6.0.1` 的
-新版本和新 tag；评估迁移时应绑定经审计的仓库 commit，不应尝试从
-crates.io 安装 `6.0.1`。
+更早的两次 `v6.0.1` workflow（`30091854390` 和 `30092565276`）同样保留为
+历史证据。已取回的 step 日志证明：首次运行的当时 tag 不是 annotated tag；
+第二次已通过质量、打包、SBOM、校验和与 attestation，但在缺少 Trusted
+Publisher 的边界失败。`6.0.1` 从未发布，其 tag 不得移动或复用。
 
-## v6.0.1 候选 tag 之后的未发布加固
+`6.2.0` 在已发布的 `6.1.0` API 基础上新增 GLM-5.3-Flash 多模态支持。
 
-本节改动只存在于当前工作树，未包含在既有 `v6.0.1` 候选 tag 中；
-正式发布时必须使用高于 `6.0.1` 的版本。
+## 6.1.0 之后新增并计划随 6.2.0 发布的内容
+
+### GLM-5.3-Flash 多模态支持
+
+新增的 `GLM5_3_flash` 模型类型（wire id `glm-5.3-flash`）通过
+`VisionMessage` 支持文本、图片、视频与文件输入，并提供同步/异步对话、
+Function Calling、结构化输出与流式工具调用。与 `GLM5_3` 一样，它不允许
+关闭 thinking，`reasoning_effort` 仅接受 `low`、`high` 与 `max`；请求校验会在
+网络 I/O 前执行这些约束。同一请求中，文件输入不能与图片或视频输入混用。
+
+该变更是纯新增能力，现有 `6.1.0` 用户无需修改源码。采用
+`GLM5_3_flash` 的代码即使只发送文本，也必须使用 `VisionMessage`；需要最轻量
+推理模式时，应使用 `enabled` 并设置 `reasoning_effort = "low"`。
+
+## v6.0.1 候选 tag 之后、已随 6.1.0 发布的加固
+
+本节改动已随 `6.1.0` 发布，但未包含在既有 `v6.0.1` 候选 tag 中。
 
 - host 为 `localhost`、IPv4 loopback 或 IPv6 loopback 的 HTTP endpoint 现在使用
   独立 `no_proxy` 连接池。即使应用设置 `HTTP_PROXY` / `ALL_PROXY` 且没有配置
@@ -915,8 +954,8 @@ crates.io 安装 `6.0.1`。
 `zai-rs 6.0.1` 候选版准备了本节所列的安全加固，但它并未成功发布。
 Vision MCP 的默认执行行为、工具
 缓存/重试的默认资格、未知业务码的错误分类，以及 HTTP 错误的外层包装均发生了
-可观察变化，因此它们必须随下一个高于 `6.0.1` 的版本发布，而不能作为
-普通 `0.6.x` 补丁发布。
+可观察变化，因此这些改动最终随高于 `6.0.1` 的 `6.1.0` 发布，而没有作为普通
+`0.6.x` 补丁发布。
 
 - Vision MCP 默认不再通过 `npx` 下载或执行代码。生产环境使用
   `with_vision_mcp_command` 指向已审计的本地运行时；本地开发若接受 npm 供应链风险，

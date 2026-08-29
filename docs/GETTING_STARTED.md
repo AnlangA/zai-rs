@@ -9,27 +9,15 @@
 
 ## 安装
 
-当前文档描述的 API 尚未发布到 crates.io。`Cargo.toml` 中的 `6.1.0` 是
-未发布候选版（取代同样未发布的 `6.0.1`）；`6.0.1` 的两次 tag workflow
-分别因当时 tag 不是 annotated tag，以及 crates.io 缺少 `AnlangA/zai-rs`
-Trusted Publisher 配置而失败。使用当前仓库 API 时，应将依赖绑定到已审计
-commit：
+在项目的 `Cargo.toml` 中添加：
 
 ```toml
 [dependencies]
-zai-rs = { git = "https://github.com/AnlangA/zai-rs", rev = "<audited-commit>" }
+zai-rs = "6.2.0"
 ```
 
-经 `cargo search` / `cargo info` 验证的 crates.io 最新版为 `0.6.0`：
-
-```toml
-[dependencies]
-zai-rs = "0.6.0"
-```
-
-`0.6.0` 是 legacy registry 版本，其 API 和行为与本指南描述的当前工作树存在
-差异。工作树已偏离 `v6.0.1` tag，正式发布使用高于 `6.0.1` 的 `6.1.0`
-候选版和新 tag，且需先完成 Trusted Publisher 配置。
+从 `6.1.0` 或更早版本升级时，请阅读
+[安全加固迁移说明](HARDENING_MIGRATION.md)。
 
 ## 配置
 
